@@ -8,13 +8,16 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
+from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
 from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -41,7 +44,7 @@ def task() -> SimpleNamespace:
 
 
 @pytest.fixture
-def task_app_state(task: SimpleNamespace) -> SimpleNamespace:
+def task_app_state(task: SimpleNamespace) -> AppState:
     engine = AsyncMock()
     engine.list_tasks.return_value = ((task,), 1)
     engine.get_task.return_value = task
@@ -49,7 +52,7 @@ def task_app_state(task: SimpleNamespace) -> SimpleNamespace:
     engine.cancel_task.return_value = (task, None)
     engine.delete_task.return_value = True
     engine.transition_task.return_value = (task, None)
-    return SimpleNamespace(task_engine=engine)
+    return make_app_state(task_engine=engine)
 
 
 @pytest.fixture
@@ -62,7 +65,7 @@ class TestTasksSmoke:
     async def test_envelope(
         self,
         tool_name: str,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS[tool_name]
@@ -92,7 +95,7 @@ class TestTasksList:
 class TestTasksCancel:
     async def test_happy_fires_audit(
         self,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS["synthorg_tasks_cancel"]
@@ -109,7 +112,7 @@ class TestTasksCancel:
 
     async def test_missing_reason(
         self,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         body = _parse(
@@ -126,7 +129,7 @@ class TestTasksCancel:
 class TestTasksDelete:
     async def test_happy_fires_audit(
         self,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = TASK_HANDLERS["synthorg_tasks_delete"]
@@ -143,7 +146,7 @@ class TestTasksDelete:
 
     async def test_missing_confirm(
         self,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         with structlog.testing.capture_logs() as logs:
@@ -161,7 +164,7 @@ class TestTasksDelete:
 class TestTasksCreate:
     async def test_invalid_task_data_returns_invalid_argument(
         self,
-        task_app_state: SimpleNamespace,
+        task_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         body = _parse(
@@ -188,7 +191,7 @@ def workflow_def() -> SimpleNamespace:
 
 
 @pytest.fixture
-def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
+def workflow_app_state(workflow_def: SimpleNamespace) -> AppState:
     from synthorg.engine.workflow.service import WorkflowService
 
     def_repo = AsyncMock()
@@ -207,9 +210,9 @@ def workflow_app_state(workflow_def: SimpleNamespace) -> SimpleNamespace:
         definition_repo=def_repo,
         version_repo=version_repo,
     )
-    return SimpleNamespace(
+    return make_app_state(
         persistence=persistence,
-        workflow_service=workflow_service,
+        slices={EngineStateSlice: {"workflow_service": workflow_service}},
     )
 
 
@@ -218,7 +221,7 @@ class TestWorkflowsSmoke:
     async def test_envelope(
         self,
         tool_name: str,
-        workflow_app_state: SimpleNamespace,
+        workflow_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = WORKFLOW_HANDLERS[tool_name]
@@ -251,7 +254,7 @@ class TestWorkflowsList:
 class TestWorkflowsDelete:
     async def test_happy_fires_audit(
         self,
-        workflow_app_state: SimpleNamespace,
+        workflow_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = WORKFLOW_HANDLERS["synthorg_workflows_delete"]

@@ -8,6 +8,9 @@ import pytest
 from synthorg.config.schema import AgentConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
+from tests._shared import make_app_state, mock_of
 
 
 def _make_agent_config(
@@ -219,33 +222,37 @@ class TestMaybeBootstrapAgents:
         """Returns immediately when config_resolver is not available."""
         from synthorg.api.lifecycle_helpers.bootstrap import _maybe_bootstrap_agents
 
-        app_state = AsyncMock()
-        app_state.has_config_resolver = False
-        app_state.has_agent_registry = True
-        app_state.has_settings_service = True
+        settings_service = mock_of[SettingsService]()
+        # config_resolver left unwired -> the presence gate returns early.
+        app_state = make_app_state(
+            agent_registry=mock_of[AgentRegistryService](),
+            settings_service=settings_service,
+        )
 
         await _maybe_bootstrap_agents(app_state)
 
         # settings_service should not be accessed at all
-        app_state.settings_service.get_entry.assert_not_called()
+        settings_service.get_entry.assert_not_called()
 
     async def test_returns_early_when_setup_not_complete(self) -> None:
         """Returns without bootstrapping when setup_complete != 'true'."""
         from synthorg.api.lifecycle_helpers.bootstrap import _maybe_bootstrap_agents
 
-        app_state = AsyncMock()
-        app_state.has_config_resolver = True
-        app_state.has_agent_registry = True
-        app_state.has_settings_service = True
-
         entry = AsyncMock()
         entry.value = "false"
-        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+        settings_service = mock_of[SettingsService](
+            get_entry=AsyncMock(return_value=entry),
+        )
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](),
+            agent_registry=mock_of[AgentRegistryService](),
+            settings_service=settings_service,
+        )
 
         await _maybe_bootstrap_agents(app_state)
 
         # get_entry was called but bootstrap_agents should not be invoked
-        app_state.settings_service.get_entry.assert_called_once_with(
+        settings_service.get_entry.assert_called_once_with(
             "api",
             "setup_complete",
         )
@@ -257,14 +264,18 @@ class TestMaybeBootstrapAgents:
         """Calls bootstrap_agents when setup_complete is 'true'."""
         from synthorg.api.lifecycle_helpers import bootstrap as app_module
 
-        app_state = AsyncMock()
-        app_state.has_config_resolver = True
-        app_state.has_agent_registry = True
-        app_state.has_settings_service = True
-
         entry = AsyncMock()
         entry.value = "true"
-        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+        settings_service = mock_of[SettingsService](
+            get_entry=AsyncMock(return_value=entry),
+        )
+        config_resolver = mock_of[ConfigResolver]()
+        agent_registry = mock_of[AgentRegistryService]()
+        app_state = make_app_state(
+            config_resolver=config_resolver,
+            agent_registry=agent_registry,
+            settings_service=settings_service,
+        )
 
         mock_bootstrap = AsyncMock(return_value=2)
         monkeypatch.setattr(
@@ -275,21 +286,21 @@ class TestMaybeBootstrapAgents:
         await app_module._maybe_bootstrap_agents(app_state)
 
         mock_bootstrap.assert_called_once_with(
-            config_resolver=app_state.config_resolver,
-            agent_registry=app_state.agent_registry,
+            config_resolver=config_resolver,
+            agent_registry=agent_registry,
         )
 
     async def test_handles_settings_read_error(self) -> None:
         """Does not crash when settings_service.get_entry raises."""
         from synthorg.api.lifecycle_helpers.bootstrap import _maybe_bootstrap_agents
 
-        app_state = AsyncMock()
-        app_state.has_config_resolver = True
-        app_state.has_agent_registry = True
-        app_state.has_settings_service = True
-
-        app_state.settings_service.get_entry = AsyncMock(
-            side_effect=RuntimeError("db connection lost"),
+        settings_service = mock_of[SettingsService](
+            get_entry=AsyncMock(side_effect=RuntimeError("db connection lost")),
+        )
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](),
+            agent_registry=mock_of[AgentRegistryService](),
+            settings_service=settings_service,
         )
 
         # Should not raise
@@ -302,14 +313,16 @@ class TestMaybeBootstrapAgents:
         """Does not crash when bootstrap_agents raises."""
         from synthorg.api.lifecycle_helpers import bootstrap as app_module
 
-        app_state = AsyncMock()
-        app_state.has_config_resolver = True
-        app_state.has_agent_registry = True
-        app_state.has_settings_service = True
-
         entry = AsyncMock()
         entry.value = "true"
-        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+        settings_service = mock_of[SettingsService](
+            get_entry=AsyncMock(return_value=entry),
+        )
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](),
+            agent_registry=mock_of[AgentRegistryService](),
+            settings_service=settings_service,
+        )
 
         mock_bootstrap = AsyncMock(side_effect=RuntimeError("boom"))
         monkeypatch.setattr(

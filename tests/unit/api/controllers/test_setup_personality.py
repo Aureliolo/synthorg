@@ -4,11 +4,13 @@ Covers agent personality updates and personality preset listing.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.persistence.state import persistence_of
+from synthorg.providers.state import ProvidersStateSlice
 from tests.unit.api.controllers.conftest import setup_mock_providers
 
 
@@ -56,7 +58,7 @@ class TestUpdateAgentPersonality:
                 for agent in agents
             )
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_update_personality_invalid_preset(
         self,
@@ -78,7 +80,7 @@ class TestUpdateAgentPersonality:
             )
             assert resp.status_code == 400
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_update_personality_out_of_range(
         self,
@@ -97,7 +99,7 @@ class TestUpdateAgentPersonality:
     ) -> None:
         """Updating personality after setup is complete returns 409."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:

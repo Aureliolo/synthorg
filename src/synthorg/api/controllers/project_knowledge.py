@@ -14,7 +14,12 @@ from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
@@ -23,6 +28,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
 from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
+from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -42,7 +48,7 @@ def _knowledge_service(state: State) -> KnowledgeService:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc: KnowledgeService | None = state.app_state.knowledge_service
+    svc: KnowledgeService | None = state.app_state.slice(KnowledgeStateSlice).service
     if svc is None:
         msg = "Knowledge substrate is not wired in this deployment"
         raise ServiceUnavailableError(msg)
@@ -113,7 +119,7 @@ class ProjectKnowledgeController(Controller):
             sources,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[KnowledgeSource](data=page, pagination=meta)
 
@@ -197,6 +203,6 @@ class GlobalKnowledgeController(Controller):
             sources,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[KnowledgeSource](data=page, pagination=meta)

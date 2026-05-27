@@ -32,7 +32,12 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -40,6 +45,8 @@ from synthorg.observability.events.setup import (
     SETUP_PERSONALITY_PRESETS_LISTED,
     SETUP_PRESET_NOT_FOUND,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
 
@@ -78,7 +85,7 @@ class SetupPersonalityController(Controller):
                 is not a known builtin or custom preset.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
         await _check_setup_not_complete(settings_svc)
 
         from synthorg.templates.preset_service import (  # noqa: PLC0415
@@ -89,7 +96,7 @@ class SetupPersonalityController(Controller):
         )
 
         custom_presets = await fetch_custom_presets_map(
-            app_state.persistence.custom_presets,
+            persistence_of(app_state).custom_presets,
         )
         try:
             personality_dict = get_personality_preset(
@@ -173,7 +180,7 @@ class SetupPersonalityController(Controller):
             presets,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.debug(
             SETUP_PERSONALITY_PRESETS_LISTED,

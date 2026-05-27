@@ -22,18 +22,17 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.settings.bridge_configs import MemoryBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import mock_of
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
 
 def _make_state(*, config_resolver: ConfigResolver | None) -> AppState:
-    state = AppState(
+    return make_app_state(
         config=RootConfig(company_name="test"),
         approval_store=ApprovalStore(),
+        config_resolver=config_resolver,
     )
-    state._config_resolver = config_resolver
-    return state
 
 
 def _resolver_returning(snapshot: MemoryBridgeConfig) -> ConfigResolver:

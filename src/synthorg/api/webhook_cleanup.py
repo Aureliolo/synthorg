@@ -28,8 +28,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,
 )
 from synthorg.persistence._shared import paginate
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -92,10 +94,10 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return True
     try:
-        value = await app_state.config_resolver.get_bool(
+        value = await config_resolver_of(app_state).get_bool(
             SettingNamespace.API.value, "webhook_receipt_cleanup_enabled"
         )
     except asyncio.CancelledError:
@@ -141,10 +143,10 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
     fallback = registered_default_int(
         SettingNamespace.INTEGRATIONS.value, "webhook_receipt_retention_days"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        return await app_state.config_resolver.get_int(
+        return await config_resolver_of(app_state).get_int(
             SettingNamespace.INTEGRATIONS.value,
             "webhook_receipt_retention_days",
         )
@@ -200,11 +202,11 @@ async def _cleanup_connection_receipts(
         # Per-connection or global opt-out.
         return _CleanupOutcome("skipped", 0)
     try:
-        rows_removed = (
-            await app_state.persistence.webhook_receipts.cleanup_old_for_connection(
-                conn.name,
-                effective,
-            )
+        rows_removed = await persistence_of(
+            app_state
+        ).webhook_receipts.cleanup_old_for_connection(
+            conn.name,
+            effective,
         )
     except asyncio.CancelledError:
         raise
@@ -270,13 +272,13 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if not app_state.has_persistence:
+    if app_state.slice(PersistenceStateSlice).backend is None:
         return
     default_days = await _resolve_webhook_receipt_retention(app_state)
     try:
         collected: list[Connection] = []
         async for page in paginate(
-            lambda limit, offset: app_state.persistence.connections.list_items(
+            lambda limit, offset: persistence_of(app_state).connections.list_items(
                 limit=limit, offset=offset
             ),
             page_size=_CONNECTION_SWEEP_PAGE_SIZE,
@@ -340,10 +342,10 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
         SettingNamespace.INTEGRATIONS.value,
         "webhook_receipt_cleanup_tick_seconds",
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        value = await app_state.config_resolver.get_float(
+        value = await config_resolver_of(app_state).get_float(
             SettingNamespace.INTEGRATIONS.value,
             "webhook_receipt_cleanup_tick_seconds",
         )

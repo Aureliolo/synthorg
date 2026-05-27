@@ -14,6 +14,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.ontology.state import OntologyStateSlice
 
 
 def _make_entity(
@@ -53,7 +54,9 @@ def _inject_ontology_service(
     svc.list_versions = AsyncMock(return_value=())
     svc.get_version = AsyncMock(return_value=None)
     svc.bootstrap = AsyncMock(return_value=0)
-    test_client.app.state.app_state._ontology_service = svc
+    app_state = test_client.app.state.app_state
+    app_state._ontology_service = svc
+    app_state.swap_slice(OntologyStateSlice.model_construct(service=svc))
     return svc
 
 

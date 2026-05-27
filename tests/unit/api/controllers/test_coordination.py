@@ -30,6 +30,7 @@ from synthorg.engine.coordination.models import (
 from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import make_app_state
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -367,12 +368,12 @@ class TestResolveAgentsBatchLookup:
         mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = tuple(agents)
 
-        app_state = SimpleNamespace(agent_registry=mock_registry)
+        app_state = make_app_state(agent_registry=mock_registry)
         controller = CoordinationController(owner=None)  # type: ignore[arg-type]
         data = CoordinateTaskRequest(agent_names=("alice", "bob", "carol"))
 
         result = await controller._resolve_agents(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             data,
             "task-batch-001",
         )
@@ -391,13 +392,13 @@ class TestResolveAgentsBatchLookup:
         mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, None)
 
-        app_state = SimpleNamespace(agent_registry=mock_registry)
+        app_state = make_app_state(agent_registry=mock_registry)
         controller = CoordinationController(owner=None)  # type: ignore[arg-type]
         data = CoordinateTaskRequest(agent_names=("alice", "missing"))
 
         with pytest.raises(ValidationError, match="missing"):
             await controller._resolve_agents(
-                app_state,  # type: ignore[arg-type]
+                app_state,
                 data,
                 "task-batch-002",
             )

@@ -2,12 +2,12 @@
 
 import json
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.analytics.models import (
     AnalyticsForecast,
@@ -18,6 +18,8 @@ from synthorg.meta.analytics.models import (
 )
 from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
 from synthorg.meta.reports.models import Report, ReportStatus
+from synthorg.meta.state import MetaStateSlice
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -76,10 +78,14 @@ def fake_reports() -> AsyncMock:
 def fake_app_state(
     fake_analytics: AsyncMock,
     fake_reports: AsyncMock,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        analytics_service=fake_analytics,
-        reports_service=fake_reports,
+) -> AppState:
+    return make_app_state(
+        slices={
+            MetaStateSlice: {
+                "analytics_service": fake_analytics,
+                "reports_service": fake_reports,
+            },
+        },
     )
 
 
@@ -90,7 +96,7 @@ def _iso(offset_minutes: int = 0) -> str:
 class TestAnalyticsOverview:
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_analytics_get_overview"]
         response = await handler(
@@ -103,7 +109,7 @@ class TestAnalyticsOverview:
 
     async def test_missing_since_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_analytics_get_overview"]
         response = await handler(
@@ -118,7 +124,7 @@ class TestAnalyticsOverview:
 class TestAnalyticsTrends:
     async def test_until_required(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_analytics_get_trends"]
         response = await handler(
@@ -131,7 +137,7 @@ class TestAnalyticsTrends:
 
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_analytics_get_trends"]
         response = await handler(
@@ -144,7 +150,7 @@ class TestAnalyticsTrends:
 class TestMetricsHandlers:
     async def test_current_ok(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_metrics_get_current"]
         response = await handler(
@@ -155,7 +161,7 @@ class TestMetricsHandlers:
 
     async def test_history_requires_metric_names(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_metrics_get_history"]
         response = await handler(
@@ -168,7 +174,7 @@ class TestMetricsHandlers:
 
     async def test_history_ok(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_metrics_get_history"]
         response = await handler(
@@ -186,7 +192,7 @@ class TestMetricsHandlers:
 class TestReportsHandlers:
     async def test_list(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_reports_list"]
         response = await handler(
@@ -197,7 +203,7 @@ class TestReportsHandlers:
 
     async def test_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_reports_get"]
         response = await handler(
@@ -210,7 +216,7 @@ class TestReportsHandlers:
 
     async def test_get_invalid_uuid(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_reports_get"]
         response = await handler(
@@ -223,7 +229,7 @@ class TestReportsHandlers:
 
     async def test_generate_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_reports_generate"]
         response = await handler(
@@ -235,7 +241,8 @@ class TestReportsHandlers:
 
     async def test_generate_rejects_anonymous_actor(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
+        fake_reports: AsyncMock,
     ) -> None:
         # Report generation persists ``author_id`` and must reject
         # anonymous callers rather than silently storing
@@ -258,11 +265,11 @@ class TestReportsHandlers:
         # Service-side regression guard: the validation failure must
         # happen BEFORE we hit the reports service, so the mocked
         # generate_report call is never made.
-        fake_app_state.reports_service.generate_report.assert_not_called()
+        fake_reports.generate_report.assert_not_called()
 
     async def test_generate_requires_template(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ANALYTICS_HANDLERS["synthorg_reports_generate"]
         response = await handler(

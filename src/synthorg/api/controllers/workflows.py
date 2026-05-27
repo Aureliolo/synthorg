@@ -27,7 +27,12 @@ from synthorg.api.dto_workflow import (
     UpdateWorkflowDefinitionRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.enums import WorkflowType
@@ -66,6 +71,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,
 )
 from synthorg.observability.metrics_hub import record_blueprint_instantiation
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -82,8 +88,8 @@ def _service(state: State) -> WorkflowService:
         ``WorkflowService`` instance.
     """
     return WorkflowService(
-        definition_repo=state.app_state.persistence.workflow_definitions,
-        version_repo=state.app_state.persistence.workflow_versions,
+        definition_repo=persistence_of(state.app_state).workflow_definitions,
+        version_repo=persistence_of(state.app_state).workflow_versions,
         versioning_service=wf_versioning(state),
     )
 
@@ -139,7 +145,7 @@ class WorkflowController(Controller):
             defs,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[WorkflowDefinition](
             data=page,

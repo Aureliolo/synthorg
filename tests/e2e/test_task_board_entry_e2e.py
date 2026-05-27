@@ -44,6 +44,7 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardFiling,
 )
 from synthorg.engine.pipeline.models import WorkSource
+from synthorg.engine.state import EngineStateSlice, task_board_entry_adapter_of
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.drivers.scripted import ScriptedDriver
@@ -60,7 +61,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -173,8 +174,7 @@ async def _build_app_state(
         settings_service=settings_service,
         config=root_config,
     )
-    harness_state = mock_of[AppState](
-        has_active_provider=True,
+    harness_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -182,32 +182,20 @@ async def _build_app_state(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=sim_state,
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=False,
-        coordination_metrics_store=None,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(harness_state, workspace_root=tmp_path)
     assert runtime.work_pipeline is not None
     adapter = TaskBoardEntryAdapter(work_pipeline=runtime.work_pipeline)
-    app_state = AppState(
+    return make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
         task_board_entry_adapter=adapter,
+        client_simulation_state=sim_state,
     )
-    app_state.set_client_simulation_state(sim_state)
-    return app_state
 
 
 async def test_board_filing_executes_through_pipeline(
@@ -242,7 +230,7 @@ async def test_board_filing_executes_through_pipeline(
     )
 
     await process_task_board_pipeline(
-        adapter=app_state.task_board_entry_adapter,
+        adapter=task_board_entry_adapter_of(app_state),
         filing=filing,
     )
 
@@ -292,7 +280,7 @@ async def test_board_filing_unknown_project_is_swallowed_by_background_task(
     # process_task_board_pipeline swallows the pipeline failure
     # (logs ERROR; the 202 was already returned to the caller).
     await process_task_board_pipeline(
-        adapter=app_state.task_board_entry_adapter,
+        adapter=task_board_entry_adapter_of(app_state),
         filing=filing,
     )
 
@@ -354,6 +342,6 @@ async def test_board_filing_propagates_memory_error(
         )
 
     # No task was created (submit raised before the spine got control).
-    assert app_state.has_task_board_entry_adapter
+    assert app_state.slice(EngineStateSlice).task_board_entry_adapter is not None
     all_tasks, _total = await task_engine.list_tasks(project=_PROJECT)
     assert len(all_tasks) == 0

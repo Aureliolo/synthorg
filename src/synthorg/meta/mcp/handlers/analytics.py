@@ -9,9 +9,9 @@
 * ``synthorg_metrics_get_history`` -- evenly-spaced sampled points
 * ``synthorg_reports_list`` / ``_get`` / ``_generate`` -- report lifecycle
 
-All analytics handlers shim through ``app_state.analytics_service``
+All analytics handlers shim through ``analytics_service_of(app_state)``
 (read-only view over :class:`SignalsService`); report handlers shim
-through ``app_state.reports_service``.  Both services are wired once
+through ``reports_service_of(app_state)``.  Both services are wired once
 at app startup.
 """
 
@@ -44,6 +44,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
     log_handler_invoke_failed,
 )
+from synthorg.meta.state import analytics_service_of, reports_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 
@@ -177,7 +178,7 @@ async def _analytics_overview(
     """Return analytics overview."""
     try:
         since, until = parse_time_window(arguments, until_required=False)
-        result = await app_state.analytics_service.get_overview(
+        result = await analytics_service_of(app_state).get_overview(
             since=since,
             until=until,
         )
@@ -205,7 +206,7 @@ async def _analytics_trends(
     try:
         since, until = parse_time_window(arguments)
         metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
-        result = await app_state.analytics_service.get_trends(
+        result = await analytics_service_of(app_state).get_trends(
             since=since,
             until=until,
             metric_names=metric_names,
@@ -238,7 +239,7 @@ async def _analytics_forecast(
             _ARG_HORIZON_DAYS,
             default=30,
         )
-        result = await app_state.analytics_service.get_forecast(
+        result = await analytics_service_of(app_state).get_forecast(
             since=since,
             until=until,
             horizon_days=horizon_days,
@@ -267,7 +268,7 @@ async def _metrics_current(
     try:
         since, until = parse_time_window(arguments, until_required=False)
         metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
-        result = await app_state.analytics_service.get_current_metrics(
+        result = await analytics_service_of(app_state).get_current_metrics(
             since=since,
             until=until,
             metric_names=metric_names,
@@ -305,7 +306,7 @@ async def _metrics_history(
         # arbitrary number of concurrent sub-window queries against the
         # analytics service and its underlying aggregators.
         _reject_oversized_sample_count(sample_count)
-        result = await app_state.analytics_service.get_metric_history(
+        result = await analytics_service_of(app_state).get_metric_history(
             since=since,
             until=until,
             metric_names=metric_names,
@@ -337,7 +338,7 @@ async def _reports_list(
     """Return reports list."""
     try:
         offset, limit = coerce_pagination(arguments)
-        reports, total = await app_state.reports_service.list_reports(
+        reports, total = await reports_service_of(app_state).list_reports(
             offset=offset,
             limit=limit,
         )
@@ -371,7 +372,7 @@ async def _reports_get(
     """Return reports get."""
     try:
         report_id = _parse_report_id(arguments)
-        report = await app_state.reports_service.get_report(report_id)
+        report = await reports_service_of(app_state).get_report(report_id)
         if report is None:
             missing = LookupError(f"Report {report_id} not found")
             # Missing-record paths are an observable error path: log
@@ -418,7 +419,7 @@ async def _reports_generate(
         except ValidationError as exc:
             raise ArgumentValidationError(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
         options = _parse_str_dict(arguments, _ARG_OPTIONS)
-        report = await app_state.reports_service.generate_report(
+        report = await reports_service_of(app_state).generate_report(
             template=template,
             author_id=require_actor_id(actor),
             options=options,

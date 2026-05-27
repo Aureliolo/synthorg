@@ -7,6 +7,7 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_REVIEWS, publish_ws_event
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -18,6 +19,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
+from synthorg.client.state import ClientStateSlice
 from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
@@ -29,6 +31,7 @@ from synthorg.engine.review.models import (
     ReviewStageResult,
     ReviewVerdict,
 )
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_pipeline import (
     REVIEW_STAGE_DECIDED,
@@ -105,13 +108,19 @@ class ReviewController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         pipeline = sim_state.review_pipeline
         if pipeline is None:
             msg = "Review pipeline not configured"
             raise ServiceUnavailableError(msg)
         try:
-            task = await app_state.task_engine.get_task(task_id)
+            task_engine = require_service(
+                app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+            )
+            task = await task_engine.get_task(task_id)
         except (KeyError, ValueError) as exc:
             # Coalesce the task-engine miss into the same None-sentinel
             # the helper raises on so both the engine-throws-KeyError
@@ -173,13 +182,19 @@ class ReviewController(Controller):
             ``ApiResponse[StageDecisionResult]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         pipeline = sim_state.review_pipeline
         if pipeline is None:
             msg = "Review pipeline not configured"
             raise ServiceUnavailableError(msg)
         try:
-            task = await app_state.task_engine.get_task(task_id)
+            task_engine = require_service(
+                app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+            )
+            task = await task_engine.get_task(task_id)
         except (KeyError, ValueError) as exc:
             # Same coalescing pattern as ``run_pipeline`` -- both the
             # engine-throws and engine-returns-None paths emit one

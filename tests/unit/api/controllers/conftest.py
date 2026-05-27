@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from litestar.testing import TestClient
 
+from synthorg.providers.state import ProvidersStateSlice
+
 
 def _build_mock_provider_management() -> MagicMock:
     """Build a stub ``ProviderManagementService`` with one priced model."""
@@ -37,12 +39,12 @@ def mock_providers(test_client: TestClient[Any]) -> Iterator[Any]:
     ``raise`` skips the manual finally block.
     """
     app_state = test_client.app.state.app_state
-    original = app_state._provider_management
-    app_state._provider_management = _build_mock_provider_management()
+    original = app_state.slice(ProvidersStateSlice).management
+    app_state.wire(ProvidersStateSlice, management=_build_mock_provider_management())
     try:
         yield app_state
     finally:
-        app_state._provider_management = original
+        app_state.wire(ProvidersStateSlice, management=original)
 
 
 def setup_mock_providers(
@@ -57,6 +59,6 @@ def setup_mock_providers(
     restore in a ``finally`` block.
     """
     app_state = test_client.app.state.app_state
-    original = app_state._provider_management
-    app_state._provider_management = _build_mock_provider_management()
+    original = app_state.slice(ProvidersStateSlice).management
+    app_state.wire(ProvidersStateSlice, management=_build_mock_provider_management())
     return app_state, original

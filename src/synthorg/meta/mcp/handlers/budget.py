@@ -1,7 +1,7 @@
 """Budget domain MCP handlers.
 
-Shims the 5 budget tools onto ``app_state.cost_tracker`` and
-``app_state.config_resolver``.  Version-history reads route through a
+Shims the 5 budget tools onto ``cost_tracker_of(app_state)`` and
+``config_resolver_of(app_state)``.  Version-history reads route through a
 :class:`~synthorg.budget.version_service.BudgetConfigVersionsService`
 facade obtained via :func:`_versions_service` (which prefers
 ``app_state.budget_versions_service`` when bootstrap has wired one and
@@ -14,6 +14,7 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.budget.state import cost_tracker_of
 from synthorg.budget.version_service import BudgetConfigVersionsService
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -37,6 +38,8 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -71,7 +74,7 @@ def _versions_service(app_state: Any) -> BudgetConfigVersionsService:
     if cached is not None:
         return cached
     return BudgetConfigVersionsService(
-        version_repo=app_state.persistence.budget_config_versions,
+        version_repo=persistence_of(app_state).budget_config_versions,
     )
 
 
@@ -96,7 +99,7 @@ async def _budget_get_config(
     """
     tool = "synthorg_budget_get_config"
     try:
-        config = await app_state.config_resolver.get_budget_config()
+        config = await config_resolver_of(app_state).get_budget_config()
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -136,7 +139,7 @@ async def _budget_list_records(
         return err(exc)
 
     try:
-        records = await app_state.cost_tracker.get_records(
+        records = await cost_tracker_of(app_state).get_records(
             agent_id=agent_id,
             task_id=task_id,
         )
@@ -167,8 +170,8 @@ async def _budget_get_agent_spending(
         return err(exc)
 
     try:
-        total = await app_state.cost_tracker.get_agent_cost(agent_id)
-        config = await app_state.config_resolver.get_budget_config()
+        total = await cost_tracker_of(app_state).get_agent_cost(agent_id)
+        config = await config_resolver_of(app_state).get_budget_config()
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)

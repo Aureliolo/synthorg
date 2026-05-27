@@ -8,11 +8,11 @@ branches (missing actor / missing confirm / missing reason).
 
 import json
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.handlers.signals import SIGNAL_HANDLERS
@@ -26,6 +26,8 @@ from synthorg.meta.signal_models import (
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
+from synthorg.meta.state import MetaStateSlice
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -98,8 +100,10 @@ def fake_signals_service() -> AsyncMock:
 
 
 @pytest.fixture
-def fake_app_state(fake_signals_service: AsyncMock) -> SimpleNamespace:
-    return SimpleNamespace(signals_service=fake_signals_service)
+def fake_app_state(fake_signals_service: AsyncMock) -> AppState:
+    return make_app_state(
+        slices={MetaStateSlice: {"signals_service": fake_signals_service}},
+    )
 
 
 def _now_iso(offset_minutes: int = 0) -> str:
@@ -109,7 +113,7 @@ def _now_iso(offset_minutes: int = 0) -> str:
 class TestSnapshotHandler:
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_org_snapshot"]
         response = await handler(
@@ -122,7 +126,7 @@ class TestSnapshotHandler:
 
     async def test_missing_since_returns_invalid(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_org_snapshot"]
         response = await handler(
@@ -135,7 +139,7 @@ class TestSnapshotHandler:
 
     async def test_naive_datetime_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_org_snapshot"]
         response = await handler(
@@ -146,7 +150,7 @@ class TestSnapshotHandler:
 
     async def test_inverted_window_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_org_snapshot"]
         response = await handler(
@@ -173,7 +177,7 @@ class TestPerDomainHandlers:
     )
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         tool: str,
     ) -> None:
         handler = SIGNAL_HANDLERS[tool]
@@ -191,7 +195,7 @@ class TestPerDomainHandlers:
 class TestProposalsList:
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_signals_service: AsyncMock,
     ) -> None:
         fake_signals_service.list_proposals = AsyncMock(
@@ -221,7 +225,7 @@ class TestProposalsList:
 
     async def test_status_filter_applied(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_signals_service: AsyncMock,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_proposals"]
@@ -235,7 +239,7 @@ class TestProposalsList:
 
     async def test_invalid_status_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_get_proposals"]
         response = await handler(
@@ -289,7 +293,7 @@ class TestSubmitProposalGuardrails:
 
     async def test_missing_actor_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
         response = await handler(
@@ -308,7 +312,7 @@ class TestSubmitProposalGuardrails:
 
     async def test_missing_confirm_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
         response = await handler(
@@ -325,7 +329,7 @@ class TestSubmitProposalGuardrails:
 
     async def test_missing_reason_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
         response = await handler(
@@ -342,7 +346,7 @@ class TestSubmitProposalGuardrails:
 
     async def test_happy_path_calls_facade(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_signals_service: AsyncMock,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
@@ -366,7 +370,7 @@ class TestSubmitProposalGuardrails:
 
     async def test_invalid_proposal_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = SIGNAL_HANDLERS["synthorg_signals_submit_proposal"]
         response = await handler(

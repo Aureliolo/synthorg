@@ -6,6 +6,8 @@ from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import PathParameter, QueryParameter
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -13,6 +15,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -24,6 +27,7 @@ from synthorg.core.domain_errors import (
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
 )
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
 )
@@ -66,9 +70,13 @@ class WorkflowVersionController(Controller):
         Returns:
             ``Response[PaginatedResponse[SnapshotT]]`` instance.
         """
-        secret = state.app_state.cursor_secret
+        secret = cursor_secret_of(state.app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        versions, total = await state.app_state.workflow_version_service.list_versions(
+        version_service = require_service(
+            state.app_state.slice(EngineStateSlice).workflow_version_service,
+            "Workflow Version Service",
+        )
+        versions, total = await version_service.list_versions(
             workflow_id,
             limit=limit,
             offset=offset,
@@ -116,7 +124,11 @@ class WorkflowVersionController(Controller):
         Raises:
             NotFoundError: Raised on the corresponding failure path.
         """
-        version = await state.app_state.workflow_version_service.get_version(
+        version_service = require_service(
+            state.app_state.slice(EngineStateSlice).workflow_version_service,
+            "Workflow Version Service",
+        )
+        version = await version_service.get_version(
             workflow_id,
             version_num,
         )
@@ -171,7 +183,10 @@ class WorkflowVersionController(Controller):
             msg = "from_version and to_version must differ"
             raise ValidationError(msg)
 
-        version_service = state.app_state.workflow_version_service
+        version_service = require_service(
+            state.app_state.slice(EngineStateSlice).workflow_version_service,
+            "Workflow Version Service",
+        )
         old, new = await version_service.get_version_pair_or_404(
             workflow_id,
             from_version,
@@ -207,7 +222,10 @@ class WorkflowVersionController(Controller):
         Raises:
             VersionConflictError: Raised on the corresponding failure path.
         """
-        rollback_service = state.app_state.workflow_rollback_service
+        rollback_service = require_service(
+            state.app_state.slice(ApiCoreStateSlice).workflow_rollback_service,
+            "Workflow Rollback Service",
+        )
         try:
             rolled_back = await rollback_service.prepare_rollback(
                 workflow_id,

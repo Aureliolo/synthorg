@@ -1,7 +1,7 @@
 """Tests for org-wide activity feed endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, override
+from typing import Any, cast, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,6 +20,7 @@ from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers
@@ -704,8 +705,8 @@ class TestDegradedSources:
         )
         # Break the config resolver
         app_state = test_client.app.state.app_state
-        original = app_state.config_resolver.get_budget_config
-        app_state.config_resolver.get_budget_config = AsyncMock(
+        original = config_resolver_of(app_state).get_budget_config
+        cast(Any, config_resolver_of(app_state)).get_budget_config = AsyncMock(
             side_effect=RuntimeError("simulated failure"),
         )
         try:
@@ -713,7 +714,7 @@ class TestDegradedSources:
             assert resp.status_code == 200
             assert "budget_config" in resp.json()["degraded_sources"]
         finally:
-            app_state.config_resolver.get_budget_config = original
+            cast(Any, config_resolver_of(app_state)).get_budget_config = original
 
 
 class TestActivityFeedLifecycleCap:

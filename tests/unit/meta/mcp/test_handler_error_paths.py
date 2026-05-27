@@ -73,6 +73,18 @@ class _UniversalFailingAppState:
             return True
         return _UniversalFailingService()
 
+    def slice(self, slice_type: Any) -> Any:
+        """Return a slice whose every service field is a failing stub.
+
+        Mirrors ``AppStateSliceMixin.slice`` so a handler's presence
+        check (``slice(X).field is None``) passes -- every field is a
+        non-``None`` :class:`_UniversalFailingService` -- and the
+        subsequent service call raises, hitting the ``except`` branch.
+        """
+        return slice_type.model_construct(
+            **{name: _UniversalFailingService() for name in slice_type.model_fields}
+        )
+
 
 # Generic argument bundle. Permissive enough that handlers either:
 # (a) pass argument validation and reach the failing service layer, OR

@@ -21,6 +21,7 @@ from synthorg.providers.errors import (
     ProviderValidationError,
 )
 from synthorg.providers.management.service import ProviderManagementService
+from synthorg.providers.state import ProvidersStateSlice, provider_registry_of
 from synthorg.settings.service import SettingsService
 
 from .conftest import make_create_request
@@ -66,8 +67,8 @@ class TestCreateProvider:
     ) -> None:
         request = make_create_request()
         await service.create_provider(request)
-        assert app_state.has_provider_registry
-        assert "test-provider" in app_state.provider_registry
+        assert app_state.slice(ProvidersStateSlice).registry is not None
+        assert "test-provider" in provider_registry_of(app_state)
 
     async def test_create_provider_swaps_app_state(
         self,
@@ -76,7 +77,7 @@ class TestCreateProvider:
     ) -> None:
         request = make_create_request()
         await service.create_provider(request)
-        assert app_state.has_model_router
+        assert app_state.slice(ProvidersStateSlice).model_router is not None
 
 
 @pytest.mark.unit

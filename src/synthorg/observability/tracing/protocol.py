@@ -12,7 +12,7 @@ Startup wiring constructs the handler once and stashes the instance
 on ``AppState``.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from opentelemetry import trace
 from opentelemetry.trace import NoOpTracer
@@ -26,6 +26,7 @@ _DEFAULT_FORCE_FLUSH_TIMEOUT_SECONDS: Final[float] = 5.0
 
 # NoopTraceHandler impl in this file + OtlpTraceHandler impl in
 # otlp_trace_handler.py + tracing/factory.py + AppState wiring.
+@runtime_checkable
 class TraceHandler(Protocol):
     """Interface for the tracing subsystem's process-singleton handler.
 

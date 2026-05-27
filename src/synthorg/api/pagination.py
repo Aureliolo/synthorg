@@ -11,10 +11,12 @@ into a composite ``(created_at, id)`` seek tuple internally -- the
 wire format stays the same.
 """
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from litestar.params import QueryParameter
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.cursor import (
     CursorSecret,
     InvalidCursorError,
@@ -26,7 +28,34 @@ from synthorg.api.dto import DEFAULT_LIMIT, MAX_LIMIT, PaginationMeta
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_CURSOR_INVALID
 
+if TYPE_CHECKING:
+    from synthorg.api.state_slices import AppStateSliceMixin
+
 logger = get_logger(__name__)
+
+
+def cursor_secret_of(app_state: AppStateSliceMixin) -> CursorSecret:
+    """Return the wired pagination cursor secret, or raise 503.
+
+    The opaque-pagination HMAC secret lives on the api-core state slice
+    (wired once by ``create_app``). Pagination call sites read it
+    through this accessor and pass it as ``secret=`` to the cursor
+    encode / decode helpers, so the slice lookup is centralised here
+    rather than repeated at every controller.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The wired cursor secret.
+
+    Raises:
+        ServiceUnavailableError: When the secret is not yet wired.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).cursor_secret, "Cursor Secret"
+    )
+
 
 CursorLimit = Annotated[
     int,

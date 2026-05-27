@@ -35,6 +35,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_INVALID_REQUEST,
 )
 from synthorg.observability.metrics_hub import record_blueprint_instantiation
+from synthorg.persistence.state import persistence_of
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def wf_versioning(state: State) -> VersioningService[WorkflowDefinition]:
     Returns:
         ``VersioningService[WorkflowDefinition]`` instance.
     """
-    return VersioningService(state.app_state.persistence.workflow_versions)
+    return VersioningService(persistence_of(state.app_state).workflow_versions)
 
 
 async def run_subworkflow_validation(
@@ -68,7 +69,7 @@ async def run_subworkflow_validation(
     Returns:
         Tuple of the declared element types.
     """
-    registry = SubworkflowRegistry(state.app_state.persistence.subworkflows)
+    registry = SubworkflowRegistry(persistence_of(state.app_state).subworkflows)
     io_result = await validate_subworkflow_io(definition, registry)
     graph_result = await validate_subworkflow_graph(definition, registry)
     return tuple(io_result.errors) + tuple(graph_result.errors)

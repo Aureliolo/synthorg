@@ -9,6 +9,7 @@ from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
@@ -29,6 +30,7 @@ from synthorg.observability.events.api import (
     API_TEAM_UPDATED,
     API_VALIDATION_FAILED,
 )
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -263,7 +265,9 @@ async def _persist_departments(
     depts: list[dict[str, Any]],
 ) -> None:
     """Write the full departments list back to settings."""
-    await app_state.settings_service.set(
+    await require_service(
+        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+    ).set(
         "company",
         "departments",
         json.dumps(depts),

@@ -10,11 +10,13 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
@@ -28,6 +30,7 @@ from synthorg.integrations.errors import (
 from synthorg.integrations.mcp_catalog.installations import (  # noqa: TC001
     McpInstallation,
 )
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALL_FAILED,
@@ -168,12 +171,16 @@ class MCPCatalogController(Controller):
             ``PaginatedResponse[CatalogEntry]`` instance.
         """
         app_state: AppState = state.app_state
-        entries = await app_state.mcp_catalog_service.browse()
+        service = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_catalog_service,
+            "MCP Catalog Service",
+        )
+        entries = await service.browse()
         page, meta = paginate_cursor(
             entries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -201,12 +208,16 @@ class MCPCatalogController(Controller):
             ``PaginatedResponse[CatalogEntry]`` instance.
         """
         app_state: AppState = state.app_state
-        entries = await app_state.mcp_catalog_service.search(q)
+        service = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_catalog_service,
+            "MCP Catalog Service",
+        )
+        entries = await service.search(q)
         page, meta = paginate_cursor(
             entries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -233,7 +244,11 @@ class MCPCatalogController(Controller):
             ``ApiResponse[CatalogEntry]`` instance.
         """
         app_state: AppState = state.app_state
-        entry = await app_state.mcp_catalog_service.get_entry(entry_id)
+        service = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_catalog_service,
+            "MCP Catalog Service",
+        )
+        entry = await service.get_entry(entry_id)
         return ApiResponse(data=entry)
 
     @get(
@@ -258,7 +273,10 @@ class MCPCatalogController(Controller):
             ``PaginatedResponse[InstalledEntry]`` instance.
         """
         app_state: AppState = state.app_state
-        installations_repo = app_state.mcp_installations_repo
+        installations_repo = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_installations_repo,
+            "MCP Installations Repository",
+        )
         # Drain every installed row before cursor-paginating the
         # response. The bundled catalog is small today (~20-50 entries),
         # but a fixed cap would silently truncate the installed list
@@ -299,7 +317,7 @@ class MCPCatalogController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -330,11 +348,15 @@ class MCPCatalogController(Controller):
         connection_name = data.connection_name
 
         app_state: AppState = state.app_state
-        service = app_state.mcp_catalog_service
-        installations_repo = app_state.mcp_installations_repo
-        connection_catalog = (
-            app_state.connection_catalog if app_state.has_connection_catalog else None
+        service = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_catalog_service,
+            "MCP Catalog Service",
         )
+        installations_repo = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_installations_repo,
+            "MCP Installations Repository",
+        )
+        connection_catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
 
         await _validate_connection_name_for_install(
             entry_id=entry_id,
@@ -392,8 +414,14 @@ class MCPCatalogController(Controller):
             ``ApiResponse[None]`` instance.
         """
         app_state: AppState = state.app_state
-        service = app_state.mcp_catalog_service
-        installations_repo = app_state.mcp_installations_repo
+        service = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_catalog_service,
+            "MCP Catalog Service",
+        )
+        installations_repo = require_service(
+            app_state.slice(IntegrationsStateSlice).mcp_installations_repo,
+            "MCP Installations Repository",
+        )
         removed = await service.uninstall(
             entry_id,
             installations_repo=installations_repo,

@@ -13,6 +13,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
 from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
@@ -32,12 +33,18 @@ from synthorg.api.guards import (
     require_read_access,
     require_write_access,
 )
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
@@ -69,6 +76,7 @@ from synthorg.observability.events.security import (
 )
 from synthorg.observability.metrics_hub import record_approval_decision
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -153,15 +161,15 @@ async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return _urgency_thresholds_fallback(
             "no config resolver available; using approval urgency threshold fallbacks"
         )
     try:
-        critical = await app_state.config_resolver.get_float(
+        critical = await config_resolver_of(app_state).get_float(
             SettingNamespace.API.value, "approval_urgency_critical_seconds"
         )
-        high = await app_state.config_resolver.get_float(
+        high = await config_resolver_of(app_state).get_float(
             SettingNamespace.API.value, "approval_urgency_high_seconds"
         )
     except asyncio.CancelledError:
@@ -426,8 +434,9 @@ async def _get_approval_or_404(
     Raises:
         NotFoundError: If the approval is not found.
     """
+    store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
     return require_resource_or_404(
-        await app_state.approval_store.get(approval_id),
+        await store.get(approval_id),
         resource_type="Approval",
         identifier=approval_id,
         log_event=API_RESOURCE_NOT_FOUND,
@@ -479,7 +488,8 @@ async def _save_decision_and_notify(  # noqa: PLR0913
     # Run the review-gate preflight BEFORE persisting the decision so
     # a rejected preflight never leaves a decided approval row or a
     # broadcast WebSocket event behind.
-    review_gate = app_state.review_gate_service
+    approval = app_state.slice(ApprovalStateSlice)
+    review_gate = approval.review_gate
     if review_gate is not None and updated.task_id is not None:
         await _preflight_review_gate(
             review_gate,
@@ -488,7 +498,8 @@ async def _save_decision_and_notify(  # noqa: PLR0913
             decided_by=decided_by,
         )
 
-    saved = await app_state.approval_store.save_if_pending(updated)
+    store = require_service(approval.store, "Approval Store")
+    saved = await store.save_if_pending(updated)
     if saved is None:
         msg = "Approval is no longer pending (already decided or expired)"
         logger.warning(
@@ -574,7 +585,10 @@ class ApprovalsController(Controller):
             Paginated approval list with urgency fields.
         """
         app_state: AppState = state.app_state
-        items = await app_state.approval_store.list_items(
+        store = require_service(
+            app_state.slice(ApprovalStateSlice).store, "Approval Store"
+        )
+        items = await store.list_items(
             status=status,
             risk_level=risk_level,
             action_type=action_type,
@@ -583,7 +597,7 @@ class ApprovalsController(Controller):
             items,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         now = datetime.now(UTC)
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
@@ -692,7 +706,10 @@ class ApprovalsController(Controller):
         # blocked response (which would prompt the client to retry and
         # double-write the same approval).
         critical_seconds, high_seconds = await _resolve_urgency_thresholds(app_state)
-        await app_state.approval_store.add(item)
+        store = require_service(
+            app_state.slice(ApprovalStateSlice).store, "Approval Store"
+        )
+        await store.add(item)
 
         _publish_approval_event(
             request,

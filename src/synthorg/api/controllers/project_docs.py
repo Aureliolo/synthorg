@@ -13,7 +13,12 @@ from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.enums import DocType
@@ -28,6 +33,7 @@ from synthorg.docs_engine.models import (
     DocVersion,
     LivingDocument,
 )
+from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -47,7 +53,7 @@ def _docs_service(state: State) -> DocsService:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc: DocsService | None = state.app_state.docs_service
+    svc: DocsService | None = state.app_state.slice(DocsStateSlice).service
     if svc is None:
         msg = "Living-documentation engine is not wired in this deployment"
         raise ServiceUnavailableError(msg)
@@ -140,7 +146,7 @@ class ProjectDocsController(Controller):
             summaries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[DocSummary](data=page, pagination=meta)
 

@@ -17,13 +17,12 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-from synthorg.api.state import AppState
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.runtime_builder import build_client_simulation_runtime
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.task_engine import TaskEngine
-from tests._shared import mock_of
+from tests._shared import make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -50,11 +49,8 @@ async def task_engine(
 async def test_builder_wires_intake_engine_to_real_task_engine(
     task_engine: TaskEngine,
 ) -> None:
-    app_state = mock_of[AppState](
+    app_state = make_app_state(
         task_engine=task_engine,
-        has_task_engine=True,
-        has_active_provider=False,
-        has_cost_tracker=False,
     )
 
     state = build_client_simulation_runtime(app_state, env={})

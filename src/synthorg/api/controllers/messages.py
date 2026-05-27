@@ -6,20 +6,28 @@ from litestar import Controller, Request, delete, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMMUNICATION_MESSAGE_DELETE_FAILED,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -60,7 +68,7 @@ class MessageController(Controller):
         """
         app_state: AppState = state.app_state
         if channel is not None:
-            messages = await app_state.persistence.messages.get_history(
+            messages = await persistence_of(app_state).messages.get_history(
                 channel,
             )
         else:
@@ -69,7 +77,7 @@ class MessageController(Controller):
             messages,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -110,7 +118,11 @@ class MessageController(Controller):
             ResourceNotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        deleted = await app_state.message_service.delete_message(
+        message_service = require_service(
+            app_state.slice(CommunicationStateSlice).message_service,
+            "Message Service",
+        )
+        deleted = await message_service.delete_message(
             message_id=message_id,
             actor_id=NotBlankStr(str(request.user.user_id)),
             reason=NotBlankStr("operator delete via REST API"),
@@ -150,11 +162,14 @@ class MessageController(Controller):
             Paginated channel list envelope.
         """
         app_state: AppState = state.app_state
-        channels = await app_state.message_bus.list_channels()
+        message_bus = require_service(
+            app_state.slice(CommunicationStateSlice).message_bus, "Message Bus"
+        )
+        channels = await message_bus.list_channels()
         page, meta = paginate_cursor(
             tuple(channels),
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[Channel](data=page, pagination=meta)

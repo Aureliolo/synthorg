@@ -8,6 +8,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import (
     try_conversational_intake_resume,
 )
+from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import (
@@ -19,9 +20,11 @@ from synthorg.core.enums import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
+from synthorg.meta.state import MetaStateSlice
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -85,35 +88,24 @@ class _FakePipeline:
         return object()
 
 
-class _FakeAppState:
-    def __init__(
-        self,
-        *,
-        approval_store: ApprovalStore,
-        proposal_repo: _FakeProposalRepo | None,
-        pipeline: _FakePipeline | None,
-    ) -> None:
-        self.approval_store = approval_store
-        self._proposal_repo = proposal_repo
-        self._pipeline = pipeline
+def _make_app_state(
+    *,
+    approval_store: ApprovalStore,
+    proposal_repo: _FakeProposalRepo | None,
+    pipeline: _FakePipeline | None,
+) -> AppState:
+    """Build an AppState with the conversational-resume slices wired.
 
-    @property
-    def has_conversational_proposal_repo(self) -> bool:
-        return self._proposal_repo is not None
-
-    @property
-    def conversational_proposal_repo(self) -> _FakeProposalRepo:
-        assert self._proposal_repo is not None
-        return self._proposal_repo
-
-    @property
-    def has_work_pipeline(self) -> bool:
-        return self._pipeline is not None
-
-    @property
-    def work_pipeline(self) -> _FakePipeline:
-        assert self._pipeline is not None
-        return self._pipeline
+    The resume flow reads the approval store via
+    ``slice(ApprovalStateSlice).store``, the proposal repo via
+    ``slice(MetaStateSlice).conversational_proposal_repo``, and the work
+    pipeline via ``slice(EngineStateSlice).work_pipeline``.
+    """
+    return make_app_state(
+        approval_store=approval_store,
+        work_pipeline=pipeline,
+        slices={MetaStateSlice: {"conversational_proposal_repo": proposal_repo}},
+    )
 
 
 def _approval(
@@ -150,14 +142,14 @@ async def _seed(
     source: ApprovalSource = ApprovalSource.CONVERSATIONAL_INTAKE,
     with_proposal: bool = True,
     pipeline: _FakePipeline | None = None,
-) -> tuple[_FakeAppState, _FakeProposalRepo]:
+) -> tuple[AppState, _FakeProposalRepo]:
     store = ApprovalStore()
     await store.add(_approval("a1", source=source))
     repo = _FakeProposalRepo()
     if with_proposal:
         prop = _proposal("a1")
         repo.items[prop.id] = prop
-    state = _FakeAppState(
+    state = _make_app_state(
         approval_store=store,
         proposal_repo=repo,
         pipeline=pipeline if pipeline is not None else _FakePipeline(),
@@ -169,7 +161,7 @@ class TestConversationalIntakeResume:
     async def test_non_conversational_source_is_inert(self) -> None:
         state, _ = await _seed(source=ApprovalSource.REVIEW_GATE)
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=True,
         )
@@ -179,7 +171,7 @@ class TestConversationalIntakeResume:
         pipeline = _FakePipeline()
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=True,
         )
@@ -192,7 +184,7 @@ class TestConversationalIntakeResume:
         pipeline = _FakePipeline()
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=False,
         )
@@ -203,7 +195,7 @@ class TestConversationalIntakeResume:
     async def test_missing_proposal_is_owned_but_noop(self) -> None:
         state, _ = await _seed(with_proposal=False)
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=True,
         )
@@ -215,14 +207,14 @@ class TestConversationalIntakeResume:
         repo = _FakeProposalRepo()
         prop = _proposal("a1")
         repo.items[prop.id] = prop
-        state = _FakeAppState(
+        state = _make_app_state(
             approval_store=store,
             proposal_repo=repo,
             pipeline=None,
         )
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_intake_resume(
-                state,  # type: ignore[arg-type]
+                state,
                 "a1",
                 approved=True,
             )
@@ -234,14 +226,14 @@ class TestConversationalIntakeResume:
         # rather than silently mark the approval handled.
         store = ApprovalStore()
         await store.add(_approval("a1"))
-        state = _FakeAppState(
+        state = _make_app_state(
             approval_store=store,
             proposal_repo=None,
             pipeline=_FakePipeline(),
         )
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_intake_resume(
-                state,  # type: ignore[arg-type]
+                state,
                 "a1",
                 approved=True,
             )
@@ -253,7 +245,7 @@ class TestConversationalIntakeResume:
         pipeline = _FakePipeline(error=RuntimeError("boom"))
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=True,
         )
@@ -272,7 +264,7 @@ class TestConversationalIntakeResume:
             update={"status": ConversationalProposalStatus.EXECUTING}
         )
         handled = await try_conversational_intake_resume(
-            state,  # type: ignore[arg-type]
+            state,
             "a1",
             approved=True,
         )

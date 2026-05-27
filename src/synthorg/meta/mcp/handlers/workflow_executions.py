@@ -19,6 +19,7 @@ from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.state import EngineStateSlice, workflow_execution_service_of
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,  # noqa: TC001 -- runtime annotation in helper
 )
@@ -72,9 +73,9 @@ def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
     # ``AttributeError`` and would otherwise let the property's exception
     # short-circuit the handler before it could return ``capability_gap``.
     """Return execution service."""
-    if not getattr(app_state, "has_workflow_execution_service", False):
+    if app_state.slice(EngineStateSlice).workflow_execution_service is None:
         return None
-    return app_state.workflow_execution_service  # type: ignore[no-any-return]
+    return workflow_execution_service_of(app_state)
 
 
 def _parse_start_args(

@@ -2,7 +2,6 @@
 
 import json
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 import pytest
 
@@ -14,8 +13,9 @@ from synthorg.meta.mcp.handlers.research import (
 from synthorg.research.config import ResearchConfig
 from synthorg.research.factory import build_research_service
 from synthorg.research.service import ResearchService
+from synthorg.research.state import ResearchStateSlice
 from synthorg.tools.web.web_search import SearchResult
-from tests._shared import FakeClock
+from tests._shared import FakeClock, make_app_state
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.research._fakes import (
     FakeWebSearchProvider,
@@ -86,8 +86,9 @@ def _service() -> ResearchService:
 
 
 async def test_run_returns_cited_report() -> None:
-    app_state = SimpleNamespace(
-        research_service=_service(), clock=FakeClock(start=_NOW)
+    app_state = make_app_state(
+        clock=FakeClock(start=_NOW),
+        slices={ResearchStateSlice: {"service": _service()}},
     )
     result = await _research_run(
         app_state=app_state,
@@ -100,7 +101,7 @@ async def test_run_returns_cited_report() -> None:
 
 
 async def test_run_503_when_service_absent() -> None:
-    app_state = SimpleNamespace(research_service=None)
+    app_state = make_app_state()
     result = await _research_run(
         app_state=app_state,
         arguments={"question": "what are widgets?"},
@@ -110,7 +111,7 @@ async def test_run_503_when_service_absent() -> None:
 
 
 async def test_get_missing_returns_error() -> None:
-    app_state = SimpleNamespace(research_service=_service())
+    app_state = make_app_state(slices={ResearchStateSlice: {"service": _service()}})
     result = await _research_get(
         app_state=app_state, arguments={"run_id": "does-not-exist"}
     )
@@ -119,7 +120,7 @@ async def test_get_missing_returns_error() -> None:
 
 
 async def test_list_returns_empty_initially() -> None:
-    app_state = SimpleNamespace(research_service=_service())
+    app_state = make_app_state(slices={ResearchStateSlice: {"service": _service()}})
     result = await _research_list(app_state=app_state, arguments={})
     body = json.loads(result)
     assert body["status"] == "ok"

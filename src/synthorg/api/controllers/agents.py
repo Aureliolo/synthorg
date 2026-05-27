@@ -8,6 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.api_core_state import org_mutation_service_of
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
@@ -20,7 +21,12 @@ from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
 )
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
@@ -44,6 +50,7 @@ from synthorg.hr.performance.summary import (
     AgentPerformanceSummary,
     extract_performance_summary,
 )
+from synthorg.hr.state import agent_registry_of, performance_tracker_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     AGENT_DELETED_AUDIT,
@@ -57,6 +64,9 @@ from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.security.state import SecurityStateSlice
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -84,7 +94,7 @@ async def _resolve_agent_id(
         NotFoundError: If the agent is not found in the registry.
     """
     identity = require_resource_or_404(
-        await app_state.agent_registry.get_by_name(agent_name),
+        await agent_registry_of(app_state).get_by_name(agent_name),
         resource_type="agent",
         identifier=agent_name,
         log_event=API_RESOURCE_NOT_FOUND,
@@ -107,7 +117,7 @@ async def _resolve_agent_identity(
         ``AgentIdentity`` instance.
     """
     return require_resource_or_404(
-        await app_state.agent_registry.get_by_name(agent_name),
+        await agent_registry_of(app_state).get_by_name(agent_name),
         resource_type="agent",
         identifier=agent_name,
         log_event=API_RESOURCE_NOT_FOUND,
@@ -220,12 +230,12 @@ class AgentController(Controller):
             Paginated agent configurations.
         """
         app_state: AppState = state.app_state
-        agents = await app_state.config_resolver.get_agents()
+        agents = await config_resolver_of(app_state).get_agents()
         page, meta = paginate_cursor(
             agents,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -248,7 +258,7 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        agents = await app_state.config_resolver.get_agents()
+        agents = await config_resolver_of(app_state).get_agents()
         found = find_by_name_ci(agents, agent_name)
         if found is not None:
             return ApiResponse(data=found)
@@ -281,7 +291,7 @@ class AgentController(Controller):
             Created agent config envelope (HTTP 201).
         """
         app_state: AppState = state.app_state
-        agent = await app_state.org_mutation_service.create_agent(data)
+        agent = await org_mutation_service_of(app_state).create_agent(data)
         publish_ws_event(
             request,
             WsEventType.AGENT_CREATED,
@@ -323,7 +333,7 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         if_match = request.headers.get("if-match")
-        updated = await app_state.org_mutation_service.update_agent(
+        updated = await org_mutation_service_of(app_state).update_agent(
             agent_name,
             data,
             if_match=if_match,
@@ -392,7 +402,7 @@ class AgentController(Controller):
             agent_name=agent_name,
             actor=actor,
         )
-        await app_state.org_mutation_service.delete_agent(agent_name)
+        await org_mutation_service_of(app_state).delete_agent(agent_name)
         # Post-delete confirmation -- emitted only on persistence
         # success so the audit stream cannot record a "deleted" hop for
         # an agent that the database still holds.
@@ -428,7 +438,7 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         agent_id = await _resolve_agent_id(app_state, agent_name)
-        snapshot = await app_state.performance_tracker.get_snapshot(agent_id)
+        snapshot = await performance_tracker_of(app_state).get_snapshot(agent_id)
         summary = extract_performance_summary(snapshot, agent_name)
         logger.debug(
             API_AGENT_PERFORMANCE_QUERIED,
@@ -466,16 +476,16 @@ class AgentController(Controller):
         app_state: AppState = state.app_state
         agent_id = await _resolve_agent_id(app_state, agent_name)
 
-        lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
+        lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
             limit=_MAX_LIFECYCLE_EVENTS,
         )
-        task_metrics = app_state.performance_tracker.get_task_metrics(
+        task_metrics = performance_tracker_of(app_state).get_task_metrics(
             agent_id=agent_id,
         )
 
         try:
-            budget_cfg = await app_state.config_resolver.get_budget_config()
+            budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
         except Exception:
             logger.warning(
@@ -494,7 +504,7 @@ class AgentController(Controller):
             timeline,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.debug(
             API_AGENT_ACTIVITY_QUERIED,
@@ -530,7 +540,7 @@ class AgentController(Controller):
         # No limit here: career events are few per agent and the filter
         # below keeps only ~5 event types; capping would risk dropping
         # older milestones (e.g. the original HIRED event).
-        events = await app_state.persistence.lifecycle_events.list_events(
+        events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
         )
         career = filter_career_events(events)
@@ -569,7 +579,7 @@ class AgentController(Controller):
         )
         agent_id = str(identity.id)
 
-        snapshot = await app_state.performance_tracker.get_snapshot(
+        snapshot = await performance_tracker_of(app_state).get_snapshot(
             agent_id,
         )
         trend = _extract_quality_trend(snapshot)
@@ -580,8 +590,9 @@ class AgentController(Controller):
         )
 
         trust: TrustSummary | None = None
-        if app_state.has_trust_service:
-            trust_state = app_state.trust_service.get_trust_state(
+        trust_service = app_state.slice(SecurityStateSlice).trust_service
+        if trust_service is not None:
+            trust_state = trust_service.get_trust_state(
                 agent_id,
             )
             if trust_state is not None:
@@ -593,7 +604,7 @@ class AgentController(Controller):
 
         # Derive last_active_at from most recent lifecycle event.
         last_active_at: AwareDatetime | None = None
-        events = await app_state.persistence.lifecycle_events.list_events(
+        events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
             limit=1,
         )

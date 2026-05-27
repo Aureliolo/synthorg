@@ -10,6 +10,10 @@ from litestar.testing import TestClient
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.errors import ProviderNotFoundError
+from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import SettingsStateSlice
+from tests._shared import make_app_state, mock_of
 from tests.unit.api.conftest import make_auth_headers
 
 if TYPE_CHECKING:
@@ -158,23 +162,22 @@ class TestProviderCrudEndpoints:
         assert resp.status_code in (404, 405)
 
 
-def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
-    """Create a mock Litestar State with a mock provider management service.
+def _make_provider_state_and_mgmt() -> tuple[Any, AsyncMock]:
+    """Create a Litestar State with a mock provider management service.
 
     Returns:
-        Tuple of (mock_state, mock_provider_management).
+        Tuple of (state, mock_provider_management).
     """
     from litestar.datastructures import State
 
-    from synthorg.api.state import AppState
     from synthorg.providers.management.service import ProviderManagementService
 
     mgmt = AsyncMock(spec=ProviderManagementService)
-    app_state = MagicMock(spec=AppState)
-    app_state.provider_management = mgmt
-
-    state = MagicMock(spec=State)
-    state.app_state = app_state
+    state = State()
+    state.app_state = make_app_state(
+        cursor_secret="test-cursor-secret-0123456789abcdef",
+        slices={ProvidersStateSlice: {"management": mgmt}},
+    )
     return state, mgmt
 
 
@@ -274,11 +277,18 @@ class TestListModelsBatchCapabilities:
         )
 
         state, _ = _make_provider_state_and_mgmt()
-        state.app_state.config_resolver.get_provider_configs = AsyncMock(
-            return_value={"test-provider": provider},
+        state.app_state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](
+                get_provider_configs=AsyncMock(
+                    return_value={"test-provider": provider},
+                ),
+            ),
         )
-        state.app_state.has_provider_registry = True
-        state.app_state.provider_registry = {"test-provider": driver}
+        state.app_state.wire(
+            ProvidersStateSlice,
+            registry={"test-provider": driver},
+        )
 
         ctrl = _provider_controller()
         result = await ctrl.list_models.fn(
@@ -299,10 +309,14 @@ class TestListModelsBatchCapabilities:
             models=(ProviderModelConfig(id="only"),),
         )
         state, _ = _make_provider_state_and_mgmt()
-        state.app_state.config_resolver.get_provider_configs = AsyncMock(
-            return_value={"test-provider": provider},
+        state.app_state.wire(
+            SettingsStateSlice,
+            config_resolver=mock_of[ConfigResolver](
+                get_provider_configs=AsyncMock(
+                    return_value={"test-provider": provider},
+                ),
+            ),
         )
-        state.app_state.has_provider_registry = False
 
         ctrl = _provider_controller()
         result = await ctrl.list_models.fn(

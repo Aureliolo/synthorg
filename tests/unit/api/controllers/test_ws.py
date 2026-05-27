@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.api_core_state import ticket_store_of
 from synthorg.api.controllers.ws import (
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
@@ -293,7 +294,7 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = test_client.app.state["app_state"]
-        user = app_state.ticket_store.validate_and_consume(ticket)
+        user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method == AuthMethod.WS_TICKET
 
@@ -306,8 +307,8 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = test_client.app.state["app_state"]
-        first = app_state.ticket_store.validate_and_consume(ticket)
-        second = app_state.ticket_store.validate_and_consume(ticket)
+        first = ticket_store_of(app_state).validate_and_consume(ticket)
+        second = ticket_store_of(app_state).validate_and_consume(ticket)
         assert first is not None
         assert second is None
 
@@ -320,7 +321,7 @@ class TestWsTicketAuth:
         ticket = response.json()["data"]["ticket"]
 
         app_state = test_client.app.state["app_state"]
-        user = app_state.ticket_store.validate_and_consume(ticket)
+        user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.role == HumanRole.CEO
         assert user.username == "test-ceo"
@@ -434,7 +435,7 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = app_state.ticket_store.create(user)
+        ticket = ticket_store_of(app_state).create(user)
 
         with test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",
@@ -467,7 +468,7 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = app_state.ticket_store.create(user)
+        ticket = ticket_store_of(app_state).create(user)
 
         with test_client.websocket_connect("/api/v1/ws") as ws:
             ws.send_text(json.dumps({"action": "auth", "ticket": ticket}))
@@ -489,7 +490,7 @@ class TestWsTicketAuth:
             auth_method=AuthMethod.WS_TICKET,
             must_change_password=False,
         )
-        ticket = app_state.ticket_store.create(user)
+        ticket = ticket_store_of(app_state).create(user)
 
         with test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",

@@ -5,6 +5,7 @@ from typing import Any, Final
 from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
     ActivateWorkflowRequest,  # noqa: TC001 -- Litestar resolves request-body annotations at runtime
@@ -13,6 +14,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -26,6 +28,7 @@ from synthorg.core.persistence_errors import (
 from synthorg.engine.errors import (
     WorkflowExecutionNotFoundError,
 )
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger
@@ -34,6 +37,8 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -86,14 +91,16 @@ async def _build_service(state: State) -> WorkflowExecutionService:
     )
 
     app_state = state.app_state
-    if app_state.has_config_resolver:
-        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    if app_state.slice(SettingsStateSlice).config_resolver is not None:
+        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
     else:
         engine_bridge = EngineBridgeConfig()
     return WorkflowExecutionService(
-        definition_repo=app_state.persistence.workflow_definitions,
-        execution_repo=app_state.persistence.workflow_executions,
-        task_engine=app_state.task_engine,
+        definition_repo=persistence_of(app_state).workflow_definitions,
+        execution_repo=persistence_of(app_state).workflow_executions,
+        task_engine=require_service(
+            app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+        ),
         max_subworkflow_depth=engine_bridge.max_subworkflow_depth,
     )
 
@@ -177,7 +184,7 @@ class WorkflowExecutionController(Controller):
             tuple(executions),
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return Response(
             content=PaginatedResponse[WorkflowExecution](

@@ -7,7 +7,7 @@ and the template department extraction helpers.
 import asyncio
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,8 +16,12 @@ from hypothesis import strategies as st
 from litestar.testing import TestClient
 
 from synthorg.api.controllers.setup_agents import normalize_description
+from synthorg.hr.state import agent_registry_of
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.state import settings_service_of
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -109,7 +113,7 @@ class TestSetupCompany:
 
         # Verify description persisted as "" (absent convention).
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
@@ -149,7 +153,7 @@ class TestSetupCompany:
 
         # Verify persistence.
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == expected_stored
@@ -207,7 +211,7 @@ class TestSetupCompany:
 
         # Verify persistence.
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == "x" * 1000
@@ -238,7 +242,7 @@ class TestSetupCompany:
 
         # Verify persistence cleared.
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
@@ -305,7 +309,7 @@ class TestSetupComplete:
     ) -> None:
         """Completion rejects when no company name is set."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
 
         # Remove company_name from the settings store so the YAML
         # fallback chain also yields nothing.  The fixture's root_config
@@ -325,7 +329,7 @@ class TestSetupComplete:
         test_client: TestClient[Any],
     ) -> None:
         """Completion rejects when company_name is only in YAML defaults."""
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
         key = ("company", "company_name")
         original = repo._store.get(key)
         repo._store.pop(key, None)
@@ -343,14 +347,15 @@ class TestSetupComplete:
     ) -> None:
         """Completion succeeds without agents (Quick Setup mode)."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         # Ensure at least one provider is registered.
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
             resp = test_client.post("/api/v1/setup/complete")
@@ -359,7 +364,7 @@ class TestSetupComplete:
             assert body["success"] is True
             assert body["data"]["setup_complete"] is True
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -370,19 +375,19 @@ class TestSetupComplete:
     ) -> None:
         """Completion rejects when company and agents exist but no providers."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry({})
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(ProvidersStateSlice, registry=ProviderRegistry({}))
         try:
             resp = test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
 
@@ -392,15 +397,16 @@ class TestSetupComplete:
     ) -> None:
         """Completion succeeds when company, agents, and providers exist."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
             resp = test_client.post("/api/v1/setup/complete")
@@ -409,7 +415,7 @@ class TestSetupComplete:
             assert body["success"] is True
             assert body["data"]["setup_complete"] is True
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -420,7 +426,7 @@ class TestSetupComplete:
     ) -> None:
         """Setup completion registers agents in the runtime registry."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -438,9 +444,10 @@ class TestSetupComplete:
         )
         repo._store[("company", "agents")] = (agents, now)
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
             resp = test_client.post("/api/v1/setup/complete")
@@ -450,13 +457,13 @@ class TestSetupComplete:
             loop = asyncio.new_event_loop()
             try:
                 agent_count = loop.run_until_complete(
-                    app_state.agent_registry.agent_count(),
+                    agent_registry_of(app_state).agent_count(),
                 )
             finally:
                 loop.close()
             assert agent_count >= 1
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -475,15 +482,16 @@ class TestSetupComplete:
         labelled "complete".
         """
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
 
         failing_bootstrap = AsyncMock(side_effect=RuntimeError("boom"))
@@ -498,7 +506,7 @@ class TestSetupComplete:
             failing_bootstrap.assert_awaited_once()
             assert ("api", "setup_complete") not in repo._store
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -510,7 +518,7 @@ class TestSetupComplete:
     ) -> None:
         """Setup completion reloads the provider registry from config."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -528,9 +536,10 @@ class TestSetupComplete:
         )
         repo._store[("company", "agents")] = (agents, now)
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
 
         # Replace _post_setup_reinit with a wrapper that swaps the
@@ -557,9 +566,9 @@ class TestSetupComplete:
             # _post_setup_reinit was invoked by complete_setup.
             assert reinit_called
             # The provider registry should have been swapped.
-            assert app_state._provider_registry is fresh_registry
+            assert app_state.slice(ProvidersStateSlice).registry is fresh_registry
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -577,7 +586,7 @@ class TestSetupComplete:
         runtime is half-configured.
         """
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps(
@@ -595,9 +604,10 @@ class TestSetupComplete:
         )
         repo._store[("company", "agents")] = (agents, now)
         stub = MagicMock(spec=BaseCompletionProvider)
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(
+            ProvidersStateSlice,
+            registry=ProviderRegistry({"test-provider": stub}),
         )
 
         async def _failing_reinit(_state: object) -> None:
@@ -614,7 +624,7 @@ class TestSetupComplete:
             assert resp.status_code >= 500
             assert ("api", "setup_complete") not in repo._store
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
@@ -667,8 +677,8 @@ def _setup_mock_providers(
     )
 
     app_state = test_client.app.state.app_state
-    original = app_state._provider_management
-    app_state._provider_management = mock_mgmt
+    original = app_state.slice(ProvidersStateSlice).management
+    app_state.wire(ProvidersStateSlice, management=mock_mgmt)
     return app_state, original
 
 
@@ -702,7 +712,7 @@ class TestSetupCompanyAutoAgents:
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_blank_company_has_no_agents(
         self,
@@ -764,7 +774,7 @@ class TestSetupAgentsList:
             assert agents[0]["role"]
             assert body["pagination"]["limit"] >= len(agents)
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_pagination_round_trip_with_limit_one(
         self,
@@ -821,7 +831,7 @@ class TestSetupAgentsList:
                     break
             assert collected == full
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -843,7 +853,7 @@ class TestSetupAgentModelUpdate:
             )
             assert resp.status_code == 404
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_successful_model_update(
         self,
@@ -887,7 +897,7 @@ class TestSetupAgentModelUpdate:
                 for a in agents
             )
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_invalid_provider_rejected(
         self,
@@ -914,7 +924,7 @@ class TestSetupAgentModelUpdate:
             )
             assert resp.status_code == 404
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -948,7 +958,7 @@ class TestUpdateAgentName:
             agents = get_resp.json()["data"]
             assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_out_of_range_index(
         self,
@@ -981,7 +991,7 @@ class TestUpdateAgentName:
             )
             assert resp.status_code == 400
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -1021,7 +1031,7 @@ class TestRandomizeAgentName:
             agents = get_resp.json()["data"]
             assert any(a["name"] == "Ada Lovelace" for a in agents)
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_out_of_range_index(
         self,
@@ -1083,7 +1093,7 @@ class TestGetNameLocales:
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -1108,7 +1118,7 @@ class TestGetNameLocales:
         concrete locale codes.
         """
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -1194,7 +1204,7 @@ class TestSaveNameLocales:
     ) -> None:
         """Saving locales after setup is complete returns 409."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
@@ -1221,9 +1231,9 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _check_has_name_locales(settings_svc)
@@ -1238,8 +1248,8 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US"]),
@@ -1261,10 +1271,10 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=RuntimeError("db connection lost"),
         )
@@ -1272,7 +1282,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
     async def test_returns_false_on_setting_not_found_error(
         self,
@@ -1285,10 +1295,10 @@ class TestCheckHasNameLocales:
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -1296,7 +1306,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
 
 @pytest.mark.unit
@@ -1314,8 +1324,8 @@ class TestReadNameLocales:
         from synthorg.templates.locales import ALL_LATIN_LOCALES
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _read_name_locales(settings_svc)
@@ -1333,10 +1343,10 @@ class TestReadNameLocales:
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -1344,7 +1354,7 @@ class TestReadNameLocales:
             result = await _read_name_locales(settings_svc)
             assert result is None
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
     async def test_returns_resolved_locales_when_valid(
         self,
@@ -1355,8 +1365,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -1377,8 +1387,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             "not-valid-json{{{",
@@ -1399,8 +1409,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps({"not": "a list"}),
@@ -1421,8 +1431,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX", "fr_FR"]),
@@ -1444,8 +1454,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -1470,8 +1480,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX"]),
@@ -1526,7 +1536,7 @@ class TestUpdateAgentPersonality:
                 for agent in agents
             )
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_update_personality_invalid_preset(
         self,
@@ -1548,7 +1558,7 @@ class TestUpdateAgentPersonality:
             )
             assert resp.status_code == 400
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_update_personality_out_of_range(
         self,
@@ -1567,7 +1577,7 @@ class TestUpdateAgentPersonality:
     ) -> None:
         """Updating personality after setup is complete returns 409."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:

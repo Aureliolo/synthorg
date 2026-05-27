@@ -11,9 +11,15 @@ from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathField,
     PathName,
@@ -37,6 +43,7 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -198,13 +205,16 @@ class ConnectionsController(Controller):
             Paginated connection catalog entries.
         """
         app_state = state["app_state"]
-        catalog = app_state.connection_catalog
+        catalog = require_service(
+            app_state.slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         connections = await catalog.list_all()
         page, meta = paginate_cursor(
             tuple(connections),
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[Connection](data=page, pagination=meta)
 
@@ -223,7 +233,10 @@ class ConnectionsController(Controller):
         Returns:
             ``ApiResponse[Connection]`` instance.
         """
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         conn = require_resource_or_404(
             await catalog.get(name),
             resource_type="Connection",
@@ -273,7 +286,10 @@ class ConnectionsController(Controller):
         metadata_copy = (
             copy.deepcopy(data.metadata) if data.metadata is not None else None
         )
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         try:
             conn = await catalog.create(
                 name=data.name,
@@ -383,7 +399,10 @@ class ConnectionsController(Controller):
         sensitive: bool | _UnsetType = (
             bool(data.sensitive) if "sensitive" in data.model_fields_set else _UNSET
         )
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         try:
             conn = await catalog.update(
                 name,
@@ -435,7 +454,10 @@ class ConnectionsController(Controller):
         Raises:
             ConnectionNotFoundError: Raised on the corresponding failure path.
         """
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         try:
             await catalog.delete(name)
         except ConnectionNotFoundError as exc:
@@ -477,7 +499,10 @@ class ConnectionsController(Controller):
             check_connection_health,
         )
 
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         try:
             report = await check_connection_health(catalog, name)
             # ``update_health`` shares the 404 mapping: a concurrent
@@ -528,7 +553,10 @@ class ConnectionsController(Controller):
         Raises:
             NotFoundError: Raised on the corresponding failure path.
         """
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         try:
             credentials = await catalog.get_credentials(name)
         except ConnectionNotFoundError as exc:

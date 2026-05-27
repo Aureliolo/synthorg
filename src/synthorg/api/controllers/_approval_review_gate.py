@@ -13,6 +13,8 @@ Exposes:
 
 from typing import TYPE_CHECKING
 
+from synthorg._core.features import require_service
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -28,6 +30,8 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
+from synthorg.engine.state import EngineStateSlice
+from synthorg.meta.state import MetaStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -46,6 +50,7 @@ from synthorg.observability.events.approval_gate import (
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
+from synthorg.workers.state import worker_execution_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -71,7 +76,10 @@ async def _reread_approval_item(
         The ``ApprovalItem`` value when present, ``None`` otherwise.
     """
     try:
-        return await app_state.approval_store.get(approval_id)
+        store = require_service(
+            app_state.slice(ApprovalStateSlice).store, "Approval Store"
+        )
+        return await store.get(approval_id)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
@@ -139,7 +147,7 @@ async def try_mid_execution_resume(
         # Fallback only: the decision was just persisted by the caller,
         # so a missing item is unexpected. Probe the gate to avoid
         # stranding a possibly-parked approval in the review gate.
-        gate = app_state.approval_gate
+        gate = app_state.slice(ApprovalStateSlice).gate
         if gate is None:
             return False
         try:
@@ -159,7 +167,7 @@ async def try_mid_execution_resume(
         if not has_parked:
             return False
     try:
-        await app_state.worker_execution_service.dispatch_resume(
+        await worker_execution_service_of(app_state).dispatch_resume(
             approval_id=approval_id,
             approved=approved,
             decided_by=decided_by,
@@ -234,7 +242,7 @@ async def _load_conversational_proposal(
     if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
         return False, None
     # This flow now owns the decision regardless of outcome.
-    if not app_state.has_conversational_proposal_repo:
+    if app_state.slice(MetaStateSlice).conversational_proposal_repo is None:
         logger.error(
             APPROVAL_GATE_CONVERSATIONAL_FAILED,
             approval_id=approval_id,
@@ -242,7 +250,10 @@ async def _load_conversational_proposal(
         )
         msg = "Conversational proposal repository unavailable"
         raise ServiceUnavailableError(msg)
-    repo = app_state.conversational_proposal_repo
+    repo = require_service(
+        app_state.slice(MetaStateSlice).conversational_proposal_repo,
+        "Conversational Proposal Repository",
+    )
     proposals = await repo.query(
         ConversationalProposalFilterSpec(approval_id=approval_id),
     )
@@ -263,7 +274,10 @@ async def _reject_conversational_proposal(
     """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
     from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
 
-    repo = app_state.conversational_proposal_repo
+    repo = require_service(
+        app_state.slice(MetaStateSlice).conversational_proposal_repo,
+        "Conversational Proposal Repository",
+    )
     proposal_id = proposal.id  # type: ignore[attr-defined]
     transitioned = await repo.transition_if(
         proposal_id,
@@ -307,11 +321,14 @@ async def _execute_conversational_proposal(
     from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
     from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
 
-    repo = app_state.conversational_proposal_repo
+    repo = require_service(
+        app_state.slice(MetaStateSlice).conversational_proposal_repo,
+        "Conversational Proposal Repository",
+    )
     proposal_id = proposal.id  # type: ignore[attr-defined]
     work_item_json = proposal.work_item_json  # type: ignore[attr-defined]
 
-    if not app_state.has_work_pipeline:
+    if app_state.slice(EngineStateSlice).work_pipeline is None:
         # Approved work can never run without a pipeline. Surface it
         # rather than marking the approval handled while the work is
         # silently stranded.
@@ -344,7 +361,10 @@ async def _execute_conversational_proposal(
 
     try:
         work_item = WorkItem.model_validate_json(work_item_json)
-        await app_state.work_pipeline.run(work_item)
+        work_pipeline = require_service(
+            app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
+        )
+        await work_pipeline.run(work_item)
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
@@ -641,7 +661,7 @@ async def signal_resume_intent(  # noqa: PLR0913
         return
 
     # Flow 2: review gate -- transition task status.
-    review_gate = app_state.review_gate_service
+    review_gate = app_state.slice(ApprovalStateSlice).review_gate
     if review_gate is not None and task_id is not None:
         await try_review_gate_transition(
             review_gate,

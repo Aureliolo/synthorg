@@ -12,6 +12,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import PathParameter, QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg._core.features import require_service
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_ontology import (
@@ -30,6 +31,7 @@ from synthorg.api.guards import (
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_countless_seek_meta,
     paginate_cursor,
 )
@@ -59,9 +61,22 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
+from synthorg.ontology.service import OntologyService  # noqa: TC001
+from synthorg.ontology.state import OntologyStateSlice
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+
+
+def _ontology_service(app_state: AppState) -> OntologyService:
+    """Return the ontology service from its slice or raise 503 when unwired.
+
+    Returns:
+        The wired ``OntologyService``.
+    """
+    return require_service(
+        app_state.slice(OntologyStateSlice).service, "Ontology Service"
+    )
 
 
 def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
@@ -154,7 +169,7 @@ class OntologyController(Controller):
             ValidationError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.ontology_service
+        svc = _ontology_service(app_state)
 
         tier_filter: EntityTier | None = None
         if tier is not None:
@@ -176,7 +191,7 @@ class OntologyController(Controller):
             responses,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -196,7 +211,7 @@ class OntologyController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            entity = await app_state.ontology_service.get(name)
+            entity = await _ontology_service(app_state).get(name)
         except OntologyNotFoundError:
             msg = "Entity not found"
             logger.info(
@@ -260,7 +275,7 @@ class OntologyController(Controller):
         )
 
         try:
-            await app_state.ontology_service.register(entity)
+            await _ontology_service(app_state).register(entity)
         except OntologyDuplicateError:
             msg = "Entity already exists"
             logger.warning(
@@ -295,7 +310,7 @@ class OntologyController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.ontology_service
+        svc = _ontology_service(app_state)
 
         try:
             existing = await svc.get(name)
@@ -375,7 +390,7 @@ class OntologyController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.ontology_service
+        svc = _ontology_service(app_state)
 
         try:
             entity = await svc.get(name)
@@ -415,7 +430,7 @@ class OntologyController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.ontology_service
+        svc = _ontology_service(app_state)
 
         try:
             await svc.get(name)
@@ -431,7 +446,7 @@ class OntologyController(Controller):
         offset = (
             0
             if cursor is None
-            else decode_cursor(cursor, secret=app_state.cursor_secret)
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
         )
         versions = await svc.list_versions(
             name,
@@ -442,7 +457,7 @@ class OntologyController(Controller):
             offset=offset,
             fetched_rows=len(versions),
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         window = versions[:limit]
         responses = tuple(
@@ -477,7 +492,7 @@ class OntologyController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.ontology_service
+        svc = _ontology_service(app_state)
 
         v = await svc.get_version(name, version)
         if v is None:
@@ -506,7 +521,7 @@ class OntologyController(Controller):
             ``ApiResponse[dict[str, int]]`` instance.
         """
         app_state: AppState = state.app_state
-        manifest = await app_state.ontology_service.get_version_manifest()
+        manifest = await _ontology_service(app_state).get_version_manifest()
         return ApiResponse(data=manifest)
 
     # ── Drift Detection ────────────────────────────────────────
@@ -524,13 +539,13 @@ class OntologyController(Controller):
             ``PaginatedResponse[DriftReportResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        store = app_state.drift_report_store
+        store = app_state.slice(OntologyStateSlice).drift_report_store
         if store is None:
             _, meta = paginate_cursor(
                 (),
                 limit=limit,
                 cursor=cursor,
-                secret=app_state.cursor_secret,
+                secret=cursor_secret_of(app_state),
             )
             return PaginatedResponse(data=(), pagination=meta)
 
@@ -545,7 +560,7 @@ class OntologyController(Controller):
             responses,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -561,7 +576,7 @@ class OntologyController(Controller):
             Result matching the declared return annotation.
         """
         app_state: AppState = state.app_state
-        store = app_state.drift_report_store
+        store = app_state.slice(OntologyStateSlice).drift_report_store
         if store is None:
             return ApiResponse(data=())
 
@@ -586,7 +601,7 @@ class OntologyController(Controller):
             ``ApiResponse[dict[str, str]]`` instance.
         """
         app_state: AppState = state.app_state
-        drift_service = app_state.drift_detection_service
+        drift_service = app_state.slice(OntologyStateSlice).drift_detection_service
         if drift_service is None:
             logger.warning(
                 API_REQUEST_ERROR,
@@ -622,7 +637,7 @@ class OntologyController(Controller):
             ``ApiResponse[dict[str, int]]`` instance.
         """
         app_state: AppState = state.app_state
-        count = await app_state.ontology_service.bootstrap()
+        count = await _ontology_service(app_state).bootstrap()
         return ApiResponse(data={"derived_count": count})
 
     @post(
@@ -645,7 +660,7 @@ class OntologyController(Controller):
             ``ApiResponse[dict[str, int | str]]`` instance.
         """
         app_state: AppState = state.app_state
-        sync_service = app_state.ontology_sync_service
+        sync_service = app_state.slice(OntologyStateSlice).sync_service
         if sync_service is None:
             logger.warning(
                 API_REQUEST_ERROR,

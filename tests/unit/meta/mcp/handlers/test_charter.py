@@ -103,13 +103,15 @@ def _state(
     service: _StubService | None = None,
     dispatcher: _StubDispatcher | None = None,
 ) -> Any:
-    """Build a minimal AppState-shaped object for handler injection."""
-    return SimpleNamespace(
-        charter_service=service,
-        charter_dispatcher=dispatcher,
-        has_charter_service=service is not None,
-        has_charter_dispatcher=dispatcher is not None,
-    )
+    """Build a minimal AppState-shaped object for handler injection.
+
+    The handlers read their feature slice via ``app_state.slice(
+    CharterStateSlice)``; the double exposes a duck-typed slice carrying the
+    stub service / dispatcher (a real frozen slice would reject the stubs,
+    which are not concrete service instances).
+    """
+    charter_slice = SimpleNamespace(interview_service=service, dispatcher=dispatcher)
+    return SimpleNamespace(slice=lambda _slice_type: charter_slice)
 
 
 def _actor(actor_id: str = "operator-1") -> AgentIdentity:

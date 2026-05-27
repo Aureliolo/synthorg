@@ -21,8 +21,11 @@ from synthorg.communication.meeting.models import (
     MeetingRecord,
 )
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.state import CommunicationStateSlice
+from synthorg.settings.resolver import ConfigResolver
 
 # Re-use the shared conftest helpers.
+from tests._shared import make_app_state, mock_of
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -336,7 +339,7 @@ class TestMeetingController:
             meeting_orchestrator=mock_orchestrator,
             meeting_scheduler=mock_scheduler,
         )
-        app.state.app_state._meeting_scheduler = None
+        app.state.app_state.wire(CommunicationStateSlice, meeting_scheduler=None)
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.post(
@@ -661,25 +664,24 @@ class TestResolveMaxContextKeysFallback:
     """
 
     async def test_returns_fallback_when_config_resolver_absent(self) -> None:
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = False
+        app_state = make_app_state()
         result = await _resolve_max_context_keys(app_state)
         assert result == 20  # _MAX_CONTEXT_KEYS_FALLBACK
 
     async def test_returns_fallback_on_resolver_exception(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_int = _AsyncMock(
-            side_effect=RuntimeError("settings backend down"),
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_int=_AsyncMock(
+                    side_effect=RuntimeError("settings backend down"),
+                ),
+            ),
         )
         result = await _resolve_max_context_keys(app_state)
         assert result == 20
@@ -687,57 +689,59 @@ class TestResolveMaxContextKeysFallback:
     async def test_propagates_cancelled_error(self) -> None:
         import asyncio as _asyncio
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_int = _AsyncMock(
-            side_effect=_asyncio.CancelledError(),
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_int=_AsyncMock(side_effect=_asyncio.CancelledError()),
+            ),
         )
         with pytest.raises(_asyncio.CancelledError):
             await _resolve_max_context_keys(app_state)
 
     async def test_returns_resolved_value_on_success(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_int = _AsyncMock(return_value=50)
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_int=_AsyncMock(return_value=50),
+            ),
+        )
         result = await _resolve_max_context_keys(app_state)
         assert result == 50
 
     async def test_negative_resolved_value_falls_back(self) -> None:
         """Negative caps are nonsensical; fall back to the registry default."""
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_int = _AsyncMock(return_value=-5)
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_int=_AsyncMock(return_value=-5),
+            ),
+        )
         result = await _resolve_max_context_keys(app_state)
         assert result == 20  # _MAX_CONTEXT_KEYS_FALLBACK
 
     async def test_recovery_log_after_fallback(self) -> None:
         """A failure-then-success sequence emits the recovery signal."""
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         import structlog.testing
 
         from synthorg.api.controllers.meetings import _resolve_max_context_keys
         from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_int = _AsyncMock(
-            side_effect=[RuntimeError("settings backend down"), 30],
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_int=_AsyncMock(
+                    side_effect=[RuntimeError("settings backend down"), 30],
+                ),
+            ),
         )
         # First call: raises -> fallback (arms the recovery flag).
         await _resolve_max_context_keys(app_state)

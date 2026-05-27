@@ -23,7 +23,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.services.project_service import ProjectService
-from synthorg.api.state import AppState
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
@@ -71,7 +70,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -327,31 +326,20 @@ async def _build_pipeline(
         config=root_config,
     )
     intake = IntakeEngine(strategy=_TaskCreatingIntakeStrategy(task_engine))
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
         task_engine=task_engine,
         agent_registry=agent_registry,
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=mock_of[ClientSimulationState](
             intake_engine=intake,
         ),
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=True,
         coordination_metrics_store=CoordinationMetricsStore(),
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline

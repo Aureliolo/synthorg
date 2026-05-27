@@ -33,7 +33,7 @@ Three implementations live here:
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -104,6 +104,7 @@ logger = get_logger(__name__)
 _RESUME_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
+@runtime_checkable
 class WorkerExecutionService(Protocol):
     """Contract for the worker-callable execution surface.
 

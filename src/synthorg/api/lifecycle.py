@@ -8,23 +8,33 @@ supporting helpers.
 import asyncio
 from typing import TYPE_CHECKING, Protocol
 
+from synthorg.api.api_core_state import ApiCoreStateSlice, auth_service_of
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
+from synthorg.api.lifecycle_helpers.auth_store_autowire import wire_auth_stores
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.backup.models import BackupTrigger
+from synthorg.backup.state import BackupStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.state import (
+    IntegrationsStateSlice,
+    connection_catalog_of,
+)
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
-from synthorg.persistence.auth_protocol import (
-    LockoutRepository,  # noqa: TC001
-    RefreshTokenRepository,  # noqa: TC001
-    SessionRepository,  # noqa: TC001
-)
+from synthorg.ontology.state import OntologyStateSlice
 from synthorg.providers.health_prober import ProviderHealthProber
+from synthorg.providers.state import (
+    ProvidersStateSlice,
+    provider_health_tracker_of,
+)
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -281,7 +291,7 @@ async def _init_persistence(
     """
     # Resolve JWT secret before migrations so missing env vars fail fast
     # (no point running migrations if startup will abort anyway).
-    if app_state.has_auth_service:
+    if app_state.slice(ApiCoreStateSlice).auth_service is not None:
         logger.info(
             API_APP_STARTUP,
             note="Auth service already configured, skipping JWT secret resolution",
@@ -292,7 +302,7 @@ async def _init_persistence(
             auth_config = app_state.config.api.auth.with_secret(
                 secret,
             )
-            app_state.set_auth_service(AuthService(auth_config))
+            app_state.wire(ApiCoreStateSlice, auth_service=AuthService(auth_config))
         except Exception as exc:
             logger.warning(
                 API_APP_STARTUP,
@@ -317,9 +327,12 @@ async def _init_persistence(
     # is connected.  ``create_app`` intentionally left this slot empty
     # when a persistence backend was configured so the in-memory stub
     # would not survive startup as a shadow repo.
-    if not app_state.has_mcp_installations_repo:
+    if app_state.slice(IntegrationsStateSlice).mcp_installations_repo is None:
         try:
-            app_state.set_mcp_installations_repo(persistence.mcp_installations)
+            app_state.wire(
+                IntegrationsStateSlice,
+                mcp_installations_repo=persistence.mcp_installations,
+            )
         except Exception as exc:
             # The repo is required: ``create_app`` deliberately leaves
             # the slot empty when persistence is configured so the
@@ -334,7 +347,7 @@ async def _init_persistence(
             )
             raise
 
-    if app_state.has_connection_catalog:
+    if app_state.slice(IntegrationsStateSlice).connection_catalog is not None:
         await _rebind_connection_catalog(persistence, app_state)
 
     await _wire_ontology_service(persistence, app_state)
@@ -349,10 +362,9 @@ async def _wire_ontology_service(
 
     service = await auto_wire_ontology(app_state.config, persistence)
     if service is not None:
-        try:
-            app_state.set_ontology_service(service)
-        except RuntimeError:
+        if app_state.slice(OntologyStateSlice).service is not None:
             return
+        app_state.wire(OntologyStateSlice, service=service)
 
 
 async def _rebind_connection_catalog(
@@ -389,7 +401,7 @@ async def _rebind_connection_catalog(
         )
         return
     try:
-        await app_state.connection_catalog.rebind_repository(
+        await connection_catalog_of(app_state).rebind_repository(
             persistent_connections,
         )
     except Exception as exc:
@@ -479,8 +491,9 @@ async def _safe_startup(  # noqa: PLR0913
     started_meeting_scheduler = False
     started_backup_service = False
     started_approval_timeout_scheduler = False
-    distributed_task_queue = app_state.distributed_task_queue
-    distributed_backend_services = app_state.distributed_backend_services
+    runtime_slice = app_state.slice(RuntimeStateSlice)
+    distributed_task_queue = runtime_slice.distributed_task_queue
+    distributed_backend_services = runtime_slice.distributed_backend_services
     try:
         if persistence is not None:
             try:
@@ -498,7 +511,7 @@ async def _safe_startup(  # noqa: PLR0913
             started_persistence = True
             await _init_persistence(persistence, app_state)
             try:
-                await ensure_system_user(persistence, app_state.auth_service)
+                await ensure_system_user(persistence, auth_service_of(app_state))
             except Exception as exc:
                 logger.warning(
                     API_APP_STARTUP,
@@ -508,61 +521,10 @@ async def _safe_startup(  # noqa: PLR0913
                 )
                 raise
 
-            # Auth repositories live on the persistence backend.
-            # Sessions and refresh tokens are properties; lockouts are
-            # built via ``build_lockouts(auth_config)`` because they
-            # need the operator's threshold/window/duration policy.
-            if not app_state.has_session_store:
-                session_store: SessionRepository = persistence.sessions
-                await session_store.load_revoked()
-                app_state.set_session_store(session_store)
-                logger.info(
-                    API_APP_STARTUP,
-                    note="Session store initialized",
-                    backend=type(session_store).__name__,
-                )
-
-            auth_cfg = (
-                app_state.config.api.auth if app_state.config is not None else None
-            )
-            if auth_cfg is not None and not app_state.has_lockout_store:
-                try:
-                    lockout_store: LockoutRepository = persistence.build_lockouts(
-                        auth_cfg,
-                    )
-                    await lockout_store.load_locked()
-                    app_state.set_lockout_store(lockout_store)
-                    logger.info(
-                        API_APP_STARTUP,
-                        note="Lockout store initialized",
-                        backend=type(lockout_store).__name__,
-                    )
-                except Exception as exc:
-                    reraise_critical(exc)
-                    log_exception_redacted(
-                        logger,
-                        API_APP_STARTUP,
-                        exc,
-                        note="Lockout store initialization failed",
-                    )
-
-            if not app_state.has_refresh_store:
-                try:
-                    refresh_store: RefreshTokenRepository = persistence.refresh_tokens
-                    app_state.set_refresh_store(refresh_store)
-                    logger.info(
-                        API_APP_STARTUP,
-                        note="Refresh-token store initialized",
-                        backend=type(refresh_store).__name__,
-                    )
-                except Exception as exc:
-                    reraise_critical(exc)
-                    log_exception_redacted(
-                        logger,
-                        API_APP_STARTUP,
-                        exc,
-                        note="Refresh-token store initialization failed",
-                    )
+            # Auth repositories (session / lockout / refresh) live on the
+            # connected persistence backend; extracted to keep this hook
+            # readable.
+            await wire_auth_stores(app_state, persistence)
 
         if message_bus is not None:
             try:
@@ -698,8 +660,8 @@ async def _safe_startup(  # noqa: PLR0913
             _bs_scheduler = getattr(backup_service, "scheduler", None)
             _bs_already_running = getattr(_bs_scheduler, "is_running", False)
             try:
-                if not app_state.has_backup_service:
-                    app_state.set_backup_service(backup_service)
+                if app_state.slice(BackupStateSlice).service is None:
+                    app_state.wire(BackupStateSlice, service=backup_service)
                 if not _bs_already_running:
                     await backup_service.start()
                     started_backup_service = True
@@ -728,8 +690,9 @@ async def _safe_startup(  # noqa: PLR0913
                     )
         if approval_timeout_scheduler is not None:
             try:
-                app_state.set_approval_timeout_scheduler(
-                    approval_timeout_scheduler,
+                app_state.wire(
+                    ApprovalStateSlice,
+                    timeout_scheduler=approval_timeout_scheduler,
                 )
                 await approval_timeout_scheduler.start()
                 started_approval_timeout_scheduler = True
@@ -957,21 +920,23 @@ async def _maybe_start_health_prober(
         The started prober instance, or None if preconditions are
         not met or a non-critical startup error occurs.
     """
-    if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
+    if (
+        app_state.slice(ProvidersStateSlice).health_tracker is None
+        or app_state.slice(SettingsStateSlice).config_resolver is None
+    ):
         logger.debug(
             API_APP_STARTUP,
             note="Health prober skipped: tracker or resolver not available",
         )
         return None
     try:
+        management = app_state.slice(ProvidersStateSlice).management
         policy_loader = (
-            app_state.provider_management.get_discovery_policy
-            if app_state.has_provider_management
-            else None
+            management.get_discovery_policy if management is not None else None
         )
         prober = ProviderHealthProber(
-            health_tracker=app_state.provider_health_tracker,
-            config_resolver=app_state.config_resolver,
+            health_tracker=provider_health_tracker_of(app_state),
+            config_resolver=config_resolver_of(app_state),
             discovery_policy_loader=policy_loader,
         )
         await prober.start()

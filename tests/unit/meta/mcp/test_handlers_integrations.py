@@ -5,14 +5,15 @@ artifacts (4), ontology (4).
 """
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.infrastructure.state import FacadesStateSlice
 from synthorg.integrations.mcp_services import (
     ArtifactFacadeService,
     ClientFacadeService,
@@ -21,7 +22,7 @@ from synthorg.integrations.mcp_services import (
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 from synthorg.persistence.artifact_storage import ArtifactStorageBackend
-from tests._shared import mock_of
+from tests._shared import make_app_state, mock_of
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -75,31 +76,35 @@ def fake_app_state(
     real_clients: ClientFacadeService,
     real_artifacts: ArtifactFacadeService,
     fake_ontology: AsyncMock,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        mcp_catalog_facade_service=fake_catalog,
-        oauth_facade_service=real_oauth,
-        client_facade_service=real_clients,
-        artifact_facade_service=real_artifacts,
-        ontology_facade_service=fake_ontology,
+) -> AppState:
+    return make_app_state(
+        slices={
+            FacadesStateSlice: {
+                "mcp_catalog_facade_service": fake_catalog,
+                "oauth_facade_service": real_oauth,
+                "client_facade_service": real_clients,
+                "artifact_facade_service": real_artifacts,
+                "ontology_facade_service": fake_ontology,
+            },
+        },
     )
 
 
 class TestMCPCatalog:
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_search_requires_query(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_search"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "error"
 
-    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_get"]
         response = await handler(
             app_state=fake_app_state,
@@ -107,7 +112,7 @@ class TestMCPCatalog:
         )
         assert json.loads(response)["domain_code"] == "not_found"
 
-    async def test_install(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_install(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
         response = await handler(
             app_state=fake_app_state,
@@ -118,7 +123,7 @@ class TestMCPCatalog:
 
     async def test_install_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_catalog: AsyncMock,
     ) -> None:
         fake_catalog.install_catalog_entry = AsyncMock(
@@ -134,7 +139,7 @@ class TestMCPCatalog:
 
     async def test_uninstall_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_uninstall"]
         response = await handler(
@@ -148,7 +153,7 @@ class TestMCPCatalog:
 class TestOAuth:
     async def test_configure_and_list(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         configure = INTEGRATION_HANDLERS["synthorg_oauth_configure_provider"]
         response = await configure(
@@ -171,7 +176,7 @@ class TestOAuth:
         assert payload["status"] == "ok"
         assert len(payload["data"]) == 1
 
-    async def test_remove_guardrails(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_remove_guardrails(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_oauth_remove_provider"]
         response = await handler(
             app_state=fake_app_state,
@@ -184,7 +189,7 @@ class TestOAuth:
 class TestClients:
     async def test_create_and_satisfaction(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         create = INTEGRATION_HANDLERS["synthorg_clients_create"]
         response = await create(
@@ -202,7 +207,7 @@ class TestClients:
 
     async def test_deactivate_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_clients_deactivate"]
         response = await handler(
@@ -214,7 +219,7 @@ class TestClients:
 
 
 class TestArtifacts:
-    async def test_create_and_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_create_and_list(self, fake_app_state: AppState) -> None:
         create = INTEGRATION_HANDLERS["synthorg_artifacts_create"]
         response = await create(
             app_state=fake_app_state,
@@ -240,7 +245,7 @@ class TestArtifacts:
         assert isinstance(list_payload.get("data"), list)
         assert any(item.get("id") == created_id for item in list_payload["data"])
 
-    async def test_delete_guardrails(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_delete_guardrails(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_artifacts_delete"]
         response = await handler(
             app_state=fake_app_state,
@@ -260,7 +265,7 @@ class TestDestructiveHappyPaths:
 
     async def test_mcp_catalog_uninstall_happy(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         install_handler = INTEGRATION_HANDLERS["synthorg_mcp_catalog_install"]
         installed = json.loads(
@@ -290,7 +295,7 @@ class TestDestructiveHappyPaths:
 
     async def test_oauth_remove_provider_happy(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         configure = INTEGRATION_HANDLERS["synthorg_oauth_configure_provider"]
         await configure(
@@ -324,7 +329,7 @@ class TestDestructiveHappyPaths:
 
     async def test_clients_deactivate_happy(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         create = INTEGRATION_HANDLERS["synthorg_clients_create"]
         created = json.loads(
@@ -355,7 +360,7 @@ class TestDestructiveHappyPaths:
 
     async def test_artifacts_delete_happy(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         create = INTEGRATION_HANDLERS["synthorg_artifacts_create"]
         created = json.loads(
@@ -391,12 +396,12 @@ class TestDestructiveHappyPaths:
 
 
 class TestOntology:
-    async def test_list_entities(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list_entities(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_ontology_list_entities"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
-    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_ontology_get_entity"]
         response = await handler(
             app_state=fake_app_state,
@@ -406,13 +411,13 @@ class TestOntology:
 
     async def test_search_requires_query(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_ontology_search"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "error"
 
-    async def test_get_relationships(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_relationships(self, fake_app_state: AppState) -> None:
         handler = INTEGRATION_HANDLERS["synthorg_ontology_get_relationships"]
         response = await handler(
             app_state=fake_app_state,

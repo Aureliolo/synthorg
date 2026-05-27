@@ -8,6 +8,7 @@ from litestar.testing import TestClient
 
 from synthorg.api.state import AppState
 from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.engine.state import EngineStateSlice
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
 
 
@@ -79,7 +80,7 @@ class TestTaskController:
         us, so the swap is local to this test.
         """
         app_state: AppState = test_client.app.state.app_state
-        app_state._task_board_entry_adapter = None
+        app_state.wire(EngineStateSlice, task_board_entry_adapter=None)
         resp = test_client.post(
             "/api/v1/tasks",
             json={

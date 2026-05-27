@@ -13,19 +13,22 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.channels import CHANNEL_SIMULATIONS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.config import SimulationRunnerConfig
-from synthorg.client.models import (
-    SimulationConfig,  # noqa: TC001
-    SimulationMetrics,  # noqa: TC001
-)
+from synthorg.client.models import SimulationConfig, SimulationMetrics  # noqa: TC001
 from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.summary import SummaryReport
 from synthorg.client.runner import SimulationRunner
+from synthorg.client.state import client_simulation_state_of
 from synthorg.client.store import SimulationRecord
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
@@ -37,6 +40,7 @@ from synthorg.observability.events.client import (
     SIMULATION_RUN_FAILED,
 )
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -195,7 +199,7 @@ async def _run_in_background(
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    sim_state = app_state.client_simulation_state
+    sim_state = client_simulation_state_of(app_state)
     if sim_state.intake_engine is None:
         await _mark_failed(
             sim_state, record.simulation_id, "Intake engine not configured"
@@ -205,7 +209,7 @@ async def _run_in_background(
     if not clients:
         await _mark_failed(sim_state, record.simulation_id, "No clients in pool")
         return
-    resolver = app_state.config_resolver
+    resolver = config_resolver_of(app_state)
     try:
         task_timeout_sec = await resolver.get_float(
             "simulations", "task_timeout_seconds"
@@ -307,14 +311,14 @@ class SimulationController(Controller):
             Result matching the declared return annotation.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         records = await sim_state.simulation_store.list_all()
         responses = tuple(_to_response(r) for r in records)
         page, meta = paginate_cursor(
             responses,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -333,7 +337,7 @@ class SimulationController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
@@ -371,7 +375,7 @@ class SimulationController(Controller):
             CancelledError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         record = SimulationRecord(
             simulation_id=data.config.simulation_id,
             config=data.config,
@@ -516,7 +520,7 @@ class SimulationController(Controller):
             ``ApiResponse[SimulationStatusResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:
@@ -558,7 +562,7 @@ class SimulationController(Controller):
             ``ApiResponse[dict[str, Any]]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         try:
             record = await sim_state.simulation_store.get(simulation_id)
         except KeyError as exc:

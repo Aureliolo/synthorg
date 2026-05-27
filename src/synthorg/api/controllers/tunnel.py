@@ -6,10 +6,12 @@ Start/stop the local webhook tunnel for development.
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.integrations.errors import TunnelError
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TUNNEL_ERROR,
@@ -43,7 +45,10 @@ class TunnelController(Controller):
         Raises:
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
-        tunnel = state["app_state"].tunnel_provider
+        tunnel = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).tunnel_provider,
+            "Tunnel Provider",
+        )
         try:
             url = await tunnel.start()
         except TunnelError as exc:
@@ -82,7 +87,10 @@ class TunnelController(Controller):
         Raises:
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
-        tunnel = state["app_state"].tunnel_provider
+        tunnel = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).tunnel_provider,
+            "Tunnel Provider",
+        )
         try:
             await tunnel.stop()
         except TunnelError as exc:
@@ -116,7 +124,10 @@ class TunnelController(Controller):
         Returns:
             The configured value when present, ``None`` otherwise.
         """
-        tunnel = state["app_state"].tunnel_provider
+        tunnel = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).tunnel_provider,
+            "Tunnel Provider",
+        )
         url = await tunnel.get_url()
         return ApiResponse(
             data={

@@ -1,816 +1,160 @@
-"""Application state container.
+"""Typed application-state container.
 
-Holds typed references to core services, injected into
-``app.state`` at startup and accessed by controllers via
-``request.app.state``.
+``AppState`` is the composition root over the feature-manifest state
+slices (``AppStateSliceMixin``) plus the cross-cutting mutable
+primitives a frozen slice cannot own (request locks, bridge-config
+snapshots, WS timeouts, background-task sets, the shutdown event), which
+live on ``_RequestLockPrimitivesMixin`` + ``_BridgeConfigPrimitivesMixin``.
+
+Every domain service is read through its feature slice
+(``app_state.slice(XStateSlice).field`` or a ``*_of`` accessor); the
+load-bearing hot-swap seams below stay as thin shims over
+``AppStateSliceMixin.wire`` so the boot install and ``post_setup_reinit``
+keep their once-only / if-absent / hot-replace semantics.
 """
 
 import asyncio
-import tempfile
 import threading
 from collections import OrderedDict
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
-from synthorg.api.auth.presence import UserPresence
-from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auth.ticket_store import WsTicketStore
-from synthorg.api.cursor import CursorSecret  # noqa: TC001
-from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
-from synthorg.api.rate_limits.inflight_config import (
-    PerOpConcurrencyConfig,  # noqa: TC001
-)
-from synthorg.api.services.idempotency_service import IdempotencyService
-from synthorg.api.services.org_mutations import OrgMutationService
-from synthorg.api.state_services import AppStateServicesMixin
-from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
-from synthorg.backup.service import BackupService  # noqa: TC001
-from synthorg.budget.automated_reports import (
-    AutomatedReportService,  # noqa: TC001
-)
-from synthorg.budget.benchmark_protocol import (
-    BenchmarkScoreProvider,  # noqa: TC001
-)
-from synthorg.budget.config import BudgetConfig  # noqa: TC001
-from synthorg.budget.coordination_store import (
-    CoordinationMetricsStore,  # noqa: TC001
-)
-from synthorg.budget.forecaster import CostForecaster  # noqa: TC001
-from synthorg.budget.pareto import ParetoAnalyzer  # noqa: TC001
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
-from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
-from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
-from synthorg.communication.conflict_resolution.escalation.notify import (
-    EscalationNotifySubscriber,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.protocol import (
-    DecisionProcessor,  # noqa: TC001
-    EscalationQueueStore,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.registry import (
-    PendingFuturesRegistry,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.sweeper import (
-    EscalationExpirationSweeper,  # noqa: TC001
-)
-from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,  # noqa: TC001
-)
-from synthorg.communication.event_stream.interrupt import (
-    InterruptStore,  # noqa: TC001
-)
-from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
-from synthorg.communication.meeting.orchestrator import (
-    MeetingOrchestrator,  # noqa: TC001
-)
-from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
-from synthorg.config.schema import RootConfig  # noqa: TC001
+from synthorg.api.state_services_bridge import _BridgeConfigPrimitivesMixin
+from synthorg.api.state_services_locks import _RequestLockPrimitivesMixin
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
-from synthorg.engine.cockpit import CockpitService  # noqa: TC001
-from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
-from synthorg.engine.flight_recording import FlightRecorderService  # noqa: TC001
-from synthorg.engine.intervention import SteeringDirective  # noqa: TC001
-from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
-from synthorg.engine.pipeline.entry.task_board_adapter import (  # noqa: TC001
-    TaskBoardEntryAdapter,
-)
-from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
-from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
-from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
-from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
-from synthorg.experiments import ExperimentService
-from synthorg.experiments.in_memory_repository import InMemoryExperimentRepository
-from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
-from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
-from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
-from synthorg.hr.training.plan_service import TrainingPlanService  # noqa: TC001
-from synthorg.hr.training.service import TrainingService  # noqa: TC001
-from synthorg.memory.embedding.fine_tune_orchestrator import (
-    FineTuneOrchestrator,  # noqa: TC001
-)
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.notifications.dispatcher import (
-    NotificationDispatcher,  # noqa: TC001
-)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_APP_STARTUP,
-    API_SERVICE_AUTO_WIRED,
     API_SERVICE_UNAVAILABLE,
 )
-from synthorg.observability.prometheus_collector import (
-    PrometheusCollector,  # noqa: TC001
-)
-from synthorg.observability.tracing.protocol import TraceHandler  # noqa: TC001
-from synthorg.ontology.drift.service import DriftDetectionService  # noqa: TC001
-from synthorg.ontology.service import OntologyService  # noqa: TC001
-from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
-from synthorg.persistence.artifact_storage import (
-    ArtifactStorageBackend,  # noqa: TC001
-)
-from synthorg.persistence.auth_protocol import (
-    LockoutRepository as LockoutStore,  # noqa: TC001
-)
-from synthorg.persistence.auth_protocol import (
-    RefreshTokenRepository as RefreshStore,  # noqa: TC001
-)
-from synthorg.persistence.auth_protocol import (
-    SessionRepository as SessionStore,  # noqa: TC001
-)
-from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
-    CostForecastRepository,
-)
-from synthorg.persistence.ontology_protocol import (  # noqa: TC001
-    OntologyDriftReportRepository,
-)
-from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
-from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
-from synthorg.providers.management.service import (
-    ProviderManagementService,
-)
-from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
-from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
-from synthorg.security.audit import AuditLog  # noqa: TC001
-from synthorg.security.autonomy.protocol import (
-    AutonomyChangeStrategy,  # noqa: TC001
-)
-from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
-from synthorg.security.trust.service import TrustService  # noqa: TC001
 from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
     MemoryBridgeConfig,
     WorkersBridgeConfig,
 )
-from synthorg.settings.resolver import ConfigResolver
-from synthorg.settings.service import SettingsService  # noqa: TC001
-from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
-from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
-from synthorg.workers.execution_service import (
-    LifecycleAdvancingExecutionService,
-    WorkerExecutionService,
-)
 
 if TYPE_CHECKING:
-    from synthorg.a2a.agent_card import AgentCardBuilder
-    from synthorg.a2a.client import A2AClient
-    from synthorg.a2a.peer_registry import PeerRegistry
-    from synthorg.api.services.workflow_rollback_service import (
-        WorkflowRollbackService,
+    from synthorg.config.schema import RootConfig
+    from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+    from synthorg.engine.pipeline.entry.task_board_adapter import (
+        TaskBoardEntryAdapter,
     )
-    from synthorg.docs_engine.retrieval_facade import (
-        ProjectAwareMemoryFacade,
-    )
-    from synthorg.docs_engine.service import DocsService
-    from synthorg.docs_engine.tool_factory import DocsToolFactory
-    from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
-    from synthorg.engine.workspace.environment.service import EnvironmentService
-    from synthorg.engine.workspace.project_workspace_service import (
-        ProjectWorkspaceService,
-    )
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.health.prober import HealthProberService
-    from synthorg.integrations.mcp_catalog.installations import (
-        McpInstallationRepository,
-    )
-    from synthorg.integrations.mcp_catalog.service import CatalogService
-    from synthorg.integrations.oauth.state_service import OAuthStateService
-    from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-    from synthorg.integrations.tunnel.protocol import TunnelProvider
-    from synthorg.knowledge.service import KnowledgeService
-    from synthorg.knowledge.tool_factory import KnowledgeToolFactory
-    from synthorg.meta.toolsmith.service import ToolsmithService
-    from synthorg.research.service import ResearchService
-    from synthorg.research.tool_factory import ResearchToolFactory
-    from synthorg.tools.structure_map.tool_factory import StructureMapToolFactory
-
-    # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
-    # extra is not required at runtime for deployments that do not use the
-    # distributed task queue.
-    from synthorg.workers.backend_services import DistributedBackendServices
-    from synthorg.workers.claim import JetStreamTaskQueue
+    from synthorg.engine.pipeline.protocol import WorkPipeline
+    from synthorg.notifications.dispatcher import NotificationDispatcher
+    from synthorg.providers.registry import ProviderRegistry
+    from synthorg.workers.execution_service import WorkerExecutionService
 
 logger = get_logger(__name__)
 
-_DEFAULT_WORKSPACE_TEMP_SUBDIR: Final[str] = "synthorg-agent-workspaces"
 
+class AppState(
+    AppStateSliceMixin,
+    _RequestLockPrimitivesMixin,
+    _BridgeConfigPrimitivesMixin,
+):
+    """Composition root: feature state slices + cross-cutting primitives.
 
-class AppState(AppStateServicesMixin):
-    """Typed application state container.
-
-    Service fields accept ``None`` for dev/test mode. Property
-    accessors raise ``ServiceUnavailableError`` (503) when missing.
+    Domain services are read through their feature slice; the seams
+    below preserve the once-only / if-absent / hot-replace contracts the
+    boot install and ``post_setup_reinit`` rebuild rely on.
     """
 
     __slots__ = (
-        "_a2a_card_builder",
-        "_a2a_client",
-        "_a2a_peer_registry",
-        "_activity_feed_service",
-        "_agent_health_service",
-        "_agent_registry",
-        "_agent_version_service",
-        "_agent_workspace_root",
-        "_analytics_service",
         "_api_bridge_config",
         "_api_bridge_config_lock",
-        "_approval_gate",
-        "_approval_timeout_scheduler",
-        "_artifact_facade_service",
-        "_artifact_storage",
-        "_audit_log",
-        "_audit_read_service",
         "_auth_revalidate_max_failures",
         "_auth_revalidate_window_seconds",
-        "_auth_service",
-        "_autonomy_change_strategy",
-        "_backup_facade_service",
-        "_backup_service",
-        "_benchmark_provider",
         "_bridge_config_applied",
         "_brownfield_background_tasks",
-        "_brownfield_entry_adapter",
-        "_budget_config",
-        "_ceremony_policy_service",
-        "_ceremony_scheduler",
-        "_charter_dispatcher",
-        "_charter_service",
-        "_chief_of_staff_chat",
-        "_chief_of_staff_proposer",
-        "_client_facade_service",
-        "_client_simulation_state",
-        "_cockpit_service",
-        "_company_read_service",
-        "_config_resolver",
-        "_connection_catalog",
-        "_connection_service",
-        "_conversational_proposal_repo",
-        "_coordination_metrics_store",
-        "_coordination_service",
-        "_coordinator",
-        "_cost_forecast_repo",
-        "_cost_forecaster",
-        "_cost_tracker",
-        "_cursor_secret",
-        "_delegation_record_store",
-        "_department_service",
-        "_distributed_backend_services",
-        "_distributed_task_queue",
-        "_docs_service",
-        "_docs_tool_factory",
-        "_drift_detection_service",
-        "_drift_report_store",
-        "_environment_service",
-        "_escalation_notify_subscriber",
-        "_escalation_processor",
-        "_escalation_registry",
-        "_escalation_store",
-        "_escalation_sweeper",
-        "_evaluation_version_service",
-        "_event_stream_hub",
-        "_events_read_service",
-        "_experiment_service",
-        "_fine_tune_orchestrator",
-        "_flight_recorder_service",
-        "_health_prober_service",
-        "_idempotency_service",
-        "_intake_entry_adapter",
-        "_integration_health_facade_service",
-        "_interrupt_store",
-        "_knowledge_service",
-        "_knowledge_tool_factory",
-        "_lazy_service_lock",
-        "_lockout_store",
-        "_mcp_catalog_facade_service",
-        "_mcp_catalog_service",
-        "_mcp_installations_repo",
-        "_meeting_orchestrator",
-        "_meeting_scheduler",
-        "_meeting_service",
-        "_memory_backend",
         "_memory_bridge_config",
         "_memory_bridge_config_lock",
-        "_memory_service",
-        "_message_bus",
-        "_message_service",
-        "_model_router",
-        "_notification_dispatcher",
-        "_oauth_facade_service",
-        "_oauth_state_service",
-        "_oauth_token_manager",
         "_objective_background_tasks",
-        "_objective_entry_adapter",
-        "_ontology_facade_service",
-        "_ontology_service",
-        "_ontology_sync_service",
-        "_org_mutation_service",
-        "_pareto_analyzer",
         "_per_op_concurrency_config",
         "_per_op_rate_limit_config",
-        "_performance_tracker",
-        "_persistence",
-        "_personality_service",
-        "_preset_override_service",
-        "_project_doc_memory_facade",
-        "_project_facade_service",
-        "_project_workspace_service",
-        "_prometheus_collector",
-        "_provider_audit_service",
-        "_provider_health_tracker",
-        "_provider_management",
-        "_provider_read_service",
-        "_provider_registry",
-        "_quality_facade_service",
-        "_refresh_store",
-        "_report_service",
-        "_reports_service",
         "_request_lock_refs",
         "_request_locks",
         "_request_locks_guard",
-        "_requests_facade_service",
-        "_research_service",
-        "_research_tool_factory",
-        "_review_facade_service",
-        "_review_gate_service",
-        "_role_version_service",
-        "_scaling_decision_service",
-        "_scaling_service",
-        "_self_improvement_service",
-        "_session_store",
-        "_settings_read_service",
-        "_settings_service",
-        "_setup_facade_service",
         "_shutdown_requested",
-        "_signals_service",
-        "_simulation_facade_service",
-        "_steering_directive",
-        "_structure_map_tool_factory",
-        "_subworkflow_service",
-        "_task_board_entry_adapter",
-        "_task_engine",
-        "_team_service",
-        "_telemetry_collector",
-        "_template_pack_facade_service",
-        "_ticket_store",
-        "_tool_invocation_tracker",
-        "_toolsmith_service",
-        "_trace_handler",
-        "_training_plan_service",
-        "_training_service",
-        "_trust_service",
-        "_tunnel_provider",
-        "_tunnel_service",
-        "_user_facade_service",
-        "_user_presence",
-        "_webhook_event_bridge",
-        "_webhook_replay_protector",
-        "_webhook_service",
-        "_work_pipeline",
-        "_worker_execution_service",
         "_workers_bridge_config",
         "_workers_bridge_config_lock",
-        "_workflow_execution_service",
-        "_workflow_rollback_service",
-        "_workflow_service",
-        "_workflow_version_service",
         "_ws_auth_timeout_seconds",
         "_ws_frame_timeout_seconds",
-        "approval_store",
         "clock",
         "config",
         "startup_time",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         config: RootConfig,
-        approval_store: ApprovalStoreProtocol,
-        persistence: PersistenceBackend | None = None,
-        message_bus: MessageBus | None = None,
-        cost_tracker: CostTracker | None = None,
-        auth_service: AuthService | None = None,
-        task_engine: TaskEngine | None = None,
-        approval_gate: ApprovalGate | None = None,
-        coordinator: MultiAgentCoordinator | None = None,
-        work_pipeline: WorkPipeline | None = None,
-        intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
-        objective_entry_adapter: WorkEntryAdapter[Any] | None = None,
-        brownfield_entry_adapter: WorkEntryAdapter[Any] | None = None,
-        task_board_entry_adapter: TaskBoardEntryAdapter | None = None,
-        agent_registry: AgentRegistryService | None = None,
-        performance_tracker: PerformanceTracker | None = None,
-        meeting_orchestrator: MeetingOrchestrator | None = None,
-        meeting_scheduler: MeetingScheduler | None = None,
-        ceremony_scheduler: CeremonyScheduler | None = None,
-        settings_service: SettingsService | None = None,
-        provider_registry: ProviderRegistry | None = None,
-        model_router: ModelRouter | None = None,
-        provider_health_tracker: ProviderHealthTracker | None = None,
-        tool_invocation_tracker: ToolInvocationTracker | None = None,
-        delegation_record_store: DelegationRecordStore | None = None,
-        event_stream_hub: EventStreamHub | None = None,
-        interrupt_store: InterruptStore | None = None,
-        artifact_storage: ArtifactStorageBackend | None = None,
-        notification_dispatcher: NotificationDispatcher | None = None,
-        ontology_service: OntologyService | None = None,
-        audit_log: AuditLog | None = None,
-        trust_service: TrustService | None = None,
-        autonomy_change_strategy: AutonomyChangeStrategy | None = None,
-        coordination_metrics_store: CoordinationMetricsStore | None = None,
-        connection_catalog: ConnectionCatalog | None = None,
-        oauth_token_manager: OAuthTokenManager | None = None,
-        health_prober_service: HealthProberService | None = None,
-        tunnel_provider: TunnelProvider | None = None,
-        webhook_event_bridge: WebhookEventBridge | None = None,
-        mcp_catalog_service: CatalogService | None = None,
-        mcp_installations_repo: McpInstallationRepository | None = None,
-        training_service: TrainingService | None = None,
-        startup_time: float = 0.0,
         clock: Clock | None = None,
+        startup_time: float | None = None,
     ) -> None:
+        """Build the composition root with empty slices + default primitives.
+
+        Args:
+            config: The resolved root configuration.
+            clock: Clock seam (``SystemClock`` default; tests inject ``FakeClock``).
+            startup_time: Monotonic uptime baseline (defaults to ``clock.monotonic()``).
+        """
         self.config = config
-        self.approval_store = approval_store
-        self._escalation_store: EscalationQueueStore | None = None
-        self._escalation_registry: PendingFuturesRegistry | None = None
-        self._escalation_processor: DecisionProcessor | None = None
-        self._escalation_sweeper: EscalationExpirationSweeper | None = None
-        self._escalation_notify_subscriber: EscalationNotifySubscriber | None = None
-        self._approval_gate = approval_gate
-        self._artifact_storage = artifact_storage
-        self._audit_log = audit_log
-        self._backup_service: BackupService | None = None
-        self._coordination_metrics_store = coordination_metrics_store
-        self._notification_dispatcher = notification_dispatcher
-        self._ontology_service = ontology_service
-        self._drift_report_store: OntologyDriftReportRepository | None = None
-        self._drift_detection_service: DriftDetectionService | None = None
-        self._ontology_sync_service: OntologyOrgMemorySync | None = None
-        self._persistence = persistence
-        self._message_bus = message_bus
-        self._cost_tracker = cost_tracker
-        self._auth_service = auth_service
-        self._task_engine = task_engine
-        self._distributed_task_queue: JetStreamTaskQueue | None = None
-        self._distributed_backend_services: DistributedBackendServices | None = None
-        self._cockpit_service: CockpitService | None = None
-        self._flight_recorder_service: FlightRecorderService | None = None
-        self._steering_directive: SteeringDirective | None = None
-        self._coordinator = coordinator
-        self._work_pipeline = work_pipeline
-        self._intake_entry_adapter = intake_entry_adapter
-        self._objective_entry_adapter = objective_entry_adapter
-        self._objective_background_tasks: set[asyncio.Task[None]] = set()
-        self._brownfield_entry_adapter = brownfield_entry_adapter
-        self._brownfield_background_tasks: set[asyncio.Task[None]] = set()
-        self._task_board_entry_adapter = task_board_entry_adapter
-        self._agent_registry = agent_registry
-        self._performance_tracker = performance_tracker
-        self._trust_service = trust_service
-        self._autonomy_change_strategy = autonomy_change_strategy
-        self._telemetry_collector: TelemetryCollector | None = None
-        self._report_service: AutomatedReportService | None = None
-        self._meeting_orchestrator = meeting_orchestrator
-        self._meeting_scheduler = meeting_scheduler
-        self._ceremony_scheduler = ceremony_scheduler
-        self._settings_service = settings_service
-        self._provider_registry = provider_registry
-        self._model_router = model_router
-        self._provider_health_tracker = provider_health_tracker
-        self._tool_invocation_tracker = tool_invocation_tracker
-        self._training_service = training_service
-        # Lazily constructed in lifecycle_builder when persistence is
-        # available; ``TrainingController`` raises 503 via the
-        # ``training_plan_service`` property when accessed before it
-        # is wired (matching every other persistence-bound service
-        # facade).
-        self._training_plan_service: TrainingPlanService | None = None
-        self._delegation_record_store = delegation_record_store
-        self._event_stream_hub = event_stream_hub
-        self._interrupt_store = interrupt_store
-        self._connection_catalog = connection_catalog
-        self._oauth_token_manager = oauth_token_manager
-        # Wired in lifecycle_builder once persistence is connected;
-        # the OAuth controller raises 503 via the
-        # ``oauth_state_service`` property when accessed before it
-        # is available, matching every other persistence-bound
-        # service facade.
-        self._oauth_state_service: OAuthStateService | None = None
-        # Wired in lifecycle_builder once persistence + the workflow
-        # definition / version repos are connected; the workflow
-        # rollback controller falls through to the ``503`` raise on
-        # ``workflow_rollback_service`` when accessed before it is
-        # available, matching every other persistence-bound service
-        # facade.
-        self._workflow_rollback_service: WorkflowRollbackService | None = None
-        self._health_prober_service = health_prober_service
-        self._tunnel_provider = tunnel_provider
-        self._webhook_event_bridge = webhook_event_bridge
-        self._webhook_replay_protector: object | None = None
-        # Defaults to a lifecycle-advancing implementation wired
-        # against the task engine in lifecycle_builder; production
-        # deployments may swap the implementation to invoke the full
-        # AgentEngine instead of the baseline lifecycle walk.
-        self._worker_execution_service: WorkerExecutionService | None = None
-        # Filesystem root the agent's file-system / sandbox tools use.
-        # Pinned once at startup from the runtime data dir via
-        # ``set_agent_workspace_root``; the property falls back to a
-        # process-stable temp directory so dev / empty-company runs
-        # still have a valid absolute workspace.
-        self._agent_workspace_root: Path | None = None
-        # Per-project persistent workspace provisioning service. Wired
-        # at boot behind the provider switch; ``None`` for empty-company
-        # / dev apps with no runtime services installed.
-        self._project_workspace_service: ProjectWorkspaceService | None = None
-        self._environment_service: EnvironmentService | None = None
-        # Cost-dial services (forecaster + repo + Pareto analyzer +
-        # benchmark provider). Wired at boot in lifecycle_helpers; the
-        # forecast gate, controllers, and dashboard read these through
-        # AppState. Lock-protected so the post_setup_reinit rebuild can
-        # hot-swap them without racing in-flight controller reads.
-        self._cost_forecaster: CostForecaster | None = None
-        self._cost_forecast_repo: CostForecastRepository | None = None
-        self._pareto_analyzer: ParetoAnalyzer | None = None
-        self._benchmark_provider: BenchmarkScoreProvider | None = None
-        self._budget_config: BudgetConfig | None = None
-        # Living-documentation engine. Wired at boot when both
-        # persistence and the project workspace service are present; the
-        # accessor returns None for dev / empty-company runs that skipped
-        # the wiring.
-        self._docs_service: DocsService | None = None
-        self._docs_tool_factory: DocsToolFactory | None = None
-        self._project_doc_memory_facade: ProjectAwareMemoryFacade | None = None
-        self._knowledge_service: KnowledgeService | None = None
-        self._knowledge_tool_factory: KnowledgeToolFactory | None = None
-        self._research_service: ResearchService | None = None
-        self._research_tool_factory: ResearchToolFactory | None = None
-        self._structure_map_tool_factory: StructureMapToolFactory | None = None
-        # Guards the double-checked locking on first-access lazy wiring
-        # of worker_execution_service / experiment_service. Both
-        # properties may be invoked from concurrent request handlers
-        # before any explicit ``set_*`` call, so the bare None check
-        # without a lock could construct two instances and lose state.
-        self._lazy_service_lock: threading.Lock = threading.Lock()
-        self._provider_registry_lock: threading.Lock = threading.Lock()
-        # Lazily constructed against an in-memory repository so the
-        # ``/experiments`` controller works out of the box; deployments
-        # swap in a durable repository via ``set_experiment_service``.
-        self._experiment_service: ExperimentService | None = None
-        # Lazily constructed when first accessed via the property; the
-        # service wraps ``persistence.idempotency_keys`` and lives only
-        # if a persistence backend is configured.
-        self._idempotency_service: IdempotencyService | None = None
-        self._a2a_card_builder: AgentCardBuilder | None = None
-        self._a2a_client: A2AClient | None = None
-        self._a2a_peer_registry: PeerRegistry | None = None
-        self._mcp_catalog_service = mcp_catalog_service
-        self._mcp_installations_repo = mcp_installations_repo
-        self._prometheus_collector: PrometheusCollector | None = None
-        self._trace_handler: TraceHandler | None = None
-        self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
-        # Shared MemoryBackend instance for admin operations (DELETE
-        # endpoints, MCP delete_memory). Wired during startup when a
-        # backend is constructed (e.g. during the training-service
-        # auto-wire path); ``None`` when no backend is configured.
-        self._memory_backend: MemoryBackend | None = None
-        self._config_resolver: ConfigResolver | None = None
-        # One-shot flag: on_startup applies bridge-config settings
-        # exactly once per ``AppState`` lifetime, even when the
-        # Litestar lifespan re-enters (shared-app test fixtures or
-        # multiple lifespan cycles). Preserves the httpx/SMTP clients
-        # built into the notification-dispatcher sinks rather than
-        # rebuilding and closing them on every startup.
-        self._bridge_config_applied: bool = False
-        # Frozen ``ApiBridgeConfig`` snapshot consumed by API
-        # controllers (e.g. activities lifecycle cap). Default-
-        # constructed so consumers always see a valid instance, even
-        # before ``_apply_bridge_config`` has run or when the resolver
-        # is unavailable; ``_apply_bridge_config`` swaps in the
-        # operator-tuned snapshot, and
-        # ``ApiBridgeSettingsSubscriber`` hot-swaps it on operator
-        # edits (no restart required).  The dedicated lock guards the
-        # read-modify-write path on ``mutate_api_bridge_config`` so two
-        # concurrent subscribers each computing
-        # ``model_copy(update=...)`` from the same prior snapshot
-        # cannot lose each other's updates by both calling
-        # ``swap_api_bridge_config`` based on a stale read.
+        # Clock seam: controllers/services read time via ``app_state.clock``
+        # so tests inject a ``FakeClock`` without monkey-patching time.
+        self.clock: Clock = clock or SystemClock()
+        self.startup_time = (
+            startup_time if startup_time is not None else self.clock.monotonic()
+        )
+        self._init_primitives()
+        # Per-feature typed state slices, composed at boot by the
+        # feature-manifest substrate (``compose_feature_slices``).
+        self._init_slice_store()
+
+    def _init_primitives(self) -> None:
+        """Initialise the cross-cutting mutable primitives to their defaults."""
+        # Bridge-config snapshots: default-constructed so consumers see
+        # valid defaults before ``_apply_bridge_config`` runs; each lock
+        # guards its ``mutate_*`` read-modify-write.
         self._api_bridge_config: ApiBridgeConfig = ApiBridgeConfig()
         self._api_bridge_config_lock: threading.Lock = threading.Lock()
         self._workers_bridge_config: WorkersBridgeConfig = WorkersBridgeConfig()
         self._workers_bridge_config_lock: threading.Lock = threading.Lock()
-        # Frozen ``MemoryBridgeConfig`` snapshot (consolidation
-        # enforce-batch + fine-tune preflight knobs). Default-
-        # constructed so the field defaults equal the registered
-        # ``memory.*`` defaults; ``_apply_bridge_config`` swaps in the
-        # operator-tuned snapshot and ``MemoryBridgeSettingsSubscriber``
-        # hot-swaps it on operator edits. The dedicated lock guards the
-        # read-modify-write path on ``mutate_memory_bridge_config``.
         self._memory_bridge_config: MemoryBridgeConfig = MemoryBridgeConfig()
         self._memory_bridge_config_lock: threading.Lock = threading.Lock()
-        self._provider_management: ProviderManagementService | None = None
-        self._org_mutation_service: OrgMutationService | None = None
-        # Shutdown flag observable by long-lived subsystems.
-        # ``install_shutdown_handlers`` sets it when SIGTERM/SIGINT
-        # arrive so reconcile loops can exit early instead of waiting
-        # for lifespan cancellation.  Constructed eagerly so that two
-        # concurrent first-reads (e.g. handler + reconcile task) cannot
-        # each allocate their own ``Event`` and leave one observer
-        # stranded on a stale reference.  Constructing an
-        # ``asyncio.Event`` outside a running loop is safe -- it only
-        # acquires a loop reference on ``.wait()`` / ``.set()``.
-        self._shutdown_requested: asyncio.Event = asyncio.Event()
-        # Opaque pagination cursor HMAC secret.  Set by ``create_app`` from
-        # ``api.pagination.cursor_secret`` (settings) or
-        # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` (env); falls back to an
-        # ephemeral per-process key with a WARNING log so tokens become
-        # invalid across restarts in deployments that never configured one.
-        self._cursor_secret: CursorSecret | None = None
-        # Per-operation rate-limit + concurrency configs live on
-        # AppState so the settings subscriber can hot-swap them when
-        # operators edit ``api.per_op_rate_limit_*`` or
-        # ``api.per_op_concurrency_*``.  Guards and the inflight
-        # middleware read them via the properties below.  Stores stay
-        # on the Litestar State dict (built once, never swapped).
-        self._per_op_rate_limit_config: PerOpRateLimitConfig | None = None
-        self._per_op_concurrency_config: PerOpConcurrencyConfig | None = None
-        # WebSocket auth-handshake timeout in seconds.  Baked in at
-        # startup by ``_apply_bridge_config`` from
-        # ``api.ws_auth_timeout_seconds`` (restart_required) so the
-        # ``/ws`` handler does not reach back through the resolver on
-        # every connection.  Retains the built-in default when the
-        # bridge cannot be resolved.
+        # One-shot flag: bridge config applied exactly once per lifetime
+        # even across re-entered lifespans (shared-app test fixtures).
+        self._bridge_config_applied: bool = False
+        # Per-op rate-limit + concurrency configs, hot-swapped by the
+        # settings subscribers; ``None`` until the startup snapshot lands.
+        self._per_op_rate_limit_config = None
+        self._per_op_concurrency_config = None
+        # WS / auth-revalidation knobs (read_only_post_init); sane
+        # built-in defaults so the handler never reaches the resolver.
         self._ws_auth_timeout_seconds: float = 10.0
-        # WebSocket DoS-prevention settings: per-frame idle timeout +
-        # sliding-window revalidation tracking. Baked (read-only
-        # post-init) at startup by ``_apply_bridge_config``; the
-        # handler reads these on every connection but never writes
-        # them. Sane built-in defaults so the handler never fails open.
         self._ws_frame_timeout_seconds: int = 30
         self._auth_revalidate_window_seconds: int = 60
         self._auth_revalidate_max_failures: int = 5
-        self._provider_audit_service = None
-        self._preset_override_service = None
-        self._init_derived_services(
-            settings_service=settings_service,
-            config=config,
-            persistence=persistence,
-        )
-        self._review_gate_service: ReviewGateService | None = None
-        self._scaling_service: ScalingService | None = None
-        self._toolsmith_service: ToolsmithService | None = None
-        self._init_facade_service_slots()
-        self._client_simulation_state: ClientSimulationState | None = None
-        self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
-        self._session_store: SessionStore | None = None
-        self._lockout_store: LockoutStore | None = None
-        self._refresh_store: RefreshStore | None = None
-        self._ticket_store = WsTicketStore()
-        self._user_presence = UserPresence()
-        # Per-request-id ``asyncio.Lock`` registry for serialising client-
-        # request lifecycle transitions (scope/approve/reject). Owned by
-        # AppState (one per app, fresh per test) so xdist workers cannot
-        # leak Lock objects bound to a closed event loop into the next
-        # test's loop. The guard is a plain ``threading.Lock`` because
-        # ``asyncio.Lock`` instances can only be constructed inside a
-        # running event loop, so the registry needs a thread-safe
-        # "check, then create" that does not require an active loop to
-        # serialise itself.
-        # OrderedDict (insertion-ordered) so the eviction sweep in
-        # ``get_or_create_request_lock`` can pop the oldest idle entries
-        # in O(1). Bound is a defence-in-depth cap against unbounded
-        # growth: ``scope_request`` retains the lock across handlers
-        # (an approve/reject is expected next on the same id) so
-        # abandoned-mid-flight requests never get evicted by the
-        # terminal release path. Without a cap, an authenticated
-        # client that scopes unique ids and never advances grows the
-        # registry forever.
+        # Per-request-id lifecycle-lock registry (bounded, refcounted).
         self._request_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
         self._request_locks_guard: threading.Lock = threading.Lock()
-        # In-flight reference count: bumped by ``acquire_request_lock``
-        # before returning the Lock, dropped after the ``async with``
-        # exits. Eviction skips any entry with refs > 0, so the window
-        # between receiving the Lock and entering ``async with`` cannot
-        # leave a caller stranded on a freshly-evicted entry while the
-        # next call mints a different Lock for the same id. Without
-        # this gate, two callers could end up serialising on different
-        # Lock objects for the same request, breaking the per-id
-        # ordering invariant the controller relies on.
         self._request_lock_refs: dict[str, int] = {}
-        self.startup_time = startup_time
-        # Test seam: controllers and services that read time go
-        # through ``app_state.clock`` so unit tests can inject a
-        # ``FakeClock`` without monkey-patching ``time.monotonic``
-        # at the module level.  ``SystemClock`` is the production
-        # default; see CLAUDE.md ``## Code Conventions`` (Clock seam).
-        self.clock: Clock = clock or SystemClock()
-
-    def _init_derived_services(
-        self,
-        *,
-        settings_service: SettingsService | None,
-        config: RootConfig,
-        persistence: PersistenceBackend | None,
-    ) -> None:
-        """Build services that depend on other injected services.
-
-        Constructs into locals first, then assigns atomically so a
-        failure in any constructor leaves AppState unchanged.
-        """
-        if settings_service is None:
-            return
-        resolver = ConfigResolver(
-            settings_service=settings_service,
-            config=config,
-        )
-        # Provider audit log: wired only when the persistence backend
-        # actually exposes the repo accessor.  ``getattr`` keeps legacy
-        # ``FakePersistenceBackend`` rigs in tests working until they
-        # opt into the new accessor; ``ProviderManagementService``
-        # treats ``None`` as a no-op for emission so neither path errors.
-        from synthorg.providers.management.audit_service import (  # noqa: PLC0415
-            ProviderAuditService,
-        )
-
-        provider_audit_repo = (
-            getattr(persistence, "provider_audit_events", None)
-            if persistence is not None
-            else None
-        )
-        audit_service = (
-            ProviderAuditService(provider_audit_repo)
-            if provider_audit_repo is not None
-            else None
-        )
-
-        # Preset overrides: same getattr-guarded wiring as the audit
-        # log so legacy fakes that lack the new repo accessor stay
-        # functional.  The override service depends on the audit
-        # service (it emits ``preset_override_updated`` rows on each
-        # write) so it is None whenever audit is None.
-        from synthorg.providers.management.preset_override_service import (  # noqa: PLC0415
-            PresetOverrideService,
-        )
-
-        preset_override_repo = (
-            getattr(persistence, "preset_overrides", None)
-            if persistence is not None
-            else None
-        )
-        preset_override_service: PresetOverrideService | None = (
-            PresetOverrideService(preset_override_repo, audit_service=audit_service)
-            if preset_override_repo is not None
-            else None
-        )
-        management = ProviderManagementService(
-            settings_service=settings_service,
-            config_resolver=resolver,
-            app_state=self,
-            config=config,
-            audit_service=audit_service,
-            cost_tracker=self._cost_tracker,
-        )
-        org_mutations = OrgMutationService(
-            settings_service=settings_service,
-            config_resolver=resolver,
-            budget_config_versions=(
-                persistence.budget_config_versions if persistence is not None else None
-            ),
-            company_versions=(
-                persistence.company_versions if persistence is not None else None
-            ),
-        )
-        # Atomic assignment: every service constructor above runs
-        # before any ``self.*`` attribute mutation.  If any constructor
-        # raises, AppState stays in its prior (clean) state.  The
-        # docstring promises this contract.
-        self._provider_audit_service: ProviderAuditService | None = audit_service
-        self._preset_override_service: PresetOverrideService | None = (
-            preset_override_service
-        )
-        self._config_resolver = resolver
-        self._provider_management = management
-        self._org_mutation_service = org_mutations
-
-    def _set_once(self, attr: str, value: object, label: str) -> None:
-        """Set a private attribute once; raise if already configured."""
-        if getattr(self, attr) is not None:
-            logger.error(
-                API_APP_STARTUP,
-                action="service_already_configured",
-                service=label,
-            )
-            msg = f"{label} already configured"
-            raise RuntimeError(msg)
-        setattr(self, attr, value)
-        logger.info(
-            API_APP_STARTUP,
-            action="service_configured",
-            service=label,
-        )
+        # Background-task sets for the objective / brownfield entry paths.
+        self._objective_background_tasks: set[asyncio.Task[None]] = set()
+        self._brownfield_background_tasks: set[asyncio.Task[None]] = set()
+        # Shutdown flag observable by long-lived subsystems; constructed
+        # eagerly so concurrent first-reads share one ``Event``.
+        self._shutdown_requested: asyncio.Event = asyncio.Event()
 
     def _require_service[T](self, service: T | None, name: str) -> T:
-        """Return *service* or raise 503 if not configured."""
+        """Return *service* or raise 503 if not configured.
+
+        Returns:
+            The non-``None`` service.
+
+        Raises:
+            ServiceUnavailableError: When *service* is ``None``.
+        """
         if service is None:
             logger.warning(API_SERVICE_UNAVAILABLE, service=name)
             msg = f"{name.replace('_', ' ').title()} not configured"
@@ -818,1496 +162,197 @@ class AppState(AppStateServicesMixin):
         return service
 
     @property
-    def has_persistence(self) -> bool:
-        """Check whether the persistence backend is configured."""
-        return self._persistence is not None
-
-    @property
-    def persistence(self) -> PersistenceBackend:
-        """Return persistence backend or raise 503."""
-        return self._require_service(self._persistence, "persistence")  # type: ignore[no-any-return]
-
-    @property
-    def idempotency_service(self) -> IdempotencyService:
-        """Return the idempotency service, lazily wrapping ``idempotency_keys``.
-
-        Raises ``ServiceUnavailableError`` (503) when persistence is
-        not configured -- the service has no in-memory fallback because
-        idempotency must survive restart by definition.
-        """
-        if self._idempotency_service is not None:
-            return self._idempotency_service
-        backend = self._require_service(self._persistence, "persistence")
-        service = IdempotencyService(backend.idempotency_keys)
-        self._idempotency_service = service
-        return service
-
-    @property
     def shutdown_requested(self) -> asyncio.Event:
-        """Return the shutdown ``asyncio.Event``.
+        """Shutdown flag set by the signal handlers; observed by loops.
 
-        SIGTERM/SIGINT handlers set the event; long-lived subsystems
-        ``await`` or poll it to exit early.  Constructed eagerly in
-        ``__init__`` so every reader sees the same instance.
+        Returns:
+            The process-shared shutdown ``asyncio.Event``.
         """
         return self._shutdown_requested
 
     @property
-    def cursor_secret(self) -> CursorSecret:
-        """Return the opaque-pagination cursor HMAC secret.
+    def bridge_config_applied(self) -> bool:
+        """Whether the one-shot bridge-config apply has already run.
 
-        Wired once by ``create_app`` from configuration; never ``None``
-        after startup.  Tests that bypass ``create_app`` must call
-        :meth:`set_cursor_secret` explicitly.
+        Returns:
+            ``True`` once ``mark_bridge_config_applied`` has been called.
         """
-        return self._require_service(self._cursor_secret, "cursor_secret")
+        return self._bridge_config_applied
 
-    def set_cursor_secret(self, secret: CursorSecret) -> None:
-        """Attach the opaque-pagination cursor HMAC secret (once-only)."""
-        self._set_once("_cursor_secret", secret, "cursor_secret")
-
-    @property
-    def has_prometheus_collector(self) -> bool:
-        """Check whether the Prometheus collector is configured."""
-        return self._prometheus_collector is not None
+    def mark_bridge_config_applied(self) -> None:
+        """Flip :attr:`bridge_config_applied` to ``True`` (one-way)."""
+        self._bridge_config_applied = True
 
     @property
-    def prometheus_collector(self) -> PrometheusCollector:
-        """Return Prometheus collector or raise 503."""
-        return self._require_service(
-            self._prometheus_collector,
-            "prometheus_collector",
-        )
+    def objective_background_tasks(self) -> set[asyncio.Task[None]]:
+        """Live set of in-flight objective-entry background tasks.
 
-    def set_prometheus_collector(
-        self,
-        collector: PrometheusCollector,
-    ) -> None:
-        """Attach the Prometheus collector (once-only)."""
-        self._set_once("_prometheus_collector", collector, "Prometheus collector")
-
-    @property
-    def has_trace_handler(self) -> bool:
-        """Check whether the distributed trace handler is configured."""
-        return self._trace_handler is not None
-
-    @property
-    def trace_handler(self) -> TraceHandler:
-        """Return the distributed trace handler or raise 503."""
-        return self._require_service(self._trace_handler, "trace_handler")
-
-    def set_trace_handler(self, handler: TraceHandler) -> None:
-        """Attach the distributed trace handler (once-only).
-
-        Wired from ``on_startup`` via
-        :func:`synthorg.observability.tracing.build_trace_handler`.
-        When tracing is disabled, a :class:`NoopTraceHandler` is
-        installed so callers always see a valid handler.
+        Returns:
+            The mutable task set (callers add/discard their own tasks).
         """
-        self._set_once("_trace_handler", handler, "trace handler")
+        return self._objective_background_tasks
 
     @property
-    def has_artifact_storage(self) -> bool:
-        """Check whether the artifact storage backend is configured."""
-        return self._artifact_storage is not None
+    def brownfield_background_tasks(self) -> set[asyncio.Task[None]]:
+        """Live set of in-flight brownfield-entry background tasks.
 
-    @property
-    def artifact_storage(self) -> ArtifactStorageBackend:
-        """Return artifact storage backend or raise 503."""
-        return self._require_service(self._artifact_storage, "artifact_storage")
-
-    @property
-    def has_message_bus(self) -> bool:
-        """Check whether the message bus is configured."""
-        return self._message_bus is not None
-
-    @property
-    def message_bus(self) -> MessageBus:
-        """Return message bus or raise 503."""
-        return self._require_service(self._message_bus, "message_bus")
-
-    @property
-    def has_cost_tracker(self) -> bool:
-        """Check whether the cost tracker is configured."""
-        return self._cost_tracker is not None
-
-    @property
-    def cost_tracker(self) -> CostTracker:
-        """Return cost tracker or raise 503."""
-        return self._require_service(self._cost_tracker, "cost_tracker")
-
-    @property
-    def auth_service(self) -> AuthService:
-        """Return auth service or raise 503."""
-        return self._require_service(self._auth_service, "auth_service")
-
-    @property
-    def task_engine(self) -> TaskEngine:
-        """Return task engine or raise 503."""
-        return self._require_service(self._task_engine, "task_engine")
-
-    @property
-    def has_task_engine(self) -> bool:
-        """Check whether the task engine is already configured."""
-        return self._task_engine is not None
-
-    def set_task_engine(self, engine: TaskEngine) -> None:
-        """Attach the task engine (once-only)."""
-        self._set_once("_task_engine", engine, "Task engine")
-
-    @property
-    def worker_execution_service(self) -> WorkerExecutionService:
-        """Return the worker-callable execution service or auto-wire the default.
-
-        Lazily constructs the baseline lifecycle-advancing service
-        the first time the worker-callable execute endpoint fires.
-        Deployments that want the full agent-runtime invocation call
-        :meth:`set_worker_execution_service` at startup to swap the
-        implementation before any HTTP traffic arrives.
+        Returns:
+            The mutable task set (callers add/discard their own tasks).
         """
-        if self._worker_execution_service is None:
-            with self._lazy_service_lock:
-                if self._worker_execution_service is None:
-                    self._worker_execution_service = LifecycleAdvancingExecutionService(
-                        task_engine=self.task_engine,
-                    )
-                    logger.info(
-                        API_SERVICE_AUTO_WIRED,
-                        service="worker_execution_service",
-                        implementation="LifecycleAdvancingExecutionService",
-                        note="lazy baseline; boot install did not run first",
-                    )
-        return self._worker_execution_service
+        return self._brownfield_background_tasks
+
+    # -- Hot-swap seams (thin shims over ``wire``) -----------------------
+    # Public names preserved for the boot install + ``post_setup_reinit``.
+
+    def swap_provider_registry(self, registry: ProviderRegistry) -> None:
+        """Hot-replace the provider registry (setup-complete reinit)."""
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+
+        self.wire(ProvidersStateSlice, registry=registry)
 
     def set_worker_execution_service(
         self,
         service: WorkerExecutionService,
     ) -> None:
-        """Attach a worker execution service implementation (once-only).
+        """Install the worker execution service once at boot.
 
-        Wired before any HTTP traffic so the property's lazy default
-        does not race the explicit assignment.
+        Raises:
+            RuntimeError: If a service is already installed.
         """
-        self._set_once(
-            "_worker_execution_service",
-            service,
-            "Worker execution service",
-        )
+        from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+        if self.slice(RuntimeStateSlice).worker_execution_service is not None:
+            msg = "Worker execution service already configured"
+            raise RuntimeError(msg)
+        self.wire(RuntimeStateSlice, worker_execution_service=service)
 
     def swap_worker_execution_service(
         self,
         service: WorkerExecutionService,
     ) -> None:
-        """Replace the worker execution service (hot-reload).
+        """Hot-replace the worker execution service (setup-complete reinit)."""
+        from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_worker_execution_service`, which is
-        once-only: this method replaces an already-wired service so a
-        provider configured against an empty company brings the runtime
-        online without a restart. The swap goes through this seam, and
-        the ``WorkerExecutionService`` contract is unchanged.
-
-        Holds ``_lazy_service_lock`` so the write is synchronised
-        against the property's lazy-construction read; otherwise an
-        in-flight execute could race the reinit-wake swap.
-        """
-        with self._lazy_service_lock:
-            previous = self._worker_execution_service
-            if previous is service:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._worker_execution_service = service
-            logger.info(
-                API_APP_STARTUP,
-                service="worker_execution_service",
-                transition=transition,
-            )
-
-    @property
-    def agent_workspace_root(self) -> Path:
-        """Filesystem root the agent's file-system / sandbox tools use.
-
-        The env-driven deployment startup path pins this once to the
-        runtime data directory via :meth:`set_agent_workspace_root`
-        (see ``resolve_agent_workspace_root_env``). Injected / dev /
-        empty-company apps set no env data dir and fall back to a
-        process-stable temp directory, so the workspace is always a
-        valid absolute path and the reinit-wake rebuild resolves the
-        same directory.
-        """
-        if self._agent_workspace_root is not None:
-            return self._agent_workspace_root
-        return Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
-
-    def set_agent_workspace_root(self, path: Path) -> None:
-        """Pin the agent workspace root (once-only, startup).
-
-        Rejects relative paths so agent filesystem/sandbox tools cannot
-        be routed to a cwd-relative location instead of the mounted
-        data volume.
-        """
-        if not path.is_absolute():
-            msg = f"Agent workspace root must be an absolute path, got {path!r}"
-            logger.warning(
-                API_APP_STARTUP,
-                service="agent_workspace_root",
-                reason="non_absolute_workspace_root",
-            )
-            raise ValueError(msg)
-        self._set_once(
-            "_agent_workspace_root",
-            path,
-            "Agent workspace root",
-        )
-
-    @property
-    def project_workspace_service(self) -> ProjectWorkspaceService | None:
-        """Per-project persistent workspace provisioner, or ``None``.
-
-        Wired at boot behind the provider-present switch; ``None`` for
-        empty-company / dev apps where no runtime services are installed.
-        """
-        return self._project_workspace_service
-
-    def set_project_workspace_service(
-        self,
-        service: ProjectWorkspaceService,
-    ) -> None:
-        """Attach the project workspace service (once-only, startup)."""
-        self._set_once(
-            "_project_workspace_service",
-            service,
-            "Project workspace service",
-        )
-
-    @property
-    def environment_service(self) -> EnvironmentService | None:
-        """Per-project reproducible-environment provisioner, or ``None``.
-
-        Wired at boot after ``project_workspace_service`` and persistence
-        are connected; ``None`` for dev / empty-company runs.
-        """
-        return self._environment_service
-
-    def set_environment_service(self, service: EnvironmentService) -> None:
-        """Attach the environment service (once-only, startup)."""
-        self._set_once(
-            "_environment_service",
-            service,
-            "Environment service",
-        )
-
-    @property
-    def docs_service(self) -> DocsService | None:
-        """Living-documentation engine, or ``None`` when not wired.
-
-        Wired at boot after ``project_workspace_service`` and persistence
-        are connected; ``None`` for dev / empty-company runs.
-        """
-        return self._docs_service
-
-    def set_docs_service(self, service: DocsService) -> None:
-        """Attach the docs service (once-only, startup)."""
-        self._set_once(
-            "_docs_service",
-            service,
-            "Docs service",
-        )
-
-    @property
-    def project_doc_memory_facade(self) -> ProjectAwareMemoryFacade | None:
-        """Project-aware memory facade for transparent doc retrieval.
-
-        Held alongside :attr:`docs_service`; consumed by the per-agent
-        retrieval pipeline patch so an agent's normal ``memory.retrieve``
-        call also returns PROJECT_DOC hits scoped to its active project.
-        """
-        return self._project_doc_memory_facade
-
-    def set_project_doc_memory_facade(self, facade: ProjectAwareMemoryFacade) -> None:
-        """Attach the project-aware memory facade (once-only, startup)."""
-        self._set_once(
-            "_project_doc_memory_facade",
-            facade,
-            "Project-doc memory facade",
-        )
-
-    @property
-    def docs_tool_factory(self) -> DocsToolFactory | None:
-        """Per-task factory for the living-doc agent tools, or ``None``."""
-        return self._docs_tool_factory
-
-    def set_docs_tool_factory(self, factory: DocsToolFactory) -> None:
-        """Attach the docs tool factory (once-only, startup)."""
-        self._set_once(
-            "_docs_tool_factory",
-            factory,
-            "Docs tool factory",
-        )
-
-    @property
-    def knowledge_service(self) -> KnowledgeService | None:
-        """Knowledge + provenance substrate, or ``None`` when not wired.
-
-        Wired at boot after persistence connects and the memory backend
-        is present; ``None`` for dev / empty-company runs.
-        """
-        return self._knowledge_service
-
-    def set_knowledge_service(self, service: KnowledgeService) -> None:
-        """Attach the knowledge service (once-only, startup)."""
-        self._set_once(
-            "_knowledge_service",
-            service,
-            "Knowledge service",
-        )
-
-    @property
-    def knowledge_tool_factory(self) -> KnowledgeToolFactory | None:
-        """Per-task factory for the knowledge agent tools, or ``None``."""
-        return self._knowledge_tool_factory
-
-    def set_knowledge_tool_factory(self, factory: KnowledgeToolFactory) -> None:
-        """Attach the knowledge tool factory (once-only, startup)."""
-        self._set_once(
-            "_knowledge_tool_factory",
-            factory,
-            "Knowledge tool factory",
-        )
-
-    @property
-    def research_service(self) -> ResearchService | None:
-        """Research subsystem, or ``None`` when not wired.
-
-        Wired at boot after persistence connects when research mode is
-        enabled and a provider + model are configured; ``None`` otherwise.
-        """
-        return self._research_service
-
-    def set_research_service(self, service: ResearchService) -> None:
-        """Attach the research service (once-only, startup)."""
-        self._set_once(
-            "_research_service",
-            service,
-            "Research service",
-        )
-
-    @property
-    def research_tool_factory(self) -> ResearchToolFactory | None:
-        """Per-task factory for the research agent tool, or ``None``."""
-        return self._research_tool_factory
-
-    def set_research_tool_factory(self, factory: ResearchToolFactory) -> None:
-        """Attach the research tool factory (once-only, startup)."""
-        self._set_once(
-            "_research_tool_factory",
-            factory,
-            "Research tool factory",
-        )
-
-    @property
-    def structure_map_tool_factory(self) -> StructureMapToolFactory | None:
-        """Per-task factory for the brownfield structure-map tool, or ``None``."""
-        return self._structure_map_tool_factory
-
-    def set_structure_map_tool_factory(self, factory: StructureMapToolFactory) -> None:
-        """Attach the structure-map tool factory (once-only, startup)."""
-        self._set_once(
-            "_structure_map_tool_factory",
-            factory,
-            "Structure-map tool factory",
-        )
-
-    @property
-    def experiment_service(self) -> ExperimentService:
-        """Return the A/B experiment service, auto-wiring the default.
-
-        Lazy construction uses the in-memory repository so the
-        ``/experiments`` controller works in dev / smoke-test runs
-        without a persistence backend. Production deployments call
-        :meth:`set_experiment_service` at startup with a durable
-        repository before any HTTP traffic arrives.
-        """
-        if self._experiment_service is None:
-            with self._lazy_service_lock:
-                if self._experiment_service is None:
-                    self._experiment_service = ExperimentService(
-                        repository=InMemoryExperimentRepository(),
-                        clock=self.clock,
-                    )
-                    logger.info(
-                        API_SERVICE_AUTO_WIRED,
-                        service="experiment_service",
-                        implementation="ExperimentService",
-                        note="lazy in-memory repository; no durable backend set",
-                    )
-        return self._experiment_service
-
-    def set_experiment_service(self, service: ExperimentService) -> None:
-        """Attach the experiment service (once-only)."""
-        self._set_once(
-            "_experiment_service",
-            service,
-            "Experiment service",
-        )
-
-    @property
-    def distributed_task_queue(self) -> JetStreamTaskQueue | None:
-        """Return the distributed task queue, or ``None`` when not wired."""
-        return self._distributed_task_queue
-
-    def set_distributed_task_queue(
-        self,
-        task_queue: JetStreamTaskQueue | None,
-    ) -> None:
-        """Attach the distributed task queue so the lifecycle can manage it.
-
-        Only set when ``queue.enabled`` is true and the ``synthorg[distributed]``
-        extra is installed. The lifecycle starts and stops the queue
-        alongside the other async services so the dispatcher observer
-        sees a connected client before any task state changes fire.
-
-        Logs the transition (attach/detach/replace) at INFO so the
-        lifecycle state of ``_distributed_task_queue`` is observable in
-        structured logs.
-        """
-        previous = self._distributed_task_queue
-        # Identity check first: assigning the same instance is a noop
-        # even when both sides are non-None, so callers that re-set
-        # the queue during idempotent rewire paths don't see a
-        # misleading "replaced" transition in logs.
-        if previous is task_queue:
-            transition = "noop"
-        elif previous is None:
-            transition = "attached"
-        elif task_queue is None:
-            transition = "detached"
-        else:
-            transition = "replaced"
-        self._distributed_task_queue = task_queue
-        logger.info(
-            API_APP_STARTUP,
-            service="distributed_task_queue",
-            transition=transition,
-        )
-
-    @property
-    def distributed_backend_services(
-        self,
-    ) -> DistributedBackendServices | None:
-        """Return the backend distributed-path bundle, or ``None``."""
-        return self._distributed_backend_services
-
-    def set_distributed_backend_services(
-        self,
-        services: DistributedBackendServices | None,
-    ) -> None:
-        """Attach the backend distributed-path service bundle.
-
-        Set only when ``queue.enabled`` is true and the distributed
-        extra is installed. The lifecycle starts it immediately after
-        the distributed task queue connects (it consumes the dead
-        subject and worker heartbeats over that connection) and stops
-        it just before the queue, mirroring the ``distributed_task_queue``
-        seam so there is exactly one extra handle to manage.
-        """
-        previous = self._distributed_backend_services
-        if previous is services:
-            transition = "noop"
-        elif previous is None:
-            transition = "attached"
-        elif services is None:
-            transition = "detached"
-        else:
-            transition = "replaced"
-        self._distributed_backend_services = services
-        logger.info(
-            API_APP_STARTUP,
-            service="distributed_backend_services",
-            transition=transition,
-        )
-
-    @property
-    def meeting_orchestrator(self) -> MeetingOrchestrator:
-        """Return meeting orchestrator or raise 503."""
-        return self._require_service(
-            self._meeting_orchestrator,
-            "meeting_orchestrator",
-        )
-
-    @property
-    def meeting_scheduler(self) -> MeetingScheduler:
-        """Return meeting scheduler or raise 503."""
-        return self._require_service(
-            self._meeting_scheduler,
-            "meeting_scheduler",
-        )
-
-    @property
-    def ceremony_scheduler(self) -> CeremonyScheduler | None:
-        """Return ceremony scheduler, or None if not configured."""
-        return self._ceremony_scheduler
-
-    @property
-    def approval_gate(self) -> ApprovalGate | None:
-        """Return approval gate, or None if not configured."""
-        return self._approval_gate
-
-    def set_approval_gate(self, gate: ApprovalGate) -> None:
-        """Wire the single boot ApprovalGate (once-only).
-
-        Constructed in ``lifecycle_builder`` once persistence is
-        connected and shared by both governance sides: the engine
-        (park, injected via ``runtime_builder``) and the ``/approvals``
-        controller (resume, read via :attr:`approval_gate`). One gate
-        over one ``ParkedContextRepository`` is the invariant that lets
-        a parked context actually resume.
-        """
-        self._set_once("_approval_gate", gate, "Approval gate")
-
-    @property
-    def event_stream_hub(self) -> EventStreamHub | None:
-        """Return event stream hub, or None if not configured."""
-        return self._event_stream_hub
-
-    @property
-    def interrupt_store(self) -> InterruptStore | None:
-        """Return interrupt store, or None if not configured."""
-        return self._interrupt_store
-
-    @property
-    def review_gate_service(self) -> ReviewGateService | None:
-        """Return review gate service, or None if not configured."""
-        return self._review_gate_service
-
-    def set_review_gate_service(self, service: ReviewGateService) -> None:
-        """Attach the review gate service (once-only)."""
-        self._set_once("_review_gate_service", service, "Review gate service")
-
-    @property
-    def toolsmith_service(self) -> ToolsmithService | None:
-        """Return the self-extending-toolkit service, or None if not wired."""
-        return self._toolsmith_service
-
-    def set_toolsmith_service(self, service: ToolsmithService) -> None:
-        """Attach the toolsmith service (once-only)."""
-        self._set_once("_toolsmith_service", service, "Toolsmith service")
-
-    @property
-    def scaling_service(self) -> ScalingService | None:
-        """Return scaling service, or None if not configured."""
-        return self._scaling_service
-
-    def set_scaling_service(self, service: ScalingService) -> None:
-        """Attach the scaling service (once-only)."""
-        self._set_once("_scaling_service", service, "Scaling service")
-
-    @property
-    def has_client_simulation_state(self) -> bool:
-        """Check whether client simulation state is configured.
-
-        Always ``True`` in production: ``create_app`` default-constructs
-        a fresh ``ClientSimulationState`` so the always-registered
-        ``ClientController`` (``GET /clients``, CRUD) can serve an
-        empty profile list rather than 503ing on every dashboard poll.
-        The stricter ``has_simulation_runtime`` predicate gates the
-        controllers that actually need ``intake_engine`` /
-        ``review_pipeline``.
-        """
-        return self._client_simulation_state is not None
-
-    @property
-    def has_simulation_runtime(self) -> bool:
-        """Check whether the full simulation runtime is wired.
-
-        Requires both ``intake_engine`` and ``review_pipeline`` on the
-        attached ``ClientSimulationState``; without them the
-        ``Simulation`` and ``Request`` controllers cannot execute
-        end-to-end flows, so the optional-controller predicate keeps
-        their routes off the router and the ``/capabilities`` flag
-        reads ``False`` so the dashboard skips polling them.
-        """
-        if self._client_simulation_state is None:
-            return False
-        return (
-            self._client_simulation_state.intake_engine is not None
-            and self._client_simulation_state.review_pipeline is not None
-        )
-
-    @property
-    def client_simulation_state(self) -> ClientSimulationState:
-        """Return client simulation state or raise 503."""
-        return self._require_service(
-            self._client_simulation_state,
-            "client_simulation_state",
-        )
-
-    def set_client_simulation_state(
-        self,
-        state: ClientSimulationState,
-    ) -> None:
-        """Attach the client simulation runtime state (once-only)."""
-        self._set_once(
-            "_client_simulation_state",
-            state,
-            "Client simulation state",
-        )
-
-    @property
-    def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:
-        """Return approval timeout scheduler, or None if not configured."""
-        return self._approval_timeout_scheduler
-
-    def set_approval_timeout_scheduler(
-        self,
-        scheduler: ApprovalTimeoutScheduler,
-    ) -> None:
-        """Attach the approval timeout scheduler (once-only)."""
-        self._set_once(
-            "_approval_timeout_scheduler",
-            scheduler,
-            "Approval timeout scheduler",
-        )
-
-    @property
-    def coordinator(self) -> MultiAgentCoordinator:
-        """Return coordinator or raise 503."""
-        return self._require_service(self._coordinator, "coordinator")
-
-    @property
-    def has_coordinator(self) -> bool:
-        """Check whether the coordinator is configured.
-
-        Unsynchronised by design: a single reference read is atomic
-        under CPython and ``swap_coordinator`` only ever reassigns one
-        already-set coordinator for another, so a concurrent reader sees
-        a consistent old-or-new instance (both non-None). The only
-        ``None -> set`` flip happens once at boot before HTTP traffic.
-        Locking this hot read (the ``/coordinate`` gate calls it per
-        request) would add cost for a benign snapshot.
-        """
-        return self._coordinator is not None
-
-    def set_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
-        """Attach the multi-agent coordinator (once-only, boot only).
-
-        Once-only: a second set raises, matching the
-        ``worker_execution_service`` seam. The boot runtime-services
-        hook uses :meth:`set_coordinator_if_absent` instead so an
-        explicitly injected coordinator wins; this strict variant is
-        retained for callers that require the once-only guarantee.
-        Hot-reload after setup uses :meth:`swap_coordinator`.
-        """
-        self._set_once("_coordinator", coordinator, "Coordinator")
+        self.wire(RuntimeStateSlice, worker_execution_service=service)
 
     def set_coordinator_if_absent(
         self,
         coordinator: MultiAgentCoordinator,
-    ) -> bool:
-        """Attach the coordinator only if none is configured (atomic).
+    ) -> None:
+        """Install the coordinator only if one is not already wired."""
+        from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-        The boot runtime-services hook calls this unconditionally behind
-        the provider-present switch, so ``/coordinate`` stops returning
-        503 once a provider is configured. An explicitly injected
-        coordinator (constructor ``coordinator=``) is already set and
-        wins: this is a logged no-op then. The check-and-set is atomic
-        under ``_lazy_service_lock`` so the boot install cannot race a
-        concurrent ``swap_coordinator`` or property read (eliminating the
-        former check-then-act at the call site).
-
-        Returns:
-            ``True`` if this call installed the coordinator, ``False``
-            if one was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._coordinator is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="coordinator",
-                    transition="skipped_injected",
-                )
-                return False
-            self._coordinator = coordinator
-            logger.info(
-                API_APP_STARTUP,
-                service="coordinator",
-                transition="attached",
-            )
-            return True
+        if self.slice(RuntimeStateSlice).coordinator is None:
+            self.wire(RuntimeStateSlice, coordinator=coordinator)
 
     def swap_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
-        """Replace the coordinator (hot-reload).
+        """Hot-replace the multi-agent coordinator (setup-complete reinit)."""
+        from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_coordinator`, which is once-only: this
-        replaces an already-wired coordinator so a provider configured
-        against an empty-company start brings ``/coordinate`` online
-        without a restart (``post_setup_reinit``). Holds
-        ``_lazy_service_lock`` so the write is synchronised against
-        concurrent property reads, mirroring
-        :meth:`swap_worker_execution_service`.
-        """
-        with self._lazy_service_lock:
-            previous = self._coordinator
-            if previous is coordinator:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._coordinator = coordinator
-            logger.info(
-                API_APP_STARTUP,
-                service="coordinator",
-                transition=transition,
-            )
+        self.wire(RuntimeStateSlice, coordinator=coordinator)
 
-    # ── Mission-control cockpit services ────────────────────────────
+    def set_work_pipeline_if_absent(self, work_pipeline: WorkPipeline) -> None:
+        """Install the work-pipeline spine only if not already wired."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-    @property
-    def cockpit_service(self) -> CockpitService:
-        """Live-activity cockpit service, or raise 503."""
-        return self._require_service(self._cockpit_service, "cockpit_service")
-
-    @property
-    def has_cockpit_service(self) -> bool:
-        """Whether the cockpit service is wired."""
-        return self._cockpit_service is not None
-
-    @property
-    def flight_recorder_service(self) -> FlightRecorderService:
-        """Flight-recorder query/seek service, or raise 503."""
-        return self._require_service(
-            self._flight_recorder_service,
-            "flight_recorder_service",
-        )
-
-    @property
-    def has_flight_recorder_service(self) -> bool:
-        """Whether the flight-recorder service is wired."""
-        return self._flight_recorder_service is not None
-
-    @property
-    def steering_directive(self) -> SteeringDirective:
-        """Cockpit steering directive, or raise 503."""
-        return self._require_service(self._steering_directive, "steering_directive")
-
-    @property
-    def has_steering_directive(self) -> bool:
-        """Whether the steering directive is wired."""
-        return self._steering_directive is not None
-
-    def set_cockpit_services(
-        self,
-        *,
-        cockpit_service: CockpitService,
-        flight_recorder_service: FlightRecorderService,
-        steering_directive: SteeringDirective,
-    ) -> None:
-        """Attach (or hot-swap) the cockpit services at boot / reinit.
-
-        Synchronised under ``_lazy_service_lock`` so the boot install is
-        consistent against concurrent property reads. Idempotent and
-        last-wins, so a transient shared-app boot or a setup-reinit can
-        re-wire without poisoning startup. Emits ``transition="noop"``
-        when every incoming service is identical to its predecessor,
-        ``"attached"`` when there was no prior service, and
-        ``"replaced"`` when at least one slot is being swapped. Matches
-        the cost-dial / provider-registry swap-seam observability.
-        """
-        with self._lazy_service_lock:
-            had_any = (
-                self._cockpit_service is not None
-                or self._flight_recorder_service is not None
-                or self._steering_directive is not None
-            )
-            unchanged = (
-                self._cockpit_service is cockpit_service
-                and self._flight_recorder_service is flight_recorder_service
-                and self._steering_directive is steering_directive
-            )
-            if not had_any:
-                transition = "attached"
-            elif unchanged:
-                transition = "noop"
-            else:
-                transition = "replaced"
-            self._cockpit_service = cockpit_service
-            self._flight_recorder_service = flight_recorder_service
-            self._steering_directive = steering_directive
-            logger.info(
-                API_APP_STARTUP,
-                service="cockpit_services",
-                transition=transition,
-            )
-
-    # ── Cost-dial services ──────────────────────────────────────────
-
-    @property
-    def cost_forecaster(self) -> CostForecaster | None:
-        """Pre-flight cost forecaster, or ``None`` when unwired."""
-        return self._cost_forecaster
-
-    @property
-    def cost_forecast_repo(self) -> CostForecastRepository | None:
-        """Durable forecast row store, or ``None`` when unwired."""
-        return self._cost_forecast_repo
-
-    @property
-    def pareto_analyzer(self) -> ParetoAnalyzer | None:
-        """Cost / quality Pareto analyzer, or ``None`` when unwired."""
-        return self._pareto_analyzer
-
-    @property
-    def benchmark_provider(self) -> BenchmarkScoreProvider | None:
-        """Benchmark score provider used by the Pareto analyzer."""
-        return self._benchmark_provider
-
-    @property
-    def budget_config(self) -> BudgetConfig | None:
-        """Live BudgetConfig snapshot, or ``None`` when unwired."""
-        return self._budget_config
-
-    def swap_cost_forecaster(self, forecaster: CostForecaster | None) -> None:
-        """Replace the cost forecaster (hot-reload). Lock-protected."""
-        with self._lazy_service_lock:
-            self._cost_forecaster = forecaster
-            logger.info(
-                API_APP_STARTUP,
-                service="cost_forecaster",
-                transition="attached" if forecaster is not None else "detached",
-            )
-
-    def swap_cost_forecast_repo(
-        self,
-        repo: CostForecastRepository | None,
-    ) -> None:
-        """Replace the cost forecast repo (hot-reload). Lock-protected."""
-        with self._lazy_service_lock:
-            self._cost_forecast_repo = repo
-            logger.info(
-                API_APP_STARTUP,
-                service="cost_forecast_repo",
-                transition="attached" if repo is not None else "detached",
-            )
-
-    def swap_pareto_analyzer(self, analyzer: ParetoAnalyzer | None) -> None:
-        """Replace the Pareto analyzer (hot-reload). Lock-protected."""
-        with self._lazy_service_lock:
-            self._pareto_analyzer = analyzer
-            logger.info(
-                API_APP_STARTUP,
-                service="pareto_analyzer",
-                transition="attached" if analyzer is not None else "detached",
-            )
-
-    def swap_benchmark_provider(
-        self,
-        provider: BenchmarkScoreProvider | None,
-    ) -> None:
-        """Replace the benchmark provider (hot-reload). Lock-protected."""
-        with self._lazy_service_lock:
-            self._benchmark_provider = provider
-            logger.info(
-                API_APP_STARTUP,
-                service="benchmark_provider",
-                transition="attached" if provider is not None else "detached",
-            )
-
-    def swap_budget_config(self, config: BudgetConfig | None) -> None:
-        """Replace the BudgetConfig snapshot (hot-reload). Lock-protected."""
-        with self._lazy_service_lock:
-            self._budget_config = config
-            logger.info(
-                API_APP_STARTUP,
-                service="budget_config",
-                transition="attached" if config is not None else "detached",
-            )
-
-    @property
-    def work_pipeline(self) -> WorkPipeline:
-        """Return the work pipeline spine or raise 503."""
-        return self._require_service(self._work_pipeline, "work_pipeline")
-
-    @property
-    def has_work_pipeline(self) -> bool:
-        """Check whether the work pipeline spine is configured.
-
-        Unsynchronised by design, identical to :meth:`has_coordinator`:
-        a single reference read is atomic under CPython and
-        ``swap_work_pipeline`` only reassigns one already-set pipeline
-        for another, so a concurrent reader sees a consistent
-        old-or-new instance. The only ``None -> set`` flip happens once
-        at boot before HTTP traffic.
-        """
-        return self._work_pipeline is not None
-
-    def set_work_pipeline(self, work_pipeline: WorkPipeline) -> None:
-        """Attach the work pipeline spine (once-only, boot only).
-
-        Once-only: a second set raises, matching the ``coordinator``
-        seam. The boot runtime-services hook uses
-        :meth:`set_work_pipeline_if_absent` so an explicitly injected
-        pipeline wins; hot-reload after setup uses
-        :meth:`swap_work_pipeline`.
-        """
-        self._set_once("_work_pipeline", work_pipeline, "Work pipeline")
-
-    def set_work_pipeline_if_absent(
-        self,
-        work_pipeline: WorkPipeline,
-    ) -> bool:
-        """Attach the work pipeline only if none is configured (atomic).
-
-        The boot runtime-services hook calls this unconditionally
-        behind the provider-present switch so work routing comes online
-        once a provider and intake are configured. An explicitly
-        injected pipeline (constructor ``work_pipeline=``) is already
-        set and wins: this is a logged no-op then. The check-and-set is
-        atomic under ``_lazy_service_lock`` so the boot install cannot
-        race a concurrent ``swap_work_pipeline`` or property read.
-
-        Returns:
-            ``True`` if this call installed the pipeline, ``False`` if
-            one was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._work_pipeline is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="work_pipeline",
-                    transition="skipped_injected",
-                )
-                return False
-            self._work_pipeline = work_pipeline
-            logger.info(
-                API_APP_STARTUP,
-                service="work_pipeline",
-                transition="attached",
-            )
-            return True
+        if self.slice(EngineStateSlice).work_pipeline is None:
+            self.wire(EngineStateSlice, work_pipeline=work_pipeline)
 
     def swap_work_pipeline(self, work_pipeline: WorkPipeline) -> None:
-        """Replace the work pipeline spine (hot-reload).
+        """Hot-replace the work-pipeline spine (setup-complete reinit)."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_work_pipeline`, which is once-only:
-        this replaces an already-wired pipeline so a provider
-        configured against an empty-company start brings the work spine
-        online without a restart (``post_setup_reinit``). Holds
-        ``_lazy_service_lock`` so the write is synchronised against
-        concurrent property reads, mirroring :meth:`swap_coordinator`.
-        """
-        with self._lazy_service_lock:
-            previous = self._work_pipeline
-            if previous is work_pipeline:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._work_pipeline = work_pipeline
-            logger.info(
-                API_APP_STARTUP,
-                service="work_pipeline",
-                transition=transition,
-            )
-
-    @property
-    def intake_entry_adapter(self) -> WorkEntryAdapter[Any]:
-        """Return the intake work-entry adapter or raise 503."""
-        return self._require_service(
-            self._intake_entry_adapter,
-            "intake_entry_adapter",
-        )
-
-    @property
-    def has_intake_entry_adapter(self) -> bool:
-        """Check whether the intake work-entry adapter is configured.
-
-        Unsynchronised by design, identical to
-        :meth:`has_work_pipeline`: a single reference read is atomic
-        under CPython and ``swap_intake_entry_adapter`` only reassigns
-        one already-set adapter for another. The only ``None -> set``
-        flip happens once at boot before HTTP traffic.
-        """
-        return self._intake_entry_adapter is not None
-
-    def set_intake_entry_adapter(
-        self,
-        intake_entry_adapter: WorkEntryAdapter[Any],
-    ) -> None:
-        """Attach the intake work-entry adapter (once-only, boot only).
-
-        Once-only: a second set raises, matching the ``work_pipeline``
-        seam. The boot runtime-services hook uses
-        :meth:`set_intake_entry_adapter_if_absent` so an explicitly
-        injected adapter wins; hot-reload after setup uses
-        :meth:`swap_intake_entry_adapter`.
-        """
-        self._set_once(
-            "_intake_entry_adapter",
-            intake_entry_adapter,
-            "Intake entry adapter",
-        )
+        self.wire(EngineStateSlice, work_pipeline=work_pipeline)
 
     def set_intake_entry_adapter_if_absent(
         self,
-        intake_entry_adapter: WorkEntryAdapter[Any],
-    ) -> bool:
-        """Attach the intake adapter only if none is configured (atomic).
-
-        The boot runtime-services hook calls this unconditionally once
-        the work pipeline is online so the real ``/requests`` entry
-        path comes up with it. An explicitly injected adapter
-        (constructor ``intake_entry_adapter=``) is already set and
-        wins: this is a logged no-op then. The check-and-set is atomic
-        under ``_lazy_service_lock`` so the boot install cannot race a
-        concurrent ``swap_intake_entry_adapter`` or property read.
-
-        Returns:
-            ``True`` if this call installed the adapter, ``False`` if
-            one was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._intake_entry_adapter is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="intake_entry_adapter",
-                    transition="skipped_injected",
-                )
-                return False
-            self._intake_entry_adapter = intake_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="intake_entry_adapter",
-                transition="attached",
-            )
-            return True
-
-    def swap_intake_entry_adapter(
-        self,
-        intake_entry_adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[Any],
     ) -> None:
-        """Replace the intake work-entry adapter (hot-reload).
+        """Install the intake entry adapter only if not already wired."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_intake_entry_adapter`, which is
-        once-only: this replaces an already-wired adapter so a
-        provider configured against an empty-company start brings the
-        real intake entry path online without a restart
-        (``post_setup_reinit``). Holds ``_lazy_service_lock`` so the
-        write is synchronised against concurrent property reads,
-        mirroring :meth:`swap_work_pipeline`.
-        """
-        with self._lazy_service_lock:
-            previous = self._intake_entry_adapter
-            if previous is intake_entry_adapter:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._intake_entry_adapter = intake_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="intake_entry_adapter",
-                transition=transition,
-            )
+        if self.slice(EngineStateSlice).intake_entry_adapter is None:
+            self.wire(EngineStateSlice, intake_entry_adapter=adapter)
 
-    @property
-    def objective_entry_adapter(self) -> WorkEntryAdapter[Any]:
-        """Return the objective work-entry adapter or raise 503."""
-        return self._require_service(
-            self._objective_entry_adapter,
-            "objective_entry_adapter",
-        )
+    def swap_intake_entry_adapter(self, adapter: WorkEntryAdapter[Any]) -> None:
+        """Hot-replace the intake entry adapter (setup-complete reinit)."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-    @property
-    def has_objective_entry_adapter(self) -> bool:
-        """Check whether the objective work-entry adapter is configured.
-
-        Unsynchronised by design, identical to
-        :meth:`has_intake_entry_adapter`: a single reference read is
-        atomic under CPython and ``swap_objective_entry_adapter``
-        only reassigns one already-set adapter for another. The only
-        ``None -> set`` flip happens once at boot before HTTP traffic.
-        """
-        return self._objective_entry_adapter is not None
-
-    def set_objective_entry_adapter(
-        self,
-        objective_entry_adapter: WorkEntryAdapter[Any],
-    ) -> None:
-        """Attach the objective work-entry adapter (once-only, boot only).
-
-        Once-only: a second set raises, matching the
-        :meth:`set_intake_entry_adapter` seam. The boot
-        runtime-services hook uses
-        :meth:`set_objective_entry_adapter_if_absent` so an
-        explicitly injected adapter wins; hot-reload after setup uses
-        :meth:`swap_objective_entry_adapter`.
-        """
-        self._set_once(
-            "_objective_entry_adapter",
-            objective_entry_adapter,
-            "Objective entry adapter",
-        )
+        self.wire(EngineStateSlice, intake_entry_adapter=adapter)
 
     def set_objective_entry_adapter_if_absent(
         self,
-        objective_entry_adapter: WorkEntryAdapter[Any],
-    ) -> bool:
-        """Attach the objective adapter only if none is configured (atomic).
+        adapter: WorkEntryAdapter[Any],
+    ) -> None:
+        """Install the objective entry adapter only if not already wired."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        The boot runtime-services hook calls this unconditionally
-        once the work pipeline is online so the real ``/objectives``
-        entry path comes up with it. An explicitly injected adapter
-        (constructor ``objective_entry_adapter=``) is already set and
-        wins: this is a logged no-op then. The check-and-set is
-        atomic under ``_lazy_service_lock`` so the boot install
-        cannot race a concurrent ``swap_objective_entry_adapter`` or
-        property read.
-
-        Returns:
-            ``True`` if this call installed the adapter, ``False`` if
-            one was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._objective_entry_adapter is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="objective_entry_adapter",
-                    transition="skipped_injected",
-                )
-                return False
-            self._objective_entry_adapter = objective_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="objective_entry_adapter",
-                transition="attached",
-            )
-            return True
-
-    @property
-    def objective_background_tasks(self) -> set[asyncio.Task[None]]:
-        """Set of in-flight objective-pipeline tasks.
-
-        The ``ObjectiveController`` adds each spawned
-        ``pipeline.submit`` task here so a strong reference outlives
-        the request handler; a ``done_callback`` discards completed
-        tasks so the set does not grow unbounded.
-        """
-        return self._objective_background_tasks
+        if self.slice(EngineStateSlice).objective_entry_adapter is None:
+            self.wire(EngineStateSlice, objective_entry_adapter=adapter)
 
     def swap_objective_entry_adapter(
         self,
-        objective_entry_adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[Any],
     ) -> None:
-        """Replace the objective work-entry adapter (hot-reload).
+        """Hot-replace the objective entry adapter (setup-complete reinit)."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_objective_entry_adapter`, which is
-        once-only: this replaces an already-wired adapter so a
-        provider configured against an empty-company start brings
-        the real objective entry path online without a restart
-        (``post_setup_reinit``). Holds ``_lazy_service_lock`` so the
-        write is synchronised against concurrent property reads,
-        mirroring :meth:`swap_intake_entry_adapter`.
-        """
-        with self._lazy_service_lock:
-            previous = self._objective_entry_adapter
-            if previous is objective_entry_adapter:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._objective_entry_adapter = objective_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="objective_entry_adapter",
-                transition=transition,
-            )
-
-    @property
-    def brownfield_entry_adapter(self) -> WorkEntryAdapter[Any]:
-        """Return the brownfield codebase-intake entry adapter or raise 503."""
-        return self._require_service(
-            self._brownfield_entry_adapter,
-            "brownfield_entry_adapter",
-        )
-
-    @property
-    def brownfield_background_tasks(self) -> set[asyncio.Task[None]]:
-        """In-flight brownfield import + analysis pipeline tasks.
-
-        The ``BrownfieldController`` adds each spawned ``adapter.submit``
-        task here so a strong reference outlives the request handler; a
-        ``done_callback`` discards completed tasks so the set is bounded.
-        """
-        return self._brownfield_background_tasks
-
-    @property
-    def has_brownfield_entry_adapter(self) -> bool:
-        """Check whether the brownfield entry adapter is configured.
-
-        Unsynchronised by design, identical to
-        :meth:`has_objective_entry_adapter`: a single reference read is
-        atomic under CPython and the only ``None -> set`` flip happens
-        once at boot before HTTP traffic.
-        """
-        return self._brownfield_entry_adapter is not None
+        self.wire(EngineStateSlice, objective_entry_adapter=adapter)
 
     def set_brownfield_entry_adapter_if_absent(
         self,
-        brownfield_entry_adapter: WorkEntryAdapter[Any],
-    ) -> bool:
-        """Attach the brownfield adapter only if none is configured (atomic).
+        adapter: WorkEntryAdapter[Any],
+    ) -> None:
+        """Install the brownfield entry adapter only if not already wired."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Returns:
-            ``True`` if this call installed the adapter, ``False`` if one
-            was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._brownfield_entry_adapter is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="brownfield_entry_adapter",
-                    transition="skipped_injected",
-                )
-                return False
-            self._brownfield_entry_adapter = brownfield_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="brownfield_entry_adapter",
-                transition="attached",
-            )
-            return True
+        if self.slice(EngineStateSlice).brownfield_entry_adapter is None:
+            self.wire(EngineStateSlice, brownfield_entry_adapter=adapter)
 
     def swap_brownfield_entry_adapter(
         self,
-        brownfield_entry_adapter: WorkEntryAdapter[Any],
+        adapter: WorkEntryAdapter[Any],
     ) -> None:
-        """Replace the brownfield entry adapter (hot-reload after setup).
+        """Hot-replace the brownfield entry adapter (setup-complete reinit)."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Holds ``_lazy_service_lock`` so the write is synchronised against
-        concurrent property reads, mirroring
-        :meth:`swap_objective_entry_adapter`.
-        """
-        with self._lazy_service_lock:
-            previous = self._brownfield_entry_adapter
-            if previous is brownfield_entry_adapter:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._brownfield_entry_adapter = brownfield_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="brownfield_entry_adapter",
-                transition=transition,
-            )
-
-    @property
-    def task_board_entry_adapter(self) -> TaskBoardEntryAdapter:
-        """Return the task-board work-entry adapter or raise 503."""
-        return self._require_service(
-            self._task_board_entry_adapter,
-            "task_board_entry_adapter",
-        )
-
-    @property
-    def has_task_board_entry_adapter(self) -> bool:
-        """Check whether the task-board work-entry adapter is configured.
-
-        Unsynchronised by design, identical to
-        :meth:`has_intake_entry_adapter`: a single reference read is
-        atomic under CPython and ``swap_task_board_entry_adapter`` only
-        reassigns one already-set adapter for another. The only
-        ``None -> set`` flip happens once at boot before HTTP traffic.
-        """
-        return self._task_board_entry_adapter is not None
-
-    def set_task_board_entry_adapter(
-        self,
-        task_board_entry_adapter: TaskBoardEntryAdapter,
-    ) -> None:
-        """Attach the task-board work-entry adapter (once-only, boot only).
-
-        Once-only: a second set raises, matching the
-        ``intake_entry_adapter`` seam. The boot runtime-services hook
-        uses :meth:`set_task_board_entry_adapter_if_absent` so an
-        explicitly injected adapter wins; hot-reload after setup uses
-        :meth:`swap_task_board_entry_adapter`.
-        """
-        self._set_once(
-            "_task_board_entry_adapter",
-            task_board_entry_adapter,
-            "Task-board entry adapter",
-        )
+        self.wire(EngineStateSlice, brownfield_entry_adapter=adapter)
 
     def set_task_board_entry_adapter_if_absent(
         self,
-        task_board_entry_adapter: TaskBoardEntryAdapter,
-    ) -> bool:
-        """Attach the task-board adapter only if none is configured (atomic).
+        adapter: TaskBoardEntryAdapter,
+    ) -> None:
+        """Install the task-board entry adapter only if not already wired."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        The boot runtime-services hook calls this unconditionally once
-        the work pipeline is online so the real ``POST /tasks`` entry
-        path comes up with it. An explicitly injected adapter
-        (constructor ``task_board_entry_adapter=``) is already set and
-        wins: this is a logged no-op then. The check-and-set is atomic
-        under ``_lazy_service_lock`` so the boot install cannot race a
-        concurrent ``swap_task_board_entry_adapter`` or property read.
-
-        Returns:
-            ``True`` if this call installed the adapter, ``False`` if
-            one was already configured (injected) and kept.
-        """
-        with self._lazy_service_lock:
-            if self._task_board_entry_adapter is not None:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="task_board_entry_adapter",
-                    transition="skipped_injected",
-                )
-                return False
-            self._task_board_entry_adapter = task_board_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="task_board_entry_adapter",
-                transition="attached",
-            )
-            return True
+        if self.slice(EngineStateSlice).task_board_entry_adapter is None:
+            self.wire(EngineStateSlice, task_board_entry_adapter=adapter)
 
     def swap_task_board_entry_adapter(
         self,
-        task_board_entry_adapter: TaskBoardEntryAdapter,
+        adapter: TaskBoardEntryAdapter,
     ) -> None:
-        """Replace the task-board work-entry adapter (hot-reload).
+        """Hot-replace the task-board entry adapter (setup-complete reinit)."""
+        from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        Distinct from :meth:`set_task_board_entry_adapter`, which is
-        once-only: this replaces an already-wired adapter so a provider
-        configured against an empty-company start brings the real board
-        entry path online without a restart (``post_setup_reinit``).
-        Holds ``_lazy_service_lock`` so the write is synchronised
-        against concurrent property reads, mirroring
-        :meth:`swap_intake_entry_adapter`.
+        self.wire(EngineStateSlice, task_board_entry_adapter=adapter)
+
+    def swap_notification_dispatcher(
+        self,
+        dispatcher: NotificationDispatcher,
+    ) -> NotificationDispatcher | None:
+        """Hot-replace the notification dispatcher, returning the previous.
+
+        The caller (bridge-config apply) awaits ``aclose()`` on the
+        returned previous dispatcher to release its HTTP-bearing sinks.
+
+        Returns:
+            The dispatcher previously wired, or ``None`` on first install.
         """
-        with self._lazy_service_lock:
-            previous = self._task_board_entry_adapter
-            if previous is task_board_entry_adapter:
-                transition = "noop"
-            elif previous is None:
-                transition = "attached"
-            else:
-                transition = "replaced"
-            self._task_board_entry_adapter = task_board_entry_adapter
-            logger.info(
-                API_APP_STARTUP,
-                service="task_board_entry_adapter",
-                transition=transition,
-            )
-
-    @property
-    def performance_tracker(self) -> PerformanceTracker:
-        """Return performance tracker or raise 503."""
-        return self._require_service(
-            self._performance_tracker,
-            "performance_tracker",
+        from synthorg.notifications.state import (  # noqa: PLC0415
+            NotificationsStateSlice,
         )
 
-    @property
-    def has_performance_tracker(self) -> bool:
-        """Check whether the performance tracker is configured."""
-        return self._performance_tracker is not None
-
-    @property
-    def agent_registry(self) -> AgentRegistryService:
-        """Return agent registry or raise 503."""
-        return self._require_service(self._agent_registry, "agent_registry")
-
-    @property
-    def has_agent_registry(self) -> bool:
-        """Check whether the agent registry is configured."""
-        return self._agent_registry is not None
-
-    @property
-    def audit_log(self) -> AuditLog:
-        """Return audit log or raise 503."""
-        return self._require_service(self._audit_log, "audit_log")
-
-    @property
-    def has_audit_log(self) -> bool:
-        """Check whether the audit log is configured."""
-        return self._audit_log is not None
-
-    @property
-    def trust_service(self) -> TrustService:
-        """Return trust service or raise 503."""
-        return self._require_service(
-            self._trust_service,
-            "trust_service",
-        )
-
-    @property
-    def has_trust_service(self) -> bool:
-        """Check whether the trust service is configured."""
-        return self._trust_service is not None
-
-    @property
-    def autonomy_change_strategy(self) -> AutonomyChangeStrategy:
-        """Return the configured autonomy-change strategy or raise 503."""
-        return self._require_service(
-            self._autonomy_change_strategy,
-            "autonomy_change_strategy",
-        )
-
-    @property
-    def has_autonomy_change_strategy(self) -> bool:
-        """Check whether the autonomy-change strategy is configured."""
-        return self._autonomy_change_strategy is not None
-
-    @property
-    def has_telemetry_collector(self) -> bool:
-        """Check whether the project telemetry collector is configured."""
-        return self._telemetry_collector is not None
-
-    @property
-    def telemetry_collector(self) -> TelemetryCollector:
-        """Return project telemetry collector or raise 503."""
-        return self._require_service(
-            self._telemetry_collector,
-            "telemetry_collector",
-        )
-
-    def set_telemetry_collector(self, collector: TelemetryCollector) -> None:
-        """Attach the project telemetry collector (once-only)."""
-        self._set_once("_telemetry_collector", collector, "telemetry collector")
-
-    @property
-    def has_report_service(self) -> bool:
-        """Check whether the automated report service is configured."""
-        return self._report_service is not None
-
-    @property
-    def report_service(self) -> AutomatedReportService:
-        """Return the automated report service or raise 503."""
-        return self._require_service(self._report_service, "report_service")
-
-    def set_report_service(self, service: AutomatedReportService) -> None:
-        """Attach the automated report service (once-only)."""
-        self._set_once("_report_service", service, "report service")
-
-    @property
-    def coordination_metrics_store(self) -> CoordinationMetricsStore:
-        """Return coordination metrics store or raise 503."""
-        return self._require_service(
-            self._coordination_metrics_store,
-            "coordination_metrics_store",
-        )
-
-    @property
-    def has_coordination_metrics_store(self) -> bool:
-        """Check whether the coordination metrics store is configured."""
-        return self._coordination_metrics_store is not None
+        previous = self.slice(NotificationsStateSlice).dispatcher
+        self.wire(NotificationsStateSlice, dispatcher=dispatcher)
+        return previous

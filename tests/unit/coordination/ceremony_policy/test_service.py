@@ -27,6 +27,7 @@ from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
 )
+from tests._shared import make_app_state
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -62,15 +63,6 @@ class _FakeScheduler:
         return self._strategy, self._sprint
 
 
-class _FakeAppState:
-    def __init__(
-        self,
-        *,
-        scheduler: _FakeScheduler | None = None,
-    ) -> None:
-        self.ceremony_scheduler = scheduler
-
-
 class TestGetPolicy:
     async def test_delegates_to_resolver(
         self,
@@ -88,7 +80,7 @@ class TestGetPolicy:
             _fake_fetch,
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(),  # type: ignore[arg-type]
+            app_state=make_app_state(),
         )
 
         result = await service.get_policy()
@@ -144,7 +136,7 @@ class TestGetResolvedPolicy:
             _fake_build,
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(),  # type: ignore[arg-type]
+            app_state=make_app_state(),
         )
 
         result = await service.get_resolved_policy()
@@ -216,7 +208,7 @@ class TestGetResolvedPolicy:
             _fake_build,
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(),  # type: ignore[arg-type]
+            app_state=make_app_state(),
         )
 
         result = await service.get_resolved_policy(
@@ -268,7 +260,7 @@ class TestGetResolvedPolicyDepartmentNotFound:
             _fake_dept,
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(),  # type: ignore[arg-type]
+            app_state=make_app_state(),
         )
 
         with pytest.raises(NotFoundError, match="not found"):
@@ -280,7 +272,7 @@ class TestGetResolvedPolicyDepartmentNotFound:
 class TestGetActiveStrategy:
     async def test_no_scheduler(self) -> None:
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(scheduler=None),  # type: ignore[arg-type]
+            app_state=make_app_state(ceremony_scheduler=None),
         )
 
         result = await service.get_active_strategy()
@@ -292,7 +284,7 @@ class TestGetActiveStrategy:
     async def test_not_running(self) -> None:
         scheduler = _FakeScheduler(running=False)
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(scheduler=scheduler),  # type: ignore[arg-type]
+            app_state=make_app_state(ceremony_scheduler=scheduler),
         )
 
         result = await service.get_active_strategy()
@@ -307,7 +299,7 @@ class TestGetActiveStrategy:
             sprint_id="sprint-42",
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(scheduler=scheduler),  # type: ignore[arg-type]
+            app_state=make_app_state(ceremony_scheduler=scheduler),
         )
 
         result = await service.get_active_strategy()
@@ -322,7 +314,7 @@ class TestGetActiveStrategy:
             sprint_id=None,
         )
         service = CeremonyPolicyService(
-            app_state=_FakeAppState(scheduler=scheduler),  # type: ignore[arg-type]
+            app_state=make_app_state(ceremony_scheduler=scheduler),
         )
 
         result = await service.get_active_strategy()

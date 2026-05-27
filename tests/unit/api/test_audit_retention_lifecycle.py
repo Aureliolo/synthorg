@@ -28,6 +28,7 @@ from synthorg.api.lifecycle_helpers.config_apply import (
 )
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from tests._shared import make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 _APPROVAL_CRITICAL = "approval_urgency_critical_seconds"
@@ -76,18 +77,16 @@ async def _make_app_state(
     persistence: FakePersistenceBackend | None = None,
     resolver: _FakeConfigResolver | None = None,
 ) -> AppState:
-    state = AppState(
+    # The fake resolver flows through ``wire``'s non-validating
+    # ``model_copy(update=...)``, so the focused stub (three scalar
+    # accessors) lands on the settings slice without a full
+    # ``ConfigResolver``; ``config_resolver_of`` returns it unchanged.
+    return make_app_state(
         config=RootConfig(company_name="test-company"),
         approval_store=ApprovalStore(),
         persistence=persistence,
+        config_resolver=resolver,
     )
-    if resolver is not None:
-        # ``_config_resolver`` is the only slot exposed via
-        # ``AppState.has_config_resolver`` + ``.config_resolver``;
-        # setting it directly keeps the fake resolver focused on the
-        # three scalar accessors the lifecycle helpers actually use.
-        state._config_resolver = resolver  # type: ignore[assignment]
-    return state
 
 
 @pytest.mark.unit

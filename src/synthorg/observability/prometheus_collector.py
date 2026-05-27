@@ -24,7 +24,10 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.state import EngineStateSlice, task_engine_of
+from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
@@ -43,6 +46,8 @@ from synthorg.observability.prometheus_recording import RecordingMixin
 from synthorg.observability.prometheus_recording_streams import (
     StreamRecordingMixin,
 )
+from synthorg.organization.state import OrganizationStateSlice
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -76,7 +81,7 @@ async def _fetch_workflow_definitions(
     so the merge step keeps the previous allowlist.
     """
     try:
-        persistence = getattr(app_state, "persistence", None)
+        persistence = app_state.slice(PersistenceStateSlice).backend
         wf_repo = getattr(persistence, "workflow_definitions", None)
         if wf_repo is None:
             return frozenset()
@@ -115,7 +120,7 @@ async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
     allowlist.
     """
     try:
-        dept_service = getattr(app_state, "department_service", None)
+        dept_service = app_state.slice(OrganizationStateSlice).department_service
         if dept_service is None:
             return frozenset()
         records, _ = await dept_service.list_departments()
@@ -326,13 +331,13 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             second=0,
             microsecond=0,
         )
-        if app_state.has_cost_tracker:
+        if app_state.slice(BudgetStateSlice).cost_tracker is not None:
             try:
-                total_cost = await app_state.cost_tracker.get_total_cost()
-                daily_cost = await app_state.cost_tracker.get_total_cost(
+                total_cost = await cost_tracker_of(app_state).get_total_cost()
+                daily_cost = await cost_tracker_of(app_state).get_total_cost(
                     start=utc_midnight,
                 )
-                tracker = app_state.cost_tracker
+                tracker = cost_tracker_of(app_state)
                 reset_day = (
                     tracker.budget_config.reset_day
                     if tracker.budget_config is not None
@@ -380,9 +385,9 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         yet connected; the pool's ``get_stats`` snapshot is the
         authoritative source for ``pool_size`` and ``pool_available``.
         """
-        if not app_state.has_persistence:
+        if app_state.slice(PersistenceStateSlice).backend is None:
             return
-        backend = app_state.persistence
+        backend = persistence_of(app_state)
         if backend.kind != "postgres":
             return
         pool = getattr(backend, "_pool", None)
@@ -504,12 +509,12 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 current billing period (month start), or ``None``
                 if unavailable.
         """
-        if not app_state.has_cost_tracker:
+        if app_state.slice(BudgetStateSlice).cost_tracker is None:
             self._budget_used_percent.set(0.0)
             self._budget_monthly_cost.set(0.0)
             return
         try:
-            tracker = app_state.cost_tracker
+            tracker = cost_tracker_of(app_state)
             if tracker.budget_config is None:
                 self._budget_used_percent.set(0.0)
                 self._budget_monthly_cost.set(0.0)
@@ -553,11 +558,11 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             utc_midnight: Start of the current UTC day, used to derive
                 the billing period boundaries for prorated budget.
         """
-        if not app_state.has_cost_tracker or daily_cost is None:
+        if app_state.slice(BudgetStateSlice).cost_tracker is None or daily_cost is None:
             self._budget_daily_used_percent.set(0.0)
             return
         try:
-            tracker = app_state.cost_tracker
+            tracker = cost_tracker_of(app_state)
             if tracker.budget_config is None:
                 self._budget_daily_used_percent.set(0.0)
                 return
@@ -620,14 +625,14 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             workflow / department fetchers in
             :meth:`_rebuild_label_snapshot`.
         """
-        if not app_state.has_agent_registry:
+        if app_state.slice(HrStateSlice).agent_registry is None:
             # No registry means there are no agents to report; clear
             # so a previously-populated gauge family doesn't keep
             # phantom labels alive after the registry is removed.
             self._agents_total.clear()
             return ()
         try:
-            agents = await app_state.agent_registry.list_active()
+            agents = await agent_registry_of(app_state).list_active()
         except Exception as exc:
             reraise_critical(exc)
             # Keep the prior gauge values intact so the dashboard
@@ -674,10 +679,10 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         """
         self._agent_cost_total.clear()
         self._agent_budget_used_percent.clear()
-        if not agents or not app_state.has_cost_tracker:
+        if not agents or app_state.slice(BudgetStateSlice).cost_tracker is None:
             return
         try:
-            tracker = app_state.cost_tracker
+            tracker = cost_tracker_of(app_state)
             budget_cfg = tracker.budget_config
             per_agent_limit = (
                 budget_cfg.per_agent_daily_limit
@@ -730,10 +735,10 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         preserved under the empty-string label as before.
         """
         self._tasks_total.clear()
-        if not app_state.has_task_engine:
+        if app_state.slice(EngineStateSlice).task_engine is None:
             return
         try:
-            tasks, _ = await app_state.task_engine.list_tasks()
+            tasks, _ = await task_engine_of(app_state).list_tasks()
             counts: Counter[tuple[str, str]] = Counter()
             # De-duplicate the orphan-agent WARN per scrape: many
             # tasks can share the same stale ``assigned_to``, and

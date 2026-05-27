@@ -1,0 +1,164 @@
+"""Api-core feature state slice.
+
+Holds the cross-cutting API services that belong to no single domain
+feature: the opaque-pagination cursor secret, the auth service, the
+session / lockout / refresh-token stores, the WebSocket ticket store,
+the user-presence tracker, the org-mutation service, the workflow
+rollback service, and the idempotency service. The cursor secret and
+auth service are wired in ``create_app``; the persistence-backed
+auth stores and services are wired once persistence is connected. All
+fields are ``None`` until wired; readers pass them through
+``require_service`` to surface a clean 503 before that.
+
+The mutable coordination primitives that ``AppState`` still owns
+directly (request locks, bridge-config snapshots, shutdown event,
+background-task sets) are not slice fields: a frozen slice cannot host
+in-place-mutated state.
+"""
+
+from typing import TYPE_CHECKING
+
+from pydantic import ConfigDict
+
+from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.api.auth.presence import UserPresence  # noqa: TC001
+from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.ticket_store import WsTicketStore  # noqa: TC001
+from synthorg.api.cursor import CursorSecret  # noqa: TC001
+from synthorg.api.services.idempotency_service import (
+    IdempotencyService,
+)
+from synthorg.api.services.org_mutations import OrgMutationService  # noqa: TC001
+from synthorg.api.services.workflow_rollback_service import (
+    WorkflowRollbackService,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    LockoutRepository as LockoutStore,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    RefreshTokenRepository as RefreshStore,  # noqa: TC001
+)
+from synthorg.persistence.auth_protocol import (
+    SessionRepository as SessionStore,  # noqa: TC001
+)
+
+if TYPE_CHECKING:
+    from synthorg.api.state_slices import AppStateSliceMixin
+
+
+class ApiCoreStateSlice(BaseFeatureStateSlice):
+    """Application-state slice for cross-cutting API-core services."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cursor_secret: CursorSecret | None = None
+    auth_service: AuthService | None = None
+    session_store: SessionStore | None = None
+    lockout_store: LockoutStore | None = None
+    refresh_store: RefreshStore | None = None
+    ticket_store: WsTicketStore | None = None
+    user_presence: UserPresence | None = None
+    org_mutation_service: OrgMutationService | None = None
+    workflow_rollback_service: WorkflowRollbackService | None = None
+    idempotency_service: IdempotencyService | None = None
+
+
+def auth_service_of(app_state: AppStateSliceMixin) -> AuthService:
+    """Resolve the auth service from its slice, or raise 503.
+
+    Returns:
+        The wired auth service.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).auth_service, "Auth Service"
+    )
+
+
+def org_mutation_service_of(app_state: AppStateSliceMixin) -> OrgMutationService:
+    """Resolve the org-mutation service from its slice, or raise 503.
+
+    Returns:
+        The wired org-mutation service.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).org_mutation_service,
+        "Org Mutation Service",
+    )
+
+
+def session_store_of(app_state: AppStateSliceMixin) -> SessionStore:
+    """Resolve the session store from its slice, or raise 503.
+
+    Returns:
+        The wired session store.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).session_store, "Session Store"
+    )
+
+
+def lockout_store_of(app_state: AppStateSliceMixin) -> LockoutStore:
+    """Resolve the lockout store from its slice, or raise 503.
+
+    Returns:
+        The wired lockout store.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).lockout_store, "Lockout Store"
+    )
+
+
+def refresh_store_of(app_state: AppStateSliceMixin) -> RefreshStore:
+    """Resolve the refresh-token store from its slice, or raise 503.
+
+    Returns:
+        The wired refresh-token store.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).refresh_store, "Refresh Token Store"
+    )
+
+
+def ticket_store_of(app_state: AppStateSliceMixin) -> WsTicketStore:
+    """Resolve the WebSocket ticket store from its slice, or raise 503.
+
+    Returns:
+        The wired WebSocket ticket store.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
+    )
+
+
+def workflow_rollback_service_of(
+    app_state: AppStateSliceMixin,
+) -> WorkflowRollbackService:
+    """Resolve the workflow rollback service from its slice, or raise 503.
+
+    Returns:
+        The wired workflow rollback service.
+    """
+    return require_service(
+        app_state.slice(ApiCoreStateSlice).workflow_rollback_service,
+        "Workflow Rollback Service",
+    )
+
+
+def idempotency_service_of(app_state: AppStateSliceMixin) -> IdempotencyService:
+    """Resolve the idempotency service, lazily wrapping ``idempotency_keys``.
+
+    Raises a 503 (via :func:`persistence_of`) when persistence is not
+    configured: idempotency must survive restart by definition, so the
+    service has no in-memory fallback.
+
+    Returns:
+        The wired or lazily-composed idempotency service.
+    """
+    existing = app_state.slice(ApiCoreStateSlice).idempotency_service
+    if existing is not None:
+        return existing
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    service = IdempotencyService(persistence_of(app_state).idempotency_keys)
+    app_state.wire(ApiCoreStateSlice, idempotency_service=service)
+    return service

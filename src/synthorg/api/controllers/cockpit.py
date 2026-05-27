@@ -13,19 +13,27 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_countless_seek_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    encode_countless_seek_meta,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import InterventionKind, TaskStatus
 from synthorg.core.task import Task  # noqa: TC001 -- response field type
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.cockpit import LiveActivitySnapshot  # noqa: TC001
+from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.flight_recording import ReplaySeekView  # noqa: TC001
 from synthorg.engine.intervention import SteeringOutcome  # noqa: TC001
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (
     COCKPIT_INTERVENTION_APPLIED,
@@ -34,6 +42,7 @@ from synthorg.observability.events.cockpit import (
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
 )
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -93,14 +102,17 @@ class CockpitController(Controller):
             ``ApiResponse[LiveActivitySnapshot]`` instance.
         """
         app_state: AppState = state.app_state
-        resolver = app_state.config_resolver
+        resolver = config_resolver_of(app_state)
         stuck_idle_minutes = await resolver.get_float(
             _COCKPIT_NS, "stuck_idle_threshold_minutes"
         )
         runaway_cost_percent = await resolver.get_float(
             _COCKPIT_NS, "runaway_cost_threshold_percent"
         )
-        snapshot = await app_state.cockpit_service.get_live_snapshot(
+        cockpit = require_service(
+            app_state.slice(CockpitStateSlice).cockpit_service, "Cockpit Service"
+        )
+        snapshot = await cockpit.get_live_snapshot(
             stuck_idle_minutes=stuck_idle_minutes,
             runaway_cost_percent=runaway_cost_percent,
         )
@@ -129,11 +141,15 @@ class CockpitController(Controller):
         offset = (
             0
             if cursor is None
-            else decode_cursor(cursor, secret=app_state.cursor_secret)
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
         )
         # Fetch ``limit + 1`` so we can detect that another page follows
         # without paying a separate COUNT round-trip on the frames table.
-        frames = await app_state.flight_recorder_service.get_frames(
+        recorder = require_service(
+            app_state.slice(CockpitStateSlice).flight_recorder_service,
+            "Flight Recorder Service",
+        )
+        frames = await recorder.get_frames(
             execution_id,
             limit=limit + 1,
             offset=offset,
@@ -142,7 +158,7 @@ class CockpitController(Controller):
             offset=offset,
             fetched_rows=len(frames),
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         window = tuple(frames[:limit])
         return PaginatedResponse[FlightRecorderFrame](data=window, pagination=meta)
@@ -160,7 +176,11 @@ class CockpitController(Controller):
             ``ApiResponse[ReplaySeekView]`` instance.
         """
         app_state: AppState = state.app_state
-        view = await app_state.flight_recorder_service.seek(execution_id, turn_index)
+        recorder = require_service(
+            app_state.slice(CockpitStateSlice).flight_recorder_service,
+            "Flight Recorder Service",
+        )
+        view = await recorder.seek(execution_id, turn_index)
         return ApiResponse(data=view)
 
     @post("/interventions/pause", guards=[require_write_access])
@@ -180,7 +200,9 @@ class CockpitController(Controller):
             intervention_kind=InterventionKind.PAUSE.value,
             task_id=data.task_id,
         )
-        task, _from = await app_state.task_engine.transition_task(
+        task, _from = await require_service(
+            app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+        ).transition_task(
             data.task_id,
             TaskStatus.INTERRUPTED,
             requested_by=_OPERATOR,
@@ -210,7 +232,9 @@ class CockpitController(Controller):
             intervention_kind=InterventionKind.KILL.value,
             task_id=data.task_id,
         )
-        task, _prior = await app_state.task_engine.cancel_task(
+        task, _prior = await require_service(
+            app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+        ).cancel_task(
             data.task_id,
             requested_by=_OPERATOR,
             reason=data.reason,
@@ -275,7 +299,10 @@ class CockpitController(Controller):
             execution_id=data.execution_id,
             agent_id=data.agent_id,
         )
-        outcome = await app_state.steering_directive.steer(
+        steering = require_service(
+            app_state.slice(CockpitStateSlice).steering_directive, "Steering Directive"
+        )
+        outcome = await steering.steer(
             kind=kind,
             execution_id=data.execution_id,
             agent_id=data.agent_id,

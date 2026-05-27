@@ -13,6 +13,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_repo_seek_meta,
 )
 from synthorg.core.domain_errors import NotFoundError
@@ -22,6 +23,7 @@ from synthorg.observability.events.versioning import (
     VERSION_LISTED,
     VERSION_NOT_FOUND,
 )
+from synthorg.persistence.state import persistence_of
 from synthorg.versioning import VersionSnapshot
 
 logger = get_logger(__name__)
@@ -51,9 +53,9 @@ class EvaluationConfigVersionController(Controller):
         Returns:
             ``Response[PaginatedResponse[SnapshotT]]`` instance.
         """
-        secret = state.app_state.cursor_secret
+        secret = cursor_secret_of(state.app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        repo = state.app_state.persistence.evaluation_config_versions
+        repo = persistence_of(state.app_state).evaluation_config_versions
         versions, total = await asyncio.gather(
             repo.list_versions(_ENTITY_ID, limit=limit, offset=offset),
             repo.count_versions(_ENTITY_ID),
@@ -101,7 +103,7 @@ class EvaluationConfigVersionController(Controller):
         Raises:
             NotFoundError: Raised on the corresponding failure path.
         """
-        repo = state.app_state.persistence.evaluation_config_versions
+        repo = persistence_of(state.app_state).evaluation_config_versions
         version = await repo.get_version(_ENTITY_ID, version_num)
         if version is None:
             logger.warning(

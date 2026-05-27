@@ -1,14 +1,20 @@
 """Tests for AuthController endpoints."""
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import jwt
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    auth_service_of,
+    ticket_store_of,
+)
 from synthorg.core.auth.roles import HumanRole
+from synthorg.persistence.state import persistence_of
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 
 
@@ -41,7 +47,7 @@ def _extract_auth_cookies(response: Any) -> dict[str, str]:
 class TestSetup:
     def test_setup_creates_admin(self, bare_client: TestClient[Any]) -> None:
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -73,7 +79,7 @@ class TestSetup:
         from synthorg.core.auth.roles import HumanRole
 
         app_state = bare_client.app.state["app_state"]
-        svc: AuthService = app_state.auth_service
+        svc: AuthService = auth_service_of(app_state)
         now = datetime.now(UTC)
         user = User(
             id=str(uuid.uuid4()),
@@ -84,7 +90,7 @@ class TestSetup:
             created_at=now,
             updated_at=now,
         )
-        app_state.persistence._users._users[user.id] = user
+        cast(Any, persistence_of(app_state))._users._users[user.id] = user
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -97,7 +103,7 @@ class TestSetup:
 
     def test_setup_short_password_rejected(self, bare_client: TestClient[Any]) -> None:
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -110,7 +116,7 @@ class TestSetup:
 class TestLogin:
     def test_login_valid_credentials(self, bare_client: TestClient[Any]) -> None:
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         bare_client.post(
             "/api/v1/auth/setup",
@@ -159,7 +165,7 @@ class TestLogin:
 class TestChangePassword:
     def test_change_password_success(self, bare_client: TestClient[Any]) -> None:
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         setup_resp = bare_client.post(
             "/api/v1/auth/setup",
@@ -214,7 +220,7 @@ class TestChangePassword:
         bare_client: TestClient[Any],
     ) -> None:
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         setup_resp = bare_client.post(
             "/api/v1/auth/setup",
@@ -409,12 +415,12 @@ class TestWsTicket:
         ticket = data["ticket"]
 
         app_state = test_client.app.state["app_state"]
-        user = app_state.ticket_store.validate_and_consume(ticket)
+        user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method.value == "ws_ticket"
 
         # Single-use: second consume fails
-        assert app_state.ticket_store.validate_and_consume(ticket) is None
+        assert ticket_store_of(app_state).validate_and_consume(ticket) is None
 
 
 @pytest.mark.unit
@@ -437,7 +443,7 @@ class TestSystemUserBlocking:
         # Seed a system user via the public save() API
         app_state = bare_client.app.state["app_state"]
         now = datetime.now(UTC)
-        svc = app_state.auth_service
+        svc = auth_service_of(app_state)
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
@@ -450,7 +456,7 @@ class TestSystemUserBlocking:
             updated_at=now,
         )
         # Use internal dict because save() is async and this is a sync test
-        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
 
         response = bare_client.post(
             "/api/v1/auth/login",
@@ -479,7 +485,7 @@ class TestSystemUserBlocking:
         # Explicitly seed the system user so the test is self-contained
         app_state = bare_client.app.state["app_state"]
         now = datetime.now(UTC)
-        svc = app_state.auth_service
+        svc = auth_service_of(app_state)
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
@@ -491,7 +497,7 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
 
         # Build a CLI-style JWT with iss + aud (required by middleware)
         token = pyjwt.encode(
@@ -532,7 +538,7 @@ class TestSystemUserBlocking:
 
         app_state = bare_client.app.state["app_state"]
         # Clear all users, then add only the system user
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
         now = datetime.now(UTC)
         system_user = User(
             id=SYSTEM_USER_ID,
@@ -543,7 +549,7 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+        cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -560,7 +566,7 @@ class TestSystemUserBlocking:
     ) -> None:
         """Setup rejects the reserved 'system' username with 409."""
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -581,7 +587,7 @@ class TestSystemUserBlocking:
         from synthorg.core.auth.models import User
 
         app_state = bare_client.app.state["app_state"]
-        app_state.persistence._users._users.clear()
+        cast(Any, persistence_of(app_state))._users._users.clear()
         now = datetime.now(UTC)
         observer = User(
             id="observer-001",
@@ -592,7 +598,7 @@ class TestSystemUserBlocking:
             created_at=now,
             updated_at=now,
         )
-        app_state.persistence._users._users["observer-001"] = observer
+        cast(Any, persistence_of(app_state))._users._users["observer-001"] = observer
 
         response = bare_client.post(
             "/api/v1/auth/setup",
@@ -666,17 +672,17 @@ class TestLogoutIdempotency:
         """Attach a minimal mock session store exposing ``revoke``.
 
         The ``bare_client`` shared fixture runs against a persistence
-        backend that doesn't expose a raw DB, so ``has_session_store``
-        is ``False`` by default.  Spoof it with a namespace whose
-        ``revoke`` is the spy we want to observe.
+        backend that doesn't expose a raw DB, so the session store is
+        unwired by default.  Wire a namespace whose ``revoke`` is the
+        spy into the api-core slice; ``setitem`` restores the original
+        slice at test teardown.
         """
         from types import SimpleNamespace
 
-        monkeypatch.setattr(
-            app_state,
-            "_session_store",
-            SimpleNamespace(revoke=revoke_spy),
+        spied = app_state.slice(ApiCoreStateSlice).model_copy(
+            update={"session_store": SimpleNamespace(revoke=revoke_spy)},
         )
+        monkeypatch.setitem(app_state._slices, ApiCoreStateSlice, spied)
 
     def test_logout_with_valid_auth_returns_204_and_revokes_session(
         self,

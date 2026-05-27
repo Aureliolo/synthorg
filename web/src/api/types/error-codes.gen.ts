@@ -124,6 +124,7 @@ export const ErrorCode = {
     RESEARCH_RETRIEVAL_ERROR: 8027,
     RESEARCH_SYNTHESIS_ERROR: 8028,
     RESEARCH_UNAVAILABLE: 8029,
+    FEATURE_DEPENDENCY_ERROR: 8030,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

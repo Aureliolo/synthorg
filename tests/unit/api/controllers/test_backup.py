@@ -14,6 +14,7 @@ import pytest
 from litestar.exceptions import InternalServerException
 from litestar.testing import TestClient
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -21,7 +22,6 @@ from synthorg.api.services.idempotency_service import (
     IdempotencyResult,
     IdempotencyService,
 )
-from synthorg.api.state import AppState
 from synthorg.backup.errors import (
     BackupInProgressError,
     BackupNotFoundError,
@@ -36,7 +36,9 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 from synthorg.backup.service import BackupService
+from synthorg.backup.state import BackupStateSlice
 from synthorg.core.domain_errors import ConflictError, ValidationError
+from tests._shared import make_app_state
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -78,13 +80,9 @@ def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
         Tuple of (mock_state, mock_backup_service).
     """
     service = AsyncMock(spec=BackupService)
-    app_state = MagicMock(spec=AppState)
-    app_state.backup_service = service
     # The controller now wraps every backup in idempotency_service.
     # Mock the service so run_idempotent invokes the callback inline
-    # and returns a fresh outcome with the manifest dict. ``spec=`` on
-    # the wrapper enforces the interface; ``run_idempotent`` is set to
-    # an inline async helper that exercises the awaitable contract.
+    # and returns a fresh outcome with the manifest dict.
     idempotency_service = MagicMock(spec=IdempotencyService)
 
     async def _run_idempotent(
@@ -98,18 +96,17 @@ def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
         return IdempotencyResult(result=result, fresh=True, timed_out=False)
 
     idempotency_service.run_idempotent = _run_idempotent
-    app_state.idempotency_service = idempotency_service
-    # Pagination requires a real cursor secret; MagicMock's default
-    # attribute resolution would hand back a Mock to ``paginate_cursor``
-    # which ultimately fails the HMAC pipeline.
-    app_state.cursor_secret = CursorSecret.from_key("test-key-32-bytes-padding0000000")
-
-    # ``state.app_state`` must return the bound ``AppState`` exactly
-    # as assigned. ``SimpleNamespace`` is a plain attribute container
-    # with no auto-mocking, so the read is a direct attribute lookup.
-    # ``MagicMock(spec=State)`` would route the read through
-    # Litestar's ``State.__getattr__`` and could return a fresh
-    # auto-mock instead of the bound object.
+    # Pagination requires a real cursor secret.
+    app_state = make_app_state(
+        cursor_secret=CursorSecret.from_key("test-key-32-bytes-padding0000000"),
+        slices={
+            BackupStateSlice: {"service": service},
+            ApiCoreStateSlice: {"idempotency_service": idempotency_service},
+        },
+    )
+    # ``state.app_state`` must return the bound ``AppState`` exactly as
+    # assigned; ``SimpleNamespace`` is a plain attribute container with
+    # no auto-mocking, so the read is a direct attribute lookup.
     return SimpleNamespace(app_state=app_state), service
 
 
@@ -433,10 +430,10 @@ class TestBackupGuards:
             lambda *_a, **_kw: mock_svc,
         )
         app_state = test_client.app.state.app_state
-        old = app_state._backup_service
-        app_state._backup_service = mock_svc
+        old_slice = app_state.slice(BackupStateSlice)
+        app_state.swap_slice(BackupStateSlice(service=mock_svc))
         yield
-        app_state._backup_service = old
+        app_state.swap_slice(old_slice)
 
     def test_ceo_can_access(
         self,

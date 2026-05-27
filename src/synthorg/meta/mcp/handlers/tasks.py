@@ -1,6 +1,6 @@
 """Task domain MCP handlers.
 
-Shims the 8 task tools onto ``app_state.task_engine``
+Shims the 8 task tools onto ``task_engine_of(app_state)``
 (:class:`synthorg.engine.task_engine.TaskEngine`).  ``delete`` and
 ``cancel`` are destructive and enforce the standard
 ``confirm=True`` + non-blank ``reason`` + non-``None`` ``actor`` triple.
@@ -21,6 +21,8 @@ from synthorg.engine.errors import (
     TaskMutationError,
     TaskNotFoundError,
 )
+from synthorg.engine.state import task_engine_of
+from synthorg.hr.state import HrStateSlice, activity_feed_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -132,7 +134,7 @@ async def _tasks_list(
         return err(exc)
 
     try:
-        tasks, total = await app_state.task_engine.list_tasks(
+        tasks, total = await task_engine_of(app_state).list_tasks(
             status=status,
             assigned_to=assigned_to,
             project=project,
@@ -168,7 +170,7 @@ async def _tasks_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        task = await app_state.task_engine.get_task(task_id)
+        task = await task_engine_of(app_state).get_task(task_id)
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -214,7 +216,7 @@ async def _tasks_create(
 
     requested_by = actor_id(actor) or "system"
     try:
-        task = await app_state.task_engine.create_task(
+        task = await task_engine_of(app_state).create_task(
             data,
             requested_by=requested_by,
         )
@@ -255,7 +257,7 @@ async def _tasks_update(
         return err(exc)
 
     try:
-        task = await app_state.task_engine.update_task(
+        task = await task_engine_of(app_state).update_task(
             task_id,
             updates,
             requested_by=requested_by,
@@ -289,7 +291,7 @@ async def _tasks_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
         requested_by = require_actor_id(resolved_actor)
-        await app_state.task_engine.delete_task(
+        await task_engine_of(app_state).delete_task(
             task_id,
             requested_by=requested_by,
         )
@@ -349,7 +351,7 @@ async def _tasks_transition(
         return err(exc)
 
     try:
-        task, _previous = await app_state.task_engine.transition_task(
+        task, _previous = await task_engine_of(app_state).transition_task(
             task_id,
             target,
             requested_by=requested_by,
@@ -383,7 +385,7 @@ async def _tasks_cancel(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         task_id = require_non_blank(arguments, _ARG_TASK_ID)
         requested_by = require_actor_id(resolved_actor)
-        task, _prior_status = await app_state.task_engine.cancel_task(
+        task, _prior_status = await task_engine_of(app_state).cancel_task(
             task_id,
             requested_by=requested_by,
             reason=reason,
@@ -486,7 +488,7 @@ async def _activities_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_activity_feed_service", False):
+    if app_state.slice(HrStateSlice).activity_feed_service is None:
         return capability_gap(tool, _WHY_ACTIVITY)
     list_kwargs: dict[str, Any] = {
         "project": project,
@@ -497,7 +499,7 @@ async def _activities_list(
     if window_hours is not None:
         list_kwargs["window_hours"] = window_hours
     try:
-        events, total = await app_state.activity_feed_service.list_recent_activity(
+        events, total = await activity_feed_service_of(app_state).list_recent_activity(
             **list_kwargs,
         )
     except Exception as exc:

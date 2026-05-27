@@ -9,12 +9,14 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.providers.routing.errors import UnknownRoutingStrategyError
 from synthorg.providers.routing.router import ModelRouter
+from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.models import SettingValue
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
+from tests._shared import make_app_state
 
 
 def _setting_value(value: str) -> SettingValue:
@@ -30,7 +32,7 @@ def _setting_value(value: str) -> SettingValue:
 def _make_state(config: RootConfig | None = None) -> AppState:
     cfg = config or RootConfig(company_name="test")
     router = ModelRouter(cfg.routing, dict(cfg.providers))
-    return AppState(
+    return make_app_state(
         config=cfg,
         approval_store=ApprovalStore(),
         model_router=router,
@@ -80,35 +82,35 @@ class TestProviderSubscriberRebuild:
 
     async def test_routing_strategy_change_swaps_router(self) -> None:
         sub, state = _make_subscriber()
-        old_router = state.model_router
+        old_router = state.slice(ProvidersStateSlice).model_router
         await sub.on_settings_changed("providers", "routing_strategy")
-        assert state.model_router is not old_router
+        assert state.slice(ProvidersStateSlice).model_router is not old_router
 
     async def test_rebuild_failure_propagates(self) -> None:
         """Errors in _rebuild_router propagate to the dispatcher."""
         sub, state = _make_subscriber(
             get_return_value="nonexistent_strategy",
         )
-        old_router = state.model_router
+        old_router = state.slice(ProvidersStateSlice).model_router
         # Error propagates (dispatcher catches it for logging)
         with pytest.raises(UnknownRoutingStrategyError):
             await sub.on_settings_changed("providers", "routing_strategy")
         # Old router is still in place (swap never called)
-        assert state.model_router is old_router
+        assert state.slice(ProvidersStateSlice).model_router is old_router
 
     async def test_retry_max_attempts_change_is_noop(self) -> None:
         # get_return_value is irrelevant: advisory keys never call svc.get()
         sub, state = _make_subscriber()
-        old_router = state.model_router
+        old_router = state.slice(ProvidersStateSlice).model_router
         await sub.on_settings_changed("providers", "retry_max_attempts")
-        assert state.model_router is old_router
+        assert state.slice(ProvidersStateSlice).model_router is old_router
 
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""
         svc = AsyncMock()
         svc.get = AsyncMock(side_effect=RuntimeError("db down"))
         sub, state = _make_subscriber(settings_service=svc)
-        old_router = state.model_router
+        old_router = state.slice(ProvidersStateSlice).model_router
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed("providers", "routing_strategy")
-        assert state.model_router is old_router
+        assert state.slice(ProvidersStateSlice).model_router is old_router

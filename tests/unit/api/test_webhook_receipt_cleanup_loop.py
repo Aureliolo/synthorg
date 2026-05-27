@@ -10,21 +10,24 @@ sweep + failure isolation), not the wall-clock loop scheduling.
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
 from synthorg.api import webhook_cleanup
+from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     WebhookReceiptRepository,
 )
+from synthorg.persistence.state import persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -59,7 +62,7 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     connections: list[Any] | None = None,
     cleanup_side_effects: dict[str, type[BaseException] | BaseException] | None = None,
     list_all_side_effect: type[BaseException] | BaseException | None = None,
-) -> SimpleNamespace:
+) -> AppState:
     """Build a minimal AppState stand-in for the cleanup loop."""
     config_resolver = AsyncMock(spec=ConfigResolver)
     config_resolver.get_int.return_value = default_retention_days
@@ -91,11 +94,9 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
         connections=connections_repo,
         webhook_receipts=webhook_repo,
     )
-    return SimpleNamespace(
-        config_resolver=config_resolver,
-        has_config_resolver=has_config_resolver,
-        has_persistence=has_persistence,
-        persistence=persistence,
+    return make_app_state(
+        config_resolver=config_resolver if has_config_resolver else None,
+        persistence=persistence if has_persistence else None,
     )
 
 
@@ -103,10 +104,10 @@ async def test_tick_skips_when_persistence_absent() -> None:
     """``has_persistence=False`` short-circuits without touching anything."""
     app_state = _build_app_state(has_persistence=False)
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.connections.list_items.assert_not_awaited()
-    app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
+    # No persistence backend: the tick returns at the
+    # ``slice(PersistenceStateSlice).backend is None`` guard before any
+    # connection / receipt repo is consulted.
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
 
 
 async def test_tick_uses_global_default_for_unconfigured_connection() -> None:
@@ -115,9 +116,8 @@ async def test_tick_uses_global_default_for_unconfigured_connection() -> None:
         connections=[_make_connection("github-bot", retention_days=None)],
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    repo = app_state.persistence.webhook_receipts
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    repo = cast(AsyncMock, persistence_of(app_state).webhook_receipts)
     repo.cleanup_old_for_connection.assert_awaited_once()
     args, _ = repo.cleanup_old_for_connection.call_args
     assert str(args[0]) == "github-bot"
@@ -133,9 +133,8 @@ async def test_tick_applies_per_connection_override() -> None:
         ],
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    repo = app_state.persistence.webhook_receipts
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    repo = cast(AsyncMock, persistence_of(app_state).webhook_receipts)
     assert repo.cleanup_old_for_connection.await_count == 2
     invocations = sorted(
         (str(c.args[0]), c.args[1])
@@ -154,9 +153,8 @@ async def test_tick_skips_zero_retention_connection() -> None:
         ],
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    repo = app_state.persistence.webhook_receipts
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    repo = cast(AsyncMock, persistence_of(app_state).webhook_receipts)
     repo.cleanup_old_for_connection.assert_awaited_once()
     args, _ = repo.cleanup_old_for_connection.call_args
     assert str(args[0]) == "normal"
@@ -172,9 +170,10 @@ async def test_tick_skips_all_when_global_default_is_zero() -> None:
         ],
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    cast(
+        AsyncMock, persistence_of(app_state).webhook_receipts
+    ).cleanup_old_for_connection.assert_not_awaited()
 
 
 async def test_tick_failure_in_one_connection_does_not_abort_others() -> None:
@@ -190,9 +189,8 @@ async def test_tick_failure_in_one_connection_does_not_abort_others() -> None:
         cleanup_side_effects={"flaky": _BoomError("repo died")},
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    repo = app_state.persistence.webhook_receipts
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    repo = cast(AsyncMock, persistence_of(app_state).webhook_receipts)
     # Both connections were attempted, even though the first raised.
     assert repo.cleanup_old_for_connection.await_count == 2
 
@@ -205,7 +203,7 @@ async def test_tick_memory_error_propagates() -> None:
     )
 
     with pytest.raises(MemoryError):
-        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
 
 
 async def test_tick_cancellation_propagates() -> None:
@@ -216,7 +214,7 @@ async def test_tick_cancellation_propagates() -> None:
     )
 
     with pytest.raises(asyncio.CancelledError):
-        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
 
 
 async def test_tick_swallows_list_all_failure() -> None:
@@ -225,30 +223,27 @@ async def test_tick_swallows_list_all_failure() -> None:
         list_all_side_effect=RuntimeError("list connections failed"),
     )
 
-    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.webhook_receipts.cleanup_old_for_connection.assert_not_awaited()
+    await webhook_cleanup._webhook_receipt_cleanup_tick(app_state)
+    cast(
+        AsyncMock, persistence_of(app_state).webhook_receipts
+    ).cleanup_old_for_connection.assert_not_awaited()
 
 
 async def test_resolve_falls_back_when_no_config_resolver() -> None:
     app_state = _build_app_state(has_config_resolver=False)
 
-    days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)  # type: ignore[arg-type]
-
+    days = await webhook_cleanup._resolve_webhook_receipt_retention(app_state)
     assert days == _WEBHOOK_RECEIPT_RETENTION_DAYS_DEFAULT
 
 
 async def test_resolve_falls_back_on_resolver_error() -> None:
     config_resolver = AsyncMock(spec=ConfigResolver)
     config_resolver.get_int.side_effect = RuntimeError("settings backend down")
-    app_state = SimpleNamespace(
-        has_config_resolver=True,
-        config_resolver=config_resolver,
-    )
+    app_state = make_app_state(config_resolver=config_resolver)
 
     with structlog.testing.capture_logs() as captured:
         days = await webhook_cleanup._resolve_webhook_receipt_retention(
-            app_state,  # type: ignore[arg-type]
+            app_state,
         )
 
     assert days == _WEBHOOK_RECEIPT_RETENTION_DAYS_DEFAULT
@@ -286,7 +281,7 @@ async def test_loop_drives_tick_at_each_iteration(
     app_state = _build_app_state()
     task = asyncio.create_task(
         webhook_cleanup._webhook_receipt_cleanup_loop(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             clock=clock,
         ),
     )

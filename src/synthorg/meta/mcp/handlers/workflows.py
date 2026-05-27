@@ -25,6 +25,11 @@ from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
 )
+from synthorg.engine.state import (
+    EngineStateSlice,
+    subworkflow_service_of,
+    workflow_version_service_of,
+)
 from synthorg.engine.workflow.service import (
     WorkflowDefinitionExistsError,
     WorkflowDefinitionNotFoundError,
@@ -147,9 +152,9 @@ def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
     Returns:
         The ``SubworkflowService`` value when present, ``None`` otherwise.
     """
-    if not getattr(app_state, "has_subworkflow_service", False):
+    if app_state.slice(EngineStateSlice).subworkflow_service is None:
         return None
-    return app_state.subworkflow_service  # type: ignore[no-any-return]
+    return subworkflow_service_of(app_state)
 
 
 def _version_service(app_state: Any) -> WorkflowVersionService | None:
@@ -161,9 +166,9 @@ def _version_service(app_state: Any) -> WorkflowVersionService | None:
     Returns:
         The ``WorkflowVersionService`` value when present, ``None`` otherwise.
     """
-    if not getattr(app_state, "has_workflow_version_service", False):
+    if app_state.slice(EngineStateSlice).workflow_version_service is None:
         return None
-    return app_state.workflow_version_service  # type: ignore[no-any-return]
+    return workflow_version_service_of(app_state)
 
 
 def _service(app_state: Any) -> WorkflowService:
@@ -181,7 +186,7 @@ def _service(app_state: Any) -> WorkflowService:
     Raises:
         RuntimeError: Raised on the corresponding failure path.
     """
-    cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
+    cached: WorkflowService | None = app_state.slice(EngineStateSlice).workflow_service
     if cached is None:
         # ``MCP_HANDLER_LAZY_SERVICE_INIT`` is a DEBUG-level telemetry
         # event for lazy-init paths.  This branch is a hard runtime
@@ -192,7 +197,7 @@ def _service(app_state: Any) -> WorkflowService:
             MCP_HANDLER_INVOKE_FAILED,
             tool_name="workflows._service",
             service="workflow_service",
-            reason="app_state.workflow_service not wired",
+            reason="workflow_service_of(app_state) not wired",
         )
         msg = "workflow_service not wired on app_state"
         raise RuntimeError(msg)

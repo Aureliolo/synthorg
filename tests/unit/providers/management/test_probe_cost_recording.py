@@ -20,6 +20,7 @@ from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.settings.state import config_resolver_of, settings_service_of
 
 from .conftest import make_create_request
 
@@ -42,8 +43,8 @@ def _make_service_with_tracker(
     """ProviderManagementService that mirrors the conftest ``service``
     fixture but threads a CostTracker through the constructor."""
     return ProviderManagementService(
-        settings_service=app_state.settings_service,
-        config_resolver=app_state.config_resolver,
+        settings_service=settings_service_of(app_state),
+        config_resolver=config_resolver_of(app_state),
         app_state=app_state,
         config=app_state.config,
         cost_tracker=cost_tracker,

@@ -20,6 +20,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
 )
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
+from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -72,7 +73,7 @@ def _require_service(app_state: Any) -> Any:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc = getattr(app_state, "knowledge_service", None)
+    svc = app_state.slice(KnowledgeStateSlice).service
     if svc is None:
         msg = "knowledge service is not wired on app_state in this deployment"
         raise ServiceUnavailableError(msg)

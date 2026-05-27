@@ -8,6 +8,8 @@ import pytest
 
 from synthorg.a2a import well_known
 from synthorg.a2a.agent_card import AgentCardBuilder
+from synthorg.a2a.config import A2AConfig
+from synthorg.a2a.state import A2aStateSlice
 from synthorg.a2a.well_known import (
     WellKnownAgentCardController,
     _agent_fingerprint,
@@ -18,10 +20,13 @@ from synthorg.a2a.well_known import (
     _resolve_agent_for_card,
     _resolve_company_name,
 )
+from synthorg.api.state import AppState
+from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state
 
 
 class TestCacheHelpers:
@@ -141,8 +146,10 @@ class TestResolveCompanyName:
     async def test_resolver_value_used_on_happy_path(self) -> None:
         """Resolver value beats the boot snapshot when present."""
         resolver = _make_resolver_stub(get_str_side_effect="Resolved Co")
-        config = SimpleNamespace(company_name="Snapshot Co")
-        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        app_state = make_app_state(
+            config_resolver=resolver,
+            config=RootConfig(company_name="Snapshot Co"),
+        )
         assert await _resolve_company_name(app_state) == "Resolved Co"
         resolver.get_str.assert_awaited_once_with("company", "company_name")
 
@@ -152,8 +159,10 @@ class TestResolveCompanyName:
         resolver = _make_resolver_stub(
             get_str_side_effect=SettingNotFoundError("missing"),
         )
-        config = SimpleNamespace(company_name="Snapshot Co")
-        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        app_state = make_app_state(
+            config_resolver=resolver,
+            config=RootConfig(company_name="Snapshot Co"),
+        )
         assert await _resolve_company_name(app_state) == "Snapshot Co"
 
     @pytest.mark.unit
@@ -162,16 +171,20 @@ class TestResolveCompanyName:
         resolver = _make_resolver_stub(
             get_str_side_effect=ConnectionError("db down"),
         )
-        config = SimpleNamespace(company_name="Snapshot Co")
-        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        app_state = make_app_state(
+            config_resolver=resolver,
+            config=RootConfig(company_name="Snapshot Co"),
+        )
         assert await _resolve_company_name(app_state) == "Snapshot Co"
 
     @pytest.mark.unit
     async def test_memory_error_propagates(self) -> None:
         """``MemoryError`` is re-raised, not swallowed by the fallback."""
         resolver = _make_resolver_stub(get_str_side_effect=MemoryError("oom"))
-        config = SimpleNamespace(company_name="Snapshot Co")
-        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        app_state = make_app_state(
+            config_resolver=resolver,
+            config=RootConfig(company_name="Snapshot Co"),
+        )
         with pytest.raises(MemoryError):
             await _resolve_company_name(app_state)
 
@@ -181,8 +194,10 @@ class TestResolveCompanyName:
         resolver = _make_resolver_stub(
             get_str_side_effect=RecursionError("too deep"),
         )
-        config = SimpleNamespace(company_name="Snapshot Co")
-        app_state = SimpleNamespace(config_resolver=resolver, config=config)
+        app_state = make_app_state(
+            config_resolver=resolver,
+            config=RootConfig(company_name="Snapshot Co"),
+        )
         with pytest.raises(RecursionError):
             await _resolve_company_name(app_state)
 
@@ -220,17 +235,16 @@ def _make_app_state(
     ttl: int = 60,
     company_name: str = "Snapshot Co",
     resolver: AsyncMock | None = None,
-) -> SimpleNamespace:
-    """Assemble the ``app_state`` attribute-bag the controller reads."""
-    config = SimpleNamespace(
-        a2a=SimpleNamespace(agent_card_cache_ttl_seconds=ttl),
-        company_name=company_name,
-    )
-    return SimpleNamespace(
+) -> AppState:
+    """Assemble the ``app_state`` the controller reads."""
+    return make_app_state(
+        config=RootConfig(
+            company_name=company_name,
+            a2a=A2AConfig(agent_card_cache_ttl_seconds=ttl),
+        ),
         agent_registry=registry,
-        a2a_card_builder=builder,
-        config=config,
         config_resolver=resolver,
+        slices={A2aStateSlice: {"card_builder": builder}},
     )
 
 
@@ -239,7 +253,7 @@ def _make_request(base_url: str = "http://test.example/") -> SimpleNamespace:
     return SimpleNamespace(base_url=base_url)
 
 
-def _state(app_state: SimpleNamespace) -> dict[str, object]:
+def _state(app_state: AppState) -> dict[str, object]:
     """Litestar ``State`` is a mapping; the handler only does ``state[...]``."""
     return {"app_state": app_state}
 
@@ -260,7 +274,7 @@ class TestAgentCardHelpers:
         identity = _make_identity()
         registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = identity
-        app_state = SimpleNamespace(agent_registry=registry)
+        app_state = make_app_state(agent_registry=registry)
         assert await _resolve_agent_for_card(app_state, "agent-1") is identity
         registry.get_by_name.assert_not_awaited()
 
@@ -271,7 +285,7 @@ class TestAgentCardHelpers:
         registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = None
         registry.get_by_name.return_value = identity
-        app_state = SimpleNamespace(agent_registry=registry)
+        app_state = make_app_state(agent_registry=registry)
         assert await _resolve_agent_for_card(app_state, "Ada") is identity
 
     @pytest.mark.unit
@@ -280,7 +294,7 @@ class TestAgentCardHelpers:
         registry = AsyncMock(spec=AgentRegistryService)
         registry.get.return_value = None
         registry.get_by_name.return_value = None
-        app_state = SimpleNamespace(agent_registry=registry)
+        app_state = make_app_state(agent_registry=registry)
         assert await _resolve_agent_for_card(app_state, "ghost") is None
 
     @pytest.mark.unit
@@ -301,7 +315,7 @@ class TestAgentCardHelpers:
             model_dump=lambda: {"name": "Ada"},
         )
         payload = _build_agent_card_payload(
-            SimpleNamespace(a2a_card_builder=builder),
+            make_app_state(slices={A2aStateSlice: {"card_builder": builder}}),
             identity,
             "http://test.example",
         )

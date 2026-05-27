@@ -18,9 +18,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import structlog.testing
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers import webhooks as webhooks_module
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
+from tests._shared import make_app_state
 
 
 class _FakeBus:
@@ -134,10 +136,10 @@ class TestPublishWithDurableIdempotency:
         idem_service = AsyncMock(spec=IdempotencyService)
         idem_service.run_idempotent = run_idempotent
 
-        class _AppState:
-            idempotency_service = idem_service
-
-        state: dict[str, Any] = {"app_state": _AppState()}
+        app_state = make_app_state(
+            slices={ApiCoreStateSlice: {"idempotency_service": idem_service}},
+        )
+        state: dict[str, Any] = {"app_state": app_state}
 
         cached = await webhooks_module._publish_with_durable_idempotency(
             state=state,  # type: ignore[arg-type]
@@ -354,12 +356,12 @@ class TestReceiveWebhookEndToEnd:
         class _Config:
             integrations = _ConfigIntegrations()
 
-        class _AppState:
-            connection_catalog = object()
-            config = _Config()
-            message_bus = _FakeBus()
-
-        state: dict[str, Any] = {"app_state": _AppState()}
+        app_state = make_app_state(
+            config=_Config(),
+            connection_catalog=object(),
+            message_bus=_FakeBus(),
+        )
+        state: dict[str, Any] = {"app_state": app_state}
         return state, _StubRequest()
 
     async def _invoke_branch(

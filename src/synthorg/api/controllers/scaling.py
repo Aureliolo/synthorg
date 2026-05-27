@@ -11,6 +11,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import (
     DEFAULT_LIMIT,
     ApiResponse,
@@ -18,7 +19,12 @@ from synthorg.api.dto import (
     PaginationMeta,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -27,6 +33,7 @@ from synthorg.hr.scaling.models import (  # noqa: TC001
     ScalingDecision,
     ScalingSignal,
 )
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTROLLER_INVALID_REQUEST,
@@ -205,7 +212,7 @@ class ScalingController(Controller):
             Paginated strategy list with enabled/priority info.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return PaginatedResponse[ScalingStrategyResponse](
@@ -237,7 +244,7 @@ class ScalingController(Controller):
             ordered,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[ScalingStrategyResponse](data=page, pagination=meta)
 
@@ -259,7 +266,7 @@ class ScalingController(Controller):
             Paginated list of recent decisions.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return PaginatedResponse[ScalingDecisionResponse](
@@ -281,7 +288,7 @@ class ScalingController(Controller):
             responses,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[ScalingDecisionResponse](data=page, pagination=meta)
 
@@ -303,7 +310,7 @@ class ScalingController(Controller):
             Paginated signal values from all sources.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return PaginatedResponse[ScalingSignalResponse](
@@ -346,7 +353,7 @@ class ScalingController(Controller):
             ordered,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[ScalingSignalResponse](data=page, pagination=meta)
 
@@ -373,7 +380,7 @@ class ScalingController(Controller):
             Decisions produced by the evaluation.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return ApiResponse(
@@ -384,7 +391,9 @@ class ScalingController(Controller):
         logger.info(HR_SCALING_MANUAL_TRIGGER_REQUESTED)
 
         # Get active agents from registry.
-        registry = app_state.agent_registry
+        registry = require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        )
         agents = await registry.list_active()
         agent_ids = tuple(NotBlankStr(str(a.id)) for a in agents)
 
@@ -416,7 +425,7 @@ class ScalingController(Controller):
             Updated strategy status.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return ApiResponse(
@@ -482,7 +491,7 @@ class ScalingController(Controller):
             Updated priority order.
         """
         app_state: AppState = state.app_state
-        scaling = app_state.scaling_service
+        scaling = app_state.slice(HrStateSlice).scaling_service
         if scaling is None:
             _note_scaling_missing()
             return ApiResponse(

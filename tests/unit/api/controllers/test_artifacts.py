@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.engine.workspace.state import WorkspaceStateSlice
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -171,7 +172,9 @@ class TestArtifactController:
         )
         artifact_id = create_resp.json()["data"]["id"]
         payload = b"hello world"
-        storage = test_client.app.state.app_state.artifact_storage
+        storage = test_client.app.state.app_state.slice(
+            WorkspaceStateSlice
+        ).artifact_storage
         asyncio.run(storage.store(artifact_id, payload))
         dl_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
         assert dl_resp.status_code == 200

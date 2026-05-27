@@ -1,36 +1,18 @@
-"""Bridge-config and integration/escalation accessors for ``AppState``.
+"""Per-op rate-limit / concurrency + bridge-config snapshot primitives.
 
-Extracted from ``state_services.py`` to keep each module under the
-project's 800-line ceiling.  Hosts the per-op rate-limit / concurrency
-config accessors, the ``Api``/``Workers``/``Memory`` bridge-config
-snapshot accessors, and the backup / connection / tunnel / OAuth /
-escalation / A2A / MCP service accessors.  Every accessor is a thin
-pass-through to a private slot attribute on the concrete
-:class:`AppState`; the mixin is combined into
-:class:`~synthorg.api.state_services.AppStateServicesMixin` via
-inheritance so the shared helpers (``_require_service``, ``_set_once``)
-resolve at runtime.
+Hosts the cross-cutting mutable config primitives that a frozen feature
+slice cannot own: the per-op rate-limit / concurrency configs and the
+``Api`` / ``Workers`` / ``Memory`` bridge-config snapshots (hot-swapped
+by the settings subscribers under their per-config locks). Mixed into
+``AppState`` directly; the backing attributes are allocated in
+``AppState.__slots__`` and initialised in ``AppState.__init__``.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
 from synthorg.api.rate_limits.inflight_config import (
     PerOpConcurrencyConfig,  # noqa: TC001
-)
-from synthorg.backup.service import BackupService  # noqa: TC001
-from synthorg.communication.conflict_resolution.escalation.notify import (
-    EscalationNotifySubscriber,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.protocol import (
-    DecisionProcessor,  # noqa: TC001
-    EscalationQueueStore,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.registry import (
-    PendingFuturesRegistry,  # noqa: TC001
-)
-from synthorg.communication.conflict_resolution.escalation.sweeper import (
-    EscalationExpirationSweeper,  # noqa: TC001
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
@@ -45,32 +27,16 @@ if TYPE_CHECKING:
 
     from pydantic import BaseModel
 
-    from synthorg.a2a.agent_card import AgentCardBuilder
-    from synthorg.a2a.client import A2AClient
-    from synthorg.a2a.peer_registry import PeerRegistry
-    from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
-    from synthorg.integrations.health.prober import HealthProberService
-    from synthorg.integrations.mcp_catalog.installations import (
-        McpInstallationRepository,
-    )
-    from synthorg.integrations.mcp_catalog.service import CatalogService
-    from synthorg.integrations.oauth.state_service import OAuthStateService
-    from synthorg.integrations.oauth.token_manager import OAuthTokenManager
-    from synthorg.integrations.tunnel.protocol import TunnelProvider
-
 logger = get_logger(__name__)
 
 
-class _BridgeIntegrationsMixin:
-    """Mixin hosting bridge-config and integration accessors.
+class _BridgeConfigPrimitivesMixin:
+    """Mixin hosting per-op + bridge-config snapshot primitives.
 
-    Must be combined with the rest of ``AppStateServicesMixin`` via
-    multiple inheritance so the shared helper methods
-    (``_require_service``, ``_set_once``) resolve at runtime.
+    Mixed into ``AppState`` directly. ``_require_service`` is provided by
+    the concrete ``AppState`` (the per-op getters surface 503 through it
+    before the startup snapshot is applied).
     """
-
-    _set_once: Any
 
     def _require_service[T](  # pragma: no cover
         self, service: T | None, name: str
@@ -87,23 +53,6 @@ class _BridgeIntegrationsMixin:
     _workers_bridge_config_lock: threading.Lock
     _memory_bridge_config: MemoryBridgeConfig
     _memory_bridge_config_lock: threading.Lock
-    _backup_service: BackupService | None
-    _connection_catalog: ConnectionCatalog | None
-    _tunnel_provider: TunnelProvider | None
-    _oauth_token_manager: OAuthTokenManager | None
-    _oauth_state_service: OAuthStateService | None
-    _health_prober_service: HealthProberService | None
-    _webhook_event_bridge: WebhookEventBridge | None
-    _escalation_store: EscalationQueueStore | None
-    _escalation_registry: PendingFuturesRegistry | None
-    _escalation_processor: DecisionProcessor | None
-    _escalation_sweeper: EscalationExpirationSweeper | None
-    _escalation_notify_subscriber: EscalationNotifySubscriber | None
-    _a2a_card_builder: AgentCardBuilder | None
-    _a2a_client: A2AClient | None
-    _a2a_peer_registry: PeerRegistry | None
-    _mcp_catalog_service: CatalogService | None
-    _mcp_installations_repo: McpInstallationRepository | None
 
     @property
     def has_per_op_rate_limit_config(self) -> bool:
@@ -437,297 +386,4 @@ class _BridgeIntegrationsMixin:
             attr="_memory_bridge_config",
             service="memory_bridge_config",
             updates=updates,
-        )
-
-    @property
-    def has_backup_service(self) -> bool:
-        """Check whether the backup service is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._backup_service is not None
-
-    @property
-    def backup_service(self) -> BackupService:
-        """Return backup service or raise 503.
-
-        Returns:
-            ``BackupService`` instance.
-        """
-        return self._require_service(self._backup_service, "backup_service")
-
-    def set_backup_service(self, service: BackupService) -> None:
-        """Attach the backup service (once-only)."""
-        self._set_once("_backup_service", service, "Backup service")
-
-    @property
-    def has_connection_catalog(self) -> bool:
-        """Check whether the connection catalog is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._connection_catalog is not None
-
-    @property
-    def connection_catalog(self) -> ConnectionCatalog:
-        """Return connection catalog or raise 503.
-
-        Returns:
-            ``ConnectionCatalog`` instance.
-        """
-        return self._require_service(
-            self._connection_catalog,
-            "connection_catalog",
-        )
-
-    @property
-    def has_tunnel_provider(self) -> bool:
-        """Check whether the tunnel provider is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._tunnel_provider is not None
-
-    @property
-    def tunnel_provider(self) -> TunnelProvider:
-        """Return tunnel provider or raise 503.
-
-        Returns:
-            ``TunnelProvider`` instance.
-        """
-        return self._require_service(
-            self._tunnel_provider,
-            "tunnel_provider",
-        )
-
-    @property
-    def oauth_token_manager(self) -> OAuthTokenManager | None:
-        """Return OAuth token manager, or None if not configured.
-
-        Returns:
-            The ``OAuthTokenManager`` value when present, ``None`` otherwise.
-        """
-        return self._oauth_token_manager
-
-    @property
-    def has_oauth_state_service(self) -> bool:
-        """Check whether the OAuth state service is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._oauth_state_service is not None
-
-    @property
-    def oauth_state_service(self) -> OAuthStateService:
-        """Return OAuth state service or raise 503.
-
-        ``OAuthStateService`` is the audit-aware facade over
-        ``persistence.oauth_states``; the OAuth controller routes its
-        single ``save(...)`` write through this service so audit
-        logging cannot regress.
-
-        Returns:
-            ``OAuthStateService`` instance.
-        """
-        return self._require_service(
-            self._oauth_state_service,
-            "oauth_state_service",
-        )
-
-    def set_oauth_state_service(self, service: OAuthStateService) -> None:
-        """Attach the OAuth state service (once-only)."""
-        self._set_once("_oauth_state_service", service, "OAuth state service")
-
-    @property
-    def health_prober_service(self) -> HealthProberService | None:
-        """Return health prober service, or None if not configured.
-
-        Returns:
-            The ``HealthProberService`` value when present, ``None`` otherwise.
-        """
-        return self._health_prober_service
-
-    @property
-    def webhook_event_bridge(self) -> WebhookEventBridge | None:
-        """Return webhook event bridge, or None if not configured.
-
-        Returns:
-            The ``WebhookEventBridge`` value when present, ``None`` otherwise.
-        """
-        return self._webhook_event_bridge
-
-    @property
-    def escalation_store(self) -> EscalationQueueStore | None:
-        """Return the escalation queue store, or None if not configured.
-
-        Returns:
-            The ``EscalationQueueStore`` value when present, ``None`` otherwise.
-        """
-        return self._escalation_store
-
-    def set_escalation_store(self, store: EscalationQueueStore) -> None:
-        """Attach the escalation queue store (once-only)."""
-        self._set_once("_escalation_store", store, "escalation store")
-
-    @property
-    def escalation_registry(self) -> PendingFuturesRegistry | None:
-        """Return the in-process futures registry, or None if not configured.
-
-        Returns:
-            The ``PendingFuturesRegistry`` value when present, ``None`` otherwise.
-        """
-        return self._escalation_registry
-
-    def set_escalation_registry(self, registry: PendingFuturesRegistry) -> None:
-        """Attach the escalation futures registry (once-only)."""
-        self._set_once("_escalation_registry", registry, "escalation registry")
-
-    @property
-    def escalation_processor(self) -> DecisionProcessor | None:
-        """Return the decision processor strategy, or None if not configured.
-
-        Returns:
-            The ``DecisionProcessor`` value when present, ``None`` otherwise.
-        """
-        return self._escalation_processor
-
-    def set_escalation_processor(self, processor: DecisionProcessor) -> None:
-        """Attach the escalation decision processor (once-only)."""
-        self._set_once("_escalation_processor", processor, "escalation processor")
-
-    @property
-    def escalation_sweeper(self) -> EscalationExpirationSweeper | None:
-        """Return the background expiration sweeper, or None if not configured.
-
-        Returns:
-            The ``EscalationExpirationSweeper`` value when present, ``None`` otherwise.
-        """
-        return self._escalation_sweeper
-
-    def set_escalation_sweeper(self, sweeper: EscalationExpirationSweeper) -> None:
-        """Attach the escalation expiration sweeper (once-only)."""
-        self._set_once("_escalation_sweeper", sweeper, "escalation sweeper")
-
-    @property
-    def escalation_notify_subscriber(self) -> EscalationNotifySubscriber | None:
-        """Return the cross-instance notify subscriber, or None if not configured.
-
-        Returns:
-            The ``EscalationNotifySubscriber`` value when present, ``None`` otherwise.
-        """
-        return self._escalation_notify_subscriber
-
-    def set_escalation_notify_subscriber(
-        self,
-        subscriber: EscalationNotifySubscriber,
-    ) -> None:
-        """Attach the cross-instance notify subscriber (once-only)."""
-        self._set_once(
-            "_escalation_notify_subscriber",
-            subscriber,
-            "escalation notify subscriber",
-        )
-
-    @property
-    def a2a_card_builder(self) -> AgentCardBuilder:
-        """Return the A2A Agent Card builder or raise 503.
-
-        Returns:
-            ``AgentCardBuilder`` instance.
-        """
-        return self._require_service(
-            self._a2a_card_builder,
-            "a2a_card_builder",
-        )
-
-    def set_a2a_card_builder(self, builder: AgentCardBuilder) -> None:
-        """Attach the A2A card builder (once-only)."""
-        self._set_once("_a2a_card_builder", builder, "A2A card builder")
-
-    @property
-    def a2a_client(self) -> A2AClient:
-        """Return the outbound A2A client or raise 503.
-
-        Returns:
-            ``A2AClient`` instance.
-        """
-        return self._require_service(
-            self._a2a_client,
-            "a2a_client",
-        )
-
-    def set_a2a_client(self, client: A2AClient) -> None:
-        """Attach the outbound A2A client (once-only)."""
-        self._set_once("_a2a_client", client, "A2A client")
-
-    @property
-    def a2a_peer_registry(self) -> PeerRegistry:
-        """Return the A2A peer registry or raise 503.
-
-        Returns:
-            ``PeerRegistry`` instance.
-        """
-        return self._require_service(
-            self._a2a_peer_registry,
-            "a2a_peer_registry",
-        )
-
-    def set_a2a_peer_registry(self, registry: PeerRegistry) -> None:
-        """Attach the A2A peer registry (once-only)."""
-        self._set_once(
-            "_a2a_peer_registry",
-            registry,
-            "A2A peer registry",
-        )
-
-    @property
-    def mcp_catalog_service(self) -> CatalogService:
-        """Return MCP catalog service or raise 503.
-
-        Returns:
-            ``CatalogService`` instance.
-        """
-        return self._require_service(
-            self._mcp_catalog_service,
-            "mcp_catalog_service",
-        )
-
-    def set_mcp_catalog_service(self, service: CatalogService) -> None:
-        """Attach the MCP catalog service (once-only)."""
-        self._set_once("_mcp_catalog_service", service, "MCP catalog service")
-
-    @property
-    def has_mcp_installations_repo(self) -> bool:
-        """Check whether the MCP installations repository is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._mcp_installations_repo is not None
-
-    @property
-    def mcp_installations_repo(self) -> McpInstallationRepository:
-        """Return the MCP installations repository or raise 503.
-
-        Returns:
-            ``McpInstallationRepository`` instance.
-        """
-        return self._require_service(
-            self._mcp_installations_repo,
-            "mcp_installations_repo",
-        )
-
-    def set_mcp_installations_repo(
-        self,
-        repo: McpInstallationRepository,
-    ) -> None:
-        """Attach the MCP installations repository (once-only)."""
-        self._set_once(
-            "_mcp_installations_repo",
-            repo,
-            "MCP installations repository",
         )

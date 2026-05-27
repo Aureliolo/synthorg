@@ -9,6 +9,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.dto import ApiResponse
@@ -29,6 +30,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_SETTING_NOT_FOUND,
 )
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.state import SettingsStateSlice
 from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
 
@@ -128,7 +130,10 @@ async def _read_setting_list(
             not a list of objects).
     """
     try:
-        entry = await app_state.settings_service.get("company", key)
+        settings_svc = require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        )
+        entry = await settings_svc.get("company", key)
     except SettingNotFoundError:
         logger.debug(
             TEMPLATE_PACK_SETTING_NOT_FOUND,
@@ -299,7 +304,9 @@ async def _apply_pack_to_settings(
 
         final_depts = list(rebalance_result.departments)
 
-        settings_svc = app_state.settings_service
+        settings_svc = require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        )
         await settings_svc.set(
             "company",
             "agents",

@@ -13,6 +13,8 @@ from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.boundary import parse_typed
 from synthorg.api.controllers._webhooks_wiring import (
     _IDEMPOTENCY_KEY_MAX_LEN,
@@ -30,6 +32,7 @@ from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathName,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -38,6 +41,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,
 )
@@ -57,6 +61,7 @@ from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIVED,
     WEBHOOK_REJECTED,
 )
+from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -92,7 +97,10 @@ async def _get_connection_or_404(state: State, connection_name: str) -> Any:
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    catalog = state["app_state"].connection_catalog
+    catalog = require_service(
+        state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+        "Connection Catalog",
+    )
     conn = await catalog.get(connection_name)
     if conn is None:
         logger.warning(
@@ -386,7 +394,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
             dedup_source=dedup_source,
         )
 
-    outcome = await state["app_state"].idempotency_service.run_idempotent(
+    outcome = await idempotency_service_of(state["app_state"]).run_idempotent(
         scope=scope,
         key=idem_key,
         callback=_publish_and_accept,
@@ -684,7 +692,10 @@ class WebhooksController(Controller):
             ConflictError: If replay or freshness validation fails.
             ValidationError: Raised on the corresponding failure path.
         """
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         conn = await _get_connection_or_404(state, connection_name)
         logger.info(
             WEBHOOK_RECEIVED,
@@ -758,7 +769,10 @@ class WebhooksController(Controller):
         typed_payload = parse_typed("webhook.payload", decoded, WebhookEventPayload)
         normalized_payload: dict[str, object] = typed_payload.model_dump()
 
-        bus = state["app_state"].message_bus
+        bus = require_service(
+            state["app_state"].slice(CommunicationStateSlice).message_bus,
+            "Message Bus",
+        )
 
         # Both branches below publish through the durable
         # idempotency service so JetStream redelivery / retried POSTs
@@ -855,7 +869,7 @@ class WebhooksController(Controller):
         """
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
-        persistence = state["app_state"].persistence
+        persistence = persistence_of(state["app_state"])
         receipt = await persistence.webhook_receipts.get(NotBlankStr(receipt_id))
         if receipt is None:
             logger.warning(
@@ -866,7 +880,10 @@ class WebhooksController(Controller):
             )
             msg = f"Webhook receipt {receipt_id!r} not found"
             raise NotFoundError(msg)
-        bus = state["app_state"].message_bus
+        bus = require_service(
+            state["app_state"].slice(CommunicationStateSlice).message_bus,
+            "Message Bus",
+        )
 
         async def _do_retry() -> dict[str, object]:
             # Validate retryability INSIDE the idempotent claim. The
@@ -886,7 +903,7 @@ class WebhooksController(Controller):
 
         scope = NotBlankStr("webhooks:retry")
         idem_key = NotBlankStr(receipt_id)
-        outcome = await state["app_state"].idempotency_service.run_idempotent(
+        outcome = await idempotency_service_of(state["app_state"]).run_idempotent(
             scope=scope,
             key=idem_key,
             callback=_do_retry,

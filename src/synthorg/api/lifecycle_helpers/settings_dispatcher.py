@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.state import SettingsStateSlice
 from synthorg.settings.subscribers import (
     ApiBridgeSettingsSubscriber,
     BackupSettingsSubscriber,
@@ -100,9 +101,7 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
                 settings_service=settings_service,
             ),
         )
-    config_resolver = (
-        app_state.config_resolver if app_state.has_config_resolver else None
-    )
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
     return SettingsChangeDispatcher(
         message_bus=message_bus,
         subscribers=tuple(subs),

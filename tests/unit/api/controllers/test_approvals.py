@@ -10,6 +10,8 @@ from litestar.testing import TestClient
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state, mock_of
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
 _BASE = "/api/v1/approvals"
@@ -736,17 +738,18 @@ class TestResolveUrgencyThresholdsFallback:
         ``get_float`` raises a generic ``RuntimeError``.
         """
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
 
-        app_state = _MagicMock()
         if scenario == "resolver_absent":
-            app_state.has_config_resolver = False
+            app_state = make_app_state()
         else:
-            app_state.has_config_resolver = True
-            app_state.config_resolver.get_float = _AsyncMock(
-                side_effect=RuntimeError("settings backend down"),
+            app_state = make_app_state(
+                config_resolver=mock_of[ConfigResolver](
+                    get_float=_AsyncMock(
+                        side_effect=RuntimeError("settings backend down"),
+                    ),
+                ),
             )
         critical, high = await _resolve_urgency_thresholds(app_state)
         assert critical == 3600.0  # _URGENCY_CRITICAL_FALLBACK_SECONDS
@@ -755,28 +758,26 @@ class TestResolveUrgencyThresholdsFallback:
     async def test_propagates_cancelled_error(self) -> None:
         import asyncio as _asyncio
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_float = _AsyncMock(
-            side_effect=_asyncio.CancelledError(),
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_float=_AsyncMock(side_effect=_asyncio.CancelledError()),
+            ),
         )
         with pytest.raises(_asyncio.CancelledError):
             await _resolve_urgency_thresholds(app_state)
 
     async def test_returns_resolved_values_on_success(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_float = _AsyncMock(
-            side_effect=[600.0, 7200.0],
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_float=_AsyncMock(side_effect=[600.0, 7200.0]),
+            ),
         )
         critical, high = await _resolve_urgency_thresholds(app_state)
         assert critical == 600.0
@@ -802,14 +803,13 @@ class TestResolveUrgencyThresholdsFallback:
         return the registry fallbacks instead of being trusted.
         """
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
-        app_state.config_resolver.get_float = _AsyncMock(
-            side_effect=[critical_val, high_val],
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_float=_AsyncMock(side_effect=[critical_val, high_val]),
+            ),
         )
         critical, high = await _resolve_urgency_thresholds(app_state)
         assert critical == 3600.0  # _URGENCY_CRITICAL_FALLBACK_SECONDS
@@ -824,24 +824,25 @@ class TestResolveUrgencyThresholdsFallback:
         call, and the helper must return the resolved values.
         """
         from unittest.mock import AsyncMock as _AsyncMock
-        from unittest.mock import MagicMock as _MagicMock
 
         import structlog.testing
 
         from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
         from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
 
-        app_state = _MagicMock()
-        app_state.has_config_resolver = True
         # First call: raise.  Second + third: serve a valid pair
         # (each ``_resolve_urgency_thresholds`` call awaits ``get_float``
         # twice, once per threshold).
-        app_state.config_resolver.get_float = _AsyncMock(
-            side_effect=[
-                RuntimeError("settings backend down"),
-                600.0,
-                7200.0,
-            ],
+        app_state = make_app_state(
+            config_resolver=mock_of[ConfigResolver](
+                get_float=_AsyncMock(
+                    side_effect=[
+                        RuntimeError("settings backend down"),
+                        600.0,
+                        7200.0,
+                    ],
+                ),
+            ),
         )
         # First call: forces fallback.
         await _resolve_urgency_thresholds(app_state)

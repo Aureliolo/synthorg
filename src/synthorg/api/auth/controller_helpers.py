@@ -14,6 +14,11 @@ from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
 from pydantic import ValidationError
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    auth_service_of,
+    session_store_of,
+)
 from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
 from synthorg.api.auth.cookies import (
     generate_csrf_token,
@@ -82,12 +87,14 @@ async def make_session_cookies(  # noqa: PLR0913
                     RefreshTokenRepository as RefreshStore,
                 )
 
-                auth_service: AuthService = app_state.auth_service
+                auth_service: AuthService = auth_service_of(app_state)
                 token_hash = auth_service.hash_api_key(refresh_token)
                 refresh_expiry = datetime.now(UTC) + timedelta(
                     seconds=refresh_max_age,
                 )
-                store: RefreshStore | None = getattr(app_state, "_refresh_store", None)
+                store: RefreshStore | None = app_state.slice(
+                    ApiCoreStateSlice
+                ).refresh_store
                 if store is not None:
                     await auth_service.persist_refresh_token(
                         store,
@@ -185,7 +192,7 @@ async def create_session_record(
 ) -> None:
     """Create a session record after login/setup (non-fatal on failure)."""
     try:
-        store = app_state.session_store
+        store = session_store_of(app_state)
         now = datetime.now(UTC)
         client = request.client
         ua = request.headers.get("user-agent", "")[:512]
@@ -235,7 +242,7 @@ def extract_jti(request: Request[Any, Any, Any]) -> str | None:
         token = auth_header[7:]
 
     try:
-        claims: JwtClaims = app_state.auth_service.decode_token(token)
+        claims: JwtClaims = auth_service_of(app_state).decode_token(token)
     except jwt.InvalidTokenError:
         logger.debug(
             SECURITY_AUTH_FAILED,

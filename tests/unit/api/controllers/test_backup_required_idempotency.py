@@ -17,19 +17,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.services.idempotency_service import (
     IdempotencyResult,
     IdempotencyService,
 )
-from synthorg.api.state import AppState
 from synthorg.backup.models import (
     BackupComponent,
     BackupManifest,
     BackupTrigger,
 )
 from synthorg.backup.service import BackupService
+from synthorg.backup.state import BackupStateSlice
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -57,20 +59,18 @@ def _make_state(
     # signature).
     service = MagicMock(spec=BackupService)
     service.create_backup.return_value = _make_manifest()
-    app_state = MagicMock(spec=AppState)
-    app_state.backup_service = service
     idempotency_service = MagicMock(spec=IdempotencyService)
     idempotency_service.run_idempotent = run_idempotent
-    app_state.idempotency_service = idempotency_service
-    app_state.cursor_secret = CursorSecret.from_key(
-        "test-key-32-bytes-padding0000000",
+    app_state = make_app_state(
+        cursor_secret=CursorSecret.from_key("test-key-32-bytes-padding0000000"),
+        slices={
+            BackupStateSlice: {"service": service},
+            ApiCoreStateSlice: {"idempotency_service": idempotency_service},
+        },
     )
-    # ``state.app_state`` must return the bound ``AppState`` exactly
-    # as assigned. ``SimpleNamespace`` is a plain attribute container
-    # with no auto-mocking, so the read is a direct attribute lookup.
-    # ``MagicMock(spec=State)`` would route the read through
-    # Litestar's ``State.__getattr__`` and could return a fresh
-    # auto-mock instead of the bound object.
+    # ``state.app_state`` must return the bound ``AppState`` exactly as
+    # assigned; ``SimpleNamespace`` is a plain attribute container with
+    # no auto-mocking, so the read is a direct attribute lookup.
     return SimpleNamespace(app_state=app_state), service
 
 

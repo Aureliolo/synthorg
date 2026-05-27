@@ -43,6 +43,7 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.meta.models import ImprovementProposal
+from synthorg.meta.state import signals_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
 
@@ -107,7 +108,7 @@ async def _snapshot(
     """Return snapshot."""
     try:
         since, until = parse_time_window(arguments, until_required=False)
-        snapshot = await app_state.signals_service.get_org_snapshot(
+        snapshot = await signals_service_of(app_state).get_org_snapshot(
             since=since,
             until=until,
         )
@@ -140,7 +141,7 @@ def _make_window_handler(
         """Return handler."""
         try:
             since, until = parse_time_window(arguments, until_required=False)
-            fn: Callable[..., Any] = getattr(app_state.signals_service, method_name)
+            fn: Callable[..., Any] = getattr(signals_service_of(app_state), method_name)
             result = await fn(since=since, until=until)
             return ok(result.model_dump(mode="json"))
         except ArgumentValidationError as exc:
@@ -163,7 +164,7 @@ async def _list_proposals(
     try:
         offset, limit = coerce_pagination(arguments)
         status = _parse_status(arguments)
-        page, total = await app_state.signals_service.list_proposals(
+        page, total = await signals_service_of(app_state).list_proposals(
             status=status,
             offset=offset,
             limit=limit,
@@ -189,7 +190,7 @@ async def _submit_proposal(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         proposal = _parse_proposal(arguments)
-        item = await app_state.signals_service.submit_proposal(
+        item = await signals_service_of(app_state).submit_proposal(
             proposal=proposal,
             actor=resolved_actor,
             reason=reason,

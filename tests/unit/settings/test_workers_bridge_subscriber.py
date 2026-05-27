@@ -23,6 +23,7 @@ from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.workers_bridge_subscriber import (
     WorkersBridgeSettingsSubscriber,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -48,11 +49,11 @@ def _make_subscriber(
     else:
         resolver.get_float.return_value = float_return
 
-    app_state = AppState(
+    app_state = make_app_state(
         config=RootConfig(company_name="test"),
         approval_store=ApprovalStore(),
+        config_resolver=resolver,
     )
-    app_state._config_resolver = resolver
     if snapshot is not None:
         app_state.swap_workers_bridge_config(snapshot)
 

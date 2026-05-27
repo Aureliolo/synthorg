@@ -56,6 +56,8 @@ from synthorg.core.normalization import (
     extract_bearer_token,
     extract_media_type,
 )
+from synthorg.engine.state import task_engine_of
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_INBOUND_AUTH_FAILED,
@@ -69,6 +71,7 @@ from synthorg.observability.events.a2a import (
     A2A_TASK_CREATED,
 )
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_HTTP_STATUS: Final[int] = 400
@@ -99,10 +102,11 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
     an oversized message slip through, so the fallback is the same
     value as the registered default.
     """
-    if app_state is None or not getattr(app_state, "has_config_resolver", False):
+    if app_state is None or app_state.slice(SettingsStateSlice).config_resolver is None:
         return _MAX_MESSAGE_PARTS_FALLBACK
     try:
-        value: int = await app_state.config_resolver.get_int("a2a", "max_message_parts")
+        resolver = config_resolver_of(app_state)
+        value: int = await resolver.get_int("a2a", "max_message_parts")
         return value  # noqa: TRY300 -- explicit return type; not a try-success path
     except asyncio.CancelledError:
         raise
@@ -551,7 +555,7 @@ async def _verify_peer_credentials(
         ``True`` if credentials are valid or catalog unavailable.
     """
     try:
-        catalog = app_state._connection_catalog  # noqa: SLF001
+        catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
         if catalog is None:
             return True
         credentials = await catalog.get_credentials(peer_name)
@@ -661,7 +665,7 @@ def _require_task_engine(app_state: Any) -> Any:
     from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
     try:
-        return app_state.task_engine
+        return task_engine_of(app_state)
     except ServiceUnavailableError:
         raise _A2AMethodError(
             JSONRPC_INTERNAL_ERROR,

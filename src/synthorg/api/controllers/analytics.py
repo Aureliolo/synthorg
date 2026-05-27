@@ -10,12 +10,14 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import (
     BucketSize,
     ForecastPoint,
@@ -34,6 +36,7 @@ from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import TaskStatus
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
     ANALYTICS_FORECAST_QUERIED,
@@ -41,6 +44,8 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TRENDS_QUERIED,
 )
 from synthorg.observability.events.api import API_REQUEST_ERROR
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -203,7 +208,9 @@ async def _resolve_budget_context(
     Returns:
         Budget context with monthly, remaining, and used_percent.
     """
-    budget_config = app_state.cost_tracker.budget_config
+    budget_config = require_service(
+        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+    ).budget_config
     monthly = budget_config.total_monthly if budget_config else 0.0
     if budget_config is None or monthly <= 0:
         return _BudgetContext(monthly=0.0, remaining=0.0, used_percent=0.0)
@@ -211,7 +218,9 @@ async def _resolve_budget_context(
     end = now or datetime.now(UTC)
     period_start = billing_period_start(budget_config.reset_day)
     try:
-        period_cost = await app_state.cost_tracker.get_total_cost(
+        period_cost = await require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        ).get_total_cost(
             start=period_start,
             end=end,
         )
@@ -272,7 +281,7 @@ async def _resolve_agent_counts(
     Returns:
         Tuple of (active_count, idle_count).
     """
-    if not app_state.has_agent_registry:
+    if app_state.slice(HrStateSlice).agent_registry is None:
         if not all_tasks:
             logger.debug(
                 ANALYTICS_OVERVIEW_QUERIED,
@@ -297,7 +306,9 @@ async def _resolve_agent_counts(
         )
         return active, idle
     try:
-        employed = await app_state.agent_registry.list_active()
+        employed = await require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        ).list_active()
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
@@ -384,7 +395,9 @@ async def _fetch_trend_data_points(
         Bucketed data points for the metric.
     """
     if metric == TrendMetric.SPEND:
-        records = await app_state.cost_tracker.get_records(
+        records = await require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        ).get_records(
             start=start,
             end=now,
         )
@@ -392,7 +405,10 @@ async def _fetch_trend_data_points(
 
     if metric in (TrendMetric.TASKS_COMPLETED, TrendMetric.SUCCESS_RATE):
         try:
-            task_metrics = app_state.performance_tracker.get_task_metrics(
+            task_metrics = require_service(
+                app_state.slice(HrStateSlice).performance_tracker,
+                "Performance Tracker",
+            ).get_task_metrics(
                 since=start,
                 until=now,
             )
@@ -418,7 +434,7 @@ async def _fetch_trend_data_points(
     # reflects genuinely busy agents (not the config count).
     from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
 
-    all_tasks = await app_state.persistence.tasks.query(TaskFilterSpec())
+    all_tasks = await persistence_of(app_state).tasks.query(TaskFilterSpec())
     active_count, _ = await _resolve_agent_counts(
         app_state,
         0,
@@ -455,7 +471,7 @@ async def _assemble_overview(  # noqa: PLR0913
     counts = Counter(t.status.value for t in all_tasks)
     by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
-    budget_cfg = await app_state.config_resolver.get_budget_config()
+    budget_cfg = await config_resolver_of(app_state).get_budget_config()
     budget = await _resolve_budget_context(app_state, total_cost, now=now)
     # Overview sparkline uses daily buckets intentionally (not hourly
     # like /trends?period=7d) to produce a compact 7-point sparkline.
@@ -541,16 +557,20 @@ class AnalyticsController(Controller):
         try:
             async with asyncio.TaskGroup() as tg:
                 t_tasks = tg.create_task(
-                    app_state.persistence.tasks.query(TaskFilterSpec()),
+                    persistence_of(app_state).tasks.query(TaskFilterSpec()),
                 )
                 t_cost = tg.create_task(
-                    app_state.cost_tracker.get_total_cost(),
+                    require_service(
+                        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+                    ).get_total_cost(),
                 )
                 t_agents = tg.create_task(
-                    app_state.config_resolver.get_agents(),
+                    config_resolver_of(app_state).get_agents(),
                 )
                 t_7d = tg.create_task(
-                    app_state.cost_tracker.get_records(
+                    require_service(
+                        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+                    ).get_records(
                         start=now - timedelta(days=7),
                         end=now,
                     ),
@@ -671,7 +691,9 @@ class AnalyticsController(Controller):
         now = datetime.now(UTC)
         lookback_start = now - timedelta(days=horizon_days)
 
-        records = await app_state.cost_tracker.get_records(
+        records = await require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        ).get_records(
             start=lookback_start,
             end=now,
         )
@@ -692,7 +714,7 @@ class AnalyticsController(Controller):
             days_until_exhausted=forecast.days_until_exhausted,
         )
 
-        budget_cfg = await app_state.config_resolver.get_budget_config()
+        budget_cfg = await config_resolver_of(app_state).get_budget_config()
         return ApiResponse(
             data=ForecastResponse(
                 horizon_days=horizon_days,

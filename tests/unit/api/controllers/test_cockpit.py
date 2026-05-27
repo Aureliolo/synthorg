@@ -8,6 +8,7 @@ from litestar.testing import TestClient
 
 from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -25,7 +26,7 @@ def _ensure_cockpit_wired(test_client: TestClient[Any]) -> None:
     deterministic without depending on hook ordering.
     """
     app_state = test_client.app.state.app_state
-    if not app_state.has_cockpit_service:
+    if app_state.slice(CockpitStateSlice).cockpit_service is None:
         from synthorg.api._app_wiring import _wire_cockpit_services
 
         _wire_cockpit_services(app_state)

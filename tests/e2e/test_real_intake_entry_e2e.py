@@ -57,7 +57,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -149,8 +149,7 @@ async def _build_app_state(
         settings_service=settings_service,
         config=root_config,
     )
-    harness_state = mock_of[AppState](
-        has_active_provider=True,
+    harness_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -158,21 +157,10 @@ async def _build_app_state(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=sim_state,
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=False,
-        coordination_metrics_store=None,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(harness_state, workspace_root=tmp_path)
     assert runtime.work_pipeline is not None
@@ -180,13 +168,12 @@ async def _build_app_state(
         work_pipeline=runtime.work_pipeline,
         default_project=_PROJECT,
     )
-    app_state = AppState(
+    return make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
         intake_entry_adapter=adapter,
+        client_simulation_state=sim_state,
     )
-    app_state.set_client_simulation_state(sim_state)
-    return app_state
 
 
 def _sim_state(task_engine: TaskEngine) -> ClientSimulationState:

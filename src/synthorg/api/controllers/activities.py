@@ -16,11 +16,18 @@ from litestar.params import QueryParameter
 
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import has_write_role, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.delegation.models import DelegationRecord  # noqa: TC001
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -31,6 +38,7 @@ from synthorg.hr.activity import (
 )
 from synthorg.hr.enums import ActivityEventType  # noqa: TC001
 from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
+from synthorg.hr.state import performance_tracker_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -40,7 +48,10 @@ from synthorg.observability.events.api import (
     API_ACTIVITY_FEED_QUERIED,
     API_REQUEST_ERROR,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord  # noqa: TC001
+from synthorg.tools.state import ToolsStateSlice
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -252,7 +263,7 @@ async def _resolve_currency(
         RecursionError: Raised on the corresponding failure path.
     """
     try:
-        budget_cfg = await app_state.config_resolver.get_budget_config()
+        budget_cfg = await config_resolver_of(app_state).get_budget_config()
     except MemoryError, RecursionError:
         logger.error(
             API_REQUEST_ERROR,
@@ -387,7 +398,7 @@ class ActivityController(Controller):
         since = now - timedelta(hours=last_n_hours)
         lifecycle_cap = app_state.api_bridge_config.max_lifecycle_events_per_query
 
-        lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
+        lifecycle_events = await persistence_of(app_state).lifecycle_events.list_events(
             agent_id=agent_id,
             since=since,
             limit=lifecycle_cap,
@@ -417,7 +428,7 @@ class ActivityController(Controller):
             timeline,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
 
         logger.debug(
@@ -459,7 +470,7 @@ async def _fetch_task_metrics(
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
     try:
-        return app_state.performance_tracker.get_task_metrics(
+        return performance_tracker_of(app_state).get_task_metrics(
             agent_id=agent_id,
             since=since,
             until=now,
@@ -505,10 +516,11 @@ async def _fetch_cost_records(
         RecursionError: Raised on the corresponding failure path.
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    if not app_state.has_cost_tracker:
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    if cost_tracker is None:
         return (), False
     try:
-        return await app_state.cost_tracker.get_records(
+        return await cost_tracker.get_records(
             agent_id=agent_id,
             start=since,
             end=now,
@@ -554,10 +566,11 @@ async def _fetch_tool_invocations(
         RecursionError: Raised on the corresponding failure path.
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    if not app_state.has_tool_invocation_tracker:
+    tracker = app_state.slice(ToolsStateSlice).invocation_tracker
+    if tracker is None:
         return (), False
     try:
-        return await app_state.tool_invocation_tracker.get_records(
+        return await tracker.get_records(
             agent_id=agent_id,
             start=since,
             end=now,
@@ -643,9 +656,9 @@ async def _fetch_delegation_records(
     Returns:
         ``(sent, received, is_degraded)`` tuple.
     """
-    if not app_state.has_delegation_record_store:
+    store = app_state.slice(CommunicationStateSlice).delegation_record_store
+    if store is None:
         return (), (), False
-    store = app_state.delegation_record_store
     if agent_id is None:
         # Org-wide: each record generates both perspectives.
         all_records, degraded = await _safe_delegation_query(

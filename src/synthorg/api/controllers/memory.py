@@ -11,12 +11,14 @@ from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_roles
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -54,6 +56,7 @@ from synthorg.memory.service import (
     CheckpointRollbackUnavailableError,
     MemoryService,
 )
+from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_CHECKPOINT_DELETE_FAILED,
@@ -72,6 +75,7 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
+from synthorg.persistence.state import persistence_of
 from synthorg.settings.definitions.memory import (
     FINE_TUNE_DEFAULT_BATCH_SIZE,
     FINE_TUNE_MIN_DOCS_RECOMMENDED,
@@ -80,6 +84,7 @@ from synthorg.settings.definitions.memory import (
     FINE_TUNE_PREFLIGHT_WALK_TIMEOUT_S,
 )
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -127,7 +132,7 @@ def _build_memory_service(
     Returns:
         ``MemoryService`` instance.
     """
-    backend = app_state.persistence
+    backend = persistence_of(app_state)
     checkpoint_repo: FineTuneCheckpointRepository | None = None
     run_repo: FineTuneRunRepository | None = None
     if require_fine_tune:
@@ -149,12 +154,8 @@ def _build_memory_service(
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
-        settings_service=(
-            app_state.settings_service if app_state.has_settings_service else None
-        ),
-        memory_backend=(
-            app_state.memory_backend if app_state.has_memory_backend else None
-        ),
+        settings_service=(app_state.slice(SettingsStateSlice).settings_service),
+        memory_backend=app_state.slice(MemoryStateSlice).backend,
     )
 
 
@@ -344,16 +345,16 @@ class MemoryAdminController(Controller):
             source_dir=data.source_dir,
             base_model=data.base_model,
         )
-        if not app_state.has_fine_tune_orchestrator:
+        orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
+        if orchestrator is None:
             msg = "Fine-tuning is not available"
             logger.warning(
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="start",
                 reason="orchestrator_not_configured",
-                backend=type(app_state.persistence).__name__,
+                backend=type(persistence_of(app_state)).__name__,
             )
             raise FeatureNotImplementedError(msg)
-        orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.start(data)
         except RuntimeError as exc:
@@ -410,17 +411,17 @@ class MemoryAdminController(Controller):
             ``ApiResponse[FineTuneStatus]`` instance.
         """
         app_state: AppState = state.app_state
-        if not app_state.has_fine_tune_orchestrator:
+        orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
+        if orchestrator is None:
             msg = "Fine-tuning is not available"
             logger.warning(
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="resume",
                 run_id=run_id,
                 reason="orchestrator_not_configured",
-                backend=type(app_state.persistence).__name__,
+                backend=type(persistence_of(app_state)).__name__,
             )
             raise FeatureNotImplementedError(msg)
-        orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.resume(run_id)
         except RuntimeError as exc:
@@ -460,11 +461,11 @@ class MemoryAdminController(Controller):
             ``ApiResponse[FineTuneStatus]`` instance.
         """
         app_state: AppState = state.app_state
-        if not app_state.has_fine_tune_orchestrator:
+        orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
+        if orchestrator is None:
             return ApiResponse(
                 data=FineTuneStatus(stage=FineTuneStage.IDLE),
             )
-        orchestrator = app_state.fine_tune_orchestrator
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
 
@@ -487,16 +488,16 @@ class MemoryAdminController(Controller):
             FeatureNotImplementedError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        if not app_state.has_fine_tune_orchestrator:
+        orchestrator = app_state.slice(MemoryStateSlice).fine_tune_orchestrator
+        if orchestrator is None:
             msg = "Fine-tuning is not available"
             logger.warning(
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="cancel",
                 reason="orchestrator_not_configured",
-                backend=type(app_state.persistence).__name__,
+                backend=type(persistence_of(app_state)).__name__,
             )
             raise FeatureNotImplementedError(msg)
-        orchestrator = app_state.fine_tune_orchestrator
         await orchestrator.cancel()
         status = await orchestrator.get_status()
         return ApiResponse(data=status)
@@ -524,9 +525,7 @@ class MemoryAdminController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        settings_service = (
-            app_state.settings_service if app_state.has_settings_service else None
-        )
+        settings_service = app_state.slice(SettingsStateSlice).settings_service
         thresholds = await _resolve_fine_tune_thresholds(settings_service)
         # The walk's in-thread monotonic deadline only starts counting
         # once the ``to_thread`` job is scheduled; a saturated default
@@ -599,7 +598,7 @@ class MemoryAdminController(Controller):
             ``PaginatedResponse[CheckpointRecord]`` instance.
         """
         app_state: AppState = state.app_state
-        secret = app_state.cursor_secret
+        secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         service = _build_memory_service(app_state)
         cps, total = await service.list_checkpoints(limit=limit, offset=offset)
@@ -910,7 +909,7 @@ class MemoryAdminController(Controller):
             ``PaginatedResponse[FineTuneRun]`` instance.
         """
         app_state: AppState = state.app_state
-        secret = app_state.cursor_secret
+        secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         service = _build_memory_service(app_state)
         runs, total = await service.list_runs(limit=limit, offset=offset)
@@ -943,8 +942,11 @@ class MemoryAdminController(Controller):
         """
         app_state: AppState = state.app_state
         result = ActiveEmbedderResponse()
-        if app_state.has_settings_service:
-            svc = app_state.settings_service
+        if app_state.slice(SettingsStateSlice).settings_service is not None:
+            svc = require_service(
+                app_state.slice(SettingsStateSlice).settings_service,
+                "Settings Service",
+            )
             try:
                 # Each setting is independently optional: a successful
                 # auto-selection persists only ``embedder_model`` +

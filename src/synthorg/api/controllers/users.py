@@ -9,11 +9,18 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.auth.user_service import UserService
 from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo
-from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    encode_keyset_meta,
+)
 from synthorg.api.path_params import PathId, PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
@@ -42,6 +49,7 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -61,7 +69,7 @@ def _service(state: State) -> UserService:
     Returns:
         ``UserService`` instance.
     """
-    persistence = state.app_state.persistence
+    persistence = persistence_of(state.app_state)
     return UserService(
         repo=persistence.users,
         refresh_tokens=persistence.refresh_tokens,
@@ -229,7 +237,10 @@ class UserController(Controller):
             raise ValidationError(msg)
 
         now = datetime.now(UTC)
-        password_hash = await app_state.auth_service.hash_password_async(
+        auth_service = require_service(
+            app_state.slice(ApiCoreStateSlice).auth_service, "Auth Service"
+        )
+        password_hash = await auth_service.hash_password_async(
             data.password,
         )
         user = User(
@@ -300,7 +311,7 @@ class UserController(Controller):
         """
         app_state: AppState = state.app_state
         after_id = (
-            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            decode_keyset_cursor(cursor, secret=cursor_secret_of(app_state))
             if cursor is not None
             else None
         )
@@ -313,7 +324,7 @@ class UserController(Controller):
             next_after_key=next_after_key,
             has_more=has_more,
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(
             data=tuple(_to_response(u) for u in page),

@@ -19,9 +19,15 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.coordination.state import (
+    CoordinationStateSlice,
+    ceremony_policy_service_of,
+    coordination_service_of,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.state import HrStateSlice, scaling_decision_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
 )
@@ -89,10 +95,10 @@ async def _coordination_get_task_metrics(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_coordination_service", False):
+    if app_state.slice(CoordinationStateSlice).coordination_service is None:
         return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
-        record = await app_state.coordination_service.get_task_metrics(
+        record = await coordination_service_of(app_state).get_task_metrics(
             NotBlankStr(task_id),
         )
     except Exception as exc:
@@ -126,10 +132,10 @@ async def _coordination_metrics_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_coordination_service", False):
+    if app_state.slice(CoordinationStateSlice).coordination_service is None:
         return capability_gap(tool, _WHY_COORDINATION_NOT_WIRED)
     try:
-        records, total = await app_state.coordination_service.list_metrics(
+        records, total = await coordination_service_of(app_state).list_metrics(
             offset=offset,
             limit=limit,
         )
@@ -162,10 +168,10 @@ async def _scaling_list_decisions(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_scaling_decision_service", False):
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        decisions, total = await app_state.scaling_decision_service.list_decisions(
+        decisions, total = await scaling_decision_service_of(app_state).list_decisions(
             offset=offset,
             limit=limit,
         )
@@ -195,10 +201,10 @@ async def _scaling_get_decision(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_scaling_decision_service", False):
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        decision = await app_state.scaling_decision_service.get_decision(
+        decision = await scaling_decision_service_of(app_state).get_decision(
             NotBlankStr(decision_id),
         )
     except Exception as exc:
@@ -225,10 +231,10 @@ async def _scaling_get_config(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_scaling_get_config"
-    if not getattr(app_state, "has_scaling_decision_service", False):
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        config = await app_state.scaling_decision_service.get_config()
+        config = await scaling_decision_service_of(app_state).get_config()
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -265,10 +271,10 @@ async def _scaling_trigger(
         empty = ArgumentValidationError("agent_ids", "non-empty list")
         log_handler_argument_invalid(tool, empty)
         return err(empty)
-    if not getattr(app_state, "has_scaling_decision_service", False):
+    if app_state.slice(HrStateSlice).scaling_decision_service is None:
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
-        decisions = await app_state.scaling_decision_service.trigger(agent_ids)
+        decisions = await scaling_decision_service_of(app_state).trigger(agent_ids)
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -292,10 +298,10 @@ async def _ceremony_policy_get(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_ceremony_policy_get"
-    if not getattr(app_state, "has_ceremony_policy_service", False):
+    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
-        policy = await app_state.ceremony_policy_service.get_policy()
+        policy = await ceremony_policy_service_of(app_state).get_policy()
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -316,7 +322,7 @@ async def _ceremony_policy_get_resolved(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_ceremony_policy_get_resolved"
-    if not getattr(app_state, "has_ceremony_policy_service", False):
+    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     department: NotBlankStr | None = None
     if "department" in arguments:
@@ -335,7 +341,7 @@ async def _ceremony_policy_get_resolved(
             return err(exc)
         department = NotBlankStr(department_raw.strip())
     try:
-        resolved = await app_state.ceremony_policy_service.get_resolved_policy(
+        resolved = await ceremony_policy_service_of(app_state).get_resolved_policy(
             department=department,
         )
     except Exception as exc:
@@ -358,10 +364,10 @@ async def _ceremony_policy_get_active_strategy(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_ceremony_policy_get_active_strategy"
-    if not getattr(app_state, "has_ceremony_policy_service", False):
+    if app_state.slice(CoordinationStateSlice).ceremony_policy_service is None:
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
-        active = await app_state.ceremony_policy_service.get_active_strategy()
+        active = await ceremony_policy_service_of(app_state).get_active_strategy()
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)

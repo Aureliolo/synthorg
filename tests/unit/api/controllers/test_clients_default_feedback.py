@@ -14,10 +14,10 @@ from synthorg.api.controllers.clients import (
     _build_default_client,
     _resolve_client_bridge_config,
 )
-from synthorg.api.state import AppState
 from synthorg.client.models import ClientProfile
 from synthorg.settings.bridge_configs import ClientBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -72,8 +72,7 @@ def test_build_default_client_none_falls_back_to_defaults() -> None:
 
 async def test_resolve_client_bridge_config_falls_back_when_resolver_missing() -> None:
     """During early bootstrap (no resolver wired), defaults are returned."""
-    app_state = MagicMock(spec=AppState)
-    app_state.has_config_resolver = False
+    app_state = make_app_state()
     config = await _resolve_client_bridge_config(app_state)
     assert isinstance(config, ClientBridgeConfig)
     assert config.scored_feedback_passing_score == pytest.approx(0.5)
@@ -83,8 +82,6 @@ async def test_resolve_client_bridge_config_falls_back_when_resolver_missing() -
 
 async def test_resolve_client_bridge_config_calls_resolver_when_wired() -> None:
     """When the resolver is wired, the bridge-config helper drives the result."""
-    app_state = MagicMock(spec=AppState)
-    app_state.has_config_resolver = True
     expected = ClientBridgeConfig(
         scored_feedback_passing_score=0.7,
         scored_feedback_strictness_multiplier=3.0,
@@ -97,6 +94,6 @@ async def test_resolve_client_bridge_config_calls_resolver_when_wired() -> None:
     # spec stays anchored to the concrete class per the project's
     # mock-spec convention rather than spec'ing to a method object).
     resolver_mock.get_client_bridge_config.return_value = expected
-    app_state.config_resolver = resolver_mock
+    app_state = make_app_state(config_resolver=resolver_mock)
     result = await _resolve_client_bridge_config(app_state)
     assert result is expected

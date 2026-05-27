@@ -17,11 +17,13 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.observability import get_logger
+from synthorg.persistence.state import persistence_of
 from synthorg.templates.preset_service import (
     PersonalityPresetService,
     PresetEntry,
@@ -68,7 +70,7 @@ def _get_service(state: State) -> PersonalityPresetService:
     Returns:
         ``PersonalityPresetService`` instance.
     """
-    repo = state.app_state.persistence.custom_presets
+    repo = persistence_of(state.app_state).custom_presets
     return PersonalityPresetService(repository=repo)
 
 
@@ -100,7 +102,7 @@ class PersonalityPresetController(Controller):
             summaries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[PresetSummaryResponse](data=page, pagination=meta)
 

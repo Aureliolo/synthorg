@@ -1,8 +1,9 @@
 """Approval domain MCP handlers.
 
-Shims the 5 approval tools onto ``app_state.approval_store`` (the
-in-memory + optionally persisted ``ApprovalStore`` conforming to
-``ApprovalStoreProtocol``).  Handlers are thin adapters: they parse
+Shims the 5 approval tools onto the approval store (the in-memory +
+optionally persisted ``ApprovalStore`` conforming to
+``ApprovalStoreProtocol``) reached via the ``ApprovalStateSlice``.
+Handlers are thin adapters: they parse
 arguments, call the store, wrap the result in the common envelope.
 
 Destructive ops
@@ -22,6 +23,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -174,7 +176,7 @@ async def _list_approvals(
     # validation is already complete above, so any failure here is a
     # service-layer problem -- a single ``except Exception`` is enough.
     try:
-        items = await app_state.approval_store.list_items(
+        items = await app_state.slice(ApprovalStateSlice).store.list_items(
             status=status,
             risk_level=risk,
             action_type=action_type,
@@ -208,7 +210,7 @@ async def _get_approval(
         return err(exc)
 
     try:
-        item = await app_state.approval_store.get(approval_id)
+        item = await app_state.slice(ApprovalStateSlice).store.get(approval_id)
     except Exception as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
@@ -267,7 +269,7 @@ async def _create_approval(
         created_at=now,
     )
     try:
-        await app_state.approval_store.add(item)
+        await app_state.slice(ApprovalStateSlice).store.add(item)
     except ConflictError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
@@ -306,7 +308,8 @@ async def _decide(
         ``ApprovalItem`` instance.
     """
     decided_by = require_actor_id(actor)
-    existing = await app_state.approval_store.get(approval_id)
+    store = app_state.slice(ApprovalStateSlice).store
+    existing = await store.get(approval_id)
     if existing is None:
         msg = f"Approval {approval_id!r} not found"
         raise _NotFoundError(msg)
@@ -322,11 +325,11 @@ async def _decide(
             "decision_reason": reason,
         },
     )
-    saved: ApprovalItem | None = await app_state.approval_store.save_if_pending(
+    saved: ApprovalItem | None = await store.save_if_pending(
         updated,
     )
     if saved is None:
-        current = await app_state.approval_store.get(approval_id)
+        current = await store.get(approval_id)
         if current is None:
             msg = f"Approval {approval_id!r} was removed before decision"
             raise _NotFoundError(msg)

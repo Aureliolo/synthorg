@@ -9,6 +9,14 @@ from litestar import Controller, Request, Response, delete, get, post
 from litestar.exceptions import PermissionDeniedException
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    auth_service_of,
+    lockout_store_of,
+    refresh_store_of,
+    session_store_of,
+    ticket_store_of,
+)
 from synthorg.api.auth.controller_dtos import (
     ChangePasswordRequest,
     CookieSessionResponse,
@@ -65,6 +73,7 @@ from synthorg.observability.events.security import (
     SECURITY_SESSION_LIMIT_ENFORCED,
     SECURITY_SESSION_REVOKED,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -122,11 +131,11 @@ async def _record_failed_login(
     Raises:
         AccountLockedError: Raised on the corresponding failure path.
     """
-    if not app_state.has_lockout_store:
+    if app_state.slice(ApiCoreStateSlice).lockout_store is None:
         return
     client = request.client
     ip = client.host if client else ""
-    locked = await app_state.lockout_store.record_failure(
+    locked = await lockout_store_of(app_state).record_failure(
         username,
         ip_address=ip,
     )
@@ -135,11 +144,11 @@ async def _record_failed_login(
     logger.warning(
         SECURITY_AUTH_ACCOUNT_LOCKED,
         username=username,
-        threshold=app_state.lockout_store.threshold,
-        duration_minutes=(app_state.lockout_store.lockout_duration_seconds // 60),
+        threshold=lockout_store_of(app_state).threshold,
+        duration_minutes=(lockout_store_of(app_state).lockout_duration_seconds // 60),
     )
     raise AccountLockedError(
-        retry_after=app_state.lockout_store.lockout_duration_seconds,
+        retry_after=lockout_store_of(app_state).lockout_duration_seconds,
     )
 
 
@@ -151,9 +160,9 @@ async def _record_successful_login(app_state: Any, username: str) -> None:
     clear so a routine successful login does not chain a no-op
     decision into the audit log.
     """
-    if not app_state.has_lockout_store:
+    if app_state.slice(ApiCoreStateSlice).lockout_store is None:
         return
-    if await app_state.lockout_store.record_success(username):
+    if await lockout_store_of(app_state).record_success(username):
         logger.info(
             SECURITY_AUTH_LOCKOUT_CLEARED,
             username=username,
@@ -190,8 +199,8 @@ class AuthController(Controller):
             ConflictError: Raised on the corresponding failure path.
         """
         app_state = request.app.state["app_state"]
-        auth_service: AuthService = app_state.auth_service
-        persistence = app_state.persistence
+        auth_service: AuthService = auth_service_of(app_state)
+        persistence = persistence_of(app_state)
 
         if data.username == SYSTEM_USERNAME:
             logger.warning(
@@ -240,8 +249,8 @@ class AuthController(Controller):
         )
 
         auth_config = get_auth_config(app_state)
-        if app_state.has_session_store:
-            revoked = await app_state.session_store.enforce_session_limit(
+        if app_state.slice(ApiCoreStateSlice).session_store is not None:
+            revoked = await session_store_of(app_state).enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
@@ -298,13 +307,12 @@ class AuthController(Controller):
             UnauthorizedError: Raised on the corresponding failure path.
         """
         app_state = request.app.state["app_state"]
-        auth_service: AuthService = app_state.auth_service
-        persistence = app_state.persistence
+        auth_service: AuthService = auth_service_of(app_state)
+        persistence = persistence_of(app_state)
 
         # Account lockout check (still run dummy hash for timing safety)
-        if app_state.has_lockout_store and app_state.lockout_store.is_locked(
-            data.username,
-        ):
+        lockout_store = app_state.slice(ApiCoreStateSlice).lockout_store
+        if lockout_store is not None and lockout_store.is_locked(data.username):
             await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
             logger.warning(
                 SECURITY_AUTH_FAILED,
@@ -312,7 +320,7 @@ class AuthController(Controller):
                 username=data.username,
             )
             raise AccountLockedError(
-                retry_after=app_state.lockout_store.lockout_duration_seconds,
+                retry_after=lockout_store_of(app_state).lockout_duration_seconds,
             )
 
         user = await persistence.users.get_by_username(data.username)
@@ -331,7 +339,7 @@ class AuthController(Controller):
             await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
             password_valid = False
 
-        if not password_valid:
+        if not password_valid or user is None:
             await _record_failed_login(app_state, data.username, request)
             logger.warning(
                 SECURITY_AUTH_FAILED,
@@ -354,8 +362,8 @@ class AuthController(Controller):
         )
 
         auth_config = get_auth_config(app_state)
-        if app_state.has_session_store:
-            revoked = await app_state.session_store.enforce_session_limit(
+        if app_state.slice(ApiCoreStateSlice).session_store is not None:
+            revoked = await session_store_of(app_state).enforce_session_limit(
                 user.id,
                 auth_config.max_concurrent_sessions,
             )
@@ -419,10 +427,10 @@ class AuthController(Controller):
             RefreshTokenInvalidError: Raised on the corresponding failure path.
         """
         app_state = request.app.state["app_state"]
-        auth_service: AuthService = app_state.auth_service
+        auth_service: AuthService = auth_service_of(app_state)
         auth_config = get_auth_config(app_state)
 
-        if not app_state.has_refresh_store:
+        if app_state.slice(ApiCoreStateSlice).refresh_store is None:
             logger.warning(
                 SECURITY_AUTH_REFRESH_REJECTED,
                 reason="refresh_store_unavailable",
@@ -431,12 +439,14 @@ class AuthController(Controller):
 
         raw_refresh = request.cookies.get(auth_config.refresh_cookie_name, "")
         is_revoked = (
-            app_state.session_store.is_revoked if app_state.has_session_store else None
+            session_store_of(app_state).is_revoked
+            if app_state.slice(ApiCoreStateSlice).session_store is not None
+            else None
         )
         rotation = await auth_service.rotate_refresh_token(
             raw_refresh_token=raw_refresh,
-            refresh_store=app_state.refresh_store,
-            users=app_state.persistence.users,
+            refresh_store=refresh_store_of(app_state),
+            users=persistence_of(app_state).users,
             is_session_revoked=is_revoked,
         )
 
@@ -519,8 +529,8 @@ class AuthController(Controller):
                 detail="System user cannot be modified",
             )
         app_state = request.app.state["app_state"]
-        auth_service: AuthService = app_state.auth_service
-        persistence = app_state.persistence
+        auth_service: AuthService = auth_service_of(app_state)
+        persistence = persistence_of(app_state)
 
         user = await persistence.users.get(auth_user.user_id)
         if user is None:
@@ -556,8 +566,8 @@ class AuthController(Controller):
 
         # Revoke the old session before issuing a new one.
         old_jti = extract_jti(request)
-        if old_jti and app_state.has_session_store:
-            revoked = await app_state.session_store.revoke(old_jti)
+        if old_jti and app_state.slice(ApiCoreStateSlice).session_store is not None:
+            revoked = await session_store_of(app_state).revoke(old_jti)
             if revoked:
                 logger.info(
                     SECURITY_SESSION_REVOKED,
@@ -705,8 +715,9 @@ class AuthController(Controller):
         ws_user = auth_user.model_copy(
             update={"auth_method": AuthMethod.WS_TICKET},
         )
+        ticket_store = ticket_store_of(app_state)
         try:
-            ticket = app_state.ticket_store.create(ws_user)
+            ticket = ticket_store.create(ws_user)
         except TicketLimitExceededError:
             logger.warning(
                 SECURITY_AUTH_FAILED,
@@ -720,7 +731,7 @@ class AuthController(Controller):
             content=ApiResponse(
                 data=WsTicketResponse(
                     ticket=ticket,
-                    expires_in=max(1, math.ceil(app_state.ticket_store.ttl_seconds)),
+                    expires_in=max(1, math.ceil(ticket_store.ttl_seconds)),
                 ),
             ),
         )
@@ -765,7 +776,7 @@ class AuthController(Controller):
             raise ValidationError(msg)
 
         app_state = request.app.state["app_state"]
-        store = app_state.session_store
+        store = session_store_of(app_state)
 
         if scope == "all" and auth_user.role == HumanRole.CEO:
             sessions = await store.list_all()
@@ -825,7 +836,7 @@ class AuthController(Controller):
             raise UnauthorizedError(msg)
 
         app_state = request.app.state["app_state"]
-        store = app_state.session_store
+        store = session_store_of(app_state)
 
         session = await store.get(session_id)
         if session is None:
@@ -889,7 +900,7 @@ class AuthController(Controller):
             auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else None
         )
         jti = extract_jti(request)
-        if jti and app_state.has_session_store:
+        if jti and app_state.slice(ApiCoreStateSlice).session_store is not None:
             # Best-effort revocation -- if the session store is
             # unreachable we still return 204 with cleared cookies
             # so the client can recover from stale state.  Without
@@ -897,7 +908,7 @@ class AuthController(Controller):
             # trap users in the exact stale-cookie scenario the
             # idempotent contract was designed to fix.
             try:
-                revoked = await app_state.session_store.revoke(jti)
+                revoked = await session_store_of(app_state).revoke(jti)
                 if revoked:
                     logger.info(
                         SECURITY_SESSION_FORCE_LOGOUT,

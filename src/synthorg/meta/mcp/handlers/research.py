@@ -32,6 +32,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.persistence.research_protocol import ResearchRunFilter
 from synthorg.research.errors import ResearchRunNotFoundError
+from synthorg.research.state import ResearchStateSlice
 from synthorg.research.tool import build_research_brief, derive_research_ids
 
 if TYPE_CHECKING:
@@ -74,7 +75,7 @@ def _require_service(app_state: Any) -> Any:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc = getattr(app_state, "research_service", None)
+    svc = app_state.slice(ResearchStateSlice).service
     if svc is None:
         msg = "research service is not wired on app_state in this deployment"
         raise ServiceUnavailableError(msg)

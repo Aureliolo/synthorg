@@ -16,6 +16,7 @@ from litestar.params import PathParameter, QueryParameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg._core.features import require_service
 from synthorg.api.controllers._provider_helpers import enrich_with_usage, sse_error
 from synthorg.api.controllers._workflow_helpers import audit_actor_from_context
 from synthorg.api.cursor import InvalidCursorError, decode_keyset_cursor
@@ -62,6 +63,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_keyset_meta,
     paginate_cursor,
 )
@@ -112,6 +114,11 @@ from synthorg.providers.presets import (
 )
 from synthorg.providers.probing import probe_preset_urls
 from synthorg.providers.resilience.errors import RetryExhaustedError
+from synthorg.providers.state import (
+    ProvidersStateSlice,
+    provider_management_of,
+)
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -228,7 +235,7 @@ class ProviderController(Controller):
             ``PaginatedResponse[ProviderResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        providers = await app_state.config_resolver.get_provider_configs()
+        providers = await config_resolver_of(app_state).get_provider_configs()
         # Paginate the sorted name list FIRST, then build DTOs only
         # for the page slice.  Constructing every ``ProviderResponse``
         # before slicing would defeat the cursor-pagination perf goal:
@@ -240,7 +247,7 @@ class ProviderController(Controller):
             ordered_names,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         page = tuple(
             to_provider_response(providers[name], name=name) for name in page_names
@@ -265,7 +272,7 @@ class ProviderController(Controller):
             ``ApiResponse[ProviderResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        providers = await app_state.config_resolver.get_provider_configs()
+        providers = await config_resolver_of(app_state).get_provider_configs()
         provider = require_resource_or_404(
             providers.get(name),
             resource_type="Provider",
@@ -302,7 +309,7 @@ class ProviderController(Controller):
             ``PaginatedResponse[ProviderModelResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        providers = await app_state.config_resolver.get_provider_configs()
+        providers = await config_resolver_of(app_state).get_provider_configs()
         provider = require_resource_or_404(
             providers.get(name),
             resource_type="Provider",
@@ -313,8 +320,9 @@ class ProviderController(Controller):
         )
 
         driver = None
-        if app_state.has_provider_registry and name in app_state.provider_registry:
-            driver = app_state.provider_registry.get(name)
+        registry = app_state.slice(ProvidersStateSlice).registry
+        if registry is not None and name in registry:
+            driver = registry.get(name)
 
         # Paginate the model list FIRST, then enrich only the page.
         # Running ``batch_get_capabilities`` over ``provider.models``
@@ -328,7 +336,7 @@ class ProviderController(Controller):
             ordered_models,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
 
         caps_by_id: Mapping[str, ModelCapabilities | None] = {}
@@ -382,12 +390,16 @@ class ProviderController(Controller):
             ``ApiResponse[ProviderHealthSummary]`` instance.
         """
         app_state: AppState = state.app_state
-        providers = await app_state.config_resolver.get_provider_configs()
+        providers = await config_resolver_of(app_state).get_provider_configs()
         if name not in providers:
             msg = f"Provider {name!r} not found"
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
-        summary = await app_state.provider_health_tracker.get_summary(name)
+        health_tracker = require_service(
+            app_state.slice(ProvidersStateSlice).health_tracker,
+            "Provider Health Tracker",
+        )
+        summary = await health_tracker.get_summary(name)
         summary = await enrich_with_usage(summary, app_state, name)
         logger.debug(
             API_PROVIDER_HEALTH_QUERIED,
@@ -431,7 +443,7 @@ class ProviderController(Controller):
         safe_data = data.model_copy(update={"preset_name": None})
         actor = audit_actor_from_context()
         try:
-            config = await app_state.provider_management.create_provider(
+            config = await provider_management_of(app_state).create_provider(
                 safe_data,
                 actor=actor,
             )
@@ -484,7 +496,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            config = await app_state.provider_management.create_from_preset(
+            config = await provider_management_of(app_state).create_from_preset(
                 data,
                 actor=actor,
             )
@@ -535,7 +547,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            config = await app_state.provider_management.update_provider(
+            config = await provider_management_of(app_state).update_provider(
                 name,
                 data,
                 actor=actor,
@@ -582,7 +594,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            await app_state.provider_management.delete_provider(name, actor=actor)
+            await provider_management_of(app_state).delete_provider(name, actor=actor)
         except ProviderNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -638,7 +650,7 @@ class ProviderController(Controller):
             NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
-        mgmt = app_state.provider_management
+        mgmt = provider_management_of(app_state)
         try:
             discovered = await mgmt.discover_models_for_provider(
                 name,
@@ -686,7 +698,7 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            result = await app_state.provider_management.test_connection(
+            result = await provider_management_of(app_state).test_connection(
                 name,
                 data,
             )
@@ -718,7 +730,7 @@ class ProviderController(Controller):
             Current discovery policy envelope.
         """
         app_state: AppState = state.app_state
-        policy = await app_state.provider_management.get_discovery_policy()
+        policy = await provider_management_of(app_state).get_discovery_policy()
         return ApiResponse(
             data=DiscoveryPolicyResponse.model_validate(
                 policy,
@@ -751,7 +763,7 @@ class ProviderController(Controller):
             Updated discovery policy envelope.
         """
         app_state: AppState = state.app_state
-        policy = await app_state.provider_management.add_custom_allowlist_entry(
+        policy = await provider_management_of(app_state).add_custom_allowlist_entry(
             data.host_port,
         )
         return ApiResponse(
@@ -786,7 +798,7 @@ class ProviderController(Controller):
             Updated discovery policy envelope.
         """
         app_state: AppState = state.app_state
-        policy = await app_state.provider_management.remove_custom_allowlist_entry(
+        policy = await provider_management_of(app_state).remove_custom_allowlist_entry(
             data.host_port,
         )
         return ApiResponse(
@@ -830,7 +842,7 @@ class ProviderController(Controller):
             CancelledError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        svc = app_state.provider_management
+        svc = provider_management_of(app_state)
 
         async def _event_stream() -> AsyncIterator[dict[str, str]]:
             # Carve-out: SSE responses cannot raise domain exceptions
@@ -929,7 +941,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            await app_state.provider_management.delete_model(
+            await provider_management_of(app_state).delete_model(
                 name,
                 model_id,
                 actor=actor,
@@ -1014,7 +1026,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            updated = await app_state.provider_management.update_model_config(
+            updated = await provider_management_of(app_state).update_model_config(
                 name,
                 model_id,
                 data.local_params,
@@ -1096,7 +1108,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            updated = await app_state.provider_management.add_model(
+            updated = await provider_management_of(app_state).add_model(
                 name,
                 data,
                 actor=actor,
@@ -1151,7 +1163,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            result = await app_state.provider_management.sync_models(
+            result = await provider_management_of(app_state).sync_models(
                 name,
                 data,
                 actor=actor,
@@ -1215,7 +1227,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            updated = await app_state.provider_management.rotate_credentials(
+            updated = await provider_management_of(app_state).rotate_credentials(
                 name,
                 data,
                 actor=actor,
@@ -1273,7 +1285,11 @@ class ProviderController(Controller):
             raise NotFoundError(msg)
 
         app_state: AppState = state.app_state
-        override = await app_state.preset_override_service.get_override(preset_name)
+        preset_service = require_service(
+            app_state.slice(ProvidersStateSlice).preset_override_service,
+            "Preset Override Service",
+        )
+        override = await preset_service.get_override(preset_name)
         return ApiResponse(data=override)
 
     @patch(
@@ -1324,8 +1340,12 @@ class ProviderController(Controller):
                 name=preset_name,
             )
             raise NotFoundError(msg)
+        preset_service = require_service(
+            app_state.slice(ProvidersStateSlice).preset_override_service,
+            "Preset Override Service",
+        )
         try:
-            saved = await app_state.preset_override_service.upsert_override(
+            saved = await preset_service.upsert_override(
                 preset_name,
                 data,
                 actor=actor,
@@ -1384,7 +1404,11 @@ class ProviderController(Controller):
                 name=preset_name,
             )
             raise NotFoundError(msg)
-        await app_state.preset_override_service.delete_override(
+        preset_service = require_service(
+            app_state.slice(ProvidersStateSlice).preset_override_service,
+            "Preset Override Service",
+        )
+        await preset_service.delete_override(
             preset_name,
             actor=actor,
         )
@@ -1414,7 +1438,7 @@ class ProviderController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            data = await app_state.provider_management.get_rate_limits(name)
+            data = await provider_management_of(app_state).get_rate_limits(name)
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
             logger.warning(
@@ -1458,7 +1482,7 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
         try:
-            updated = await app_state.provider_management.update_rate_limits(
+            updated = await provider_management_of(app_state).update_rate_limits(
                 name,
                 data,
                 actor=actor,
@@ -1530,7 +1554,7 @@ class ProviderController(Controller):
         # simply yields an empty page.
 
         after_id_str = (
-            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            decode_keyset_cursor(cursor, secret=cursor_secret_of(app_state))
             if cursor is not None
             else None
         )
@@ -1547,7 +1571,11 @@ class ProviderController(Controller):
                 msg = "cursor payload is not an integer"
                 raise InvalidCursorError(msg) from exc
 
-        events, has_more = await app_state.provider_audit_service.list_for_provider(
+        audit_service = require_service(
+            app_state.slice(ProvidersStateSlice).audit_service,
+            "Provider Audit Service",
+        )
+        events, has_more = await audit_service.list_for_provider(
             provider_name=name,
             after_id=after_id,
             limit=limit,
@@ -1561,6 +1589,6 @@ class ProviderController(Controller):
             next_after_key=next_after_key,
             has_more=has_more,
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=events, pagination=meta)

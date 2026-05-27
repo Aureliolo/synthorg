@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.budget.state import BudgetStateSlice
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -77,18 +78,17 @@ class TestReportsController:
     ) -> None:
         """Regression guard: missing wiring -> 503, not AttributeError.
 
-        Without this guard the controller dereferences ``state._app_state``
-        (private underscore attr) and surfaces a bare ``AttributeError``
-        as a 500 Internal Server Error to clients. The fix routes
-        through ``app_state.has_report_service`` -- when the service
-        is not wired the controller now raises
-        ``ServiceUnavailableError`` (HTTP 503), the honest status code
-        for "feature unavailable in this deployment". Force the not-
-        wired state by clearing the private slot directly.
+        The controller resolves the report service through
+        ``state.slice(BudgetStateSlice).report_service`` -- when the
+        slice field is ``None`` it raises ``ServiceUnavailableError``
+        (HTTP 503), the honest status code for "feature unavailable in
+        this deployment", rather than surfacing a bare ``AttributeError``
+        as a 500. Force the not-wired state by swapping the budget slice's
+        ``report_service`` to ``None``.
         """
         app_state = test_client.app.state.app_state
-        original = app_state._report_service
-        app_state._report_service = None
+        original_slice = app_state.slice(BudgetStateSlice)
+        app_state.wire(BudgetStateSlice, report_service=None)
         try:
             resp = test_client.post(
                 "/api/v1/reports/generate",
@@ -112,4 +112,4 @@ class TestReportsController:
                 == ErrorCode.SERVICE_UNAVAILABLE
             )
         finally:
-            app_state._report_service = original
+            app_state.swap_slice(original_slice)

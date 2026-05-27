@@ -26,7 +26,6 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
-from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.ai_client import AIClient
 from synthorg.client.config import SimulationRunnerConfig
@@ -43,7 +42,7 @@ from synthorg.providers.drivers.scripted import ScriptedDriver, SingleResponseSt
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import make_app_state
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,
@@ -176,11 +175,8 @@ class TestBootWiredDirectIntakeHarness:
         self,
         task_engine: TaskEngine,
     ) -> None:
-        app_state = mock_of[AppState](
+        app_state = make_app_state(
             task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=False,
-            has_cost_tracker=False,
         )
         state = build_client_simulation_runtime(app_state, env={})
         assert state.intake_engine is not None
@@ -224,12 +220,9 @@ class TestBootWiredAgentIntakeHarness:
         registry = ProviderRegistry(
             {"test-provider": _accepting_scripted_provider()},
         )
-        app_state = mock_of[AppState](
+        app_state = make_app_state(
             task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=True,
             provider_registry=registry,
-            has_cost_tracker=False,
         )
         state = build_client_simulation_runtime(
             app_state,

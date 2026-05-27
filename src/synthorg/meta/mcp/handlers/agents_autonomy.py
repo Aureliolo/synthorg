@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
+from synthorg.hr.state import agent_registry_of, performance_tracker_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handlers.common import (
     err,
@@ -53,7 +55,7 @@ async def autonomy_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        identity = await app_state.agent_registry.get(NotBlankStr(agent_id))
+        identity = await agent_registry_of(app_state).get(NotBlankStr(agent_id))
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -134,9 +136,9 @@ async def autonomy_update(
         log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")
 
-    approval_store = getattr(app_state, "approval_store", None)
+    approval_store = app_state.slice(ApprovalStateSlice).store
     try:
-        result = await app_state.agent_registry.update_autonomy(
+        result = await agent_registry_of(app_state).update_autonomy(
             NotBlankStr(agent_id),
             update,
             approval_store=approval_store,
@@ -170,7 +172,7 @@ async def collaboration_get_score(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        score = await app_state.performance_tracker.get_collaboration_score(
+        score = await performance_tracker_of(app_state).get_collaboration_score(
             NotBlankStr(agent_id),
         )
     except Exception as exc:
@@ -207,7 +209,8 @@ async def collaboration_get_calibration(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        calibration = await app_state.performance_tracker.get_collaboration_calibration(
+        tracker = performance_tracker_of(app_state)
+        calibration = await tracker.get_collaboration_calibration(
             NotBlankStr(agent_id),
         )
     except Exception as exc:

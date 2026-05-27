@@ -23,6 +23,11 @@ simulation runtime).
 import os
 from typing import TYPE_CHECKING
 
+from synthorg.budget.state import BudgetStateSlice
+from synthorg.client.state import (
+    client_simulation_state_of,
+    has_simulation_runtime,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import ProjectStatus
@@ -34,10 +39,15 @@ from synthorg.engine.pipeline.entry.factory import (
 )
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
+from synthorg.engine.state import EngineStateSlice, work_pipeline_of
+from synthorg.engine.workspace.state import WorkspaceStateSlice
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 
@@ -68,9 +78,10 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
             budget config requires a forecast but the cost-dial set
             is not wired (partial-wire failure).
     """
-    forecaster = app_state.cost_forecaster
-    repo = app_state.cost_forecast_repo
-    budget_config = app_state.budget_config
+    budget_slice = app_state.slice(BudgetStateSlice)
+    forecaster = budget_slice.cost_forecaster
+    repo = budget_slice.cost_forecast_repo
+    budget_config = budget_slice.budget_config
     if forecaster is None or repo is None or budget_config is None:
         # With persistence up the cost-dial set wires atomically before
         # this seam, so a missing forecaster/repo while forecasts are
@@ -79,7 +90,7 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
         # The no-persistence / empty-company path stays tolerated (no
         # work pipeline reaches here, and the gate is legitimately None).
         if (
-            app_state.has_persistence
+            app_state.slice(PersistenceStateSlice).backend is not None
             and budget_config is not None
             and budget_config.forecast_required
         ):
@@ -91,7 +102,7 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
             raise ServiceUnavailableError(msg)
         return None
     return ForecastGate(
-        work_pipeline=app_state.work_pipeline,
+        work_pipeline=work_pipeline_of(app_state),
         forecaster=forecaster,
         forecast_repo=repo,
         budget_config=budget_config,
@@ -111,7 +122,9 @@ async def wire_real_intake_entry(
         hot_swap: When ``True`` replace an already-wired adapter
             (provider-reinit path); otherwise install once at boot.
     """
-    if not app_state.has_work_pipeline or not app_state.has_simulation_runtime:
+    if app_state.slice(
+        EngineStateSlice
+    ).work_pipeline is None or not has_simulation_runtime(app_state):
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="intake_entry_adapter",
@@ -119,7 +132,7 @@ async def wire_real_intake_entry(
             note="no work pipeline / simulation runtime; real intake offline",
         )
         return
-    default_project = app_state.client_simulation_state.intake_default_project
+    default_project = client_simulation_state_of(app_state).intake_default_project
     if not default_project:
         logger.warning(
             CLIENT_SIMULATION_RUNTIME_WIRED,
@@ -137,7 +150,7 @@ async def wire_real_intake_entry(
     )
     adapter = build_work_entry_adapter(
         WorkSource.INTAKE,
-        work_pipeline=app_state.work_pipeline,
+        work_pipeline=work_pipeline_of(app_state),
         default_project=default_project,
         forecast_gate=_forecast_gate_for(app_state),
     )
@@ -168,7 +181,7 @@ async def wire_real_objective_entry(
             (provider-reinit path); otherwise install once at boot.
         env: Environment mapping override for tests.
     """
-    if not app_state.has_work_pipeline:
+    if app_state.slice(EngineStateSlice).work_pipeline is None:
         logger.info(
             OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
@@ -200,7 +213,7 @@ async def wire_real_objective_entry(
     )
     adapter = build_work_entry_adapter(
         WorkSource.OBJECTIVE,
-        work_pipeline=app_state.work_pipeline,
+        work_pipeline=work_pipeline_of(app_state),
         default_project=default_project,
         forecast_gate=_forecast_gate_for(app_state),
     )
@@ -228,7 +241,7 @@ async def _ensure_project(
     failure is logged at ERROR with the project id before propagating
     so a boot abort is actionable rather than an opaque traceback.
     """
-    projects = app_state.persistence.projects
+    projects = persistence_of(app_state).projects
     if await projects.get(project_id) is not None:
         return
     try:
@@ -282,7 +295,9 @@ async def wire_real_task_board_entry(
         hot_swap: When ``True`` replace an already-wired adapter
             (provider-reinit path); otherwise install once at boot.
     """
-    if not app_state.has_work_pipeline or not app_state.has_simulation_runtime:
+    if app_state.slice(
+        EngineStateSlice
+    ).work_pipeline is None or not has_simulation_runtime(app_state):
         logger.info(
             CLIENT_SIMULATION_RUNTIME_WIRED,
             service="task_board_entry_adapter",
@@ -296,11 +311,11 @@ async def wire_real_task_board_entry(
     # the factory contract requires a non-empty string here even
     # though the TASK_BOARD branch discards it.
     default_project = (
-        app_state.client_simulation_state.intake_default_project or "task-board"
+        client_simulation_state_of(app_state).intake_default_project or "task-board"
     )
     adapter = build_work_entry_adapter(
         WorkSource.TASK_BOARD,
-        work_pipeline=app_state.work_pipeline,
+        work_pipeline=work_pipeline_of(app_state),
         default_project=default_project,
         forecast_gate=_forecast_gate_for(app_state),
     )
@@ -329,12 +344,10 @@ async def wire_real_brownfield_entry(
         hot_swap: When ``True`` replace an already-wired adapter
             (provider-reinit path); otherwise install once at boot.
     """
-    workspace_service = (
-        app_state.project_workspace_service if app_state.has_persistence else None
-    )
-    knowledge_service = app_state.knowledge_service
+    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
+    knowledge_service = app_state.slice(KnowledgeStateSlice).service
     if (
-        not app_state.has_work_pipeline
+        app_state.slice(EngineStateSlice).work_pipeline is None
         or workspace_service is None
         or knowledge_service is None
     ):
@@ -358,11 +371,8 @@ async def wire_real_brownfield_entry(
         build_structure_map_tool_factory,
     )
 
-    structure_map_repo = app_state.persistence.codebase_structure_maps
-    app_state.set_structure_map_tool_factory(
-        build_structure_map_tool_factory(repository=structure_map_repo)
-    )
-    catalog = app_state.connection_catalog if app_state.has_connection_catalog else None
+    structure_map_repo = persistence_of(app_state).codebase_structure_maps
+    catalog = app_state.slice(IntegrationsStateSlice).connection_catalog
     import_service = BrownfieldImportService(
         workspace_service=workspace_service,
         source_resolver=BrownfieldSourceResolver(connection_catalog=catalog),
@@ -372,7 +382,7 @@ async def wire_real_brownfield_entry(
         clock=app_state.clock,
     )
     adapter = build_brownfield_entry_adapter(
-        work_pipeline=app_state.work_pipeline,
+        work_pipeline=work_pipeline_of(app_state),
         import_service=import_service,
         forecast_gate=_forecast_gate_for(app_state),
     )
@@ -380,3 +390,11 @@ async def wire_real_brownfield_entry(
         app_state.swap_brownfield_entry_adapter(adapter)
     else:
         app_state.set_brownfield_entry_adapter_if_absent(adapter)
+    # Park the per-task structure-map tool factory on the engine slice so
+    # the brownfield tool-loader can build project-scoped query tools.
+    app_state.wire(
+        EngineStateSlice,
+        structure_map_tool_factory=build_structure_map_tool_factory(
+            repository=structure_map_repo
+        ),
+    )

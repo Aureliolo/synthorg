@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.providers.state import ProvidersStateSlice
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.controllers.conftest import setup_mock_providers
 
@@ -89,8 +90,8 @@ class TestSetupAgent:
         )
 
         app_state = test_client.app.state.app_state
-        original_mgmt = app_state._provider_management
-        app_state._provider_management = mock_mgmt
+        original_mgmt = app_state.slice(ProvidersStateSlice).management
+        app_state.wire(ProvidersStateSlice, management=mock_mgmt)
         try:
             resp = test_client.post(
                 "/api/v1/setup/agent",
@@ -111,7 +112,7 @@ class TestSetupAgent:
             assert data["model_provider"] == "test-provider"
             assert data["model_id"] == "test-small-001"
         finally:
-            app_state._provider_management = original_mgmt
+            app_state.wire(ProvidersStateSlice, management=original_mgmt)
 
 
 @pytest.mark.unit
@@ -206,7 +207,7 @@ class TestSetupCompanyAutoAgents:
                 assert agent["model_provider"], "model_provider must be set"
                 assert agent["model_id"], "model_id must be set"
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_blank_company_has_no_agents(
         self,
@@ -259,7 +260,7 @@ class TestSetupAgentsList:
             assert len(agents) >= 1
             assert agents[0]["role"]
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -281,7 +282,7 @@ class TestSetupAgentModelUpdate:
             )
             assert resp.status_code == 404
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_successful_model_update(
         self,
@@ -325,7 +326,7 @@ class TestSetupAgentModelUpdate:
                 for a in agents
             )
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_invalid_provider_rejected(
         self,
@@ -352,7 +353,7 @@ class TestSetupAgentModelUpdate:
             )
             assert resp.status_code == 404
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -386,7 +387,7 @@ class TestUpdateAgentName:
             agents = get_resp.json()["data"]
             assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_out_of_range_index(
         self,
@@ -419,7 +420,7 @@ class TestUpdateAgentName:
             )
             assert resp.status_code == 400
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
 
 @pytest.mark.unit
@@ -453,7 +454,7 @@ class TestRandomizeAgentName:
             agents = get_resp.json()["data"]
             assert any(a["name"] == data["name"] for a in agents)
         finally:
-            app_state._provider_management = original
+            app_state.wire(ProvidersStateSlice, management=original)
 
     def test_out_of_range_index(
         self,

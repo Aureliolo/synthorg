@@ -12,6 +12,11 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.state import evaluation_version_service_of
+from synthorg.infrastructure.state import (
+    quality_facade_service_of,
+    review_facade_service_of,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -150,7 +155,7 @@ async def _quality_get_summary(
     """
     tool = "synthorg_quality_get_summary"
     try:
-        summary = await app_state.quality_facade_service.get_summary()
+        summary = await quality_facade_service_of(app_state).get_summary()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -176,7 +181,7 @@ async def _quality_get_agent_quality(
     tool = "synthorg_quality_get_agent_quality"
     try:
         agent_id = _require_str(arguments, "agent_id")
-        result = await app_state.quality_facade_service.get_agent_quality(
+        result = await quality_facade_service_of(app_state).get_agent_quality(
             agent_id,
         )
     except CapabilityNotSupportedError as exc:
@@ -205,7 +210,7 @@ async def _quality_list_scores(
     try:
         offset, limit = coerce_pagination(arguments)
         agent_id = get_optional_str(arguments, "agent_id")
-        page, total = await app_state.quality_facade_service.list_scores(
+        page, total = await quality_facade_service_of(app_state).list_scores(
             agent_id=agent_id,
             offset=offset,
             limit=limit,
@@ -239,7 +244,7 @@ async def _reviews_list(
     tool = "synthorg_reviews_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.review_facade_service.list_reviews(
+        page, total = await review_facade_service_of(app_state).list_reviews(
             offset=offset,
             limit=limit,
         )
@@ -267,7 +272,7 @@ async def _reviews_get(
     tool = "synthorg_reviews_get"
     try:
         review_id = _require_uuid(arguments, "review_id")
-        record = await app_state.review_facade_service.get_review(review_id)
+        record = await review_facade_service_of(app_state).get_review(review_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -298,7 +303,7 @@ async def _reviews_create(
         task_id = _require_str(arguments, "task_id")
         verdict = _require_str(arguments, "verdict")
         comments = _get_optional_str(arguments, "comments")
-        record = await app_state.review_facade_service.create_review(
+        record = await review_facade_service_of(app_state).create_review(
             task_id=task_id,
             reviewer_id=require_actor_id(actor),
             verdict=verdict,
@@ -329,7 +334,7 @@ async def _reviews_update(
         review_id = _require_uuid(arguments, "review_id")
         verdict = get_optional_str(arguments, "verdict")
         comments = _get_optional_str(arguments, "comments")
-        record = await app_state.review_facade_service.update_review(
+        record = await review_facade_service_of(app_state).update_review(
             review_id=review_id,
             verdict=verdict,
             comments=comments,
@@ -365,7 +370,7 @@ async def _evaluation_versions_list(
     """
     tool = "synthorg_evaluation_versions_list"
     try:
-        versions = await app_state.evaluation_version_service.list_versions()
+        versions = await evaluation_version_service_of(app_state).list_versions()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -389,7 +394,7 @@ async def _evaluation_versions_get(
     tool = "synthorg_evaluation_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")
-        version = await app_state.evaluation_version_service.get_version(
+        version = await evaluation_version_service_of(app_state).get_version(
             version_id,
         )
     except ArgumentValidationError as exc:

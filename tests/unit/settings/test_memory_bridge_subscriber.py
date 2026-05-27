@@ -23,6 +23,7 @@ from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.memory_bridge_subscriber import (
     MemoryBridgeSettingsSubscriber,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -42,11 +43,11 @@ def _make_subscriber(
     else:
         resolver.get_memory_bridge_config = AsyncMock(return_value=resolved)
 
-    app_state = AppState(
+    app_state = make_app_state(
         config=RootConfig(company_name="test"),
         approval_store=ApprovalStore(),
+        config_resolver=resolver,
     )
-    app_state._config_resolver = resolver
     if snapshot is not None:
         app_state.swap_memory_bridge_config(snapshot)
 

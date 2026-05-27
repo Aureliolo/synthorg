@@ -15,7 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
@@ -52,6 +57,7 @@ from synthorg.observability.events.security import (
     SECURITY_CUSTOM_RULE_TOGGLED,
     SECURITY_CUSTOM_RULE_UPDATED,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -63,7 +69,7 @@ def _service(state: State) -> CustomRulesService:
     Returns:
         ``CustomRulesService`` instance.
     """
-    return CustomRulesService(repo=state.app_state.persistence.custom_rules)
+    return CustomRulesService(repo=persistence_of(state.app_state).custom_rules)
 
 
 # ── Request DTOs ──────────────────────────────────────────────────
@@ -235,7 +241,7 @@ class CustomRuleController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
@@ -471,7 +477,7 @@ class CustomRuleController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 

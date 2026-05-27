@@ -8,13 +8,13 @@ write (reject with all guardrail branches).
 
 import json
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -24,6 +24,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -61,9 +62,9 @@ def fake_approval_store() -> AsyncMock:
 
 
 @pytest.fixture
-def fake_app_state(fake_approval_store: AsyncMock) -> SimpleNamespace:
-    """Minimal app_state stub exposing only ``approval_store``."""
-    return SimpleNamespace(approval_store=fake_approval_store)
+def fake_app_state(fake_approval_store: AsyncMock) -> AppState:
+    """Minimal app_state exposing only ``approval_store``."""
+    return make_app_state(approval_store=fake_approval_store)
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def actor() -> AgentIdentity:
 class TestApprovalsList:
     async def test_list_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
     ) -> None:
         fake_approval_store.list_items.return_value = (
@@ -100,7 +101,7 @@ class TestApprovalsList:
 
     async def test_list_passes_filters_to_store(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
     ) -> None:
         fake_approval_store.list_items.return_value = ()
@@ -124,7 +125,7 @@ class TestApprovalsList:
 
     async def test_list_paginates(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
     ) -> None:
         fake_approval_store.list_items.return_value = tuple(
@@ -145,7 +146,7 @@ class TestApprovalsList:
 
     async def test_list_rejects_invalid_status_filter(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_list"]
         result = await handler(
@@ -164,7 +165,7 @@ class TestApprovalsList:
 class TestApprovalsGet:
     async def test_get_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
     ) -> None:
         fake_approval_store.get.return_value = _make_item(approval_id="a1")
@@ -183,7 +184,7 @@ class TestApprovalsGet:
 
     async def test_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
     ) -> None:
         fake_approval_store.get.return_value = None
@@ -201,7 +202,7 @@ class TestApprovalsGet:
 
     async def test_get_missing_approval_id(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_get"]
         result = await handler(
@@ -220,7 +221,7 @@ class TestApprovalsGet:
 class TestApprovalsCreate:
     async def test_create_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:
@@ -249,7 +250,7 @@ class TestApprovalsCreate:
 
     async def test_create_requires_actor(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_create"]
         result = await handler(
@@ -269,7 +270,7 @@ class TestApprovalsCreate:
 
     async def test_create_rejects_invalid_risk_level(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_create"]
@@ -294,7 +295,7 @@ class TestApprovalsCreate:
 class TestApprovalsApprove:
     async def test_approve_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:
@@ -319,7 +320,7 @@ class TestApprovalsApprove:
 
     async def test_approve_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:
@@ -337,7 +338,7 @@ class TestApprovalsApprove:
 
     async def test_approve_no_longer_pending(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:
@@ -357,7 +358,7 @@ class TestApprovalsApprove:
 
     async def test_approve_requires_actor(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_approve"]
         result = await handler(
@@ -377,7 +378,7 @@ class TestApprovalsReject:
 
     async def test_reject_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:
@@ -412,7 +413,7 @@ class TestApprovalsReject:
 
     async def test_reject_without_confirm(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]
@@ -439,7 +440,7 @@ class TestApprovalsReject:
 
     async def test_reject_without_reason(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]
@@ -454,7 +455,7 @@ class TestApprovalsReject:
 
     async def test_reject_without_actor(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = APPROVAL_HANDLERS["synthorg_approvals_reject"]
         result = await handler(
@@ -472,7 +473,7 @@ class TestApprovalsReject:
 
     async def test_reject_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_approval_store: AsyncMock,
         actor: AgentIdentity,
     ) -> None:

@@ -6,11 +6,14 @@ and the _check_has_name_locales / _read_name_locales helpers.
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 from litestar.testing import TestClient
+
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import settings_service_of
 
 
 @pytest.mark.unit
@@ -62,7 +65,7 @@ class TestGetNameLocales:
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -87,7 +90,7 @@ class TestGetNameLocales:
         concrete locale codes.
         """
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -173,7 +176,7 @@ class TestSaveNameLocales:
     ) -> None:
         """Saving locales after setup is complete returns 409."""
         app_state = test_client.app.state.app_state
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
@@ -200,9 +203,9 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
-        repo = app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _check_has_name_locales(settings_svc)
@@ -217,8 +220,8 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US"]),
@@ -240,10 +243,10 @@ class TestCheckHasNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=RuntimeError("db connection lost"),
         )
@@ -251,7 +254,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
     async def test_returns_false_on_setting_not_found_error(
         self,
@@ -264,10 +267,10 @@ class TestCheckHasNameLocales:
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -275,7 +278,7 @@ class TestCheckHasNameLocales:
             result = await _check_has_name_locales(settings_svc)
             assert result is False
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
 
 @pytest.mark.unit
@@ -293,8 +296,8 @@ class TestReadNameLocales:
         from synthorg.templates.locales import ALL_LATIN_LOCALES
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
 
         result = await _read_name_locales(settings_svc)
@@ -312,10 +315,10 @@ class TestReadNameLocales:
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
-        settings_svc.get_entry = AsyncMock(
+        cast(Any, settings_svc).get_entry = AsyncMock(
             spec=original,
             side_effect=SettingNotFoundError("company/name_locales"),
         )
@@ -323,7 +326,7 @@ class TestReadNameLocales:
             result = await _read_name_locales(settings_svc)
             assert result is None
         finally:
-            settings_svc.get_entry = original
+            cast(Any, settings_svc).get_entry = original
 
     async def test_returns_resolved_locales_when_valid(
         self,
@@ -334,8 +337,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "fr_FR"]),
@@ -356,8 +359,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             "not-valid-json{{{",
@@ -378,8 +381,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps({"not": "a list"}),
@@ -400,8 +403,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX", "fr_FR"]),
@@ -423,8 +426,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["__all__"]),
@@ -449,8 +452,8 @@ class TestReadNameLocales:
         )
 
         app_state = test_client.app.state.app_state
-        settings_svc = app_state.settings_service
-        repo = app_state.persistence._settings_repo
+        settings_svc = settings_service_of(app_state)
+        repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
             json.dumps(["en_US", "invalid_XX"]),

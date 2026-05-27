@@ -26,7 +26,6 @@ from synthorg.api.controllers.reviews import (
     ReviewController,
     StageDecisionPayload,
 )
-from synthorg.api.state import AppState
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.engine.review.pipeline import ReviewPipeline
@@ -34,6 +33,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.events.review_pipeline import (
     REVIEW_STAGE_LOOKUP_FAILED,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -50,9 +50,10 @@ def _make_state(*, task_engine: AsyncMock) -> MagicMock:
     sim_state = MagicMock(spec=ClientSimulationState)
     sim_state.review_pipeline = pipeline
 
-    app_state = MagicMock(spec=AppState)
-    app_state.task_engine = task_engine
-    app_state.client_simulation_state = sim_state
+    app_state = make_app_state(
+        task_engine=task_engine,
+        client_simulation_state=sim_state,
+    )
 
     state = MagicMock(spec=State)
     state.app_state = app_state

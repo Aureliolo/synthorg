@@ -14,9 +14,15 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
+from synthorg.client.state import has_simulation_runtime
+from synthorg.communication.state import CommunicationStateSlice
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger
+from synthorg.ontology.state import OntologyStateSlice
+from synthorg.telemetry.state import TelemetryStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -106,26 +112,28 @@ class CapabilitiesController(Controller):
         # (``integrations.enabled`` AND ``connection_catalog`` AND
         # ``message_bus``); reading the bridge accessor instead would
         # diverge because the bridge requires ``ceremony_scheduler``
-        # while the controller does not. ``a2a_peer_registry`` raises
-        # 503 when unset, so we read the private slot via ``getattr``
-        # with a safe default to avoid the exception inside the
+        # while the controller does not. The A2A peer registry is read
+        # through its slice (``None`` until the gateway is wired) to
+        # avoid the 503 the bridge accessor raises inside the
         # response path.
+        telemetry_collector = app_state.slice(TelemetryStateSlice).collector
         telemetry_functional = (
-            app_state.has_telemetry_collector
-            and app_state.telemetry_collector.is_functional
+            telemetry_collector is not None and telemetry_collector.is_functional
         )
         webhooks_wired = (
             app_state.config.integrations.enabled
-            and app_state.has_connection_catalog
-            and app_state.has_message_bus
+            and app_state.slice(IntegrationsStateSlice).connection_catalog is not None
+            and app_state.slice(CommunicationStateSlice).message_bus is not None
         )
-        a2a_wired = getattr(app_state, "_a2a_peer_registry", None) is not None
+        a2a_wired = app_state.slice(A2aStateSlice).peer_registry is not None
+        simulation_runtime = has_simulation_runtime(app_state)
         return ApiResponse(
             data=CapabilitiesResponse(
-                simulations=app_state.has_simulation_runtime,
-                requests=app_state.has_simulation_runtime,
-                ontology=app_state.has_ontology_service,
-                tunnel=app_state.has_tunnel_provider,
+                simulations=simulation_runtime,
+                requests=simulation_runtime,
+                ontology=app_state.slice(OntologyStateSlice).service is not None,
+                tunnel=app_state.slice(IntegrationsStateSlice).tunnel_provider
+                is not None,
                 webhooks=webhooks_wired,
                 a2a=a2a_wired,
                 telemetry=telemetry_functional,

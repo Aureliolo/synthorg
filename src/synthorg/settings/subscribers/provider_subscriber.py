@@ -127,4 +127,6 @@ class ProviderSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        self._app_state.swap_model_router(new_router)
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+
+        self._app_state.wire(ProvidersStateSlice, model_router=new_router)

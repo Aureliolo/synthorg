@@ -13,14 +13,19 @@ tests under ``tests/unit/persistence/``).
 
 import asyncio
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.api.api_core_state import ApiCoreStateSlice, idempotency_service_of
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
 from synthorg.api.services.idempotency_service import IdempotencyService
+from synthorg.api.state import AppState
 from synthorg.persistence.connection_protocol import OAuthStateRepository
+from synthorg.persistence.state import persistence_of
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -29,7 +34,7 @@ def _build_app_state(
     *,
     has_persistence: bool = True,
     oauth_cleanup_side_effect: type[BaseException] | None = None,
-) -> SimpleNamespace:
+) -> AppState:
     """Build a minimal ``AppState`` stand-in with stub stores + persistence."""
     ticket_store = MagicMock(spec=WsTicketStore)
     ticket_store.cleanup_expired.return_value = None
@@ -42,14 +47,14 @@ def _build_app_state(
     persistence = SimpleNamespace(oauth_states=oauth_states)
     idempotency_service = AsyncMock(spec=IdempotencyService)
     idempotency_service.cleanup_expired.return_value = None
-    return SimpleNamespace(
-        ticket_store=ticket_store,
-        persistence=persistence,
-        idempotency_service=idempotency_service,
-        has_session_store=False,
-        has_lockout_store=False,
-        has_persistence=has_persistence,
-        has_config_resolver=False,
+    return make_app_state(
+        persistence=persistence if has_persistence else None,
+        slices={
+            ApiCoreStateSlice: {
+                "ticket_store": ticket_store,
+                "idempotency_service": idempotency_service,
+            },
+        },
     )
 
 
@@ -57,18 +62,20 @@ async def test_oauth_state_cleanup_invoked_when_persistence_present() -> None:
     """``_run_cleanup_tick`` calls ``oauth_states.cleanup_expired`` once."""
     app_state = _build_app_state(has_persistence=True)
 
-    await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.oauth_states.cleanup_expired.assert_awaited_once_with(600.0)
+    await lifecycle_helpers._run_cleanup_tick(app_state)
+    cast(
+        AsyncMock, persistence_of(app_state).oauth_states.cleanup_expired
+    ).assert_awaited_once_with(600.0)
 
 
 async def test_oauth_state_cleanup_skipped_without_persistence() -> None:
     """``has_persistence=False`` short-circuits before the OAuth call."""
     app_state = _build_app_state(has_persistence=False)
 
-    await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.oauth_states.cleanup_expired.assert_not_awaited()
+    # No persistence backend: the sweep returns at the
+    # ``slice(PersistenceStateSlice).backend is None`` guard before any
+    # OAuth-state repo access (the repo is unwired without a backend).
+    await lifecycle_helpers._run_cleanup_tick(app_state)
 
 
 async def test_oauth_state_cleanup_failure_does_not_block_idempotency() -> None:
@@ -82,10 +89,13 @@ async def test_oauth_state_cleanup_failure_does_not_block_idempotency() -> None:
         oauth_cleanup_side_effect=_OAuthBoomError,
     )
 
-    await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
-
-    app_state.persistence.oauth_states.cleanup_expired.assert_awaited_once()
-    app_state.idempotency_service.cleanup_expired.assert_awaited_once()
+    await lifecycle_helpers._run_cleanup_tick(app_state)
+    cast(
+        AsyncMock, persistence_of(app_state).oauth_states.cleanup_expired
+    ).assert_awaited_once()
+    cast(
+        AsyncMock, idempotency_service_of(app_state).cleanup_expired
+    ).assert_awaited_once()
 
 
 async def test_oauth_state_cleanup_memory_error_propagates() -> None:
@@ -96,7 +106,7 @@ async def test_oauth_state_cleanup_memory_error_propagates() -> None:
     )
 
     with pytest.raises(MemoryError):
-        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await lifecycle_helpers._run_cleanup_tick(app_state)
 
 
 async def test_oauth_state_cleanup_cancellation_propagates() -> None:
@@ -107,4 +117,4 @@ async def test_oauth_state_cleanup_cancellation_propagates() -> None:
     )
 
     with pytest.raises(asyncio.CancelledError):
-        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
+        await lifecycle_helpers._run_cleanup_tick(app_state)

@@ -19,7 +19,9 @@ from synthorg.api.controllers.budget_forecast import (
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ConflictError, ServiceUnavailableError
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -58,11 +60,10 @@ def _state(
     pareto_analyzer: object | None = None,
 ) -> State:
     state = State()
-    state.app_state = SimpleNamespace(
+    state.app_state = make_app_state(
         cost_forecast_repo=repo,
         budget_config=budget_config,
-        cost_forecaster=None,
-        pareto_analyzer=pareto_analyzer,
+        slices={BudgetStateSlice: {"pareto_analyzer": pareto_analyzer}},
     )
     return state
 

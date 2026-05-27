@@ -28,7 +28,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.state import AppState
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
@@ -71,7 +70,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -230,9 +229,7 @@ async def _build_pipeline(  # noqa: PLR0913 -- test builder with keyword-only kn
         config=root_config,
     )
     intake = IntakeEngine(strategy=_TaskCreatingIntakeStrategy(task_engine))
-    has_store = metrics_store is not None
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -240,24 +237,13 @@ async def _build_pipeline(  # noqa: PLR0913 -- test builder with keyword-only kn
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
-        project_workspace_service=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=mock_of[ClientSimulationState](
             intake_engine=intake,
         ),
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=has_store,
         coordination_metrics_store=metrics_store,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline

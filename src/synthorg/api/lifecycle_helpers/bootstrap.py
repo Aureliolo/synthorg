@@ -14,10 +14,17 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
+from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.setup import SETUP_AGENT_BOOTSTRAP_FAILED
 from synthorg.persistence._shared import paginate
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.settings.state import (
+    SettingsStateSlice,
+    config_resolver_of,
+    settings_service_of,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -47,7 +54,7 @@ async def _find_first_user_when_no_owner(app_state: AppState) -> User | None:
     first: User | None = None
     try:
         async for page in paginate(
-            lambda limit, offset: app_state.persistence.users.list_items(
+            lambda limit, offset: persistence_of(app_state).users.list_items(
                 limit=limit, offset=offset
             ),
         ):
@@ -78,7 +85,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if not app_state.has_persistence:
+    if app_state.slice(PersistenceStateSlice).backend is None:
         return
 
     from synthorg.core.auth.models import OrgRole  # noqa: PLC0415
@@ -93,7 +100,7 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
         },
     )
     try:
-        await app_state.persistence.users.save(promoted)
+        await persistence_of(app_state).users.save(promoted)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -124,10 +131,11 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
+    settings_slice = app_state.slice(SettingsStateSlice)
     if not (
-        app_state.has_config_resolver
-        and app_state.has_agent_registry
-        and app_state.has_settings_service
+        settings_slice.config_resolver is not None
+        and app_state.slice(HrStateSlice).agent_registry is not None
+        and settings_slice.settings_service is not None
     ):
         logger.debug(
             API_APP_STARTUP,
@@ -136,7 +144,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         return
 
     try:
-        setup_entry = await app_state.settings_service.get_entry(
+        setup_entry = await settings_service_of(app_state).get_entry(
             "api",
             "setup_complete",
         )
@@ -166,8 +174,8 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
 
         await bootstrap_agents(
-            config_resolver=app_state.config_resolver,
-            agent_registry=app_state.agent_registry,
+            config_resolver=config_resolver_of(app_state),
+            agent_registry=agent_registry_of(app_state),
         )
     except asyncio.CancelledError:
         raise

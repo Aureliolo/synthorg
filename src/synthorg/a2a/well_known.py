@@ -17,9 +17,12 @@ from litestar import Controller, Request, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.response import Response
 
+from synthorg._core.features import require_service
 from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
+from synthorg.a2a.state import A2aStateSlice
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import strip_trailing_slash
+from synthorg.hr.state import agent_registry_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -31,6 +34,7 @@ from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_SERVED,
 )
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -126,7 +130,9 @@ async def _resolve_company_name(app_state: Any) -> str:
     the surrounding controller's convention.
     """
     try:
-        resolved = await app_state.config_resolver.get_str("company", "company_name")
+        resolved = await config_resolver_of(app_state).get_str(
+            "company", "company_name"
+        )
     except MemoryError, RecursionError:
         raise
     except SettingNotFoundError:
@@ -171,8 +177,10 @@ async def _assemble_company_card(
     Returns ``(card_data, agent_count)``. Raises on any failure; the
     caller maps that to a 503.
     """
-    builder: AgentCardBuilder = app_state.a2a_card_builder
-    registry = app_state.agent_registry
+    builder: AgentCardBuilder = require_service(
+        app_state.slice(A2aStateSlice).card_builder, "A2A Card Builder"
+    )
+    registry = agent_registry_of(app_state)
     identities = await registry.list_active()
     card = builder.build_company_card(
         identities=identities,
@@ -189,7 +197,7 @@ async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
     ``agent_id`` (caller maps that to 404). Raises on registry
     failure; the caller maps that to a 503.
     """
-    registry = app_state.agent_registry
+    registry = agent_registry_of(app_state)
     identity = await registry.get(agent_id)
     if identity is None:
         identity = await registry.get_by_name(agent_id)
@@ -214,7 +222,9 @@ def _build_agent_card_payload(
     host_base: str,
 ) -> dict[str, Any]:
     """Build the card payload for an already-resolved identity."""
-    builder: AgentCardBuilder = app_state.a2a_card_builder
+    builder: AgentCardBuilder = require_service(
+        app_state.slice(A2aStateSlice).card_builder, "A2A Card Builder"
+    )
     card = builder.build(
         identity=identity,
         base_url=f"{host_base}/api/v1/a2a",

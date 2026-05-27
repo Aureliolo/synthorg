@@ -25,7 +25,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.state import AppState
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
@@ -61,7 +60,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -194,8 +193,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
         settings_service=settings_service,
         config=root_config,
     )
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -203,14 +201,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
-        project_workspace_service=None,
         agent_workspace_root=tmp_path,
-        has_cost_tracker=False,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
     )
 
     runtime = await build_runtime_services(
@@ -332,8 +323,7 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
         config=root_config,
     )
     metrics_store = CoordinationMetricsStore()
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -341,18 +331,9 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
-        project_workspace_service=None,
         agent_workspace_root=tmp_path,
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=True,
         coordination_metrics_store=metrics_store,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
     )
 
     runtime = await build_runtime_services(

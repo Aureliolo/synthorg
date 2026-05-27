@@ -184,6 +184,7 @@ class ErrorCode(IntEnum):
     RESEARCH_RETRIEVAL_ERROR = 8027
     RESEARCH_SYNTHESIS_ERROR = 8028
     RESEARCH_UNAVAILABLE = 8029
+    FEATURE_DEPENDENCY_ERROR = 8030
 
 
 # Error-code band for the NOT_FOUND category (3xxx).  Per-domain

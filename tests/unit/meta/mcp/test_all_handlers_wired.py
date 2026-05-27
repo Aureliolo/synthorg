@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
@@ -35,6 +36,7 @@ from synthorg.hr.performance.models import (
 from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.handlers import build_handler_map
 from synthorg.security.autonomy.models import AutonomyUpdateResult
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -82,12 +84,9 @@ def _sync_dumped(data: dict[str, Any]) -> MagicMock:
 
 
 @pytest.fixture
-def fake_app_state() -> SimpleNamespace:
-    """Wide-blast app_state stub covering every service a handler probes."""
-    ns = SimpleNamespace()
-
+def fake_app_state() -> AppState:
+    """Wide-blast app_state covering every service a handler probes."""
     dummy_task = _sync_dumped({"id": "task-1", "title": "x"})
-    dummy_cp = _sync_dumped({"id": "cp-1"})
 
     # Repositories used by handlers that live-shim.
     defrepo = AsyncMock()
@@ -100,11 +99,14 @@ def fake_app_state() -> SimpleNamespace:
     )
     from synthorg.persistence.version_protocol import VersionRepository
 
-    ns.persistence = SimpleNamespace(
+    fine_tune_checkpoints = AsyncMock(spec=FineTuneCheckpointRepository)
+    fine_tune_checkpoints.list_items_page.return_value = ((), 0)
+    fine_tune_checkpoints.get.return_value = None
+    persistence = SimpleNamespace(
         workflow_definitions=defrepo,
         workflow_versions=AsyncMock(spec=VersionRepository),
         budget_config_versions=_mkversion_repo(),
-        fine_tune_checkpoints=AsyncMock(spec=FineTuneCheckpointRepository),
+        fine_tune_checkpoints=fine_tune_checkpoints,
         fine_tune_runs=AsyncMock(spec=FineTuneRunRepository),
     )
 
@@ -116,7 +118,6 @@ def fake_app_state() -> SimpleNamespace:
     engine.cancel_task.return_value = (dummy_task, None)
     engine.delete_task.return_value = True
     engine.transition_task.return_value = (dummy_task, None)
-    ns.task_engine = engine
 
     registry = AsyncMock()
     registry.list_active.return_value = ()
@@ -124,25 +125,21 @@ def fake_app_state() -> SimpleNamespace:
     registry.get.return_value = None
     # META-MCP-3 write methods need Pydantic-shaped returns so the
     # handler's ``.model_dump()`` does not blow up on AsyncMock returns.
-    dummy_identity = make_test_actor(name="alpha")
-    registry.apply_identity_update.return_value = dummy_identity
+    registry.apply_identity_update.return_value = make_test_actor(name="alpha")
     registry.update_autonomy.return_value = AutonomyUpdateResult(
         agent_id=NotBlankStr("agent-1"),
         current_level=AutonomyLevel.SUPERVISED,
         requested_level=AutonomyLevel.FULL,
     )
-    ns.agent_registry = registry
 
-    ns.performance_tracker = AsyncMock()
-    ns.performance_tracker.get_snapshot.return_value = None
-    ns.performance_tracker.get_collaboration_score.return_value = (
-        CollaborationScoreResult(
-            score=0.0,
-            strategy_name="test-strategy",
-            confidence=0.5,
-        )
+    performance_tracker = AsyncMock()
+    performance_tracker.get_snapshot.return_value = None
+    performance_tracker.get_collaboration_score.return_value = CollaborationScoreResult(
+        score=0.0,
+        strategy_name="test-strategy",
+        confidence=0.5,
     )
-    ns.performance_tracker.get_collaboration_calibration.return_value = (
+    performance_tracker.get_collaboration_calibration.return_value = (
         CollaborationCalibration(
             agent_id=NotBlankStr("agent-1"),
             strategy_name=NotBlankStr("test-strategy"),
@@ -150,37 +147,27 @@ def fake_app_state() -> SimpleNamespace:
         )
     )
 
-    ns.cost_tracker = AsyncMock()
-    ns.cost_tracker.get_records.return_value = ()
-    ns.cost_tracker.get_agent_cost.return_value = 0.0
-    ns.config_resolver = AsyncMock()
-    ns.config_resolver.get_budget_config.return_value = _sync_dumped(
+    cost_tracker = AsyncMock()
+    cost_tracker.get_records.return_value = ()
+    cost_tracker.get_agent_cost.return_value = 0.0
+    config_resolver = AsyncMock()
+    config_resolver.get_budget_config.return_value = _sync_dumped(
         {"currency": "EUR"},
     )
 
-    # Approval store.
-    ns.approval_store = AsyncMock()
-    ns.approval_store.list_items.return_value = ()
-    ns.approval_store.get.return_value = None
+    approval_store = AsyncMock()
+    approval_store.list_items.return_value = ()
+    approval_store.get.return_value = None
 
-    ns.persistence.fine_tune_checkpoints.list_items_page.return_value = (
-        (),
-        0,
+    return make_app_state(
+        persistence=persistence,
+        task_engine=engine,
+        agent_registry=registry,
+        performance_tracker=performance_tracker,
+        cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
+        approval_store=approval_store,
     )
-    ns.persistence.fine_tune_checkpoints.get.return_value = None
-
-    # Settings probes used by health_check + memory service.
-    ns.has_task_engine = True
-    ns.has_cost_tracker = True
-    ns.has_agent_registry = True
-    ns.has_settings_service = False
-    ns.settings_service = None
-
-    # Held so the sweep doesn't garbage-collect these before use.
-    ns._dummy_task = dummy_task
-    ns._dummy_cp = dummy_cp
-
-    return ns
 
 
 def _mkversion_repo() -> AsyncMock:
@@ -238,7 +225,7 @@ class TestNoPlaceholderInProduction:
     async def test_tool_returns_non_placeholder_envelope(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
@@ -318,7 +305,7 @@ class TestDestructiveGuardrails:
     async def test_missing_confirm_is_blocked(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
@@ -340,7 +327,7 @@ class TestDestructiveGuardrails:
     async def test_missing_reason_is_blocked(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
@@ -359,7 +346,7 @@ class TestDestructiveGuardrails:
     async def test_missing_actor_is_blocked(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handlers = build_handler_map()
         handler = handlers[tool_name]
@@ -377,7 +364,7 @@ class TestDestructiveGuardrails:
     async def test_string_confirm_is_rejected(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         """``confirm: "true"`` (string) must fail; truthy-bypass would be a bug."""

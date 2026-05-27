@@ -12,13 +12,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
+from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -27,6 +33,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
+from synthorg.engine.state import EngineStateSlice, intake_entry_adapter_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -241,7 +248,8 @@ async def process_intake_pipeline(
     if approved is None:
         return
     try:
-        result = await app_state.intake_entry_adapter.submit(approved)
+        intake_adapter = intake_entry_adapter_of(app_state)
+        result = await intake_adapter.submit(approved)
     except asyncio.CancelledError:
         # Task cancelled (e.g. app shutdown): let it propagate; do not
         # convert a cancellation into a CANCELLED request.
@@ -466,7 +474,7 @@ class RequestController(Controller):
             ``PaginatedResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         all_requests = await sim_state.request_store.list_all()
         if status is not None:
             all_requests = tuple(r for r in all_requests if r.status == status)
@@ -474,7 +482,7 @@ class RequestController(Controller):
             all_requests,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -493,7 +501,7 @@ class RequestController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         try:
             stored = await sim_state.request_store.get(request_id)
         except KeyError as exc:
@@ -524,7 +532,7 @@ class RequestController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         try:
             await sim_state.pool.get_profile(data.client_id)
         except KeyError as exc:
@@ -566,7 +574,7 @@ class RequestController(Controller):
             ``ApiResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         # Serialise lifecycle transitions per request id so two
         # concurrent ``scope`` / ``approve`` / ``reject`` calls for the
         # same request cannot both pass the status precondition and
@@ -672,7 +680,7 @@ class RequestController(Controller):
             ``ApiResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)
@@ -688,7 +696,7 @@ class RequestController(Controller):
                     f"status {stored.status.value!r}"
                 )
                 raise ConflictError(msg)
-            if not app_state.has_intake_entry_adapter:
+            if app_state.slice(EngineStateSlice).intake_entry_adapter is None:
                 # Empty company / no provider: the work pipeline (and
                 # thus the entry adapter) is not wired. Reject clearly
                 # rather than minting a task no agent will ever run.
@@ -737,7 +745,7 @@ class RequestController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = client_simulation_state_of(app_state)
         async with app_state.acquire_request_lock(request_id):
             try:
                 stored = await sim_state.request_store.get(request_id)

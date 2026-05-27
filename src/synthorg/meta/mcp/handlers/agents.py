@@ -35,6 +35,16 @@ from synthorg.hr.errors import (
     PersonalityNotFoundError,
     TrainingSessionNotFoundError,
 )
+from synthorg.hr.state import (
+    HrStateSlice,
+    activity_feed_service_of,
+    agent_health_service_of,
+    agent_registry_of,
+    agent_version_service_of,
+    performance_tracker_of,
+    personality_service_of,
+    training_service_of,
+)
 from synthorg.hr.training.models import ContentType, TrainingPlan
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -134,7 +144,7 @@ async def _agents_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        agents = await app_state.agent_registry.list_active()
+        agents = await agent_registry_of(app_state).list_active()
         page, meta = paginate_sequence(agents, offset=offset, limit=limit)
     except Exception as exc:
         reraise_critical(exc)
@@ -162,7 +172,7 @@ async def _agents_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        identity = await app_state.agent_registry.get_by_name(name)
+        identity = await agent_registry_of(app_state).get_by_name(name)
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -205,7 +215,7 @@ async def _agents_create(
 
     saved_by = actor_id(actor) or "mcp"
     try:
-        await app_state.agent_registry.register(identity, saved_by=saved_by)
+        await agent_registry_of(app_state).register(identity, saved_by=saved_by)
     except AgentAlreadyRegisteredError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
@@ -238,7 +248,7 @@ async def _agents_update(
 
     saved_by = actor_id(actor) or "mcp"
     try:
-        updated = await app_state.agent_registry.apply_identity_update(
+        updated = await agent_registry_of(app_state).apply_identity_update(
             NotBlankStr(agent_id),
             updates,
             saved_by=saved_by,
@@ -273,12 +283,12 @@ async def _agents_delete(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         agent_name = require_non_blank(arguments, _ARG_AGENT_NAME)
-        identity = await app_state.agent_registry.get_by_name(agent_name)
+        identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
-        removed = await app_state.agent_registry.unregister(str(identity.id))
+        removed = await agent_registry_of(app_state).unregister(str(identity.id))
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)
@@ -325,12 +335,12 @@ async def _agents_get_performance(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     try:
-        identity = await app_state.agent_registry.get_by_name(agent_name)
+        identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
-        snapshot = await app_state.performance_tracker.get_snapshot(
+        snapshot = await performance_tracker_of(app_state).get_snapshot(
             str(identity.id),
         )
     except Exception as exc:
@@ -338,8 +348,6 @@ async def _agents_get_performance(
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
-    if snapshot is None:
-        return ok(data=None)
     return ok(data=snapshot.model_dump(mode="json"))
 
 
@@ -361,15 +369,15 @@ async def _agents_get_activity(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_activity_feed_service", False):
+    if app_state.slice(HrStateSlice).activity_feed_service is None:
         return capability_gap(tool, _WHY_ACTIVITY)
     try:
-        identity = await app_state.agent_registry.get_by_name(agent_name)
+        identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
-        events, total = await app_state.activity_feed_service.get_agent_activity(
+        events, total = await activity_feed_service_of(app_state).get_agent_activity(
             NotBlankStr(str(identity.id)),
             offset=offset,
             limit=limit,
@@ -401,15 +409,15 @@ async def _agents_get_history(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_agent_version_service", False):
+    if app_state.slice(HrStateSlice).agent_version_service is None:
         return capability_gap(tool, _WHY_HISTORY)
     try:
-        identity = await app_state.agent_registry.get_by_name(agent_name)
+        identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
-        versions, total = await app_state.agent_version_service.list_versions(
+        versions, total = await agent_version_service_of(app_state).list_versions(
             NotBlankStr(str(identity.id)),
             offset=offset,
             limit=limit,
@@ -440,15 +448,15 @@ async def _agents_get_health(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_agent_health_service", False):
+    if app_state.slice(HrStateSlice).agent_health_service is None:
         return capability_gap(tool, _WHY_HEALTH)
     try:
-        identity = await app_state.agent_registry.get_by_name(agent_name)
+        identity = await agent_registry_of(app_state).get_by_name(agent_name)
         if identity is None:
             missing = AgentNotFoundError(f"Agent {agent_name!r} not found")
             log_handler_invoke_failed(tool, missing)
             return err(missing, domain_code="not_found")
-        report = await app_state.agent_health_service.get_agent_health(
+        report = await agent_health_service_of(app_state).get_agent_health(
             NotBlankStr(str(identity.id)),
         )
     except Exception as exc:
@@ -479,10 +487,10 @@ async def _personalities_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_personality_service", False):
+    if app_state.slice(HrStateSlice).personality_service is None:
         return capability_gap(tool, _WHY_PERSONALITIES)
     try:
-        entries, total = await app_state.personality_service.list_personalities(
+        entries, total = await personality_service_of(app_state).list_personalities(
             offset=offset,
             limit=limit,
         )
@@ -512,10 +520,10 @@ async def _personalities_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_personality_service", False):
+    if app_state.slice(HrStateSlice).personality_service is None:
         return capability_gap(tool, _WHY_PERSONALITIES)
     try:
-        entry = await app_state.personality_service.get_personality(
+        entry = await personality_service_of(app_state).get_personality(
             NotBlankStr(name),
         )
     except Exception as exc:
@@ -550,10 +558,10 @@ async def _training_list_sessions(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_training_service", False):
+    if app_state.slice(HrStateSlice).training_service is None:
         return capability_gap(tool, _WHY_TRAINING_LIST)
     try:
-        sessions, total = await app_state.training_service.list_sessions(
+        sessions, total = await training_service_of(app_state).list_sessions(
             offset=offset,
             limit=limit,
         )
@@ -583,10 +591,10 @@ async def _training_get_session(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_training_service", False):
+    if app_state.slice(HrStateSlice).training_service is None:
         return capability_gap(tool, _WHY_TRAINING_LIST)
     try:
-        session = await app_state.training_service.get_session(
+        session = await training_service_of(app_state).get_session(
             NotBlankStr(plan_id),
         )
     except Exception as exc:
@@ -620,10 +628,10 @@ async def _training_start_session(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    if not getattr(app_state, "has_training_service", False):
+    if app_state.slice(HrStateSlice).training_service is None:
         return capability_gap(tool, _WHY_TRAINING_START)
     try:
-        result = await app_state.training_service.start_session(plan)
+        result = await training_service_of(app_state).start_session(plan)
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)

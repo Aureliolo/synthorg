@@ -27,8 +27,14 @@ restart.
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg._core.features import require_service
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
+from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
+from synthorg.communication.state import CommunicationStateSlice
+from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
@@ -40,14 +46,27 @@ from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.pipeline.factory import build_work_pipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing_policy import build_stakes_router
+from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
+from synthorg.engine.workspace.state import (
+    WorkspaceStateSlice,
+    agent_workspace_root_of,
+)
+from synthorg.hr.state import HrStateSlice, agent_registry_of
+from synthorg.integrations.state import (
+    IntegrationsStateSlice,
+    connection_catalog_of,
+)
+from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
@@ -56,8 +75,10 @@ from synthorg.security.redteam.builder import (
     build_red_team_runtime,
     build_red_team_tool_seed,
 )
+from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
+from synthorg.settings.state import config_resolver_of
 from synthorg.tools.base import BaseTool  # noqa: TC001
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
@@ -129,19 +150,15 @@ def _construct_coordination_collector(
     ``BaselineStore`` accumulates the single-agent baselines the
     multi-agent metrics compare against.
     """
-    if not app_state.has_cost_tracker:
+    if app_state.slice(BudgetStateSlice).cost_tracker is None:
         return None
     baseline_store = BaselineStore(window_size=_resolve_baseline_window_size())
     return CoordinationMetricsCollector(
         config=app_state.config.coordination_metrics,
-        cost_tracker=app_state.cost_tracker,
-        message_bus=(app_state.message_bus if app_state.has_message_bus else None),
+        cost_tracker=cost_tracker_of(app_state),
+        message_bus=app_state.slice(CommunicationStateSlice).message_bus,
         baseline_store=baseline_store,
-        metrics_store=(
-            app_state.coordination_metrics_store
-            if app_state.has_coordination_metrics_store
-            else None
-        ),
+        metrics_store=app_state.slice(CoordinationStateSlice).metrics_store,
         clock=app_state.clock,
     )
 
@@ -183,7 +200,7 @@ def _select_active_provider(
     fan-in so the boot decision is observable.
     """
     security = app_state.config.security
-    if not app_state.has_active_provider:
+    if not has_active_provider(app_state):
         logger.info(
             API_APP_STARTUP,
             service="runtime_services",
@@ -194,7 +211,7 @@ def _select_active_provider(
         )
         return None
 
-    registry = app_state.provider_registry
+    registry = provider_registry_of(app_state)
     names = registry.list_providers()
     if not names:
         logger.info(
@@ -246,7 +263,7 @@ async def _build_tool_registry(
         parents=True,
         exist_ok=True,
     )
-    web_request_timeout = await app_state.config_resolver.get_float(
+    web_request_timeout = await config_resolver_of(app_state).get_float(
         _WEB_TIMEOUT_NS,
         _WEB_TIMEOUT_KEY,
     )
@@ -257,8 +274,8 @@ async def _build_tool_registry(
         resolve_desktop_settings,
     )
 
-    browser_settings = await resolve_browser_settings(app_state.config_resolver)
-    desktop_settings = await resolve_desktop_settings(app_state.config_resolver)
+    browser_settings = await resolve_browser_settings(config_resolver_of(app_state))
+    desktop_settings = await resolve_desktop_settings(config_resolver_of(app_state))
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -301,9 +318,9 @@ async def _build_external_api_runtime(
       misconfiguration and logged at ERROR, so a silently-disabled feature
       is never mistaken for an intentional one.
     """
-    if not app_state.has_connection_catalog:
+    if app_state.slice(IntegrationsStateSlice).connection_catalog is None:
         return None
-    resolver = app_state.config_resolver
+    resolver = config_resolver_of(app_state)
     try:
         enabled = await resolver.get_bool(_EXTERNAL_API_NS, "enabled")
     except MemoryError, RecursionError:
@@ -353,10 +370,12 @@ async def _build_external_api_runtime(
 
     web = app_state.config.web
     network_policy = (
-        web.network_policy if web is not None and web.network_policy else None
+        web.network_policy
+        if web is not None and web.network_policy is not None
+        else None
     )
     return ExternalApiRuntime(
-        connection_catalog=app_state.connection_catalog,
+        connection_catalog=connection_catalog_of(app_state),
         provider=provider,
         network_policy=network_policy or NetworkPolicy(),
         max_response_bytes=max_response_bytes,
@@ -383,18 +402,14 @@ def _build_stakes_router_or_none(
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
 
-    benchmark_provider = app_state.benchmark_provider
+    benchmark_provider = app_state.slice(BudgetStateSlice).benchmark_provider
     if benchmark_provider is None:
         return None
     provider_cfg = app_state.config.providers.get(active_provider_name)
     if provider_cfg is None:
         return None
     resolver = ModelResolver.from_config({active_provider_name: provider_cfg})
-    coordination_store = (
-        app_state.coordination_metrics_store
-        if app_state.has_coordination_metrics_store
-        else None
-    )
+    coordination_store = app_state.slice(CoordinationStateSlice).metrics_store
     return build_stakes_router(
         app_state.config.stakes_routing,
         benchmark_provider=benchmark_provider,
@@ -413,13 +428,12 @@ async def _build_flight_recorder_sink(app_state: AppState) -> FlightRecorderSink
     persistence the factory degrades to the no-op sink, so a
     persistence-less dev boot records nothing instead of crashing.
     """
-    repository = (
-        app_state.persistence.flight_recorder_frames
-        if app_state.has_persistence
-        else None
+    backend = app_state.slice(PersistenceStateSlice).backend
+    repository = backend.flight_recorder_frames if backend is not None else None
+    enabled = await config_resolver_of(app_state).get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
+    strategy = await config_resolver_of(app_state).get_str(
+        _COCKPIT_NS, _FR_STRATEGY_KEY
     )
-    enabled = await app_state.config_resolver.get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
-    strategy = await app_state.config_resolver.get_str(_COCKPIT_NS, _FR_STRATEGY_KEY)
     return build_flight_recorder_sink(
         repository,
         enabled=enabled,
@@ -455,26 +469,24 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         stakes_router=_build_stakes_router_or_none(
             app_state, active_provider_name=active_provider_name
         ),
-        cost_tracker=(app_state.cost_tracker if app_state.has_cost_tracker else None),
-        task_engine=app_state.task_engine,
-        approval_store=app_state.approval_store,
-        cost_forecast_repo=app_state.cost_forecast_repo,
-        approval_gate=app_state.approval_gate,
-        trust_service=(
-            app_state.trust_service if app_state.has_trust_service else None
+        cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        task_engine=task_engine_of(app_state),
+        approval_store=require_service(
+            app_state.slice(ApprovalStateSlice).store, "Approval Store"
         ),
+        cost_forecast_repo=app_state.slice(BudgetStateSlice).cost_forecast_repo,
+        approval_gate=app_state.slice(ApprovalStateSlice).gate,
+        trust_service=app_state.slice(SecurityStateSlice).trust_service,
         mcp_self_consumer=build_mcp_self_consumer(
             app_state.config.security.mcp_self_consumer,
             app_state,
         ),
         security_config=app_state.config.security,
-        audit_log=app_state.audit_log if app_state.has_audit_log else None,
-        memory_backend=(
-            app_state.memory_backend if app_state.has_memory_backend else None
-        ),
-        config_resolver=app_state.config_resolver,
-        event_stream_hub=app_state.event_stream_hub,
-        interrupt_store=app_state.interrupt_store,
+        audit_log=app_state.slice(SecurityStateSlice).audit_log,
+        memory_backend=app_state.slice(MemoryStateSlice).backend,
+        config_resolver=config_resolver_of(app_state),
+        event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
+        interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
         flight_recorder_sink=flight_recorder_sink,
         clock=app_state.clock,
@@ -486,8 +498,9 @@ async def _build_workspace_strategy(
 ) -> tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig]:
     """Build the git-worktree workspace isolation strategy + config.
 
-    The strategy operates on ``app_state.agent_workspace_root`` (the
-    same directory the worker runtime's sandbox tools use). Git
+    The strategy operates on the workspace slice's
+    ``agent_workspace_root`` (the same directory the worker runtime's
+    sandbox tools use). Git
     subprocess invocations are bounded by the operator-tuned
     ``tools.git_command_timeout_seconds`` so a hung worktree command
     cannot stall a coordination wave. Construction (here, at boot) never
@@ -497,13 +510,13 @@ async def _build_workspace_strategy(
     and the wave has multiple subtasks.
     """
     ws_config = WorkspaceIsolationConfig()
-    git_timeout = await app_state.config_resolver.get_float(
+    git_timeout = await config_resolver_of(app_state).get_float(
         _GIT_TIMEOUT_NS,
         _GIT_TIMEOUT_KEY,
     )
     strategy = PlannerWorktreeStrategy(
         config=ws_config.planner_worktrees,
-        repo_root=app_state.agent_workspace_root,
+        repo_root=agent_workspace_root_of(app_state),
         cmd_timeout=git_timeout,
         clock=app_state.clock,
     )
@@ -525,7 +538,7 @@ async def _resolve_routing_scorer_config(
     config bug vs a transient resolver flake are diagnosed differently).
     """
     try:
-        bridge = await app_state.config_resolver.get_engine_bridge_config()
+        bridge = await config_resolver_of(app_state).get_engine_bridge_config()
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
@@ -576,7 +589,7 @@ async def _build_runtime_coordinator(
     try:
         async with asyncio.TaskGroup() as tg:
             model_task = tg.create_task(
-                app_state.config_resolver.get_str(
+                config_resolver_of(app_state).get_str(
                     _DECOMPOSITION_NS,
                     _DECOMPOSITION_KEY,
                 )
@@ -598,14 +611,14 @@ async def _build_runtime_coordinator(
     decomposition_model = model_task.result()
     routing_scorer_config = scorer_task.result()
     workspace_strategy, workspace_config = workspace_task.result()
-    performance_tracker = (
-        app_state.performance_tracker if app_state.has_performance_tracker else None
-    )
+    performance_tracker = app_state.slice(HrStateSlice).performance_tracker
     if routing_scorer_config is None:
         scorer = AgentTaskScorer(min_score=app_state.config.task_assignment.min_score)
     else:
         scorer = AgentTaskScorer(config=routing_scorer_config)
-    project_workspace_service = app_state.project_workspace_service
+    project_workspace_service = app_state.slice(
+        WorkspaceStateSlice
+    ).project_workspace_service
     git_backend = (
         project_workspace_service.git_backend
         if project_workspace_service is not None
@@ -620,7 +633,7 @@ async def _build_runtime_coordinator(
         task_assignment_config=app_state.config.task_assignment,
         provider=provider,
         decomposition_model=decomposition_model,
-        task_engine=app_state.task_engine,
+        task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,
         project_workspace_service=project_workspace_service,
@@ -659,7 +672,7 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
     discriminator and leaf threshold are resolved at boot so the
     setting-to-startup trace holds.
     """
-    if not app_state.has_simulation_runtime:
+    if not has_simulation_runtime(app_state):
         logger.info(
             API_APP_STARTUP,
             service="work_pipeline",
@@ -667,7 +680,7 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
             note="no intake runtime wired; work spine unavailable",
         )
         return None
-    intake_engine = app_state.client_simulation_state.intake_engine
+    intake_engine = client_simulation_state_of(app_state).intake_engine
     if intake_engine is None:
         logger.info(
             API_APP_STARTUP,
@@ -676,23 +689,23 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
             note="simulation runtime present but intake engine unset",
         )
         return None
-    routing_policy = await app_state.config_resolver.get_str(
+    routing_policy = await config_resolver_of(app_state).get_str(
         _DECOMPOSITION_NS,
         _ROUTING_POLICY_KEY,
     )
-    leaf_threshold = await app_state.config_resolver.get_int(
+    leaf_threshold = await config_resolver_of(app_state).get_int(
         _DECOMPOSITION_NS,
         _LEAF_THRESHOLD_KEY,
     )
-    cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     return build_work_pipeline(
         intake_engine=intake_engine,
-        task_engine=app_state.task_engine,
-        project_repository=app_state.persistence.projects,
+        task_engine=task_engine_of(app_state),
+        project_repository=persistence_of(app_state).projects,
         scorer=scorer,
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
-        agent_registry=app_state.agent_registry,
+        agent_registry=agent_registry_of(app_state),
         routing_discriminator=routing_policy,
         leaf_threshold=leaf_threshold,
         provider=provider,
@@ -789,10 +802,11 @@ async def build_runtime_services(
         backends=sandbox_backends,
         category=ToolCategory.CODE_EXECUTION,
     )
+    workspace_slice = app_state.slice(WorkspaceStateSlice)
     worker_execution_service = AgentEngineExecutionService(
         engine=engine,
-        task_engine=app_state.task_engine,
-        agent_registry=app_state.agent_registry,
+        task_engine=task_engine_of(app_state),
+        agent_registry=agent_registry_of(app_state),
         autonomy_resolver=autonomy_resolver,
         # Release the lifecycle owner on the SAME backend the code-execution
         # tools resolve to (not hardwired docker): if code execution maps to
@@ -800,8 +814,8 @@ async def build_runtime_services(
         # and skip owner cleanup on the one that actually held the container.
         sandbox_backend=environment_runner_backend,
         lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
-        project_workspace_service=app_state.project_workspace_service,
-        environment_service=app_state.environment_service,
+        project_workspace_service=workspace_slice.project_workspace_service,
+        environment_service=workspace_slice.environment_service,
         environment_runner_backend=environment_runner_backend,
     )
     work_pipeline = await _build_runtime_work_pipeline(
@@ -909,9 +923,7 @@ def _build_vision_gate_or_none(
             workspace=workspace_root,
             provider=provider,
             tier_resolver=tier_resolver,
-            cost_tracker=(
-                app_state.cost_tracker if app_state.has_cost_tracker else None
-            ),
+            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
             clock=app_state.clock,
         )
     except VisionVerifyConfigError as exc:

@@ -17,12 +17,15 @@ from synthorg.api.controllers.setup_agents import (
     match_and_assign_models,
     validate_agents_value,
 )
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ProviderTierCoverageInsufficientError,
 )
+from synthorg.engine.workspace.state import agent_workspace_root_of
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -37,9 +40,12 @@ from synthorg.observability.events.setup import (
     SETUP_STATUS_SETTINGS_DEFAULT_USED,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
 )
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.state import provider_management_of
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -109,12 +115,12 @@ async def post_setup_reinit(app_state: AppState) -> None:
     Raises:
         Exception: Raised on the corresponding failure path.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return
 
     # 1. Reload provider registry from persisted config.
     try:
-        provider_configs = await app_state.config_resolver.get_provider_configs()
+        provider_configs = await config_resolver_of(app_state).get_provider_configs()
         if provider_configs:
             new_registry = ProviderRegistry.from_config(
                 provider_configs,
@@ -130,15 +136,16 @@ async def post_setup_reinit(app_state: AppState) -> None:
         raise
 
     # 2. Bootstrap agents into runtime registry.
-    if app_state.has_agent_registry:
+    agent_registry = app_state.slice(HrStateSlice).agent_registry
+    if agent_registry is not None:
         try:
             from synthorg.api.bootstrap import (  # noqa: PLC0415
                 bootstrap_agents,
             )
 
             await bootstrap_agents(
-                config_resolver=app_state.config_resolver,
-                agent_registry=app_state.agent_registry,
+                config_resolver=config_resolver_of(app_state),
+                agent_registry=agent_registry,
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -184,12 +191,16 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
         )
 
         # Retry cost-dial wiring BEFORE building runtime services: the
-        # AgentEngine snapshots app_state.cost_forecast_repo at build
-        # time, so wiring afterwards would leave the rebuilt engine
-        # without the forecast repo (no halt-context stamping) until yet
-        # another rebuild. The entry-adapter rebuild below then threads
-        # the live forecast_gate through.
-        if app_state.has_persistence and app_state.cost_forecaster is None:
+        # AgentEngine snapshots the cost forecast repo at build time, so
+        # wiring afterwards would leave the rebuilt engine without the
+        # forecast repo (no halt-context stamping) until yet another
+        # rebuild. The entry-adapter rebuild below then threads the live
+        # forecast_gate through.
+        forecaster = app_state.slice(BudgetStateSlice).cost_forecaster
+        if (
+            app_state.slice(PersistenceStateSlice).backend is not None
+            and forecaster is None
+        ):
             from synthorg.api._app_wiring import (  # noqa: PLC0415
                 _try_wire_cost_dial,
             )
@@ -197,7 +208,7 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
             _try_wire_cost_dial(app_state)
         services = await build_runtime_services(
             app_state,
-            workspace_root=app_state.agent_workspace_root,
+            workspace_root=agent_workspace_root_of(app_state),
         )
         app_state.swap_worker_execution_service(
             services.worker_execution_service,
@@ -406,10 +417,10 @@ async def auto_create_template_agents(
         Returns:
             The ``ModelMatcherConfig`` value when present, ``None`` otherwise.
         """
-        if not app_state.has_config_resolver:
+        if app_state.slice(SettingsStateSlice).config_resolver is None:
             return None
         try:
-            bridge_cfg = await app_state.config_resolver.get_engine_bridge_config()
+            bridge_cfg = await config_resolver_of(app_state).get_engine_bridge_config()
             return ModelMatcherConfig.from_bridge_config(bridge_cfg)
         except Exception as exc:
             reraise_critical(exc)
@@ -424,10 +435,10 @@ async def auto_create_template_agents(
     async with asyncio.TaskGroup() as tg:
         loc_task = tg.create_task(read_name_locales(settings_svc))
         preset_task = tg.create_task(
-            fetch_custom_presets_map(app_state.persistence.custom_presets),
+            fetch_custom_presets_map(persistence_of(app_state).custom_presets),
         )
         prov_task = tg.create_task(
-            app_state.provider_management.list_providers(),
+            provider_management_of(app_state).list_providers(),
         )
         matcher_task = tg.create_task(_resolve_matcher_config())
     locales = loc_task.result()
@@ -463,10 +474,10 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
     Returns:
         Tuple of the declared element types.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return ()
     try:
-        configs = await app_state.config_resolver.get_provider_configs()
+        configs = await config_resolver_of(app_state).get_provider_configs()
         ids: list[str] = [
             str(model.id) for pc in configs.values() for model in pc.models
         ]

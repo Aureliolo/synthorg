@@ -15,6 +15,8 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from synthorg.settings.state import config_resolver_of
+from tests._shared import make_app_state
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -73,13 +75,18 @@ def app_state(
 ) -> AppState:
     """AppState assembled from fakes for isolated service tests."""
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.settings.resolver import ConfigResolver
 
-    return AppState(
+    return make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         settings_service=settings_service,
+        config_resolver=ConfigResolver(
+            settings_service=settings_service,
+            config=root_config,
+        ),
     )
 
 
@@ -92,7 +99,7 @@ def service(
     """ProviderManagementService wired to fake-backed app state."""
     return ProviderManagementService(
         settings_service=settings_service,
-        config_resolver=app_state.config_resolver,
+        config_resolver=config_resolver_of(app_state),
         app_state=app_state,
         config=root_config,
     )

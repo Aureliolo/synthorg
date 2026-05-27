@@ -1,6 +1,7 @@
 """Tests for the Prometheus /metrics endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar import Litestar
@@ -14,13 +15,9 @@ from synthorg.api.controllers.metrics import MetricsController
 def _make_app(*, collector: object | None = None) -> Litestar:
     """Build a minimal Litestar app with the MetricsController."""
     mock_state = MagicMock()
-    type(mock_state).has_prometheus_collector = PropertyMock(
-        return_value=collector is not None,
+    mock_state.slice.return_value = SimpleNamespace(
+        prometheus_collector=collector, trace_handler=None
     )
-    if collector is not None:
-        type(mock_state).prometheus_collector = PropertyMock(
-            return_value=collector,
-        )
 
     return Litestar(
         route_handlers=[MetricsController],

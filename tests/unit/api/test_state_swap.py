@@ -1,106 +1,239 @@
-"""Tests for AppState service swap methods (hot-reload)."""
+"""Tests for the surviving :class:`AppState` hot-swap seams.
+
+After the feature-manifest collapse the per-service ``set_X`` / ``swap_X``
+accessors are gone; the boot install and ``post_setup_reinit`` keep a
+small set of named seams as thin shims over ``AppStateSliceMixin.wire``.
+Each shim composes the owning feature slice and preserves its historic
+contract: ``swap_*`` hot-replaces, ``set_*`` is once-only,
+``set_*_if_absent`` installs only when the slot is empty (injection wins
+over autowire), and ``swap_notification_dispatcher`` returns the
+previous dispatcher so the caller can close its sinks. Readers observe
+the result through the owning slice.
+"""
+
+from pathlib import Path
 
 import pytest
 
-from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
+from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.state import EngineStateSlice
+from synthorg.engine.workspace.state import WorkspaceStateSlice, agent_workspace_root_of
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.providers.routing.router import ModelRouter
+from synthorg.providers.state import ProvidersStateSlice
+from synthorg.workers.execution_service import NoProviderExecutionService
+from synthorg.workers.state import RuntimeStateSlice, worker_execution_service_of
+from tests._shared import mock_of
+
+pytestmark = pytest.mark.unit
 
 
-def _make_state(**overrides: object) -> AppState:
-    defaults: dict[str, object] = {
-        "config": RootConfig(company_name="test"),
-        "approval_store": ApprovalStore(),
-    }
-    defaults.update(overrides)
-    return AppState(**defaults)  # type: ignore[arg-type]
+def _make_state() -> AppState:
+    """Build a bare thin ``AppState`` with no services wired."""
+    return AppState(config=RootConfig(company_name="test"))
 
 
-def _make_registry() -> ProviderRegistry:
-    """Build an empty ProviderRegistry."""
-    return ProviderRegistry({})
+class TestProviderRegistrySwap:
+    """``swap_provider_registry`` hot-replaces the providers-slice registry."""
 
-
-def _make_router(config: RootConfig | None = None) -> ModelRouter:
-    """Build a ModelRouter from default config."""
-    cfg = config or RootConfig(company_name="test")
-    return ModelRouter(cfg.routing, dict(cfg.providers))
-
-
-@pytest.mark.unit
-class TestAppStateProviderRegistrySwap:
-    """Tests for provider_registry slot and swap."""
-
-    def test_provider_registry_raises_when_none(self) -> None:
-        state = _make_state(provider_registry=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.provider_registry
-
-    def test_provider_registry_returns_when_set(self) -> None:
-        registry = _make_registry()
-        state = _make_state(provider_registry=registry)
-        assert state.provider_registry is registry
-
-    def test_has_provider_registry_false_when_none(self) -> None:
+    def test_swap_from_unset_attaches(self) -> None:
         state = _make_state()
-        assert state.has_provider_registry is False
+        registry = ProviderRegistry({})
+        state.swap_provider_registry(registry)
+        assert state.slice(ProvidersStateSlice).registry is registry
 
-    def test_has_provider_registry_true_when_set(self) -> None:
-        registry = _make_registry()
-        state = _make_state(provider_registry=registry)
-        assert state.has_provider_registry is True
-
-    def test_swap_provider_registry_replaces_reference(self) -> None:
-        old = _make_registry()
-        new = _make_registry()
-        state = _make_state(provider_registry=old)
+    def test_swap_replaces_existing(self) -> None:
+        state = _make_state()
+        old = ProviderRegistry({})
+        new = ProviderRegistry({})
+        state.swap_provider_registry(old)
         state.swap_provider_registry(new)
-        assert state.provider_registry is new
-        assert state.provider_registry is not old
+        assert state.slice(ProvidersStateSlice).registry is new
 
-    def test_swap_provider_registry_from_none(self) -> None:
-        new = _make_registry()
+
+class TestWorkerExecutionServiceSeam:
+    """``set_worker_execution_service`` (once) / ``swap_worker_execution_service``."""
+
+    def test_set_installs_once(self) -> None:
         state = _make_state()
-        state.swap_provider_registry(new)
-        assert state.provider_registry is new
+        service = NoProviderExecutionService()
+        state.set_worker_execution_service(service)
+        assert state.slice(RuntimeStateSlice).worker_execution_service is service
 
+    def test_set_twice_raises(self) -> None:
+        state = _make_state()
+        state.set_worker_execution_service(NoProviderExecutionService())
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_worker_execution_service(NoProviderExecutionService())
 
-@pytest.mark.unit
-class TestAppStateModelRouterSwap:
-    """Tests for model_router slot and swap."""
+    def test_swap_attaches_when_unset(self) -> None:
+        state = _make_state()
+        service = NoProviderExecutionService()
+        state.swap_worker_execution_service(service)
+        assert state.slice(RuntimeStateSlice).worker_execution_service is service
 
-    def test_model_router_raises_when_none(self) -> None:
-        state = _make_state(model_router=None)
+    def test_swap_replaces_existing(self) -> None:
+        state = _make_state()
+        first = NoProviderExecutionService()
+        second = NoProviderExecutionService()
+        state.set_worker_execution_service(first)
+        state.swap_worker_execution_service(second)
+        assert state.slice(RuntimeStateSlice).worker_execution_service is second
+
+    def test_accessor_lazy_default_raises_without_task_engine(self) -> None:
+        # The lazy ``LifecycleAdvancingExecutionService`` default needs a
+        # task engine; a bare state has none, so the accessor 503s rather
+        # than composing a half-built service.
+        state = _make_state()
         with pytest.raises(ServiceUnavailableError):
-            _ = state.model_router
+            worker_execution_service_of(state)
 
-    def test_model_router_returns_when_set(self) -> None:
-        router = _make_router()
-        state = _make_state(model_router=router)
-        assert state.model_router is router
-
-    def test_has_model_router_false_when_none(self) -> None:
+    def test_accessor_returns_installed_service(self) -> None:
         state = _make_state()
-        assert state.has_model_router is False
+        service = NoProviderExecutionService()
+        state.set_worker_execution_service(service)
+        assert worker_execution_service_of(state) is service
 
-    def test_has_model_router_true_when_set(self) -> None:
-        router = _make_router()
-        state = _make_state(model_router=router)
-        assert state.has_model_router is True
 
-    def test_swap_model_router_replaces_reference(self) -> None:
-        old = _make_router()
-        new = _make_router()
-        state = _make_state(model_router=old)
-        state.swap_model_router(new)
-        assert state.model_router is new
-        assert state.model_router is not old
+class TestCoordinatorSeam:
+    """``set_coordinator_if_absent`` (injection wins) / ``swap_coordinator``."""
 
-    def test_swap_model_router_from_none(self) -> None:
-        new = _make_router()
+    def test_set_if_absent_installs_when_unset(self) -> None:
         state = _make_state()
-        state.swap_model_router(new)
-        assert state.model_router is new
+        coordinator = mock_of[MultiAgentCoordinator]()
+        state.set_coordinator_if_absent(coordinator)
+        assert state.slice(RuntimeStateSlice).coordinator is coordinator
+
+    def test_set_if_absent_keeps_injected(self) -> None:
+        state = _make_state()
+        injected = mock_of[MultiAgentCoordinator]()
+        autowired = mock_of[MultiAgentCoordinator]()
+        state.swap_coordinator(injected)
+        state.set_coordinator_if_absent(autowired)
+        # Injection-over-autowire: the already-wired coordinator wins.
+        assert state.slice(RuntimeStateSlice).coordinator is injected
+
+    def test_swap_replaces_existing(self) -> None:
+        state = _make_state()
+        first = mock_of[MultiAgentCoordinator]()
+        second = mock_of[MultiAgentCoordinator]()
+        state.swap_coordinator(first)
+        state.swap_coordinator(second)
+        assert state.slice(RuntimeStateSlice).coordinator is second
+
+
+class TestWorkPipelineSeam:
+    """``set_work_pipeline_if_absent`` (injection wins) / ``swap_work_pipeline``."""
+
+    def test_set_if_absent_installs_when_unset(self) -> None:
+        state = _make_state()
+        pipeline = mock_of[WorkPipeline]()
+        state.set_work_pipeline_if_absent(pipeline)
+        assert state.slice(EngineStateSlice).work_pipeline is pipeline
+
+    def test_set_if_absent_keeps_injected(self) -> None:
+        state = _make_state()
+        injected = mock_of[WorkPipeline]()
+        autowired = mock_of[WorkPipeline]()
+        state.swap_work_pipeline(injected)
+        state.set_work_pipeline_if_absent(autowired)
+        assert state.slice(EngineStateSlice).work_pipeline is injected
+
+    def test_swap_replaces_existing(self) -> None:
+        state = _make_state()
+        first = mock_of[WorkPipeline]()
+        second = mock_of[WorkPipeline]()
+        state.swap_work_pipeline(first)
+        state.swap_work_pipeline(second)
+        assert state.slice(EngineStateSlice).work_pipeline is second
+
+
+class TestEntryAdapterSeams:
+    """The intake / objective / brownfield / task-board entry-adapter seams."""
+
+    def test_intake_set_if_absent_then_swap(self) -> None:
+        state = _make_state()
+        first = mock_of[WorkEntryAdapter]()
+        second = mock_of[WorkEntryAdapter]()
+        state.set_intake_entry_adapter_if_absent(first)
+        assert state.slice(EngineStateSlice).intake_entry_adapter is first
+        # Injection wins: a second if-absent is a no-op.
+        state.set_intake_entry_adapter_if_absent(second)
+        assert state.slice(EngineStateSlice).intake_entry_adapter is first
+        # Swap hot-replaces.
+        state.swap_intake_entry_adapter(second)
+        assert state.slice(EngineStateSlice).intake_entry_adapter is second
+
+    def test_objective_set_if_absent_then_swap(self) -> None:
+        state = _make_state()
+        first = mock_of[WorkEntryAdapter]()
+        second = mock_of[WorkEntryAdapter]()
+        state.set_objective_entry_adapter_if_absent(first)
+        assert state.slice(EngineStateSlice).objective_entry_adapter is first
+        state.set_objective_entry_adapter_if_absent(second)
+        assert state.slice(EngineStateSlice).objective_entry_adapter is first
+        state.swap_objective_entry_adapter(second)
+        assert state.slice(EngineStateSlice).objective_entry_adapter is second
+
+    def test_brownfield_set_if_absent_then_swap(self) -> None:
+        state = _make_state()
+        first = mock_of[WorkEntryAdapter]()
+        second = mock_of[WorkEntryAdapter]()
+        state.set_brownfield_entry_adapter_if_absent(first)
+        assert state.slice(EngineStateSlice).brownfield_entry_adapter is first
+        state.set_brownfield_entry_adapter_if_absent(second)
+        assert state.slice(EngineStateSlice).brownfield_entry_adapter is first
+        state.swap_brownfield_entry_adapter(second)
+        assert state.slice(EngineStateSlice).brownfield_entry_adapter is second
+
+    def test_task_board_set_if_absent_then_swap(self) -> None:
+        state = _make_state()
+        first = mock_of[TaskBoardEntryAdapter]()
+        second = mock_of[TaskBoardEntryAdapter]()
+        state.set_task_board_entry_adapter_if_absent(first)
+        assert state.slice(EngineStateSlice).task_board_entry_adapter is first
+        state.set_task_board_entry_adapter_if_absent(second)
+        assert state.slice(EngineStateSlice).task_board_entry_adapter is first
+        state.swap_task_board_entry_adapter(second)
+        assert state.slice(EngineStateSlice).task_board_entry_adapter is second
+
+
+class TestNotificationDispatcherSwap:
+    """``swap_notification_dispatcher`` returns the previously wired one."""
+
+    def test_first_swap_returns_none(self) -> None:
+        state = _make_state()
+        first = NotificationDispatcher(sinks=())
+        assert state.swap_notification_dispatcher(first) is None
+        assert state.slice(NotificationsStateSlice).dispatcher is first
+
+    def test_second_swap_returns_previous(self) -> None:
+        state = _make_state()
+        first = NotificationDispatcher(sinks=())
+        second = NotificationDispatcher(sinks=())
+        state.swap_notification_dispatcher(first)
+        # The caller awaits ``aclose()`` on the returned previous one.
+        assert state.swap_notification_dispatcher(second) is first
+        assert state.slice(NotificationsStateSlice).dispatcher is second
+
+
+class TestAgentWorkspaceRoot:
+    """``agent_workspace_root_of`` default fallback + pinned-via-wire path."""
+
+    def test_default_is_absolute_temp_path(self) -> None:
+        state = _make_state()
+        root = agent_workspace_root_of(state)
+        assert root.is_absolute()
+        assert "synthorg-agent-workspaces" in str(root)
+
+    def test_pinned_root_is_returned(self, tmp_path: Path) -> None:
+        state = _make_state()
+        state.wire(WorkspaceStateSlice, agent_workspace_root=tmp_path)
+        assert agent_workspace_root_of(state) == tmp_path

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROVIDER_USAGE_ENRICHMENT_FAILED
@@ -40,11 +41,12 @@ async def enrich_with_usage(
     Returns:
         ``ProviderHealthSummary`` instance.
     """
-    if not app_state.has_cost_tracker:
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    if cost_tracker is None:
         return summary
     try:
         now = datetime.now(UTC)
-        usage = await app_state.cost_tracker.get_provider_usage(
+        usage = await cost_tracker.get_provider_usage(
             name,
             start=now - timedelta(hours=24),
             end=now,

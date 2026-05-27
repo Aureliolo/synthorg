@@ -11,11 +11,13 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
@@ -103,7 +105,7 @@ def _get_report_service(
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
     app_state: AppState = state.app_state
-    service = app_state.report_service if app_state.has_report_service else None
+    service = app_state.slice(BudgetStateSlice).report_service
     if service is None:
         logger.warning(
             API_SERVICE_UNAVAILABLE,
@@ -169,6 +171,6 @@ class ReportsController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[str](data=page, pagination=meta)

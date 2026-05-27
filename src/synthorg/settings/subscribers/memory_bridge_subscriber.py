@@ -30,6 +30,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.bridge_configs import MemoryBridgeConfig
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -105,7 +106,7 @@ class MemoryBridgeSettingsSubscriber:
             )
             return
         try:
-            resolver = self._app_state.config_resolver
+            resolver = config_resolver_of(self._app_state)
             snapshot = await resolver.get_memory_bridge_config()
             self._app_state.swap_memory_bridge_config(snapshot)
         except Exception as exc:

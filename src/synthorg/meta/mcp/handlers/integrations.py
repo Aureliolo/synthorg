@@ -12,6 +12,13 @@ from uuid import UUID
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
+from synthorg.infrastructure.state import (
+    artifact_facade_service_of,
+    client_facade_service_of,
+    mcp_catalog_facade_service_of,
+    oauth_facade_service_of,
+    ontology_facade_service_of,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -171,7 +178,7 @@ async def _mcp_catalog_list(
     tool = "synthorg_mcp_catalog_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        entries = await app_state.mcp_catalog_facade_service.list_catalog()
+        entries = await mcp_catalog_facade_service_of(app_state).list_catalog()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -204,7 +211,7 @@ async def _mcp_catalog_search(
     tool = "synthorg_mcp_catalog_search"
     try:
         query = _require_str(arguments, "query")
-        entries = await app_state.mcp_catalog_facade_service.search_catalog(query)
+        entries = await mcp_catalog_facade_service_of(app_state).search_catalog(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -230,7 +237,7 @@ async def _mcp_catalog_get(
     tool = "synthorg_mcp_catalog_get"
     try:
         entry_id = _require_str(arguments, "entry_id")
-        entry = await app_state.mcp_catalog_facade_service.get_catalog_entry(
+        entry = await mcp_catalog_facade_service_of(app_state).get_catalog_entry(
             entry_id,
         )
     except CapabilityNotSupportedError as exc:
@@ -264,7 +271,7 @@ async def _mcp_catalog_install(
     tool = "synthorg_mcp_catalog_install"
     try:
         entry_id = _require_str(arguments, "entry_id")
-        result = await app_state.mcp_catalog_facade_service.install_catalog_entry(
+        result = await mcp_catalog_facade_service_of(app_state).install_catalog_entry(
             entry_id=entry_id,
             actor_id=require_actor_id(actor),
         )
@@ -295,7 +302,8 @@ async def _mcp_catalog_uninstall(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         installation_id = _require_str(arguments, "installation_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.mcp_catalog_facade_service.uninstall_catalog_entry(
+        mcp_catalog = mcp_catalog_facade_service_of(app_state)
+        removed = await mcp_catalog.uninstall_catalog_entry(
             installation_id=installation_id,
             actor_id=actor_id,
             reason=reason,
@@ -339,7 +347,7 @@ async def _oauth_list_providers(
     """
     tool = "synthorg_oauth_list_providers"
     try:
-        providers = await app_state.oauth_facade_service.list_providers()
+        providers = await oauth_facade_service_of(app_state).list_providers()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -370,7 +378,7 @@ async def _oauth_configure_provider(
         authorize_url = _require_str(arguments, "authorize_url")
         token_url = _require_str(arguments, "token_url")
         scopes = _get_list_str(arguments, "scopes")
-        record = await app_state.oauth_facade_service.configure_provider(
+        record = await oauth_facade_service_of(app_state).configure_provider(
             name=name,
             client_id=client_id,
             authorize_url=authorize_url,
@@ -405,7 +413,7 @@ async def _oauth_remove_provider(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, "name")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.oauth_facade_service.remove_provider(
+        removed = await oauth_facade_service_of(app_state).remove_provider(
             name=name,
             actor_id=actor_id,
             reason=reason,
@@ -450,7 +458,7 @@ async def _clients_list(
     tool = "synthorg_clients_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        clients = await app_state.client_facade_service.list_clients()
+        clients = await client_facade_service_of(app_state).list_clients()
         page, pagination = paginate_sequence(
             clients,
             offset=offset,
@@ -480,7 +488,7 @@ async def _clients_get(
     tool = "synthorg_clients_get"
     try:
         client_id = _require_uuid(arguments, "client_id")
-        client = await app_state.client_facade_service.get_client(client_id)
+        client = await client_facade_service_of(app_state).get_client(client_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -512,7 +520,7 @@ async def _clients_create(
         name = _require_str(arguments, "name")
         contact_email = get_optional_str(arguments, "contact_email")
         notes = get_optional_str(arguments, "notes")
-        client = await app_state.client_facade_service.create_client(
+        client = await client_facade_service_of(app_state).create_client(
             name=name,
             actor_id=require_actor_id(actor),
             contact_email=contact_email,
@@ -545,7 +553,7 @@ async def _clients_deactivate(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         client_id = _require_uuid(arguments, "client_id")
         actor_id = require_actor_id(resolved_actor)
-        deactivated = await app_state.client_facade_service.deactivate_client(
+        deactivated = await client_facade_service_of(app_state).deactivate_client(
             client_id=client_id,
             actor_id=actor_id,
             reason=reason,
@@ -587,7 +595,7 @@ async def _clients_get_satisfaction(
     tool = "synthorg_clients_get_satisfaction"
     try:
         client_id = _require_uuid(arguments, "client_id")
-        result = await app_state.client_facade_service.get_satisfaction(client_id)
+        result = await client_facade_service_of(app_state).get_satisfaction(client_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -614,7 +622,7 @@ async def _artifacts_list(
     tool = "synthorg_artifacts_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        artifacts = await app_state.artifact_facade_service.list_artifacts()
+        artifacts = await artifact_facade_service_of(app_state).list_artifacts()
         page, pagination = paginate_sequence(
             artifacts,
             offset=offset,
@@ -644,7 +652,7 @@ async def _artifacts_get(
     tool = "synthorg_artifacts_get"
     try:
         artifact_id = _require_uuid(arguments, "artifact_id")
-        artifact = await app_state.artifact_facade_service.get_artifact(artifact_id)
+        artifact = await artifact_facade_service_of(app_state).get_artifact(artifact_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -676,7 +684,7 @@ async def _artifacts_create(
         content_type = _require_str(arguments, "content_type")
         size_bytes = _require_int(arguments, "size_bytes")
         storage_ref = _require_str(arguments, "storage_ref")
-        artifact = await app_state.artifact_facade_service.create_artifact(
+        artifact = await artifact_facade_service_of(app_state).create_artifact(
             name=name,
             content_type=content_type,
             size_bytes=size_bytes,
@@ -710,7 +718,7 @@ async def _artifacts_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         artifact_id = _require_uuid(arguments, "artifact_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.artifact_facade_service.delete_artifact(
+        removed = await artifact_facade_service_of(app_state).delete_artifact(
             artifact_id=artifact_id,
             actor_id=actor_id,
             reason=reason,
@@ -754,7 +762,7 @@ async def _ontology_list_entities(
     """
     tool = "synthorg_ontology_list_entities"
     try:
-        entities = await app_state.ontology_facade_service.list_entities()
+        entities = await ontology_facade_service_of(app_state).list_entities()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -780,7 +788,7 @@ async def _ontology_get_entity(
     tool = "synthorg_ontology_get_entity"
     try:
         entity_id = _require_str(arguments, "entity_id")
-        entity = await app_state.ontology_facade_service.get_entity(entity_id)
+        entity = await ontology_facade_service_of(app_state).get_entity(entity_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -811,7 +819,7 @@ async def _ontology_get_relationships(
     tool = "synthorg_ontology_get_relationships"
     try:
         entity_id = _require_str(arguments, "entity_id")
-        result = await app_state.ontology_facade_service.get_relationships(
+        result = await ontology_facade_service_of(app_state).get_relationships(
             entity_id,
         )
     except CapabilityNotSupportedError as exc:
@@ -839,7 +847,7 @@ async def _ontology_search(
     tool = "synthorg_ontology_search"
     try:
         query = _require_str(arguments, "query")
-        result = await app_state.ontology_facade_service.search(query)
+        result = await ontology_facade_service_of(app_state).search(query)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:

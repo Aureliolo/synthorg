@@ -11,6 +11,7 @@ from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_COMPLETED,
     METRICS_SCRAPE_FAILED,
 )
+from synthorg.observability.state import ObservabilityStateSlice
 
 logger = get_logger(__name__)
 
@@ -39,7 +40,8 @@ class MetricsController(Controller):
         """
         app_state: AppState = state.app_state
 
-        if not app_state.has_prometheus_collector:
+        collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
+        if collector is None:
             logger.warning(METRICS_SCRAPE_FAILED, reason="collector not configured")
             return Response(
                 content=b"# No metrics collector configured\n",
@@ -47,7 +49,6 @@ class MetricsController(Controller):
                 status_code=503,
             )
 
-        collector = app_state.prometheus_collector
         try:
             await collector.refresh(app_state)
             body = generate_latest(collector.registry)

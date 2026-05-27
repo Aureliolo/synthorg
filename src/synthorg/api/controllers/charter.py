@@ -28,6 +28,7 @@ from synthorg.api.guards import (
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
@@ -46,6 +47,7 @@ from synthorg.meta.charter.models import (
     ProjectCharter,
     ScopeBoundaries,
 )
+from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 
@@ -105,7 +107,8 @@ class CharterController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        if not app_state.has_charter_service:
+        service = app_state.slice(CharterStateSlice).interview_service
+        if service is None:
             logger.warning(
                 CHARTER_SUBSTRATE_UNAVAILABLE,
                 dependency="charter_service",
@@ -120,7 +123,7 @@ class CharterController(Controller):
                 "provider, and connect persistence."
             )
             raise ServiceUnavailableError(msg)
-        return app_state.charter_service
+        return service
 
     @post(
         "/interview",
@@ -186,7 +189,7 @@ class CharterController(Controller):
         offset = (
             0
             if cursor is None
-            else decode_cursor(cursor, secret=app_state.cursor_secret)
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
         )
         # Fetch limit+1 so the overflow row drives ``has_more`` without
         # a separate COUNT(*) round-trip on the repo.
@@ -202,7 +205,7 @@ class CharterController(Controller):
             offset=offset,
             fetched_rows=len(fetched),
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[ProjectCharter](data=page, pagination=meta)
 
@@ -288,7 +291,8 @@ class CharterController(Controller):
         """
         del data
         app_state = state.app_state
-        if not app_state.has_charter_dispatcher:
+        dispatcher = app_state.slice(CharterStateSlice).dispatcher
+        if dispatcher is None:
             logger.warning(
                 CHARTER_SUBSTRATE_UNAVAILABLE,
                 dependency="charter_dispatcher",
@@ -301,7 +305,7 @@ class CharterController(Controller):
             )
             raise ServiceUnavailableError(msg)
         actor = require_actor()
-        result = await app_state.charter_dispatcher.approve(
+        result = await dispatcher.approve(
             NotBlankStr(charter_id),
             approved_by=NotBlankStr(actor.actor_id),
         )

@@ -5,11 +5,8 @@ intake engine, and review pipeline in a single object so the API
 layer has a stable attachment point on ``AppState``.
 """
 
+import asyncio  # noqa: TC003 -- runtime: Pydantic introspects this dataclass field
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import asyncio
 
 from synthorg.client.pool import ClientPool
 from synthorg.client.store import FeedbackStore, RequestStore, SimulationStore

@@ -30,8 +30,6 @@ from synthorg.api.app_builders import (
     _build_configured_trust_service,
     _build_performance_tracker,
     _build_telemetry_collector,
-    build_chief_of_staff_chat,
-    build_chief_of_staff_proposer,
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
@@ -55,8 +53,10 @@ from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+from synthorg.api.feature_composition import compose_feature_slices
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
 from synthorg.api.lifecycle_helpers.settings_dispatcher import (
     _build_settings_dispatcher,
 )
@@ -96,7 +96,6 @@ from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: T
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
@@ -120,7 +119,6 @@ from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
     API_SERVICE_AUTO_WIRED,
 )
-from synthorg.observability.events.charter import CHARTER_SUBSTRATE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,  # noqa: TC001
@@ -642,49 +640,132 @@ def create_app(  # noqa: PLR0913
     # ``app_state.clock`` and ``startup_time`` cannot diverge, and a
     # FakeClock injected via AppState in tests governs both.
     _boot_clock = SystemClock()
+    event_stream_hub = event_stream_hub or EventStreamHub()
+    interrupt_store = interrupt_store or InterruptStore()
+    # Thin construction: AppState holds only config / clock / startup_time
+    # + the cross-cutting primitives. Every service flows into its
+    # feature slice via the ``swap_slice`` composition block below.
     app_state = AppState(
         clock=_boot_clock,
         config=effective_config,
-        persistence=persistence,
-        message_bus=message_bus,
-        cost_tracker=cost_tracker,
-        approval_store=effective_approval_store,
-        auth_service=auth_service,
-        task_engine=task_engine,
-        coordinator=coordinator,
-        work_pipeline=work_pipeline,
-        intake_entry_adapter=intake_entry_adapter,
-        task_board_entry_adapter=task_board_entry_adapter,
-        agent_registry=agent_registry,
-        meeting_orchestrator=meeting_orchestrator,
-        meeting_scheduler=meeting_scheduler,
-        ceremony_scheduler=ceremony_scheduler,
-        performance_tracker=performance_tracker,
-        settings_service=settings_service,
-        provider_registry=provider_registry,
-        provider_health_tracker=provider_health_tracker,
-        tool_invocation_tracker=tool_invocation_tracker,
-        delegation_record_store=delegation_record_store,
-        artifact_storage=artifact_storage,
-        notification_dispatcher=notification_dispatcher,
-        audit_log=audit_log,
-        trust_service=trust_service,
-        autonomy_change_strategy=autonomy_change_strategy,
-        coordination_metrics_store=coordination_metrics_store,
-        event_stream_hub=event_stream_hub or EventStreamHub(),
-        interrupt_store=interrupt_store or InterruptStore(),
-        connection_catalog=connection_catalog,
-        oauth_token_manager=oauth_token_manager,
-        health_prober_service=health_prober_service,
-        tunnel_provider=tunnel_provider,
-        webhook_event_bridge=webhook_event_bridge,
-        mcp_catalog_service=mcp_catalog_service,
-        mcp_installations_repo=mcp_installations_repo,
-        training_service=training_service,
         startup_time=_boot_clock.monotonic(),
     )
-    if distributed_task_queue is not None:
-        app_state.set_distributed_task_queue(distributed_task_queue)
+    # Compose every feature's (empty) state slice up front so the
+    # construction-phase wiring below and the lazy-wire ``_swap_*``
+    # shims have a slice to ``model_copy`` from. The startup hook
+    # re-runs this idempotently (skips already-composed slices).
+    compose_feature_slices(app_state)
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.communication.state import (  # noqa: PLC0415
+        CommunicationStateSlice,
+    )
+    from synthorg.coordination.state import (  # noqa: PLC0415
+        CoordinationStateSlice,
+    )
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        WorkspaceStateSlice,
+    )
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.integrations.state import (  # noqa: PLC0415
+        IntegrationsStateSlice,
+    )
+    from synthorg.notifications.state import (  # noqa: PLC0415
+        NotificationsStateSlice,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+    )
+    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+    from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+    from synthorg.tools.state import ToolsStateSlice  # noqa: PLC0415
+
+    # ``model_construct`` skips validation so the slices accept the same
+    # already-constructed services the legacy slots held (and the test
+    # doubles injected via ``create_app``), matching the no-revalidation
+    # behaviour of the old attribute bag and the lazy-wire ``model_copy``
+    # shims.
+    app_state.swap_slice(
+        SecurityStateSlice.model_construct(
+            audit_log=audit_log,
+            trust_service=trust_service,
+            autonomy_change_strategy=autonomy_change_strategy,
+        )
+    )
+    app_state.swap_slice(
+        ToolsStateSlice.model_construct(invocation_tracker=tool_invocation_tracker)
+    )
+    app_state.swap_slice(
+        CoordinationStateSlice.model_construct(metrics_store=coordination_metrics_store)
+    )
+    app_state.swap_slice(
+        ApprovalStateSlice.model_construct(store=effective_approval_store)
+    )
+    app_state.swap_slice(PersistenceStateSlice.model_construct(backend=persistence))
+    app_state.swap_slice(
+        ProvidersStateSlice.model_construct(
+            registry=provider_registry,
+            health_tracker=provider_health_tracker,
+        )
+    )
+    app_state.swap_slice(
+        HrStateSlice.model_construct(
+            agent_registry=agent_registry,
+            performance_tracker=performance_tracker,
+            training_service=training_service,
+        )
+    )
+    app_state.swap_slice(
+        CommunicationStateSlice.model_construct(
+            message_bus=message_bus,
+            meeting_orchestrator=meeting_orchestrator,
+            meeting_scheduler=meeting_scheduler,
+            event_stream_hub=event_stream_hub,
+            interrupt_store=interrupt_store,
+            delegation_record_store=delegation_record_store,
+        )
+    )
+    app_state.swap_slice(BudgetStateSlice.model_construct(cost_tracker=cost_tracker))
+    app_state.swap_slice(
+        EngineStateSlice.model_construct(
+            task_engine=task_engine,
+            work_pipeline=work_pipeline,
+            ceremony_scheduler=ceremony_scheduler,
+            intake_entry_adapter=intake_entry_adapter,
+            task_board_entry_adapter=task_board_entry_adapter,
+        )
+    )
+    app_state.swap_slice(
+        IntegrationsStateSlice.model_construct(
+            connection_catalog=connection_catalog,
+            oauth_token_manager=oauth_token_manager,
+            health_prober_service=health_prober_service,
+            tunnel_provider=tunnel_provider,
+            webhook_event_bridge=webhook_event_bridge,
+            mcp_catalog_service=mcp_catalog_service,
+            mcp_installations_repo=mcp_installations_repo,
+        )
+    )
+    app_state.swap_slice(
+        SettingsStateSlice.model_construct(settings_service=settings_service)
+    )
+    app_state.swap_slice(
+        WorkspaceStateSlice.model_construct(artifact_storage=artifact_storage)
+    )
+    app_state.swap_slice(
+        NotificationsStateSlice.model_construct(dispatcher=notification_dispatcher)
+    )
+    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
+
+    app_state.swap_slice(
+        RuntimeStateSlice.model_construct(
+            coordinator=coordinator,
+            distributed_task_queue=distributed_task_queue,
+            distributed_backend_services=distributed_backend_services,
+        )
+    )
     if distributed_dispatcher is not None:
         # Late-bind the live bridge-config provider now that AppState
         # exists (the dispatcher is built in auto_wire_phase1 before
@@ -694,8 +775,6 @@ def create_app(  # noqa: PLR0913
         distributed_dispatcher.set_workers_bridge_provider(
             lambda: app_state.workers_bridge_config,
         )
-    if distributed_backend_services is not None:
-        app_state.set_distributed_backend_services(distributed_backend_services)
 
     # Opaque pagination cursor HMAC secret.  Loaded from the
     # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a
@@ -705,7 +784,28 @@ def create_app(  # noqa: PLR0913
     # share the same posture so this latent failure can never hide
     # behind a "looks fine in dev" code path.
     cursor_secret = CursorSecret.from_config(CursorConfig.from_env())
-    app_state.set_cursor_secret(cursor_secret)
+    from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
+    from synthorg.api.auth.presence import UserPresence  # noqa: PLC0415
+    from synthorg.api.auth.ticket_store import WsTicketStore  # noqa: PLC0415
+
+    app_state.swap_slice(
+        ApiCoreStateSlice.model_construct(
+            cursor_secret=cursor_secret,
+            auth_service=auth_service,
+            ticket_store=WsTicketStore(),
+            user_presence=UserPresence(),
+        )
+    )
+    # Compose the config resolver + management / org-mutation / audit /
+    # preset services when a settings service is injected at build time
+    # (the slice-era replacement for ``AppState._init_derived_services``;
+    # a no-op when no settings service is provided, where the startup
+    # ``auto_wire_settings`` hook composes them once persistence connects).
+    from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
+        compose_settings_dependent_services,
+    )
+
+    compose_settings_dependent_services(app_state, settings_service)
     if cursor_secret.is_ephemeral:
         msg = (
             "refusing to start with an ephemeral pagination cursor "
@@ -743,41 +843,40 @@ def create_app(  # noqa: PLR0913
             MessageService,
         )
 
-        app_state.set_message_service(
-            MessageService(bus=message_bus, persistence=persistence),
+        app_state.wire(
+            CommunicationStateSlice,
+            message_service=MessageService(bus=message_bus, persistence=persistence),
         )
     if meeting_orchestrator is not None:
         from synthorg.communication.meetings.service import (  # noqa: PLC0415
             MeetingService,
         )
 
-        app_state.set_meeting_service(
-            MeetingService(orchestrator=meeting_orchestrator),
+        app_state.wire(
+            CommunicationStateSlice,
+            meeting_service=MeetingService(orchestrator=meeting_orchestrator),
         )
 
-    app_state.set_escalation_store(_escalation_store)
-    app_state.set_escalation_processor(build_decision_processor(escalation_config))
     _escalation_registry = PendingFuturesRegistry()
-    app_state.set_escalation_registry(_escalation_registry)
-    app_state.set_escalation_sweeper(
-        EscalationExpirationSweeper(
-            _escalation_store,
-            interval_seconds=escalation_config.sweeper_interval_seconds,
-        ),
-    )
     # Cross-instance wake-up subscriber. No-op unless the queue
     # backend is Postgres and ``cross_instance_notify`` is enabled;
     # otherwise the sweeper and per-resolver timeout cover eventual
     # consistency on their own.
-    app_state.set_escalation_notify_subscriber(
-        build_escalation_notify_subscriber(
+    app_state.wire(
+        CommunicationStateSlice,
+        escalation_store=_escalation_store,
+        escalation_processor=build_decision_processor(escalation_config),
+        escalation_registry=_escalation_registry,
+        escalation_sweeper=EscalationExpirationSweeper(
+            _escalation_store,
+            interval_seconds=escalation_config.sweeper_interval_seconds,
+        ),
+        escalation_notify_subscriber=build_escalation_notify_subscriber(
             escalation_config,
             _escalation_store,
             _escalation_registry,
             reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
-            config_resolver=app_state.config_resolver
-            if app_state.has_config_resolver
-            else None,
+            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
         ),
     )
 
@@ -785,9 +884,7 @@ def create_app(  # noqa: PLR0913
         MessageBusBridge(
             message_bus,
             channels_plugin,
-            config_resolver=(
-                app_state.config_resolver if app_state.has_config_resolver else None
-            ),
+            config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
         )
         if message_bus is not None
         else None
@@ -989,12 +1086,18 @@ def create_app(  # noqa: PLR0913
             # Commit only on full success. Partial failures land in
             # the except branch above with all ``app_state`` slots
             # still empty.
-            app_state.set_a2a_card_builder(a2a_card_builder)
+            from synthorg.a2a.state import A2aStateSlice  # noqa: PLC0415
+
             a2a_root_controllers = a2a_root_pending
             if a2a_peer_registry is not None and a2a_client_obj is not None:
-                app_state.set_a2a_peer_registry(a2a_peer_registry)
-                app_state.set_a2a_client(a2a_client_obj)
                 a2a_controllers = a2a_pending
+            app_state.swap_slice(
+                A2aStateSlice(
+                    card_builder=a2a_card_builder,
+                    client=a2a_client_obj,
+                    peer_registry=a2a_peer_registry,
+                )
+            )
             logger.info(
                 API_SERVICE_AUTO_WIRED,
                 service="a2a_gateway",
@@ -1026,28 +1129,23 @@ def create_app(  # noqa: PLR0913
             )
 
             client_simulation_state = _ClientSimulationState()
-    app_state.set_client_simulation_state(client_simulation_state)
+    from synthorg.client.state import ClientStateSlice  # noqa: PLC0415
+
+    app_state.wire(ClientStateSlice, simulation_state=client_simulation_state)
 
     # Optional controllers gated on their primary collaborator service.
     # Routes for unconfigured subsystems are not registered at all so
     # the dashboard receives 404 (route does not exist) instead of the
     # 503 it used to get for every poll cycle.  /capabilities reports
     # which subsystems are wired so the dashboard can skip the polling
-    # loops at the source. Fail loudly when a registered predicate name
-    # is missing from AppState (typo / rename) -- silently disabling
-    # routes via ``getattr(..., False)`` would turn a wiring bug into
-    # an unnoticed 404 surface regression.
-    _optional: list[type[Controller]] = []
-    for controller_cls, predicate_attr in OPTIONAL_CONTROLLERS:
-        if not hasattr(app_state, predicate_attr):
-            msg = (
-                f"Optional controller predicate {predicate_attr!r} is "
-                f"missing on AppState (controller={controller_cls.__name__})."
-            )
-            logger.error(API_APP_STARTUP, note=msg, controller=controller_cls.__name__)
-            raise RuntimeError(msg)
-        if bool(getattr(app_state, predicate_attr)):
-            _optional.append(controller_cls)
+    # loops at the source. Each predicate reads its feature's state
+    # slice; a typed ``Callable`` makes a missing predicate a type error
+    # rather than a runtime surprise.
+    _optional: list[type[Controller]] = [
+        controller_cls
+        for controller_cls, predicate in OPTIONAL_CONTROLLERS
+        if predicate(app_state)
+    ]
     optional_controllers: tuple[type[Controller], ...] = tuple(_optional)
 
     api_router = Router(
@@ -1080,7 +1178,13 @@ def create_app(  # noqa: PLR0913
             task_engine=task_engine,
             persistence=persistence,
         )
-        app_state.set_review_gate_service(review_gate_service)
+        from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+
+        app_state.swap_slice(
+            app_state.slice(ApprovalStateSlice).model_copy(
+                update={"review_gate": review_gate_service}
+            )
+        )
 
     # ``approval_timeout_scheduler`` is built above (alongside the
     # backup service and bridge); the lifecycle owns starting it.
@@ -1129,6 +1233,17 @@ def create_app(  # noqa: PLR0913
         from synthorg.engine.errors import (  # noqa: PLC0415
             RuntimeServicesBuildError,
         )
+        from synthorg.engine.workspace.state import (  # noqa: PLC0415
+            WorkspaceStateSlice,
+            agent_workspace_root_of,
+        )
+        from synthorg.persistence.state import (  # noqa: PLC0415
+            PersistenceStateSlice,
+            persistence_of,
+        )
+        from synthorg.providers.state import (  # noqa: PLC0415
+            has_active_provider,
+        )
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             build_runtime_services,
         )
@@ -1139,18 +1254,21 @@ def create_app(  # noqa: PLR0913
         # return None and keep the documented temp fallback.
         env_workspace_root = resolve_agent_workspace_root_env()
         if env_workspace_root is not None:
-            app_state.set_agent_workspace_root(env_workspace_root)
+            app_state.wire(WorkspaceStateSlice, agent_workspace_root=env_workspace_root)
 
         # Per-project persistent workspace substrate. The git backend is
         # config-selected (embedded default, no external dep);
         # ProjectWorkspaceService provisions one persistent git-backed
         # tree per project under the workspace base. Persistence-less
-        # boots (test fixtures, dev apps with no DB) skip wiring -- the
+        # boots (test fixtures, dev apps with no DB) skip wiring.
         _try_wire_cost_dial(app_state)
         _try_wire_cockpit(app_state)
 
         # service is optional and gates on ``has_project_workspace_service``.
-        if app_state.has_persistence and app_state.project_workspace_service is None:
+        if (
+            app_state.slice(PersistenceStateSlice).backend is not None
+            and app_state.slice(WorkspaceStateSlice).project_workspace_service is None
+        ):
             # Guard against partial-startup retry: this hook fires once
             # the persistence layer is connected, but ``build_runtime_services``
             # below is fallible and a re-entry after its failure would
@@ -1171,15 +1289,16 @@ def create_app(  # noqa: PLR0913
             git_backend = build_git_backend(
                 git_backend_config,
                 GitBackendDeps(
-                    workspace_base_root=app_state.agent_workspace_root,
+                    workspace_base_root=agent_workspace_root_of(app_state),
                     connection_catalog=connection_catalog,
                     clock=app_state.clock,
                 ),
             )
-            app_state.set_project_workspace_service(
-                ProjectWorkspaceService(
-                    base_root=app_state.agent_workspace_root,
-                    repo=app_state.persistence.project_workspaces,
+            app_state.wire(
+                WorkspaceStateSlice,
+                project_workspace_service=ProjectWorkspaceService(
+                    base_root=agent_workspace_root_of(app_state),
+                    repo=persistence_of(app_state).project_workspaces,
                     git_backend=git_backend,
                     config=git_backend_config,
                     clock=app_state.clock,
@@ -1193,7 +1312,7 @@ def create_app(  # noqa: PLR0913
         try:
             services = await build_runtime_services(
                 app_state,
-                workspace_root=app_state.agent_workspace_root,
+                workspace_root=agent_workspace_root_of(app_state),
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -1203,7 +1322,7 @@ def create_app(  # noqa: PLR0913
                 exc,
                 service="runtime_services",
                 note="failed to build the runtime services at boot",
-                provider_present=app_state.has_active_provider,
+                provider_present=has_active_provider(app_state),
             )
             msg = "Runtime services failed to build at boot"
             raise RuntimeServicesBuildError(msg) from exc
@@ -1227,20 +1346,17 @@ def create_app(  # noqa: PLR0913
         # the subsystem is enabled. The service was built during app
         # construction (before a provider connected); the gate is built
         # here once the workspace + provider are available.
-        if (
-            services.vision_gate is not None
-            and app_state.review_gate_service is not None
-        ):
-            app_state.review_gate_service.set_vision_gate(services.vision_gate)
+        from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+
+        review_gate_service = app_state.slice(ApprovalStateSlice).review_gate
+        if services.vision_gate is not None and review_gate_service is not None:
+            review_gate_service.set_vision_gate(services.vision_gate)
         # Same seam for the adversarial red-team gate: built in the
         # runtime wiring once the boot engine exists, attached here so a
         # review pipeline supplied with red_team_input reaches the live
         # gate. ``None`` when the red-team subsystem is disabled.
-        if (
-            services.red_team_runtime is not None
-            and app_state.review_gate_service is not None
-        ):
-            app_state.review_gate_service.set_red_team_gate(
+        if services.red_team_runtime is not None and review_gate_service is not None:
+            review_gate_service.set_red_team_gate(
                 services.red_team_runtime.gate,
             )
         # Bring the real client-request, goal/objective, and
@@ -1259,189 +1375,6 @@ def create_app(  # noqa: PLR0913
         await wire_real_objective_entry(app_state)
         await wire_real_task_board_entry(app_state)
         _runtime_services_installed = True
-
-    _docs_engine_installed = False
-
-    async def _wire_docs_engine() -> None:
-        # Living-documentation engine. Constructs DocsService and the
-        # ProjectAwareMemoryFacade behind the same persistence + project
-        # workspace gate used by _install_runtime_services. The facade is
-        # held on the engine bundle so the per-agent retrieval pipeline
-        # can consult it when an execution context exposes a project_id;
-        # the dev / empty-company path with no persistence cleanly skips
-        # wiring.
-        nonlocal _docs_engine_installed
-        if _docs_engine_installed:
-            return
-        if not app_state.has_persistence:
-            return
-        if app_state.project_workspace_service is None:
-            return
-        if app_state.docs_service is not None:
-            _docs_engine_installed = True
-            return
-        from synthorg.docs_engine.factory import (  # noqa: PLC0415
-            build_docs_service,
-        )
-        from synthorg.docs_engine.tool_factory import (  # noqa: PLC0415
-            DocsToolFactory,
-        )
-
-        if not app_state.has_memory_backend:
-            logger.info(
-                API_APP_STARTUP,
-                service="docs_engine",
-                note="memory backend not wired; docs engine wiring skipped",
-            )
-            return
-        runtime = build_docs_service(
-            repo=app_state.persistence.project_docs,
-            workspace_service=app_state.project_workspace_service,
-            git_backend=app_state.project_workspace_service.git_backend,
-            memory_backend=app_state.memory_backend,
-            clock=app_state.clock,
-        )
-        app_state.set_docs_service(runtime.docs_service)
-        app_state.set_project_doc_memory_facade(runtime.memory_facade)
-        app_state.set_docs_tool_factory(
-            DocsToolFactory(docs_service=runtime.docs_service)
-        )
-        _docs_engine_installed = True
-
-    _knowledge_engine_installed = False
-
-    async def _wire_knowledge_engine() -> None:
-        # Knowledge + provenance substrate. Constructs the
-        # KnowledgeService over the connected persistence repos and the
-        # memory backend (the pluggable vector store), behind the same
-        # persistence + memory gate as the docs engine. Web ingestion
-        # needs a governed HTTP fetcher injected here; until that transport
-        # is wired the service ingests PDF + repo sources and rejects WEB.
-        nonlocal _knowledge_engine_installed
-        if _knowledge_engine_installed:
-            return
-        if not app_state.has_persistence:
-            return
-        if app_state.knowledge_service is not None:
-            _knowledge_engine_installed = True
-            return
-        if not app_state.has_memory_backend:
-            logger.info(
-                API_APP_STARTUP,
-                service="knowledge_engine",
-                note="memory backend not wired; knowledge engine wiring skipped",
-            )
-            return
-        from synthorg.knowledge.config import KnowledgeConfig  # noqa: PLC0415
-        from synthorg.knowledge.factory import (  # noqa: PLC0415
-            build_knowledge_service,
-        )
-        from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
-            build_knowledge_tool_factory,
-        )
-
-        service = build_knowledge_service(
-            memory_backend=app_state.memory_backend,
-            persistence=app_state.persistence,
-            config=KnowledgeConfig(enabled=True),
-            clock=app_state.clock,
-        )
-        app_state.set_knowledge_service(service)
-        app_state.set_knowledge_tool_factory(
-            build_knowledge_tool_factory(service=service)
-        )
-        _knowledge_engine_installed = True
-
-    _research_engine_installed = False
-
-    async def _wire_research_engine() -> None:
-        # Research subsystem: builds the ResearchService over the connected
-        # persistence repo and the configured completion provider, behind
-        # the research.enabled + research.model settings. Best-effort and
-        # idempotent (mirrors the cost-dial / knowledge wiring): a missing
-        # provider, unset model, or disabled flag logs and skips rather
-        # than poisoning startup. Web / academic / code retrieval sources
-        # are vendor-agnostic and wire only when a provider is injected, so
-        # the boot service fans out to the knowledge substrate alone.
-        nonlocal _research_engine_installed
-        if _research_engine_installed:
-            return
-        if not app_state.has_persistence:
-            return
-        if app_state.research_service is not None:
-            _research_engine_installed = True
-            return
-        if not app_state.has_settings_service or provider_registry is None:
-            return
-        runtime_settings = app_state.settings_service
-        try:
-            from synthorg.research.config import ResearchConfig  # noqa: PLC0415
-            from synthorg.research.factory import (  # noqa: PLC0415
-                build_research_service,
-            )
-            from synthorg.research.tool_factory import (  # noqa: PLC0415
-                build_research_tool_factory,
-            )
-
-            enabled = (
-                await runtime_settings.get("research", "enabled")
-            ).value.strip().lower() == "true"
-            model = (await runtime_settings.get("research", "model")).value.strip()
-            if not enabled or not model:
-                logger.info(
-                    API_APP_STARTUP,
-                    service="research_engine",
-                    note="research disabled or model unset; wiring skipped",
-                )
-                return
-            provider_names = provider_registry.list_providers()
-            if not provider_names:
-                return
-            provider_name = (
-                await runtime_settings.get("research", "provider")
-            ).value.strip()
-            provider = (
-                provider_registry.get(provider_name)
-                if provider_name and provider_name in provider_registry
-                else provider_registry.get(provider_names[0])
-            )
-            config = ResearchConfig(
-                enabled=True,
-                query_planner=(
-                    await runtime_settings.get("research", "query_planner")
-                ).value.strip(),  # type: ignore[arg-type]
-                credibility_triage=(
-                    await runtime_settings.get("research", "credibility_triage")
-                ).value.strip(),  # type: ignore[arg-type]
-                deduplicator=(
-                    await runtime_settings.get("research", "deduplicator")
-                ).value.strip(),  # type: ignore[arg-type]
-                synthesizer=(
-                    await runtime_settings.get("research", "synthesizer")
-                ).value.strip(),  # type: ignore[arg-type]
-            )
-            service = build_research_service(
-                runs_repo=app_state.persistence.research_runs,
-                provider=provider,
-                model=model,
-                config=config,
-                knowledge_service=app_state.knowledge_service,
-                clock=app_state.clock,
-            )
-            app_state.set_research_service(service)
-            app_state.set_research_tool_factory(
-                build_research_tool_factory(service=service, clock=app_state.clock)
-            )
-            _research_engine_installed = True
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.info(
-                API_APP_STARTUP,
-                service="research_engine",
-                note="research engine wiring unavailable; skipped",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
 
     _brownfield_intake_installed = False
 
@@ -1472,12 +1405,26 @@ def create_app(  # noqa: PLR0913
                 error=safe_error_description(exc),
             )
 
+    async def _compose_feature_slices() -> None:
+        compose_feature_slices(app_state)
+
+    # ``_compose_feature_slices`` runs FIRST so every feature's empty state
+    # slice exists before any wiring hook (including the persistence-phase
+    # ``_safe_startup`` hooks) composes/swaps a populated slice.
+    async def _wire_features() -> None:
+        await wire_features_on_startup(
+            app_state,
+            provider_registry=provider_registry,
+            persistence=persistence,
+            cost_tracker=cost_tracker,
+            effective_approval_store=effective_approval_store,
+        )
+
     startup = [
+        _compose_feature_slices,
         *startup,
         _install_runtime_services,
-        _wire_docs_engine,
-        _wire_knowledge_engine,
-        _wire_research_engine,
+        _wire_features,
         _wire_brownfield_intake,
     ]
 
@@ -1495,7 +1442,9 @@ def create_app(  # noqa: PLR0913
     # a hanging Logfire flush never blocks cleanup of load-bearing
     # resources.
     telemetry_collector = _build_telemetry_collector(effective_config.telemetry)
-    app_state.set_telemetry_collector(telemetry_collector)
+    from synthorg.telemetry.state import TelemetryStateSlice  # noqa: PLC0415
+
+    app_state.swap_slice(TelemetryStateSlice(collector=telemetry_collector))
     startup = [*startup, telemetry_collector.start]
     shutdown = [*shutdown, telemetry_collector.shutdown]
 
@@ -1525,209 +1474,9 @@ def create_app(  # noqa: PLR0913
             risk_tracker=None,
             performance_tracker=performance_tracker,
         )
-        app_state.set_report_service(report_service)
+        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
 
-    async def _wire_chief_of_staff_chat() -> None:
-        # Wired only when the meta config opts in via
-        # ``chief_of_staff.chat_enabled`` AND a provider is registered.
-        # When unwired, ``POST /meta/chat`` surfaces 503 rather than the
-        # silent placeholder it returned previously.
-        # Idempotent: a re-entry of lifespan startup against the same
-        # ``AppState`` (e.g. ASGI restart in tests) would otherwise make
-        # the one-shot ``set_chief_of_staff_chat`` raise.
-        if app_state.has_chief_of_staff_chat:
-            return
-        if provider_registry is None:
-            return
-        from synthorg.meta.config import (  # noqa: PLC0415
-            load_self_improvement_config,
-        )
-
-        meta_self_improvement = await load_self_improvement_config(
-            app_state.settings_service if app_state.has_settings_service else None,
-        )
-        chat_backend = build_chief_of_staff_chat(
-            meta_self_improvement.chief_of_staff,
-            provider_registry=provider_registry,
-            cost_tracker=cost_tracker,
-        )
-        if chat_backend is not None:
-            app_state.set_chief_of_staff_chat(chat_backend)
-
-    startup = [*startup, _wire_chief_of_staff_chat]
-
-    async def _wire_chief_of_staff_proposer() -> None:
-        # Wired only when ``chief_of_staff.propose_enabled`` is set AND
-        # a provider is registered AND persistence is connected (the
-        # conversation/turn/proposal stores are durable). Otherwise
-        # ``POST /meta/chat/propose`` honestly surfaces 503.
-        # Idempotent for re-entered lifespans (shared-app test fixtures).
-        if app_state.has_chief_of_staff_proposer:
-            return
-        from synthorg.meta.config import (  # noqa: PLC0415
-            load_self_improvement_config,
-        )
-        from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
-            build_conversational_repositories,
-        )
-
-        # Repo wiring must run before the provider-missing early return:
-        # a conversational-intake approval that exists from a previous
-        # boot still needs the repo to route approve/reject decisions,
-        # even on boots without an LLM provider (proposer absent).
-        repositories = build_conversational_repositories(persistence)
-        if repositories is not None:
-            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
-        if provider_registry is None:
-            return
-        meta_self_improvement = await load_self_improvement_config(
-            app_state.settings_service if app_state.has_settings_service else None,
-        )
-        # Hard-block the unsupported SQLite + persistent ApprovalStore
-        # combination at startup: this schema does not admit
-        # ``conversational_intake`` approval rows, so proposal writes
-        # would fail at runtime. Supported configurations are Postgres
-        # or an in-memory ApprovalStore on SQLite.
-        store_has_persistent_repo = (
-            isinstance(effective_approval_store, ApprovalStore)
-            and effective_approval_store.has_persistent_repo
-        )
-        if (
-            meta_self_improvement.chief_of_staff.propose_enabled
-            and persistence is not None
-            and persistence.backend_name == "sqlite"
-            and store_has_persistent_repo
-        ):
-            msg = (
-                "Chief of Staff propose is enabled with a persistent "
-                "SQLite ApprovalStore. This combination cannot durably "
-                "persist conversational-intake approvals. Switch the "
-                "backend to Postgres, or keep ApprovalStore in-memory "
-                "on SQLite."
-            )
-            raise ServiceUnavailableError(msg)
-        proposer = build_chief_of_staff_proposer(
-            meta_self_improvement.chief_of_staff,
-            provider_registry=provider_registry,
-            approval_store=effective_approval_store,
-            repositories=repositories,
-            cost_tracker=cost_tracker,
-        )
-        if proposer is not None:
-            app_state.set_chief_of_staff_proposer(proposer)
-
-    startup = [*startup, _wire_chief_of_staff_proposer]
-
-    async def _wire_charter_engine() -> None:
-        # Deep CEO interview to project charter. Wired only when
-        # ``meta.charter.interview_enabled`` is set AND a provider is
-        # registered AND persistence is connected (the conversation +
-        # charter stores are durable). Otherwise the /meta/charters
-        # controllers honestly surface 503. Best-effort: a wiring failure
-        # never poisons startup. Idempotent for re-entered lifespans.
-        if app_state.has_charter_service:
-            return
-        if (
-            provider_registry is None
-            or persistence is None
-            or not app_state.has_persistence
-        ):
-            return
-        try:
-            from synthorg.api.services.project_service import (  # noqa: PLC0415
-                ProjectService,
-            )
-            from synthorg.meta.charter.dispatch import (  # noqa: PLC0415
-                CharterDispatcher,
-            )
-            from synthorg.meta.charter.factory import (  # noqa: PLC0415
-                build_charter_interview_strategy,
-            )
-            from synthorg.meta.charter.service import (  # noqa: PLC0415
-                CharterInterviewService,
-            )
-            from synthorg.meta.config import (  # noqa: PLC0415
-                load_self_improvement_config,
-            )
-            from synthorg.persistence.charter_factory import (  # noqa: PLC0415
-                build_charter_repository,
-            )
-            from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
-                build_conversational_repositories,
-            )
-
-            si_config = await load_self_improvement_config(
-                app_state.settings_service if app_state.has_settings_service else None,
-            )
-            charter_config = si_config.charter
-            if not charter_config.interview_enabled:
-                return
-            charter_repo = build_charter_repository(persistence)
-            conv_repos = build_conversational_repositories(persistence)
-            available = provider_registry.list_providers()
-            if charter_repo is None or conv_repos is None or not available:
-                logger.warning(
-                    CHARTER_SUBSTRATE_UNAVAILABLE,
-                    note="charter interview enabled but stores/provider unavailable",
-                )
-                return
-            provider = provider_registry.get(available[0])
-            strategy = build_charter_interview_strategy(
-                charter_config,
-                provider=provider,
-                cost_tracker=cost_tracker,
-            )
-            app_state.set_charter_service(
-                CharterInterviewService(
-                    strategy=strategy,
-                    config=charter_config,
-                    conversation_repo=conv_repos.conversation_repo,
-                    turn_repo=conv_repos.turn_repo,
-                    charter_repo=charter_repo,
-                )
-            )
-            # The approval dispatcher additionally needs the work-pipeline
-            # spine, the cost-forecast store, and the live budget config.
-            # When any is absent the interview still works; only approve
-            # 503s.
-            forecast_repo = app_state.cost_forecast_repo
-            budget_config = app_state.budget_config
-            if (
-                not app_state.has_work_pipeline
-                or forecast_repo is None
-                or budget_config is None
-            ):
-                logger.warning(
-                    CHARTER_SUBSTRATE_UNAVAILABLE,
-                    note="charter dispatcher deps absent; approve will 503",
-                )
-                return
-            resolved_budget = budget_config
-            app_state.set_charter_dispatcher(
-                CharterDispatcher(
-                    charter_repo=charter_repo,
-                    forecast_repo=forecast_repo,
-                    project_service=ProjectService(repo=persistence.projects),
-                    work_pipeline=app_state.work_pipeline,
-                    conversation_repo=conv_repos.conversation_repo,
-                    budget_currency=lambda: resolved_budget.currency,
-                )
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            # Any other failure (settings load, repo construction,
-            # strategy build, ...) must not poison startup; the
-            # controllers will keep 503ing until the operator fixes
-            # the underlying configuration and reboots.
-            logger.warning(
-                CHARTER_SUBSTRATE_UNAVAILABLE,
-                note="charter wiring raised; charter endpoints stay unavailable",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-
-    startup = [*startup, _wire_charter_engine]
+        app_state.wire(BudgetStateSlice, report_service=report_service)
 
     async def _wire_toolsmith() -> None:
         # Self-extending toolkit. Wired only when
@@ -1735,14 +1484,31 @@ def create_app(  # noqa: PLR0913
         # AND persistence is connected (authored blueprints are durable).
         # Disabled by default, so a normal boot skips this entirely.
         # Idempotent for re-entered lifespans (shared-app fixtures).
-        if app_state.toolsmith_service is not None or provider_registry is None:
+        from synthorg.engine.workspace.state import (  # noqa: PLC0415
+            agent_workspace_root_of,
+        )
+        from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
+            ToolsmithStateSlice,
+        )
+        from synthorg.persistence.state import (  # noqa: PLC0415
+            PersistenceStateSlice,
+        )
+        from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+        if (
+            app_state.slice(ToolsmithStateSlice).service is not None
+            or provider_registry is None
+        ):
             return
-        if persistence is None or not app_state.has_persistence:
+        if (
+            persistence is None
+            or app_state.slice(PersistenceStateSlice).backend is None
+        ):
             return
         from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
 
         si_config = await load_self_improvement_config(
-            app_state.settings_service if app_state.has_settings_service else None,
+            app_state.slice(SettingsStateSlice).settings_service,
         )
         if not si_config.tool_creation_enabled:
             return
@@ -1753,7 +1519,7 @@ def create_app(  # noqa: PLR0913
                 persistence=persistence,
                 approval_store=effective_approval_store,
                 cost_tracker=cost_tracker,
-                workspace_root=app_state.agent_workspace_root,
+                workspace_root=agent_workspace_root_of(app_state),
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -1789,7 +1555,7 @@ def create_app(  # noqa: PLR0913
                 error=safe_error_description(exc),
             )
             return
-        app_state.set_toolsmith_service(runtime.service)
+        app_state.swap_slice(ToolsmithStateSlice(service=runtime.service))
         logger.info(API_APP_STARTUP, service="toolsmith", note="wired")
 
     startup = [*startup, _wire_toolsmith]
@@ -1821,10 +1587,14 @@ def create_app(  # noqa: PLR0913
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             ApiBridgeConfig,
         )
+        from synthorg.settings.state import (  # noqa: PLC0415
+            SettingsStateSlice,
+            config_resolver_of,
+        )
 
         defaults = ApiBridgeConfig()
 
-        if not app_state.has_config_resolver:
+        if app_state.slice(SettingsStateSlice).config_resolver is None:
             set_docs_csp_origins(defaults.csp_docs_external_origins)
             set_error_docs_base_url(defaults.error_docs_base_url)
             logger.warning(
@@ -1834,7 +1604,7 @@ def create_app(  # noqa: PLR0913
                 fallback="module_defaults",
             )
             return
-        resolver = app_state.config_resolver
+        resolver = config_resolver_of(app_state)
 
         try:
             origins_raw = await resolver.get_json("api", "csp_docs_external_origins")
