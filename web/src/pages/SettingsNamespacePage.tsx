@@ -29,7 +29,7 @@ function SettingsBackHeader({ title, children }: { title: string; children?: Rea
         </Button>
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
       </div>
-      {children}
+      {children != null && children !== false && children}
     </div>
   )
 }

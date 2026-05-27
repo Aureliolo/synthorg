@@ -22,6 +22,9 @@ export function useDrawerDelete(
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const deletingRef = useRef(false)
+  // Latest entity name, read inside handleDelete after the await to detect
+  // a target switch that happened while onDelete was in flight.
+  const entityNameRef = useRef(entityName)
 
   // Reset the confirm dialog and spinner when the drawer switches to a
   // different entity, so a stale open dialog or spinner never leaks
@@ -29,6 +32,7 @@ export function useDrawerDelete(
   const [prevEntityName, setPrevEntityName] = useState(entityName)
   if (entityName !== prevEntityName) {
     setPrevEntityName(entityName)
+    entityNameRef.current = entityName
     setDeleteOpen(false)
     setDeleting(false)
   }
@@ -36,12 +40,15 @@ export function useDrawerDelete(
   const handleDelete = useCallback(async () => {
     // `deleting` state flips asynchronously, so guard re-entry with a ref
     // to stop a double-fire from calling onDelete twice.
-    if (!entityName || deletingRef.current) return
+    const targetName = entityNameRef.current
+    if (!targetName || deletingRef.current) return
     deletingRef.current = true
     setDeleting(true)
     try {
-      const ok = await onDelete(entityName)
-      if (ok) {
+      const ok = await onDelete(targetName)
+      // Only apply post-success UI if the drawer still targets the entity
+      // we deleted; otherwise a stale success would close the new drawer.
+      if (ok && entityNameRef.current === targetName) {
         setDeleteOpen(false)
         onClose()
       }
@@ -49,7 +56,7 @@ export function useDrawerDelete(
       deletingRef.current = false
       setDeleting(false)
     }
-  }, [entityName, onDelete, onClose])
+  }, [onDelete, onClose])
 
   return { deleteOpen, setDeleteOpen, deleting, setDeleting, handleDelete }
 }

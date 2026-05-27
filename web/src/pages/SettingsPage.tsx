@@ -123,7 +123,7 @@ function SettingsBanners({ ctrl }: { ctrl: SettingsPageController }) {
   return (
     <>
       <RestartBanner count={ui.restartBannerCount} onDismiss={() => ui.setRestartBannerCount(0)} />
-      {data.error && (
+      {Boolean(data.error) && (
         <ErrorBanner severity="error" title="Could not load settings" description={data.error} />
       )}
       {!data.wsConnected && !data.loading && (

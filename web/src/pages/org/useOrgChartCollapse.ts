@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('OrgChart')
@@ -31,7 +31,14 @@ export interface OrgChartCollapseResult {
 
 /** Per-department collapse state, persisted to localStorage. */
 export function useOrgChartCollapse(): OrgChartCollapseResult {
-  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(loadCollapsedDepts)
+  const [collapsedDepts, setCollapsedDepts] = useState<Set<string>>(() => new Set())
+
+  // Hydrate from localStorage after mount so no storage read happens
+  // during render (the read lives in loadCollapsedDepts).
+  useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- one-time localStorage hydration on mount
+    setCollapsedDepts(loadCollapsedDepts())
+  }, [])
 
   const toggleDeptCollapsed = useCallback((deptId: string) => {
     setCollapsedDepts((prev) => {

@@ -156,6 +156,26 @@ function ApplyFooter({ pack, wouldExceed, mode, applying, onApply }: ApplyFooter
   )
 }
 
+/**
+ * Rebalance-mode state that resets to the default strategy each time the
+ * dialog opens for a pack or switches packs, so a prior selection never
+ * leaks into a later apply (react.dev "Adjusting some state when a prop
+ * changes").
+ */
+function useRebalanceMode(
+  open: boolean,
+  pack: PackInfoResponse | null,
+): { mode: RebalanceMode; setMode: (mode: RebalanceMode) => void } {
+  const [mode, setMode] = useState<RebalanceMode>('scale_existing')
+  const packKey = open ? (pack?.name ?? '') : null
+  const [prevPackKey, setPrevPackKey] = useState<string | null>(null)
+  if (packKey !== prevPackKey) {
+    setPrevPackKey(packKey)
+    if (packKey !== null) setMode('scale_existing')
+  }
+  return { mode, setMode }
+}
+
 export function PackApplyPreviewDialog({
   open,
   onOpenChange,
@@ -164,7 +184,7 @@ export function PackApplyPreviewDialog({
   onApply,
   applying,
 }: PackApplyPreviewDialogProps) {
-  const [mode, setMode] = useState<RebalanceMode>('scale_existing')
+  const { mode, setMode } = useRebalanceMode(open, pack)
 
   const preview = useMemo(() => {
     if (!pack) return null
