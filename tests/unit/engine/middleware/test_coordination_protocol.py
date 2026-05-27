@@ -1,6 +1,7 @@
 """Tests for coordination middleware protocol, base class, and chain."""
 
 from datetime import date
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -125,30 +126,35 @@ class _TrackingCoordMiddleware(BaseCoordinationMiddleware):
         super().__init__(name=name)
         self._log = log
 
+    @override
     async def before_decompose(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:before_decompose")
         return ctx
 
+    @override
     async def after_decompose(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:after_decompose")
         return ctx
 
+    @override
     async def before_dispatch(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:before_dispatch")
         return ctx
 
+    @override
     async def after_rollup(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:
         self._log.append(f"{self.name}:after_rollup")
         return ctx
 
+    @override
     async def before_update_parent(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:
@@ -257,6 +263,7 @@ class TestCoordinationMiddlewareChain:
 class _ErrorCoordMiddleware(BaseCoordinationMiddleware):
     """Raises in before_decompose."""
 
+    @override
     async def before_decompose(
         self, ctx: CoordinationMiddlewareContext
     ) -> CoordinationMiddlewareContext:

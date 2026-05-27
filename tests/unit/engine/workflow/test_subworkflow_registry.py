@@ -2,6 +2,7 @@
 
 import copy
 from datetime import UTC, datetime
+from typing import override
 
 import pytest
 
@@ -87,6 +88,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         self._rows: dict[tuple[str, str], WorkflowDefinition] = {}
         self._parents: dict[str, list[ParentReference]] = {}
 
+    @override
     async def save(self, definition: WorkflowDefinition) -> None:
         key = (definition.id, definition.version)
         if key in self._rows:
@@ -94,6 +96,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             raise DuplicateRecordError(msg)
         self._rows[key] = copy.deepcopy(definition)
 
+    @override
     async def get(
         self,
         entity_id: tuple[str, str],
@@ -101,6 +104,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         row = self._rows.get(entity_id)
         return copy.deepcopy(row) if row is not None else None
 
+    @override
     async def list_items(
         self,
         *,
@@ -113,6 +117,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             for _, definition in items[offset : offset + limit]
         )
 
+    @override
     async def list_versions(
         self,
         subworkflow_id: str,
@@ -125,6 +130,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         versions.sort(key=Version, reverse=True)
         return tuple(versions[:limit])
 
+    @override
     async def list_summaries(
         self,
         *,
@@ -152,6 +158,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             )
         return tuple(summaries)[:limit]
 
+    @override
     async def search(
         self,
         query: str,
@@ -171,6 +178,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         )
         return tuple(matched[offset : offset + limit])
 
+    @override
     async def delete(
         self,
         entity_id: tuple[str, str],
@@ -180,6 +188,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
             return True
         return False
 
+    @override
     async def delete_if_unreferenced(
         self,
         subworkflow_id: str,
@@ -191,6 +200,7 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         deleted = await self.delete((subworkflow_id, version))
         return deleted, ()
 
+    @override
     async def find_parents(
         self,
         subworkflow_id: str,

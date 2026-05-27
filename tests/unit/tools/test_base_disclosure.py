@@ -1,7 +1,6 @@
-# mypy: disable-error-code="explicit-override"
 """Tests for BaseTool progressive disclosure integration."""
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -28,6 +27,7 @@ class _DisclosureTool(BaseTool):
             category=category,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -47,6 +47,7 @@ class _CustomDisclosureTool(BaseTool):
             category=ToolCategory.WEB,
         )
 
+    @override
     def to_l1_metadata(self) -> ToolL1Metadata:
         return ToolL1Metadata(
             name=self.name,
@@ -55,6 +56,7 @@ class _CustomDisclosureTool(BaseTool):
             typical_cost_tier="expensive",
         )
 
+    @override
     def to_l2_body(self) -> ToolL2Body:
         return ToolL2Body(
             full_description="Custom full description with details",
@@ -63,6 +65,7 @@ class _CustomDisclosureTool(BaseTool):
             failure_modes=("timeout",),
         )
 
+    @override
     def get_l3_resources(self) -> tuple[ToolL3Resource, ...]:
         content = "# Resource content"
         return (
@@ -74,6 +77,7 @@ class _CustomDisclosureTool(BaseTool):
             ),
         )
 
+    @override
     async def execute(
         self,
         *,

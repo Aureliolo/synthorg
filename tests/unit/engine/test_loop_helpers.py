@@ -1,6 +1,6 @@
 """Tests for extracted loop helper functions."""
 
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -77,6 +77,7 @@ class _StubTool(BaseTool):
             category=ToolCategory.CODE_EXECUTION,
         )
 
+    @override
     async def execute(
         self,
         *,

@@ -23,7 +23,7 @@ Pins the contract:
 # mypy: disable-error-code=arg-type
 
 import asyncio
-from typing import Any
+from typing import Any, override
 
 import pytest
 import structlog.testing
@@ -266,6 +266,7 @@ class TestRequestDrainMiddleware:
             order.append(f"app-saw:{message['type']}")
 
         class _Tracked(RequestDrainMiddleware):
+            @override
             async def begin_drain(self) -> None:
                 order.append("begin_drain")
                 await super().begin_drain()

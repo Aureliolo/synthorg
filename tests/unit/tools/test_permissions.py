@@ -1,6 +1,6 @@
 """Tests for ToolPermissionChecker."""
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -29,6 +29,7 @@ class _SimpleTool(BaseTool):
             category=category,
         )
 
+    @override
     async def execute(
         self,
         *,

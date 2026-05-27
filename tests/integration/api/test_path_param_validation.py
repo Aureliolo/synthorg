@@ -19,7 +19,7 @@ defence at the edge for these endpoints.
 """
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -62,6 +62,7 @@ class _InjectUserMiddleware(ASGIMiddleware):
     request with 401 and mask the 4xx we are trying to assert.
     """
 
+    @override
     async def handle(
         self,
         scope: Any,

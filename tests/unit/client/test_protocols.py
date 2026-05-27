@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for client simulation protocol definitions."""
 
 from typing import Any

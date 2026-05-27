@@ -9,7 +9,7 @@ outside the unit test suite.
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import psycopg
@@ -292,6 +292,7 @@ async def test_enforce_session_limit_noop_when_within_cap() -> None:
 class _RaisingCursor(_FakeCursor):
     """Cursor whose ``execute`` raises a psycopg driver error."""
 
+    @override
     async def execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
         msg = "connection lost"
         raise psycopg.OperationalError(msg)

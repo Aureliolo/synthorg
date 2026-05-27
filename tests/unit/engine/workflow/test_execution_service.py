@@ -1,7 +1,7 @@
 """Tests for WorkflowExecutionService."""
 
 import copy
-from typing import Any
+from typing import Any, override
 from uuid import uuid4
 
 import pytest
@@ -842,6 +842,7 @@ class TestCancelExecution:
                 super().__init__()
                 self._raced = False
 
+            @override
             async def save(self, execution: WorkflowExecution) -> None:
                 stored = self._store.get(execution.id)
                 if stored is not None and not self._raced:

@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """RoutedArchitectureMutator dispatches by target-type prefix."""
 
 from typing import Any

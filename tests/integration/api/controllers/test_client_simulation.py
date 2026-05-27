@@ -6,7 +6,7 @@ endpoints using the in-memory fake persistence + message bus.
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, override
 
 import pytest
 from litestar.testing import TestClient
@@ -131,6 +131,7 @@ class _SlowStubEntryAdapter(_StubEntryAdapter):
     the test to a specific timing budget elsewhere.
     """
 
+    @override
     async def submit(self, request: Any) -> WorkPipelineResult:
         await asyncio.sleep(0.5)
         return await super().submit(request)

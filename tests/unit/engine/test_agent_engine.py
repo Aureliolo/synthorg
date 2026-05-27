@@ -1,7 +1,7 @@
 """Unit tests for AgentEngine orchestrator."""
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -340,6 +340,7 @@ class TestAgentEngineWithTools:
         from synthorg.tools.registry import ToolRegistry
 
         class EchoTool(BaseTool):
+            @override
             async def execute(
                 self,
                 *,
@@ -390,6 +391,7 @@ class TestAgentEngineMemoryToolWiring:
         from synthorg.tools.registry import ToolRegistry
 
         class StubTool(BaseTool):
+            @override
             async def execute(
                 self,
                 *,
@@ -434,6 +436,7 @@ class TestAgentEngineMemoryToolWiring:
         from synthorg.tools.registry import ToolRegistry
 
         class StubTool(BaseTool):
+            @override
             async def execute(
                 self,
                 *,

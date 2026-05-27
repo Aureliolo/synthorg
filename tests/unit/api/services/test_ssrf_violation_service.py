@@ -12,6 +12,7 @@ layer (the underlying repo is intentionally silent on mutations).
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import override
 
 import pytest
 import structlog
@@ -238,10 +239,12 @@ class _RaisingReadRepo(_FakeSsrfViolationRepo):
     silent regressions.
     """
 
+    @override
     async def get(self, violation_id: NotBlankStr) -> SsrfViolation | None:
         msg = "boom"
         raise QueryError(msg)
 
+    @override
     async def list_violations(
         self,
         *,

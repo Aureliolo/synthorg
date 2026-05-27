@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Lifecycle contract tests for HTTP-bearing notification sinks.
 
 Pins the resource-hygiene rule that ``SlackNotificationSink`` and
@@ -19,7 +19,7 @@ fan-out + ``_safe_start`` / ``_safe_close`` helpers.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -213,6 +213,7 @@ class _RecordingSink:
 class _StartFailingSink(_RecordingSink):
     """Sink whose ``start()`` always raises."""
 
+    @override
     async def start(self) -> None:
         await super().start()
         msg = "boom"
@@ -222,6 +223,7 @@ class _StartFailingSink(_RecordingSink):
 class _CloseFailingSink(_RecordingSink):
     """Sink whose ``close()`` always raises."""
 
+    @override
     async def close(self) -> None:
         await super().close()
         msg = "boom"

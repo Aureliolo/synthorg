@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -260,6 +261,7 @@ class TestEnvironmentService:
         repo = _InMemoryRepo()
 
         class _CancellingRunner(_Runner):
+            @override
             async def run(
                 self,
                 *,
@@ -267,7 +269,7 @@ class TestEnvironmentService:
                 args: tuple[str, ...],
                 cwd: Path,
                 env: Mapping[str, str] | None = None,
-                timeout: float | None = None,  # noqa: ASYNC109 -- matches protocol
+                timeout: float | None = None,
             ) -> CommandOutcome:
                 del command, args, cwd, env, timeout
                 raise asyncio.CancelledError

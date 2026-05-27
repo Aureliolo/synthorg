@@ -1,6 +1,6 @@
 """Tests for CeremonyScheduler service."""
 
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -359,6 +359,7 @@ class TestCeremonySchedulerTaskCompletion:
         mock_ms = _make_mock_meeting_scheduler()
 
         class FailingStrategy(TaskDrivenStrategy):
+            @override
             async def on_sprint_activated(
                 self,
                 sprint: Sprint,
@@ -474,6 +475,7 @@ class TestCeremonySchedulerStrategyMigration:
         """If activation fails, the exception propagates (no migration info)."""
 
         class FailingCalendarStrategy(CalendarStrategy):
+            @override
             async def on_sprint_activated(
                 self,
                 sprint: Sprint,
@@ -512,6 +514,7 @@ class TestCeremonySchedulerStrategyMigration:
         )
 
         class FailingCalendarStrategy(CalendarStrategy):
+            @override
             async def on_sprint_activated(
                 self,
                 sprint: Sprint,

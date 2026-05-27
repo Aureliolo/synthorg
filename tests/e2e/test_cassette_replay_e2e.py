@@ -10,6 +10,7 @@ driver. The replay must reproduce the run byte-for-byte while making
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -82,6 +83,7 @@ class _RaisingInner(BaseCompletionProvider):
         super().__init__()
         self.calls = 0
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -95,6 +97,7 @@ class _RaisingInner(BaseCompletionProvider):
         msg = "real provider called during replay"
         raise AssertionError(msg)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -108,6 +111,7 @@ class _RaisingInner(BaseCompletionProvider):
         msg = "real provider called during replay"
         raise AssertionError(msg)
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,

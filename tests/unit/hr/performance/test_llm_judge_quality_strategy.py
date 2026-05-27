@@ -1,9 +1,9 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for LlmJudgeQualityStrategy."""
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,6 +51,7 @@ class _ChokepointStubProvider(BaseCompletionProvider):
             ]
         ] = []
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -69,6 +70,7 @@ class _ChokepointStubProvider(BaseCompletionProvider):
         )
         return self._response
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -86,6 +88,7 @@ class _ChokepointStubProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -419,6 +422,7 @@ class TestCostTracking:
         # Use a stub provider that raises -- AsyncMock is not a
         # BaseCompletionProvider so the chokepoint would not fire on it.
         class _RaisingProvider(_ChokepointStubProvider):
+            @override
             async def _do_complete(  # type: ignore[override]
                 self,
                 messages: object,
@@ -583,6 +587,7 @@ class TestCostRecordingResilience:
         from synthorg.budget.tracker import CostTracker
 
         class _RaisingCostTracker(CostTracker):
+            @override
             async def record(self, cost_record: object) -> None:
                 _ = cost_record
                 msg = "DB unavailable"

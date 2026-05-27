@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``CassetteCompletionProvider``.
 
 The wrapper is the seam that makes "byte-identical replay with zero
@@ -11,6 +11,7 @@ the unreachable ``_do_*`` guards fail loudly.
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -69,6 +70,7 @@ class _RaisingInner(BaseCompletionProvider):
         super().__init__()
         self.calls = 0
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -82,6 +84,7 @@ class _RaisingInner(BaseCompletionProvider):
         msg = "inner provider must not be called in replay"
         raise AssertionError(msg)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -95,6 +98,7 @@ class _RaisingInner(BaseCompletionProvider):
         msg = "inner provider must not be called in replay"
         raise AssertionError(msg)
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,

@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """TOCTOU race tests for MeetingScheduler.start.
 
 ``MeetingScheduler.start()`` at ``communication/meeting/scheduler.py``
@@ -10,6 +10,7 @@ dedicated ``_lifecycle_lock`` so exactly one caller wins.
 """
 
 import asyncio
+from typing import override
 from unittest.mock import MagicMock
 
 import pytest
@@ -83,6 +84,7 @@ class TestConcurrentStart:
         acquire_count = 0
 
         class _CoordinatedLock(asyncio.Lock):
+            @override
             async def acquire(self) -> bool:  # type: ignore[override]
                 nonlocal acquire_count
                 acquire_count += 1

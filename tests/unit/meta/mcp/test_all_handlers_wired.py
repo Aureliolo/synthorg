@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Acceptance sweep: every MCP handler is wired and returns a valid envelope.
 
 This is the final acceptance test for META-MCP-1.  It asserts:

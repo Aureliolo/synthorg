@@ -11,16 +11,15 @@ other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
 When the affected-tests run goes green, an isolation regression gate runs
-``pytest --count 2 --max-worker-restart=4`` over the same selection and
+``pytest --count 2 --max-worker-restart=0`` over the same selection and
 classifies the outcome.  A test that passes the primary run but fails the
 replay points at fixture state leaking process-global state, the exact
-failure mode that splits a green local run from a red xdist push.  Worker
-crashes scattered across unrelated tests (commonly the Python 3.14 +
-Windows ProactorEventLoop IOCP teardown race) are surfaced as advisory
-and do not block the gate; a test that crashes the worker on EVERY replay
-iteration is still treated as a real bug.
+failure mode that splits a green local run from a red xdist push.  Any
+xdist worker crash (commonly the Python 3.14 + Windows ProactorEventLoop
+IOCP teardown race) blocks the gate: a crashed worker is a real defect to
+debug from the faulthandler/core dump, not flakiness to wave through.
 
-Exit codes match pytest: 0 (passed/nothing to run / advisory), 1 (failures),
+Exit codes match pytest: 0 (passed/nothing to run), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
 """
 
@@ -240,9 +239,9 @@ _WORKER_CRASH_RE = re.compile(
 # the canonical ``worker 'gwN' crashed while running '...'`` form. The
 # Python 3.14 + Windows ProactorEventLoop IOCP teardown race produces
 # both signatures depending on exactly when the IOCP cleanup blew up,
-# and both should be treated as native-level crash advisory rather
-# than a real test failure. Captures the worker id only -- there is
-# no associated test id in this signature.
+# and both are native-level worker crashes that block the gate (a real
+# defect to debug, not flakiness to wave through). Captures the worker id
+# only -- there is no associated test id in this signature.
 _NODE_DOWN_RE = re.compile(
     r"\[(?P<worker>gw\d+)\] node down: Not properly terminated",
 )
@@ -505,9 +504,9 @@ def _stream_pytest(
     ``(_PYTEST_HUNG_EXIT_CODE, captured)`` plus a clear stderr banner
     so the operator sees what happened. Callers MUST short-circuit on
     ``_PYTEST_HUNG_EXIT_CODE`` rather than forwarding to
-    ``_classify_isolation_outcome``: the classifier would see worker
-    crash markers from the killed run and mis-rate the timeout as a
-    crash-advisory PASS.
+    ``_classify_isolation_outcome``: the classifier would misread the
+    killed run's partial stdout (worker-crash markers left by workers
+    dying after the master vanished) rather than the canonical 124 signal.
     """
     timeout_fired = False
     # Put the pytest master + every xdist worker in a new process group
@@ -578,13 +577,13 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
     the cumulative resource leak that crashed workers under the prior
     ``worksteal`` default on Python 3.14 + Windows.
 
-    ``--max-worker-restart=4`` lets xdist transparently replace a
-    worker that crashes natively (no Python-level signature, no
-    faulthandler trace) -- a pattern observed under multi-worktree
-    Windows pre-push contention.  ``_classify_isolation_outcome``
-    parses the captured stdout afterwards and surfaces native crashes
-    scattered across unrelated tests as advisory rather than failure;
-    real test failures and same-test repeated crashes still block.
+    ``--max-worker-restart=0`` (matching CI) forbids restarting a worker
+    that crashes, so a native crash always surfaces as a failed run
+    rather than being silently recovered.  ``_classify_isolation_outcome``
+    then parses the captured stdout and BLOCKS on any worker crash
+    (native or repeated) alongside real test failures.  There is no
+    advisory pass -- a crashed worker is a real defect to debug from the
+    faulthandler/core dump, not noise to wave through.
     """
     cmd = [
         sys.executable,
@@ -595,7 +594,7 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "unit",
         "-n",
         "8",
-        "--max-worker-restart=4",
+        "--max-worker-restart=0",
         "-q",
     ]
     start = time.monotonic()
@@ -609,19 +608,13 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         # Watchdog killed the run. Do NOT pass through the classifier:
         # a killed pytest typically logs worker-crash markers (workers
         # dying after the master vanishes), which the classifier would
-        # mis-rate as a crash-advisory PASS and let the push through.
+        # misread instead of the canonical 124 watchdog signal.
         # Return 124 so the push aborts with the banner ``_on_timeout``
         # already printed.
         return _PYTEST_HUNG_EXIT_CODE
     elapsed = time.monotonic() - start
     test_count = _parse_test_count(captured_stdout)
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
-    # Native crashes scattered across unrelated tests are reclassified
-    # as advisory: the gate exits 0 but emits a banner.  Real test
-    # failures and same-test repeated crashes still block.
-    if outcome.kind == "crash_advisory":
-        _print_isolation_banner(outcome)
-        return 0
     effective_returncode = outcome.exit_code
     # Skip the regression guard when tests failed / crashed: worker
     # crashes skew ``elapsed / test_count`` upward (time spent before
@@ -655,17 +648,18 @@ class IsolationOutcome:
     Invariants (enforced in ``__post_init__``):
 
     * ``pass`` -- ``exit_code == 0`` and every evidence tuple is empty.
-    * ``crash_advisory`` -- ``exit_code == 0``, ``crashed_tests`` is
-      non-empty, ``failed_tests`` and ``repeated_crashes`` are empty.
-    * ``regression`` -- ``exit_code >= 1``.  Evidence tuples may all be
-      empty when pytest exits non-zero with degraded output the parser
-      cannot interpret -- we fail closed rather than silently pass.
+    * ``regression`` -- ``exit_code >= 1``.  Covers real test failures,
+      repeated crashes, AND one-off worker crashes: a crashed xdist
+      worker is a real defect to debug (teardown race, native deadlock),
+      never an advisory pass. Evidence tuples may all be empty when
+      pytest exits non-zero with degraded output the parser cannot
+      interpret -- we fail closed rather than silently pass.
 
     Enforcing these at construction means the banner can rely on the
     invariant without re-checking at the print site.
     """
 
-    kind: Literal["pass", "regression", "crash_advisory"]
+    kind: Literal["pass", "regression"]
     exit_code: int
     crashed_tests: tuple[str, ...] = field(default_factory=tuple)
     failed_tests: tuple[str, ...] = field(default_factory=tuple)
@@ -680,23 +674,7 @@ class IsolationOutcome:
             if self.crashed_tests or self.failed_tests or self.repeated_crashes:
                 msg = "pass outcome must carry no evidence tuples"
                 raise ValueError(msg)
-        elif self.kind == "crash_advisory":
-            if self.exit_code != 0:
-                msg = (
-                    "crash_advisory outcome must have exit_code=0, "
-                    f"got {self.exit_code}"
-                )
-                raise ValueError(msg)
-            if not self.crashed_tests:
-                msg = "crash_advisory outcome must list at least one crashed test"
-                raise ValueError(msg)
-            if self.failed_tests or self.repeated_crashes:
-                msg = (
-                    "crash_advisory outcome must not carry failed_tests or "
-                    "repeated_crashes"
-                )
-                raise ValueError(msg)
-        elif self.exit_code == 0:  # regression
+        elif self.kind == "regression" and self.exit_code == 0:
             msg = "regression outcome must have non-zero exit_code"
             raise ValueError(msg)
 
@@ -722,7 +700,7 @@ def _classify_isolation_outcome(
     returncode: int,
     stdout: str,
 ) -> IsolationOutcome:
-    """Decide whether the gate run is a regression, advisory, or pass.
+    """Decide whether the gate run is a regression or pass.
 
     The interesting axis is *real failure* vs *native crash*.  xdist
     marks a crashed test ``FAILED`` as collateral, so a ``FAILED``
@@ -735,18 +713,12 @@ def _classify_isolation_outcome(
     * Same logical test crashed on multiple iterations -> regression
       (a real bug; pytest-repeat ``[N-M]`` suffix is stripped before
       counting so the two iterations of one test collapse).
-    * Crashes only, no repeats -> crash advisory (treat as pass; the
-      gate exits 0 and prints a hint about Windows ProactorEventLoop /
-      cross-worktree contention).
-    * Worker(s) went ``node down`` with a non-zero returncode (and no
-      real failure / repeated crash above) -> crash advisory. The
-      controller-side loadscope crash guard in ``tests/conftest.py``
-      suppresses the downstream ``INTERNALERROR>`` the dead-worker
-      chain used to emit, and a worker killed mid-teardown can die
-      before pytest prints any summary, so neither signal is required
-      to recognise the documented Python 3.14 + Windows xdist teardown
-      crash. The repeated-named-crash check above still blocks a test
-      that crashes the worker on every run.
+    * Any xdist worker crash -- a one-off crash, or a bare ``node down``
+      (regardless of returncode) -> regression.  A crashed worker is a
+      real defect (Python 3.14 + Windows ProactorEventLoop teardown
+      race, native deadlock, memory corruption), never an advisory to
+      wave through.  The gate blocks and names the crashed test(s) /
+      worker(s) so the operator reads the dump and fixes the teardown.
     * No crashes, no failures, returncode 0 -> pass.
     * No parsable signal but returncode non-zero -> fail closed
       (regression) so degraded output never silently passes.
@@ -779,33 +751,30 @@ def _classify_isolation_outcome(
         )
     if crashes:
         return IsolationOutcome(
-            kind="crash_advisory",
-            exit_code=0,
+            kind="regression",
+            exit_code=max(returncode, 1),
             crashed_tests=crashed_tests,
         )
     # A worker that went ``node down`` is a native-level crash, not a
-    # test failure. The real-failure and repeated-named-crash checks
-    # above have already returned, so reaching here means the only
-    # adverse signal is the worker death itself, with a non-zero exit.
-    #
-    # We do NOT require a downstream ``INTERNALERROR>`` here: the
-    # controller-side loadscope crash guard in ``tests/conftest.py``
-    # (``_install_xdist_loadscope_crash_guard``) deliberately suppresses
-    # the reschedule ``KeyError`` that used to surface as
-    # ``INTERNALERROR>``, and a worker killed mid-teardown can die
-    # before pytest prints any FAILED summary -- so neither an
-    # INTERNALERROR nor a parseable test id is guaranteed for the
-    # documented Python 3.14 + Windows xdist teardown crash. Requiring
-    # the INTERNALERROR would (now that the guard suppresses it) fail
-    # closed on every such crash, blocking every push that widens the
-    # affected selection. The repeated-crash guard above is the safety
-    # net for a test that genuinely crashes the worker on every run; a
-    # one-off node-down is treated as advisory. The test names are
-    # unrecoverable from a bare node-down, so surface the worker ids.
-    if node_down_workers and returncode != 0:
+    # test failure -- and a real defect to debug, never an advisory
+    # pass. The real-failure and repeated-crash checks above already
+    # returned, so the worker death itself is the only adverse signal
+    # here, and it blocks regardless of returncode. ``--max-worker-
+    # restart=0`` forbids recovery, and a worker killed mid-teardown can
+    # die after its tests passed -- leaving returncode 0 -- yet that is
+    # the dominant Python 3.14 + Windows teardown-race shape and is
+    # still a crash to debug, so a zero exit must not wave it through.
+    # The loadscope crash guard in ``tests/conftest.py``
+    # (``_install_xdist_loadscope_crash_guard``) suppresses the
+    # downstream ``INTERNALERROR>``, and the worker dies before pytest
+    # prints a FAILED summary, so the bare node-down is the only signal
+    # -- surface the worker ids and block. The test names are
+    # unrecoverable from a bare node-down. ``max(returncode, 1)`` keeps
+    # the regression exit non-zero even when pytest itself returned 0.
+    if node_down_workers:
         return IsolationOutcome(
-            kind="crash_advisory",
-            exit_code=0,
+            kind="regression",
+            exit_code=max(returncode, 1),
             crashed_tests=tuple(f"<worker {w}>" for w in node_down_workers),
         )
     if returncode == 0:
@@ -816,15 +785,13 @@ def _classify_isolation_outcome(
 def _print_isolation_banner(outcome: IsolationOutcome) -> None:
     """Print the right diagnostic banner for *outcome*'s kind.
 
-    Three banners:
+    Two banners:
 
-    * ``regression`` -- the operator must investigate.  Distinguishes
-      module-state leak (real failures) from a test that consistently
-      crashes the worker (repeated crashes) so the message points at
-      the right cause.
-    * ``crash_advisory`` -- a hint that the run hit native-level
-      flakiness (commonly Python 3.14 ProactorEventLoop teardown races
-      amplified by concurrent worktrees).  Gate still passes.
+    * ``regression`` -- the operator must investigate; the gate blocks.
+      Distinguishes a module-state leak (real failures), a test that
+      repeatedly crashes the worker, a one-off worker crash (native
+      teardown race / deadlock to debug from the dump), and degraded
+      non-zero output, so the message points at the right cause.
     * ``pass`` -- nothing to print.
     """
     if outcome.kind == "pass":
@@ -850,6 +817,17 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
                 f"Repeated crashes: {', '.join(outcome.repeated_crashes)}\n"
                 "Fix the bug. The gate has no bypass."
             )
+        elif outcome.crashed_tests:
+            body = (
+                "ISOLATION CRASH: an xdist worker crashed during the replay\n"
+                "run.  A crashed worker is a real defect -- a Python 3.14 +\n"
+                "Windows ProactorEventLoop teardown race, a native deadlock,\n"
+                "or memory corruption -- NOT an advisory to wave through.\n"
+                "Read the faulthandler / core dump and inspect the named\n"
+                "test's teardown and fixtures for the root cause.\n"
+                f"Crashed: {', '.join(outcome.crashed_tests)}\n"
+                "Fix the root cause. The gate has no bypass and no advisory."
+            )
         else:
             # Fail-closed: pytest exited non-zero but emitted no parsable
             # FAILED or worker-crash signal.  Don't silently pass; surface
@@ -862,16 +840,6 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
             )
         print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
         return
-    # crash_advisory
-    body = (
-        "Isolation gate ADVISORY: xdist worker(s) crashed during the\n"
-        "replay run, but no real test failures were detected.  Most\n"
-        "common cause is the Python 3.14 + Windows ProactorEventLoop\n"
-        "IOCP teardown race, often amplified by concurrent worktrees\n"
-        "running pytest at the same time.  Treating as advisory (gate\n"
-        f"passes).  Crashed tests: {', '.join(outcome.crashed_tests)}"
-    )
-    print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
 
 
 def _run_isolation_gate(paths: list[str]) -> int:
@@ -882,19 +850,19 @@ def _run_isolation_gate(paths: list[str]) -> int:
     the replay almost always means a fixture leaked process-global
     state that polluted the second invocation.
 
-    ``--max-worker-restart=4`` lets xdist transparently replace a
-    worker that crashes during the replay.  This addresses the
-    Python 3.14 + Windows ProactorEventLoop IOCP teardown race
-    (https://github.com/python/cpython/issues/116773 and family) and
-    other native crashes that previously cascaded into a false
-    isolation-regression banner.  ``_classify_isolation_outcome``
-    parses the captured stdout and tells real isolation regressions
-    apart from native flakiness; only the former blocks the gate.
+    ``--max-worker-restart=0`` (matching CI) forbids restarting a worker
+    that crashes during the replay, so the Python 3.14 + Windows
+    ProactorEventLoop IOCP teardown race
+    (https://github.com/python/cpython/issues/116773 and family) and any
+    other native crash always surfaces and blocks rather than being
+    silently recovered.  ``_classify_isolation_outcome`` parses the
+    captured stdout; real failures, repeated crashes, and one-off worker
+    crashes all block.
 
     Skipped only when ``paths`` is empty (nothing affected).  The gate
     always runs otherwise; root causes are fixed, not bypassed.
 
-    Returns 0 on green / skip / advisory; non-zero on regression.
+    Returns 0 on green / skip; non-zero on any regression or worker crash.
     """
     if not paths:
         return 0
@@ -908,7 +876,7 @@ def _run_isolation_gate(paths: list[str]) -> int:
         "unit",
         "-n",
         "8",
-        "--max-worker-restart=4",
+        "--max-worker-restart=0",
         "--count",
         "2",
         "-q",
@@ -920,8 +888,8 @@ def _run_isolation_gate(paths: list[str]) -> int:
     )
     if returncode == _PYTEST_HUNG_EXIT_CODE:
         # Watchdog kill -- same reasoning as in ``_run_pytest``: don't
-        # let ``_classify_isolation_outcome`` see a killed run's
-        # worker-crash markers and rate it as crash-advisory PASS.
+        # let ``_classify_isolation_outcome`` misread a killed run's
+        # partial stdout instead of the canonical 124 watchdog signal.
         return _PYTEST_HUNG_EXIT_CODE
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
     _print_isolation_banner(outcome)

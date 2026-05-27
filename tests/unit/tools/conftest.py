@@ -1,9 +1,9 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit test fixtures for the tool system."""
 
 import asyncio
 import warnings
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -60,6 +60,7 @@ class _EchoTestTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -82,6 +83,7 @@ class _FailingTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -101,6 +103,7 @@ class _NoSchemaTool(BaseTool):
             category=ToolCategory.CODE_EXECUTION,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -128,6 +131,7 @@ class _StrictSchemaTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -152,6 +156,7 @@ class _SoftErrorTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -174,6 +179,7 @@ class _RecursionTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -194,6 +200,7 @@ class _InvalidSchemaTool(BaseTool):
             parameters_schema={"type": "object", "properties": "not_a_dict"},
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -216,6 +223,7 @@ class _EmptyErrorTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -241,6 +249,7 @@ class _MutatingTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -268,6 +277,7 @@ class _RemoteRefTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -375,6 +385,7 @@ class _DelayTool(BaseTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -410,6 +421,7 @@ class _ConcurrencyTrackingTool(BaseTool):
         """Return the peak concurrent execution count."""
         return self._peak
 
+    @override
     async def execute(
         self,
         *,
@@ -463,6 +475,7 @@ class _CategorizedTool(BaseTool):
             category=category,
         )
 
+    @override
     async def execute(
         self,
         *,

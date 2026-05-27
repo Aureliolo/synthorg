@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import override
 from uuid import UUID, uuid4
 
 import pytest
@@ -150,6 +151,7 @@ class _RacingForecastRepo(_FakeForecastRepo):
         self._winner = winner
         self._save_attempted = False
 
+    @override
     async def save(self, entity: Forecast) -> None:
         self.saves.append(entity)
         self._save_attempted = True
@@ -159,6 +161,7 @@ class _RacingForecastRepo(_FakeForecastRepo):
             constraint="uq_cost_forecasts_pending_brief",
         )
 
+    @override
     async def query(
         self,
         filter_spec: CostForecastFilterSpec,

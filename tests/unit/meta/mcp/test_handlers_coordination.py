@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit tests for coordination-domain MCP handlers.
 
 Covers the nine handlers exposed by

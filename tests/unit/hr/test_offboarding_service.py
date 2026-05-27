@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for OffboardingService."""
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -470,6 +470,7 @@ class TestOffboardingServiceFullPipeline:
         agent_id = str(identity.id)
 
         class FailingMessageBus(FakeMessageBus):
+            @override
             async def publish(
                 self,
                 message: Message,

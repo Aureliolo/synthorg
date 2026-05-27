@@ -13,7 +13,7 @@ retrievable via the dashboard read path AND via the search path.
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -51,6 +51,7 @@ pytestmark = pytest.mark.integration
 class _FailingStoreBackend(InMemoryBackend):
     """InMemoryBackend whose ``store`` always raises (drives index failure)."""
 
+    @override
     async def store(
         self, agent_id: NotBlankStr, request: MemoryStoreRequest
     ) -> NotBlankStr:

@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable,explicit-override"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """TOCTOU race tests for PerformanceTracker.
 
 Each test is written to fail reliably against the un-synchronized
@@ -23,7 +23,7 @@ race is reproducible without probabilistic timing.
 """
 
 import asyncio
-from typing import Literal
+from typing import Literal, override
 
 import pytest
 
@@ -65,6 +65,7 @@ class TestClearConcurrentWithRecord:
         # so they serialize naturally on any single-threaded event
         # loop even with the lock removed.
         class _CountingLock(asyncio.Lock):
+            @override
             async def acquire(self) -> bool:  # type: ignore[override]
                 nonlocal acquires
                 acquires += 1
@@ -171,6 +172,7 @@ class TestGetCollaborationScoreLocking:
         acquires = 0
 
         class _CountingLock(asyncio.Lock):
+            @override
             async def acquire(self) -> Literal[True]:
                 nonlocal acquires
                 acquires += 1
@@ -227,6 +229,7 @@ class TestSetInflectionSinkAtomic:
             fails.
             """
 
+            @override
             async def acquire(self) -> bool:  # type: ignore[override]
                 nonlocal acquires
                 acquires += 1

@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for AgentRegistryService.update_autonomy().
 
 Mirrors the REST endpoint semantics: every change routes through human
@@ -7,7 +7,7 @@ audit events, and -- when an approval store is wired -- enqueues the
 request for human review.
 """
 
-from typing import Any
+from typing import Any, override
 from uuid import uuid4
 
 import pytest
@@ -209,6 +209,7 @@ class TestUpdateAutonomy:
         """
 
         class _RaisingApprovalStore(_RecordingApprovalStore):
+            @override
             async def add(self, item: ApprovalItem) -> None:
                 msg = "approval backend down"
                 raise RuntimeError(msg)

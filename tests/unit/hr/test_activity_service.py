@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`ActivityFeedService`."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -34,6 +34,7 @@ _AGENT_ID = "agent-alice"
 class _FrozenDatetime(datetime):
     """``datetime`` subclass whose ``.now`` returns ``_FROZEN_WALL``."""
 
+    @override
     @classmethod
     def now(cls, tz: Any = None) -> _FrozenDatetime:
         # Cast to the subclass so mypy treats the return value as
