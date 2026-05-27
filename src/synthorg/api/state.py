@@ -16,7 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 import asyncio
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from synthorg.api.state_services_bridge import _BridgeConfigPrimitivesMixin
 from synthorg.api.state_services_locks import _RequestLockPrimitivesMixin
@@ -221,10 +221,12 @@ class AppState(
         """
         from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-        if self.slice(RuntimeStateSlice).worker_execution_service is not None:
-            msg = "Worker execution service already configured"
-            raise RuntimeError(msg)
-        self.wire(RuntimeStateSlice, worker_execution_service=service)
+        self.set_field_once(
+            RuntimeStateSlice,
+            "worker_execution_service",
+            service,
+            "Worker execution service",
+        )
 
     def swap_worker_execution_service(
         self,
@@ -242,8 +244,7 @@ class AppState(
         """Install the coordinator only if one is not already wired."""
         from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
-        if self.slice(RuntimeStateSlice).coordinator is None:
-            self.wire(RuntimeStateSlice, coordinator=coordinator)
+        self.wire_if_field_absent(RuntimeStateSlice, "coordinator", coordinator)
 
     def swap_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
         """Hot-replace the multi-agent coordinator (setup-complete reinit)."""
@@ -255,8 +256,7 @@ class AppState(
         """Install the work-pipeline spine only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        if self.slice(EngineStateSlice).work_pipeline is None:
-            self.wire(EngineStateSlice, work_pipeline=work_pipeline)
+        self.wire_if_field_absent(EngineStateSlice, "work_pipeline", work_pipeline)
 
     def swap_work_pipeline(self, work_pipeline: WorkPipeline) -> None:
         """Hot-replace the work-pipeline spine (setup-complete reinit)."""
@@ -271,8 +271,7 @@ class AppState(
         """Install the intake entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        if self.slice(EngineStateSlice).intake_entry_adapter is None:
-            self.wire(EngineStateSlice, intake_entry_adapter=adapter)
+        self.wire_if_field_absent(EngineStateSlice, "intake_entry_adapter", adapter)
 
     def swap_intake_entry_adapter(self, adapter: WorkEntryAdapter[Any]) -> None:
         """Hot-replace the intake entry adapter (setup-complete reinit)."""
@@ -287,8 +286,7 @@ class AppState(
         """Install the objective entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        if self.slice(EngineStateSlice).objective_entry_adapter is None:
-            self.wire(EngineStateSlice, objective_entry_adapter=adapter)
+        self.wire_if_field_absent(EngineStateSlice, "objective_entry_adapter", adapter)
 
     def swap_objective_entry_adapter(
         self,
@@ -306,8 +304,7 @@ class AppState(
         """Install the brownfield entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        if self.slice(EngineStateSlice).brownfield_entry_adapter is None:
-            self.wire(EngineStateSlice, brownfield_entry_adapter=adapter)
+        self.wire_if_field_absent(EngineStateSlice, "brownfield_entry_adapter", adapter)
 
     def swap_brownfield_entry_adapter(
         self,
@@ -325,8 +322,7 @@ class AppState(
         """Install the task-board entry adapter only if not already wired."""
         from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
 
-        if self.slice(EngineStateSlice).task_board_entry_adapter is None:
-            self.wire(EngineStateSlice, task_board_entry_adapter=adapter)
+        self.wire_if_field_absent(EngineStateSlice, "task_board_entry_adapter", adapter)
 
     def swap_task_board_entry_adapter(
         self,
@@ -353,6 +349,7 @@ class AppState(
             NotificationsStateSlice,
         )
 
-        previous = self.slice(NotificationsStateSlice).dispatcher
-        self.wire(NotificationsStateSlice, dispatcher=dispatcher)
-        return previous
+        previous = self.swap_field_returning_previous(
+            NotificationsStateSlice, "dispatcher", dispatcher
+        )
+        return cast("NotificationDispatcher | None", previous)

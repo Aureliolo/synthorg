@@ -38,7 +38,7 @@ class ProviderSettingsSubscriber:
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next
-    subscriber.  The old ``ModelRouter`` remains in ``AppState``.
+    subscriber.  The previously wired ``ModelRouter`` stays in place.
 
     Args:
         config: Root company configuration (providers + routing).

@@ -798,8 +798,7 @@ def create_app(  # noqa: PLR0913
     )
     # Compose the config resolver + management / org-mutation / audit /
     # preset services when a settings service is injected at build time
-    # (the slice-era replacement for ``AppState._init_derived_services``;
-    # a no-op when no settings service is provided, where the startup
+    # (a no-op when no settings service is provided, where the startup
     # ``auto_wire_settings`` hook composes them once persistence connects).
     from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
         compose_settings_dependent_services,

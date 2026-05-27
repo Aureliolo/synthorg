@@ -870,9 +870,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     # All fallible operations succeeded -- safe to mutate AppState. The
     # composer wires the settings service onto its slice and the derived
     # config-resolver / management / org-mutation / audit / preset
-    # services (the slice-era replacement for the old
-    # ``AppState._init_derived_services`` god-object method). On failure,
-    # stop the dispatcher to prevent leaks.
+    # services. On failure, stop the dispatcher to prevent leaks.
     try:
         from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
             compose_settings_dependent_services,

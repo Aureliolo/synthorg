@@ -4,7 +4,7 @@ Holds the charter interview backend and approval dispatcher. Both are
 ``None`` until wired at boot (interview needs a provider + persistence;
 the dispatcher additionally needs the work-pipeline spine, cost-forecast
 store, and budget config). Controllers read this slice and raise 503 on a
-``None`` field, preserving the historic ``has_charter_service`` semantics.
+``None`` field so charter endpoints stay unavailable until wired.
 """
 
 from typing import TYPE_CHECKING

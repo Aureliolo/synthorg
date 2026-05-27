@@ -10,9 +10,13 @@ Kept out of ``api/app.py`` so the boot step does not inflate that god-module.
 from typing import TYPE_CHECKING
 
 from synthorg._core.features import discover_features
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 
 def compose_feature_slices(app_state: AppState) -> None:
@@ -25,7 +29,15 @@ def compose_feature_slices(app_state: AppState) -> None:
     Args:
         app_state: The application state to compose slices onto.
     """
+    composed = 0
     for feature in discover_features():
         slice_type = feature.state_slice
         if slice_type is not None and not app_state.has_slice(slice_type):
             app_state.set_slice(slice_type())
+            composed += 1
+    if composed:
+        logger.info(
+            API_APP_STARTUP,
+            action="feature_slices_composed",
+            composed=composed,
+        )

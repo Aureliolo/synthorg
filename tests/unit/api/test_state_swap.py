@@ -11,6 +11,7 @@ previous dispatcher so the caller can close its sinks. Readers observe
 the result through the owning slice.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -156,53 +157,60 @@ class TestWorkPipelineSeam:
 
 
 class TestEntryAdapterSeams:
-    """The intake / objective / brownfield / task-board entry-adapter seams."""
+    """The intake / objective / brownfield / task-board entry-adapter seams.
 
-    def test_intake_set_if_absent_then_swap(self) -> None:
+    All four share one contract (set-if-absent installs once, injection
+    wins over a second set-if-absent, swap hot-replaces), differing only
+    in the seam method names, the slice field, and the adapter type.
+    """
+
+    @pytest.mark.parametrize(
+        ("set_if_absent", "swap", "field", "make_adapter"),
+        [
+            (
+                "set_intake_entry_adapter_if_absent",
+                "swap_intake_entry_adapter",
+                "intake_entry_adapter",
+                mock_of[WorkEntryAdapter],
+            ),
+            (
+                "set_objective_entry_adapter_if_absent",
+                "swap_objective_entry_adapter",
+                "objective_entry_adapter",
+                mock_of[WorkEntryAdapter],
+            ),
+            (
+                "set_brownfield_entry_adapter_if_absent",
+                "swap_brownfield_entry_adapter",
+                "brownfield_entry_adapter",
+                mock_of[WorkEntryAdapter],
+            ),
+            (
+                "set_task_board_entry_adapter_if_absent",
+                "swap_task_board_entry_adapter",
+                "task_board_entry_adapter",
+                mock_of[TaskBoardEntryAdapter],
+            ),
+        ],
+    )
+    def test_set_if_absent_then_swap(
+        self,
+        set_if_absent: str,
+        swap: str,
+        field: str,
+        make_adapter: Callable[[], object],
+    ) -> None:
         state = _make_state()
-        first = mock_of[WorkEntryAdapter]()
-        second = mock_of[WorkEntryAdapter]()
-        state.set_intake_entry_adapter_if_absent(first)
-        assert state.slice(EngineStateSlice).intake_entry_adapter is first
+        first = make_adapter()
+        second = make_adapter()
+        getattr(state, set_if_absent)(first)
+        assert getattr(state.slice(EngineStateSlice), field) is first
         # Injection wins: a second if-absent is a no-op.
-        state.set_intake_entry_adapter_if_absent(second)
-        assert state.slice(EngineStateSlice).intake_entry_adapter is first
+        getattr(state, set_if_absent)(second)
+        assert getattr(state.slice(EngineStateSlice), field) is first
         # Swap hot-replaces.
-        state.swap_intake_entry_adapter(second)
-        assert state.slice(EngineStateSlice).intake_entry_adapter is second
-
-    def test_objective_set_if_absent_then_swap(self) -> None:
-        state = _make_state()
-        first = mock_of[WorkEntryAdapter]()
-        second = mock_of[WorkEntryAdapter]()
-        state.set_objective_entry_adapter_if_absent(first)
-        assert state.slice(EngineStateSlice).objective_entry_adapter is first
-        state.set_objective_entry_adapter_if_absent(second)
-        assert state.slice(EngineStateSlice).objective_entry_adapter is first
-        state.swap_objective_entry_adapter(second)
-        assert state.slice(EngineStateSlice).objective_entry_adapter is second
-
-    def test_brownfield_set_if_absent_then_swap(self) -> None:
-        state = _make_state()
-        first = mock_of[WorkEntryAdapter]()
-        second = mock_of[WorkEntryAdapter]()
-        state.set_brownfield_entry_adapter_if_absent(first)
-        assert state.slice(EngineStateSlice).brownfield_entry_adapter is first
-        state.set_brownfield_entry_adapter_if_absent(second)
-        assert state.slice(EngineStateSlice).brownfield_entry_adapter is first
-        state.swap_brownfield_entry_adapter(second)
-        assert state.slice(EngineStateSlice).brownfield_entry_adapter is second
-
-    def test_task_board_set_if_absent_then_swap(self) -> None:
-        state = _make_state()
-        first = mock_of[TaskBoardEntryAdapter]()
-        second = mock_of[TaskBoardEntryAdapter]()
-        state.set_task_board_entry_adapter_if_absent(first)
-        assert state.slice(EngineStateSlice).task_board_entry_adapter is first
-        state.set_task_board_entry_adapter_if_absent(second)
-        assert state.slice(EngineStateSlice).task_board_entry_adapter is first
-        state.swap_task_board_entry_adapter(second)
-        assert state.slice(EngineStateSlice).task_board_entry_adapter is second
+        getattr(state, swap)(second)
+        assert getattr(state.slice(EngineStateSlice), field) is second
 
 
 class TestNotificationDispatcherSwap:

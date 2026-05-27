@@ -1,14 +1,14 @@
 """Per-feature state-slice store for ``AppState``.
 
-The slice store is the substrate replacement for ``AppState``'s
-god-attribute-bag: each feature composes one frozen
-:class:`~synthorg._core.features.BaseFeatureStateSlice` at boot, and
-controllers read their feature's slice via :meth:`AppStateSliceMixin.slice`
-rather than reaching for a bare service attribute.
+Each feature composes one frozen
+:class:`~synthorg._core.features.BaseFeatureStateSlice` at boot, keyed by
+its concrete class; controllers read their feature's slice via
+:meth:`AppStateSliceMixin.slice` (or a ``*_of`` accessor) for typed,
+immutable access to that feature's services.
 
-Kept in its own mixin module (not ``state.py``) so the slice mechanism does
-not inflate the ``api/state.py`` god-module while the per-feature migration
-is in flight; ``state.py`` only adds the mixin to ``AppState``'s bases.
+The store lives in its own mixin so the slice mechanism stays isolated
+from ``api/state.py``; ``AppState`` mixes it in alongside the
+cross-cutting mutable primitives a frozen slice cannot own.
 """
 
 import threading
@@ -55,9 +55,10 @@ class AppStateSliceMixin:
         returns the already-composed instance. When a slice has not been
         composed yet (a bare ``AppState`` in tests, or a wiring seam that
         runs before ``compose_feature_slices``), an empty slice (all
-        service fields ``None``) is composed lazily under the lock so a
-        reader never faces an absent slice; the controller still raises
-        503 on a ``None`` field.
+        service fields ``None``) is composed lazily under the lock
+        (double-checked, so concurrent first-readers share one instance)
+        so a reader never faces an absent slice; the controller still
+        raises 503 on a ``None`` field.
 
         Args:
             slice_type: The feature's :class:`BaseFeatureStateSlice` subclass.
@@ -131,3 +132,85 @@ class AppStateSliceMixin:
         with self._slice_lock:
             current = self._slices.get(slice_type) or slice_type()
             self._slices[slice_type] = current.model_copy(update=updates)
+
+    def set_field_once(
+        self,
+        slice_type: type[BaseFeatureStateSlice],
+        field: str,
+        value: Any,
+        label: str,
+    ) -> None:
+        """Install a single slice field once, atomically.
+
+        Holds the slice lock across the presence check and the write so a
+        concurrent caller cannot pass the check before the field is set.
+
+        Args:
+            slice_type: The feature's :class:`BaseFeatureStateSlice` subclass.
+            field: The slice field to install.
+            value: The service reference to set.
+            label: Human-readable name for the "already configured" error.
+
+        Raises:
+            RuntimeError: If *field* already holds a non-``None`` value.
+        """
+        with self._slice_lock:
+            current = self._slices.get(slice_type) or slice_type()
+            if getattr(current, field) is not None:
+                msg = f"{label} already configured"
+                raise RuntimeError(msg)
+            self._slices[slice_type] = current.model_copy(update={field: value})
+
+    def wire_if_field_absent(
+        self,
+        slice_type: type[BaseFeatureStateSlice],
+        field: str,
+        value: Any,
+    ) -> bool:
+        """Install a single slice field only if currently unset, atomically.
+
+        The presence check and the write share one lock acquisition, so two
+        concurrent callers cannot both install: the second observes the
+        first's write and skips.
+
+        Args:
+            slice_type: The feature's :class:`BaseFeatureStateSlice` subclass.
+            field: The slice field to install when absent.
+            value: The service reference to set.
+
+        Returns:
+            ``True`` if this call installed the field, ``False`` if a value
+            was already present.
+        """
+        with self._slice_lock:
+            current = self._slices.get(slice_type) or slice_type()
+            if getattr(current, field) is not None:
+                return False
+            self._slices[slice_type] = current.model_copy(update={field: value})
+            return True
+
+    def swap_field_returning_previous(
+        self,
+        slice_type: type[BaseFeatureStateSlice],
+        field: str,
+        value: Any,
+    ) -> Any:
+        """Hot-replace a single slice field, returning the previous value.
+
+        Reads the previous value and installs the replacement under one lock
+        acquisition, so a concurrent swap cannot read a stale previous and
+        drop a value the caller must close.
+
+        Args:
+            slice_type: The feature's :class:`BaseFeatureStateSlice` subclass.
+            field: The slice field to replace.
+            value: The replacement service reference.
+
+        Returns:
+            The value previously held in *field* (``None`` on first install).
+        """
+        with self._slice_lock:
+            current = self._slices.get(slice_type) or slice_type()
+            previous = getattr(current, field)
+            self._slices[slice_type] = current.model_copy(update={field: value})
+            return previous

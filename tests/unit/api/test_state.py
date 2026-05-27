@@ -122,6 +122,92 @@ class TestSliceStore:
         # reader holding the pre-wire slice is never mutated under it.
         assert state.slice(_ProbeSlice) is not before
 
+    def test_set_field_once_installs(self) -> None:
+        state = _make_state()
+        sentinel = object()
+        state.set_field_once(_ProbeSlice, "first", sentinel, "Probe")
+        assert state.slice(_ProbeSlice).first is sentinel
+
+    def test_set_field_once_twice_raises(self) -> None:
+        state = _make_state()
+        state.set_field_once(_ProbeSlice, "first", object(), "Probe")
+        with pytest.raises(RuntimeError, match="Probe already configured"):
+            state.set_field_once(_ProbeSlice, "first", object(), "Probe")
+
+    def test_wire_if_field_absent_installs_when_absent(self) -> None:
+        state = _make_state()
+        sentinel = object()
+        assert state.wire_if_field_absent(_ProbeSlice, "first", sentinel) is True
+        assert state.slice(_ProbeSlice).first is sentinel
+
+    def test_wire_if_field_absent_skips_when_present(self) -> None:
+        state = _make_state()
+        first = object()
+        state.wire_if_field_absent(_ProbeSlice, "first", first)
+        assert state.wire_if_field_absent(_ProbeSlice, "first", object()) is False
+        # The first writer wins; a later if-absent call is a no-op.
+        assert state.slice(_ProbeSlice).first is first
+
+    def test_swap_field_returns_previous(self) -> None:
+        state = _make_state()
+        first = object()
+        second = object()
+        state.wire(_ProbeSlice, first=first)
+        previous = state.swap_field_returning_previous(_ProbeSlice, "first", second)
+        assert previous is first
+        assert state.slice(_ProbeSlice).first is second
+
+    def test_swap_field_returns_none_on_first_install(self) -> None:
+        state = _make_state()
+        previous = state.swap_field_returning_previous(_ProbeSlice, "first", object())
+        assert previous is None
+
+    def test_concurrent_set_field_once_single_winner(self) -> None:
+        # The presence check and the write must share one lock
+        # acquisition: with N threads racing on the same field, exactly
+        # one installs and the rest see the field already set and raise.
+        # A check outside the lock would let two threads both pass the
+        # guard and both install (the once-only contract broken).
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        state = _make_state()
+        workers = 16
+        barrier = Barrier(workers)
+
+        def _install(_: int) -> bool:
+            barrier.wait()
+            try:
+                state.set_field_once(_ProbeSlice, "first", object(), "Probe")
+            except RuntimeError:
+                return False
+            return True
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(_install, range(workers)))
+        assert sum(results) == 1, "set_field_once not atomic: multiple winners"
+        assert state.slice(_ProbeSlice).first is not None
+
+    def test_concurrent_wire_if_field_absent_single_winner(self) -> None:
+        # Same race for the set-if-absent seam: only one of N concurrent
+        # callers may report it installed the field; the rest observe
+        # the winner's write under the shared lock and skip.
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        state = _make_state()
+        workers = 16
+        barrier = Barrier(workers)
+
+        def _install(_: int) -> bool:
+            barrier.wait()
+            return state.wire_if_field_absent(_ProbeSlice, "first", object())
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(_install, range(workers)))
+        assert sum(results) == 1, "wire_if_field_absent not atomic: multiple winners"
+        assert state.slice(_ProbeSlice).first is not None
+
 
 class TestRequireService:
     """``_require_service`` returns the value or 503s on ``None``."""

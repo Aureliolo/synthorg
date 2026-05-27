@@ -37,6 +37,11 @@ from pydantic import BaseModel, ConfigDict
 import synthorg
 from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.core.types import (
+    NotBlankStr,  # noqa: TC001 -- Pydantic resolves this field type at runtime
+)
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.settings.enums import (
     SettingNamespace,  # noqa: TC001 -- Pydantic resolves this field type at runtime
 )
@@ -54,6 +59,8 @@ __all__ = [
     "require_service",
     "resolve_feature_order",
 ]
+
+logger = get_logger(__name__)
 
 
 class FeatureDependencyError(DomainError):
@@ -205,7 +212,7 @@ class FeatureManifest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
-    name: str
+    name: NotBlankStr
     settings_namespace: SettingNamespace | None = None
     state_slice: type[BaseFeatureStateSlice] | None = None
     controllers: tuple[type[Controller], ...] = ()
@@ -244,6 +251,12 @@ def resolve_feature_order(
     by_name: dict[str, FeatureModule] = {}
     for manifest in items:
         if manifest.name in by_name:
+            logger.error(
+                API_APP_STARTUP,
+                action="feature_dependency_invalid",
+                reason="duplicate_name",
+                feature=manifest.name,
+            )
             msg = f"duplicate feature name: {manifest.name!r}"
             raise FeatureDependencyError(msg)
         by_name[manifest.name] = manifest
@@ -253,6 +266,13 @@ def resolve_feature_order(
     for manifest in items:
         for dependency in manifest.depends_on:
             if dependency not in by_name:
+                logger.error(
+                    API_APP_STARTUP,
+                    action="feature_dependency_invalid",
+                    reason="unknown_dependency",
+                    feature=manifest.name,
+                    dependency=dependency,
+                )
                 msg = (
                     f"feature {manifest.name!r} depends on unknown "
                     f"feature {dependency!r}"
@@ -274,6 +294,12 @@ def resolve_feature_order(
 
     if len(ordered) != len(by_name):
         unresolved = sorted(set(by_name) - set(ordered))
+        logger.error(
+            API_APP_STARTUP,
+            action="feature_dependency_invalid",
+            reason="cycle",
+            features=unresolved,
+        )
         msg = f"feature dependency graph contains a cycle among {unresolved}"
         raise FeatureDependencyError(msg)
 
@@ -295,6 +321,35 @@ def _iter_feature_module_names() -> list[str]:
     return names
 
 
+def _require_feature_manifest(module_name: str) -> FeatureModule:
+    """Import *module_name* and return its validated ``FEATURE`` manifest.
+
+    Args:
+        module_name: Dotted module name of a ``feature.py``.
+
+    Returns:
+        The module-level ``FEATURE`` manifest.
+
+    Raises:
+        FeatureDependencyError: When the module does not expose a valid
+            ``FEATURE: FeatureModule`` manifest.
+    """
+    module = importlib.import_module(module_name)
+    feature = getattr(module, _FEATURE_ATTR, None)
+    if not isinstance(feature, FeatureModule):
+        logger.error(
+            API_APP_STARTUP,
+            action="feature_manifest_invalid",
+            module=module_name,
+        )
+        msg = (
+            f"{module_name} does not expose a valid "
+            f"{_FEATURE_ATTR}: FeatureModule manifest"
+        )
+        raise FeatureDependencyError(msg)
+    return feature
+
+
 def _load_manifests() -> tuple[FeatureModule, ...]:
     """Import every ``feature.py`` and collect its ``FEATURE`` manifest.
 
@@ -305,18 +360,10 @@ def _load_manifests() -> tuple[FeatureModule, ...]:
         FeatureDependencyError: When a ``feature.py`` does not expose a
             ``FEATURE`` attribute satisfying :class:`FeatureModule`.
     """
-    manifests: list[FeatureModule] = []
-    for module_name in _iter_feature_module_names():
-        module = importlib.import_module(module_name)
-        feature = getattr(module, _FEATURE_ATTR, None)
-        if not isinstance(feature, FeatureModule):
-            msg = (
-                f"{module_name} does not expose a valid "
-                f"{_FEATURE_ATTR}: FeatureModule manifest"
-            )
-            raise FeatureDependencyError(msg)
-        manifests.append(feature)
-    return tuple(manifests)
+    return tuple(
+        _require_feature_manifest(module_name)
+        for module_name in _iter_feature_module_names()
+    )
 
 
 def feature_directories() -> dict[str, str]:
@@ -329,14 +376,17 @@ def feature_directories() -> dict[str, str]:
 
     Returns:
         Mapping of feature name to repo-relative directory (posix).
+
+    Raises:
+        FeatureDependencyError: When a ``feature.py`` does not expose a valid
+            manifest (matching :func:`_load_manifests`, so the two never
+            disagree on which features exist).
     """
     directories: dict[str, str] = {}
     for module_name in _iter_feature_module_names():
-        module = importlib.import_module(module_name)
-        feature = getattr(module, _FEATURE_ATTR, None)
-        if isinstance(feature, FeatureModule):
-            package_parts = module_name.split(".")[:-1]
-            directories[feature.name] = "src/" + "/".join(package_parts)
+        feature = _require_feature_manifest(module_name)
+        package_parts = module_name.split(".")[:-1]
+        directories[feature.name] = "src/" + "/".join(package_parts)
     return directories
 
 
@@ -361,4 +411,9 @@ def discover_features(*, force: bool = False) -> tuple[FeatureModule, ...]:
     global _discovery_cache  # noqa: PLW0603 -- single boot-time memoisation seam
     if _discovery_cache is None or force:
         _discovery_cache = resolve_feature_order(_load_manifests())
+        logger.info(
+            API_APP_STARTUP,
+            action="features_discovered",
+            count=len(_discovery_cache),
+        )
     return _discovery_cache

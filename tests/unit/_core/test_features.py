@@ -12,6 +12,7 @@ does not require real ``feature.py`` modules to exist.
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg._core.features import (
     BaseFeatureStateSlice,
@@ -20,8 +21,10 @@ from synthorg._core.features import (
     FeatureModule,
     LifecycleHook,
     McpHandlerModule,
+    require_service,
     resolve_feature_order,
 )
+from synthorg.core.domain_errors import ServiceUnavailableError
 
 pytestmark = pytest.mark.unit
 
@@ -35,11 +38,11 @@ class _ExampleSlice(BaseFeatureStateSlice):
 class TestBaseFeatureStateSlice:
     def test_is_frozen(self) -> None:
         slice_ = _ExampleSlice(value=1)
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             slice_.value = 2  # type: ignore[misc]
 
     def test_forbids_extra_fields(self) -> None:
-        with pytest.raises(Exception, match="extra"):
+        with pytest.raises(ValidationError, match="extra"):
             _ExampleSlice(value=1, surprise=2)  # type: ignore[call-arg]
 
     def test_defaults_to_none(self) -> None:
@@ -53,11 +56,11 @@ class TestFeatureManifestProtocol:
 
     def test_manifest_is_frozen(self) -> None:
         manifest = FeatureManifest(name="charter")
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             manifest.name = "other"  # type: ignore[misc]
 
     def test_manifest_forbids_extra(self) -> None:
-        with pytest.raises(Exception, match="extra"):
+        with pytest.raises(ValidationError, match="extra"):
             FeatureManifest(name="charter", bogus=1)  # type: ignore[call-arg]
 
     def test_manifest_carries_state_slice(self) -> None:
@@ -123,3 +126,17 @@ class TestResolveFeatureOrder:
         a2 = FeatureManifest(name="dup")
         with pytest.raises(FeatureDependencyError, match="duplicate"):
             resolve_feature_order((a1, a2))
+
+
+class TestRequireService:
+    def test_returns_value_when_present(self) -> None:
+        sentinel = object()
+        assert require_service(sentinel, "Probe") is sentinel
+
+    def test_raises_with_label_in_message(self) -> None:
+        # The 503 envelope controllers surface depends on this exact
+        # "<label> not configured" shape, so lock it.
+        with pytest.raises(
+            ServiceUnavailableError, match="Auth Service not configured"
+        ):
+            require_service(None, "Auth Service")

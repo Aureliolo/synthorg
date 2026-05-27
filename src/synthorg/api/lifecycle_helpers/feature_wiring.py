@@ -85,6 +85,7 @@ async def _wire_docs_engine(app_state: AppState) -> None:
             tool_factory=docs_tool_factory,
         )
     )
+    logger.info(API_APP_STARTUP, service="docs_engine", note="wired")
 
 
 async def _wire_knowledge_engine(app_state: AppState) -> None:
@@ -126,6 +127,7 @@ async def _wire_knowledge_engine(app_state: AppState) -> None:
     app_state.swap_slice(
         KnowledgeStateSlice(service=service, tool_factory=tool_factory)
     )
+    logger.info(API_APP_STARTUP, service="knowledge_engine", note="wired")
 
 
 async def _wire_research_engine(
@@ -213,6 +215,7 @@ async def _wire_research_engine(
         app_state.swap_slice(
             ResearchStateSlice(service=service, tool_factory=tool_factory)
         )
+        logger.info(API_APP_STARTUP, service="research_engine", note="wired")
     except Exception as exc:
         reraise_critical(exc)
         logger.info(
@@ -324,6 +327,7 @@ async def _wire_charter_engine(
                 interview_service=interview_service, dispatcher=dispatcher
             )
         )
+        logger.info(API_APP_STARTUP, service="charter_engine", note="wired")
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
@@ -360,6 +364,7 @@ async def _wire_chief_of_staff_chat(
     )
     if chat_backend is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_chat=chat_backend)
+        logger.info(API_APP_STARTUP, service="chief_of_staff_chat", note="wired")
 
 
 async def _wire_chief_of_staff_proposer(
@@ -396,6 +401,11 @@ async def _wire_chief_of_staff_proposer(
             MetaStateSlice,
             conversational_proposal_repo=repositories.proposal_repo,
         )
+        logger.info(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="conversational proposal repo wired",
+        )
     if provider_registry is None:
         return
     meta_self_improvement = await load_self_improvement_config(
@@ -429,6 +439,11 @@ async def _wire_chief_of_staff_proposer(
     )
     if proposer is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_proposer=proposer)
+        logger.info(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="proposer wired",
+        )
 
 
 async def wire_features_on_startup(

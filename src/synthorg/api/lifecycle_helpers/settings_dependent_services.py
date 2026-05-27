@@ -4,11 +4,10 @@
 ``ConfigResolver`` and the provider-management / org-mutation /
 provider-audit / preset-override services all need a wired
 ``SettingsService`` (and, for the persistence-backed repos, a connected
-backend). They are composed together here -- once at construction when a
-settings service is injected, and again when the settings service is
-auto-wired at startup -- so a single call wires every downstream
-consumer's slice field. This is the slice-era replacement for the old
-``AppState._init_derived_services`` god-object method.
+backend). A single call wires every one of those downstream consumers'
+slice fields, so callers run it both at construction (when a settings
+service is injected) and at startup (when the settings service is
+auto-wired) to keep them composed.
 """
 
 from typing import TYPE_CHECKING
@@ -16,6 +15,8 @@ from typing import TYPE_CHECKING
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.management.audit_service import ProviderAuditService
 from synthorg.providers.management.preset_override_service import (
@@ -30,6 +31,8 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.settings.service import SettingsService
 
+logger = get_logger(__name__)
+
 
 def compose_settings_dependent_services(
     app_state: AppState,
@@ -38,7 +41,7 @@ def compose_settings_dependent_services(
     """Wire the settings service + config resolver + management services.
 
     No-op when *settings_service* is ``None`` (an empty / pre-settings
-    boot), mirroring the old ``_init_derived_services`` early return.
+    boot): with no settings service there is nothing to resolve from.
     Otherwise wires *settings_service* onto its slice, builds a
     ``ConfigResolver`` from it + ``app_state.config``, and the
     provider-management, org-mutation, provider-audit, and
@@ -111,3 +114,9 @@ def compose_settings_dependent_services(
         preset_override_service=preset_override_service,
     )
     app_state.wire(ApiCoreStateSlice, org_mutation_service=org_mutations)
+    logger.info(
+        API_APP_STARTUP,
+        action="settings_dependent_services_wired",
+        provider_audit=audit_service is not None,
+        preset_override=preset_override_service is not None,
+    )
