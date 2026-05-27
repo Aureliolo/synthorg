@@ -590,21 +590,24 @@ def test_classify_regression_when_node_down_without_internal_error() -> None:
     assert outcome.repeated_crashes == ()
 
 
-def test_classify_node_down_with_zero_returncode_passes() -> None:
-    """Bare ``node down`` with ``returncode==0`` -> pass (xdist recovered).
+def test_classify_node_down_with_zero_returncode_blocks() -> None:
+    """Bare ``node down`` with ``returncode==0`` -> regression (still blocks).
 
-    The classifier blocks a node-down only when ``returncode != 0``; a
-    node-down line alongside a zero exit falls through to the pass branch.
-    Locks in that ``returncode != 0`` guard so a future refactor cannot
-    start blocking every recovered node-down with no test catching it.
+    ``--max-worker-restart=0`` forbids recovery, so a downed worker is
+    never silently waved through. A worker killed mid-teardown can die
+    after its tests passed -- leaving pytest's exit at 0 -- yet that is
+    the dominant Python 3.14 + Windows teardown-race shape and is still a
+    real crash to debug, never an advisory pass. The classifier blocks on
+    the bare node-down regardless of returncode; ``max(returncode, 1)``
+    forces a non-zero gate exit even when pytest itself returned 0.
     """
     outcome = _MODULE._classify_isolation_outcome(
         returncode=0,
         stdout="[gw5] node down: Not properly terminated\n",
     )
-    assert outcome.kind == "pass"
-    assert outcome.exit_code == 0
-    assert outcome.crashed_tests == ()
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
+    assert outcome.crashed_tests == ("<worker gw5>",)
 
 
 def test_classify_real_failure_outranks_node_down_signature() -> None:

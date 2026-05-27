@@ -714,7 +714,7 @@ def _classify_isolation_outcome(
       (a real bug; pytest-repeat ``[N-M]`` suffix is stripped before
       counting so the two iterations of one test collapse).
     * Any xdist worker crash -- a one-off crash, or a bare ``node down``
-      with a non-zero returncode -> regression.  A crashed worker is a
+      (regardless of returncode) -> regression.  A crashed worker is a
       real defect (Python 3.14 + Windows ProactorEventLoop teardown
       race, native deadlock, memory corruption), never an advisory to
       wave through.  The gate blocks and names the crashed test(s) /
@@ -758,14 +758,20 @@ def _classify_isolation_outcome(
     # A worker that went ``node down`` is a native-level crash, not a
     # test failure -- and a real defect to debug, never an advisory
     # pass. The real-failure and repeated-crash checks above already
-    # returned, so the only adverse signal here is the worker death
-    # itself with a non-zero exit. The loadscope crash guard in
-    # ``tests/conftest.py`` (``_install_xdist_loadscope_crash_guard``)
-    # suppresses the downstream ``INTERNALERROR>``, and a worker killed
-    # mid-teardown can die before pytest prints a FAILED summary, so the
-    # bare node-down is the only signal -- surface the worker ids and
-    # block. The test names are unrecoverable from a bare node-down.
-    if node_down_workers and returncode != 0:
+    # returned, so the worker death itself is the only adverse signal
+    # here, and it blocks regardless of returncode. ``--max-worker-
+    # restart=0`` forbids recovery, and a worker killed mid-teardown can
+    # die after its tests passed -- leaving returncode 0 -- yet that is
+    # the dominant Python 3.14 + Windows teardown-race shape and is
+    # still a crash to debug, so a zero exit must not wave it through.
+    # The loadscope crash guard in ``tests/conftest.py``
+    # (``_install_xdist_loadscope_crash_guard``) suppresses the
+    # downstream ``INTERNALERROR>``, and the worker dies before pytest
+    # prints a FAILED summary, so the bare node-down is the only signal
+    # -- surface the worker ids and block. The test names are
+    # unrecoverable from a bare node-down. ``max(returncode, 1)`` keeps
+    # the regression exit non-zero even when pytest itself returned 0.
+    if node_down_workers:
         return IsolationOutcome(
             kind="regression",
             exit_code=max(returncode, 1),
