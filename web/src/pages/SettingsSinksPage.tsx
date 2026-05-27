@@ -12,15 +12,71 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useSinksStore } from '@/stores/sinks'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import { SinkCard } from './settings/sinks/SinkCard'
 import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
 
-export default function SettingsSinksPage() {
-  const navigate = useNavigate()
-  // Per-field selectors instead of destructuring the whole store --
-  // the previous form (``const {...} = useSinksStore()``) re-rendered
-  // the page on every unrelated state change in the sinks store.
-  // Each selector below subscribes to exactly the slice it reads.
+interface SinksPage {
+  sinks: SinkInfo[]
+  loading: boolean
+  error: string | null
+  editSink: SinkInfo | null
+  isNewSink: boolean
+  drawerOpen: boolean
+  deleteTarget: SinkInfo | null
+  deleting: boolean
+  testConfig: ReturnType<typeof useSinksStore.getState>['testConfig']
+  setDeleteTarget: (sink: SinkInfo | null) => void
+  handleEdit: (sink: SinkInfo) => void
+  handleAddNew: () => void
+  handleCloseDrawer: () => void
+  handleSave: (sink: SinkInfo) => Promise<void>
+  handleDelete: (sink: SinkInfo) => void
+  handleDeleteConfirm: () => Promise<void>
+}
+
+/** Auto-refresh sinks when the observability sink settings change over WS. */
+function useSinkAutoRefresh(fetchSinks: () => Promise<void> | void): void {
+  const sinkHandler = useCallback(
+    (event: WsEvent) => {
+      const key = sanitizeWsString((event.payload as Record<string, unknown> | undefined)?.key)
+      if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
+        void fetchSinks()
+      }
+    },
+    [fetchSinks],
+  )
+  useWebSocket({ bindings: [{ channel: 'system', handler: sinkHandler }] })
+}
+
+interface SinkDeleteState {
+  deleteTarget: SinkInfo | null
+  setDeleteTarget: (sink: SinkInfo | null) => void
+  deleting: boolean
+  handleDelete: (sink: SinkInfo) => void
+  handleDeleteConfirm: () => Promise<void>
+}
+
+function useSinkDelete(deleteSink: (sink: SinkInfo) => Promise<boolean>): SinkDeleteState {
+  const [deleteTarget, setDeleteTarget] = useState<SinkInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = useCallback((sink: SinkInfo) => {
+    setDeleteTarget(sink)
+  }, [])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const ok = await deleteSink(deleteTarget)
+    setDeleting(false)
+    if (ok) setDeleteTarget(null)
+  }, [deleteSink, deleteTarget])
+
+  return { deleteTarget, setDeleteTarget, deleting, handleDelete, handleDeleteConfirm }
+}
+
+function useSinksPage(): SinksPage {
   const sinks = useSinksStore((s) => s.sinks)
   const loading = useSinksStore((s) => s.loading)
   const error = useSinksStore((s) => s.error)
@@ -31,25 +87,13 @@ export default function SettingsSinksPage() {
   const [editSinkId, setEditSinkId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<SinkInfo | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const editSink = editSinkId ? sinks.find((s) => s.identifier === editSinkId) ?? null : null
+  const editSink = editSinkId ? (sinks.find((s) => s.identifier === editSinkId) ?? null) : null
+  const del = useSinkDelete(deleteSink)
 
   useEffect(() => {
     void fetchSinks()
   }, [fetchSinks])
-
-  // Subscribe to WS system channel for setting updates -- auto-refresh on sink config changes
-  const sinkHandler = useCallback((event: WsEvent) => {
-    const key = (event.payload as Record<string, unknown> | undefined)?.key as string | undefined
-    if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
-      void fetchSinks()
-    }
-  }, [fetchSinks])
-
-  useWebSocket({
-    bindings: [{ channel: 'system', handler: sinkHandler }],
-  })
+  useSinkAutoRefresh(fetchSinks)
 
   const handleEdit = useCallback((sink: SinkInfo) => {
     setEditSinkId(sink.identifier)
@@ -69,48 +113,52 @@ export default function SettingsSinksPage() {
     setIsNewSink(false)
   }, [])
 
-  const handleSave = useCallback(async (sink: SinkInfo) => {
-    const ok = await saveSink(sink)
-    // Per the sentinel contract, keep the drawer open on failure so the
-    // user can retry; the store already emitted an error toast.
-    if (ok) {
-      setDrawerOpen(false)
-      setEditSinkId(null)
-      setIsNewSink(false)
-    }
-  }, [saveSink])
+  const handleSave = useCallback(
+    async (sink: SinkInfo) => {
+      // Sentinel contract: keep the drawer open on failure (the store
+      // already toasted) so the user can retry.
+      if (await saveSink(sink)) {
+        setDrawerOpen(false)
+        setEditSinkId(null)
+        setIsNewSink(false)
+      }
+    },
+    [saveSink],
+  )
 
-  const handleDelete = useCallback((sink: SinkInfo) => {
-    setDeleteTarget(sink)
-  }, [])
+  return {
+    sinks,
+    loading,
+    error,
+    editSink,
+    isNewSink,
+    drawerOpen,
+    deleteTarget: del.deleteTarget,
+    deleting: del.deleting,
+    testConfig,
+    setDeleteTarget: del.setDeleteTarget,
+    handleEdit,
+    handleAddNew,
+    handleCloseDrawer,
+    handleSave,
+    handleDelete: del.handleDelete,
+    handleDeleteConfirm: del.handleDeleteConfirm,
+  }
+}
 
-  const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    const ok = await deleteSink(deleteTarget)
-    setDeleting(false)
-    if (ok) setDeleteTarget(null)
-  }, [deleteSink, deleteTarget])
+interface SinksGridProps {
+  sinks: SinkInfo[]
+  loading: boolean
+  error: string | null
+  onEdit: (sink: SinkInfo) => void
+  onDelete: (sink: SinkInfo) => void
+}
 
+function SinksGrid({ sinks, loading, error, onEdit, onDelete }: SinksGridProps) {
   return (
-    <div className="space-y-section-gap">
-      <div className="flex items-center gap-grid-gap">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
-          <ArrowLeft className="mr-1.5 size-3.5" aria-hidden />
-          Settings
-        </Button>
-        <div className="flex flex-1 items-center gap-2">
-          <Activity className="size-4 text-text-secondary" aria-hidden />
-          <h1 className="text-lg font-semibold text-foreground">Log Sinks</h1>
-        </div>
-        <Button size="sm" onClick={handleAddNew}>
-          <Plus className="mr-1.5 size-3.5" aria-hidden />
-          Add Sink
-        </Button>
-      </div>
-
-      {error && (
-        <ErrorBanner severity="error" title="Could not load sinks" description={error} />
+    <>
+      {Boolean(error) && (
+        <ErrorBanner severity="error" title="Could not load sinks" description={error ?? undefined} />
       )}
 
       {loading && sinks.length === 0 && (
@@ -133,39 +181,108 @@ export default function SettingsSinksPage() {
         <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
           {sinks.map((sink) => (
             <StaggerItem key={sink.identifier}>
-              <SinkCard sink={sink} onEdit={handleEdit} onDelete={handleDelete} />
+              <SinkCard sink={sink} onEdit={onEdit} onDelete={onDelete} />
             </StaggerItem>
           ))}
         </StaggerGroup>
       </ErrorBoundary>
+    </>
+  )
+}
 
-      <SinkFormDrawer
-        key={editSink?.identifier ?? (isNewSink ? '__new__' : '__closed__')}
-        open={drawerOpen}
-        onClose={handleCloseDrawer}
-        sink={editSink}
-        isNew={isNewSink}
-        onTest={testConfig}
-        onSave={handleSave}
+function deleteDialogText(target: SinkInfo | null): {
+  title: string
+  description: string
+  confirmLabel: string
+} {
+  if (target?.is_default) {
+    return {
+      title: `Reset overrides for ${target.identifier}?`,
+      description:
+        'This restores the sink to its built-in defaults. The sink itself stays registered with the runtime.',
+      confirmLabel: 'Reset',
+    }
+  }
+  return {
+    title: `Delete sink ${target?.identifier ?? ''}?`,
+    description:
+      'This removes the sink from the runtime. Logs routed to this sink will stop being written. This cannot be undone.',
+    confirmLabel: 'Delete',
+  }
+}
+
+function SinkDeleteDialog({
+  target,
+  deleting,
+  onClose,
+  onConfirm,
+}: {
+  target: SinkInfo | null
+  deleting: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const text = deleteDialogText(target)
+  return (
+    <ConfirmDialog
+      open={target !== null}
+      onOpenChange={(open) => {
+        if (!open && !deleting) onClose()
+      }}
+      title={text.title}
+      description={text.description}
+      confirmLabel={text.confirmLabel}
+      variant="destructive"
+      loading={deleting}
+      onConfirm={onConfirm}
+    />
+  )
+}
+
+export default function SettingsSinksPage() {
+  const navigate = useNavigate()
+  const page = useSinksPage()
+
+  return (
+    <div className="space-y-section-gap">
+      <div className="flex items-center gap-grid-gap">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
+          <ArrowLeft className="mr-1.5 size-3.5" aria-hidden />
+          Settings
+        </Button>
+        <div className="flex flex-1 items-center gap-2">
+          <Activity className="size-4 text-text-secondary" aria-hidden />
+          <h1 className="text-lg font-semibold text-foreground">Log Sinks</h1>
+        </div>
+        <Button size="sm" onClick={page.handleAddNew}>
+          <Plus className="mr-1.5 size-3.5" aria-hidden />
+          Add Sink
+        </Button>
+      </div>
+
+      <SinksGrid
+        sinks={page.sinks}
+        loading={page.loading}
+        error={page.error}
+        onEdit={page.handleEdit}
+        onDelete={page.handleDelete}
       />
 
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null) }}
-        title={
-          deleteTarget?.is_default
-            ? `Reset overrides for ${deleteTarget.identifier}?`
-            : `Delete sink ${deleteTarget?.identifier ?? ''}?`
-        }
-        description={
-          deleteTarget?.is_default
-            ? 'This restores the sink to its built-in defaults. The sink itself stays registered with the runtime.'
-            : 'This removes the sink from the runtime. Logs routed to this sink will stop being written. This cannot be undone.'
-        }
-        confirmLabel={deleteTarget?.is_default ? 'Reset' : 'Delete'}
-        variant="destructive"
-        loading={deleting}
-        onConfirm={handleDeleteConfirm}
+      <SinkFormDrawer
+        key={page.editSink?.identifier ?? (page.isNewSink ? '__new__' : '__closed__')}
+        open={page.drawerOpen}
+        onClose={page.handleCloseDrawer}
+        sink={page.editSink}
+        isNew={page.isNewSink}
+        onTest={page.testConfig}
+        onSave={page.handleSave}
+      />
+
+      <SinkDeleteDialog
+        target={page.deleteTarget}
+        deleting={page.deleting}
+        onClose={() => page.setDeleteTarget(null)}
+        onConfirm={page.handleDeleteConfirm}
       />
     </div>
   )

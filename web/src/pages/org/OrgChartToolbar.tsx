@@ -44,11 +44,20 @@ const PARTICLE_OPTIONS: readonly SegmentedControlOption<ParticleFlowMode>[] = [
   { value: 'off', label: 'Off' },
 ]
 
+const STATUS_DOTS_TOOLTIP =
+  'Status dots: one colored dot per agent in the dept\n' +
+  '  • Green = active (working on a task)\n' +
+  '  • Blue = idle (ready, not assigned)\n' +
+  '  • Red = error\n' +
+  '  • Gray = offline'
+
+const Divider = () => <div className="mx-1 h-5 w-px bg-border" />
+
 /**
  * Small inline icon-toggle button used in the toolbar's "show on
- * cards" strip.  Keeps the row compact and shows the current
- * on/off state via the accent fill + icon tint.  A title attribute
- * provides the hover tooltip.
+ * cards" strip.  Keeps the row compact and shows the current on/off
+ * state via the accent fill + icon tint.  A title attribute provides
+ * the hover tooltip.
  */
 function InlineToggle({
   label,
@@ -82,6 +91,155 @@ function InlineToggle({
   )
 }
 
+interface ViewModeToggleProps {
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
+}
+
+function ViewModeToggle({ viewMode, onViewModeChange }: ViewModeToggleProps) {
+  return (
+    <div className="flex items-center rounded-md border border-border">
+      <Button
+        variant={viewMode === 'hierarchy' ? 'default' : 'ghost'}
+        size="sm"
+        onClick={() => onViewModeChange('hierarchy')}
+        aria-label="Hierarchy view"
+        aria-pressed={viewMode === 'hierarchy'}
+        className="h-7 gap-1.5 rounded-r-none px-2 text-xs"
+      >
+        <GitBranch className="size-3.5" aria-hidden="true" />
+        Hierarchy
+      </Button>
+      <Button
+        variant={viewMode === 'force' ? 'default' : 'ghost'}
+        size="sm"
+        onClick={() => onViewModeChange('force')}
+        aria-label="Communication view"
+        aria-pressed={viewMode === 'force'}
+        className="h-7 gap-1.5 rounded-l-none px-2 text-xs"
+      >
+        <Network className="size-3.5" aria-hidden="true" />
+        Communication
+      </Button>
+    </div>
+  )
+}
+
+/** Inline icon toggles, one per visual element rendered on dept cards. */
+function ShowOnCardsStrip() {
+  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+  const setShowAddAgentButton = useOrgChartPrefs((s) => s.setShowAddAgentButton)
+  const showLeadBadge = useOrgChartPrefs((s) => s.showLeadBadge)
+  const setShowLeadBadge = useOrgChartPrefs((s) => s.setShowLeadBadge)
+  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
+  const setShowBudgetBar = useOrgChartPrefs((s) => s.setShowBudgetBar)
+  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
+  const setShowStatusDots = useOrgChartPrefs((s) => s.setShowStatusDots)
+  const showMinimap = useOrgChartPrefs((s) => s.showMinimap)
+  const setShowMinimap = useOrgChartPrefs((s) => s.setShowMinimap)
+  return (
+    <div className="flex items-center gap-0.5" role="group" aria-label="Show on cards">
+      <InlineToggle
+        label="Toggle add agent button"
+        tooltip="Add agent button"
+        icon={Plus}
+        checked={showAddAgentButton}
+        onToggle={setShowAddAgentButton}
+      />
+      <InlineToggle
+        label="Toggle LEAD badge"
+        tooltip="LEAD badge"
+        icon={BadgeCheck}
+        checked={showLeadBadge}
+        onToggle={setShowLeadBadge}
+      />
+      <InlineToggle
+        label="Toggle budget bar"
+        tooltip="Budget bar"
+        icon={DollarSign}
+        checked={showBudgetBar}
+        onToggle={setShowBudgetBar}
+      />
+      <InlineToggle
+        label="Toggle status dots"
+        tooltip={STATUS_DOTS_TOOLTIP}
+        icon={CircleDashed}
+        checked={showStatusDots}
+        onToggle={setShowStatusDots}
+      />
+      <InlineToggle
+        label="Toggle minimap"
+        tooltip="Minimap"
+        icon={MapIcon}
+        checked={showMinimap}
+        onToggle={setShowMinimap}
+      />
+    </div>
+  )
+}
+
+interface ZoomControlsProps {
+  onFitView: () => void
+  onZoomIn: () => void
+  onZoomOut: () => void
+}
+
+function ZoomControls({ onFitView, onZoomIn, onZoomOut }: ZoomControlsProps) {
+  return (
+    <>
+      <Button variant="ghost" size="sm" onClick={onFitView} aria-label="Fit to view" className="size-7 p-0">
+        <Maximize className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onZoomIn} aria-label="Zoom in" className="size-7 p-0">
+        <ZoomIn className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onZoomOut} aria-label="Zoom out" className="size-7 p-0">
+        <ZoomOut className="size-3.5" aria-hidden="true" />
+      </Button>
+    </>
+  )
+}
+
+interface ExportControlsProps {
+  onExportPng?: () => void
+  exporting: boolean
+  onPrint?: () => void
+}
+
+function ExportControls({ onExportPng, exporting, onPrint }: ExportControlsProps) {
+  if (!onExportPng && !onPrint) return null
+  return (
+    <>
+      <Divider />
+      {onExportPng && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onExportPng}
+          aria-label={exporting ? 'Exporting PNG' : 'Export as PNG'}
+          title={exporting ? 'Exporting PNG' : 'Export as PNG'}
+          className="size-7 p-0"
+          disabled={exporting}
+        >
+          <Download className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
+      {onPrint && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onPrint}
+          aria-label="Print org chart"
+          title="Print org chart"
+          className="size-7 p-0"
+        >
+          <Printer className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
+    </>
+  )
+}
+
 export function OrgChartToolbar({
   viewMode,
   onViewModeChange,
@@ -95,18 +253,7 @@ export function OrgChartToolbar({
 }: OrgChartToolbarProps) {
   const particleFlowMode = useOrgChartPrefs((s) => s.particleFlowMode)
   const setParticleFlowMode = useOrgChartPrefs((s) => s.setParticleFlowMode)
-  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
-  const setShowAddAgentButton = useOrgChartPrefs((s) => s.setShowAddAgentButton)
-  const showLeadBadge = useOrgChartPrefs((s) => s.showLeadBadge)
-  const setShowLeadBadge = useOrgChartPrefs((s) => s.setShowLeadBadge)
-  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
-  const setShowBudgetBar = useOrgChartPrefs((s) => s.setShowBudgetBar)
-  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
-  const setShowStatusDots = useOrgChartPrefs((s) => s.setShowStatusDots)
-  const showMinimap = useOrgChartPrefs((s) => s.showMinimap)
-  const setShowMinimap = useOrgChartPrefs((s) => s.setShowMinimap)
-  const { ref: toolbarRef, onKeyDown } =
-    useToolbarKeyboardNav<HTMLDivElement>()
+  const { ref: toolbarRef, onKeyDown } = useToolbarKeyboardNav<HTMLDivElement>()
 
   return (
     <div
@@ -121,34 +268,8 @@ export function OrgChartToolbar({
       )}
       data-testid="org-chart-toolbar"
     >
-      <div className="flex items-center rounded-md border border-border">
-        <Button
-          variant={viewMode === 'hierarchy' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => onViewModeChange('hierarchy')}
-          aria-label="Hierarchy view"
-          aria-pressed={viewMode === 'hierarchy'}
-          className="h-7 gap-1.5 rounded-r-none px-2 text-xs"
-        >
-          <GitBranch className="size-3.5" aria-hidden="true" />
-          Hierarchy
-        </Button>
-        <Button
-          variant={viewMode === 'force' ? 'default' : 'ghost'}
-          size="sm"
-          onClick={() => onViewModeChange('force')}
-          aria-label="Communication view"
-          aria-pressed={viewMode === 'force'}
-          className="h-7 gap-1.5 rounded-l-none px-2 text-xs"
-        >
-          <Network className="size-3.5" aria-hidden="true" />
-          Communication
-        </Button>
-      </div>
-
-      <div className="mx-1 h-5 w-px bg-border" />
-
-      {/* Particle flow: tri-state segmented control inline */}
+      <ViewModeToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />
+      <Divider />
       <SegmentedControl
         label="Particle flow"
         options={PARTICLE_OPTIONS}
@@ -156,114 +277,11 @@ export function OrgChartToolbar({
         onChange={setParticleFlowMode}
         size="sm"
       />
-
-      <div className="mx-1 h-5 w-px bg-border" />
-
-      {/* Show-on-cards: inline icon toggles, one per visual element */}
-      <div className="flex items-center gap-0.5" role="group" aria-label="Show on cards">
-        <InlineToggle
-          label="Toggle add agent button"
-          tooltip="Add agent button"
-          icon={Plus}
-          checked={showAddAgentButton}
-          onToggle={setShowAddAgentButton}
-        />
-        <InlineToggle
-          label="Toggle LEAD badge"
-          tooltip="LEAD badge"
-          icon={BadgeCheck}
-          checked={showLeadBadge}
-          onToggle={setShowLeadBadge}
-        />
-        <InlineToggle
-          label="Toggle budget bar"
-          tooltip="Budget bar"
-          icon={DollarSign}
-          checked={showBudgetBar}
-          onToggle={setShowBudgetBar}
-        />
-        <InlineToggle
-          label="Toggle status dots"
-          tooltip={
-            'Status dots: one colored dot per agent in the dept\n' +
-            '  • Green = active (working on a task)\n' +
-            '  • Blue = idle (ready, not assigned)\n' +
-            '  • Red = error\n' +
-            '  • Gray = offline'
-          }
-          icon={CircleDashed}
-          checked={showStatusDots}
-          onToggle={setShowStatusDots}
-        />
-        <InlineToggle
-          label="Toggle minimap"
-          tooltip="Minimap"
-          icon={MapIcon}
-          checked={showMinimap}
-          onToggle={setShowMinimap}
-        />
-      </div>
-
-      <div className="mx-1 h-5 w-px bg-border" />
-
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onFitView}
-        aria-label="Fit to view"
-        className="size-7 p-0"
-      >
-        <Maximize className="size-3.5" aria-hidden="true" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onZoomIn}
-        aria-label="Zoom in"
-        className="size-7 p-0"
-      >
-        <ZoomIn className="size-3.5" aria-hidden="true" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onZoomOut}
-        aria-label="Zoom out"
-        className="size-7 p-0"
-      >
-        <ZoomOut className="size-3.5" aria-hidden="true" />
-      </Button>
-
-      {(onExportPng || onPrint) && (
-        <>
-          <div className="mx-1 h-5 w-px bg-border" />
-          {onExportPng && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onExportPng}
-              aria-label={exporting ? 'Exporting PNG' : 'Export as PNG'}
-              title={exporting ? 'Exporting PNG' : 'Export as PNG'}
-              className="size-7 p-0"
-              disabled={exporting}
-            >
-              <Download className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
-          {onPrint && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onPrint}
-              aria-label="Print org chart"
-              title="Print org chart"
-              className="size-7 p-0"
-            >
-              <Printer className="size-3.5" aria-hidden="true" />
-            </Button>
-          )}
-        </>
-      )}
+      <Divider />
+      <ShowOnCardsStrip />
+      <Divider />
+      <ZoomControls onFitView={onFitView} onZoomIn={onZoomIn} onZoomOut={onZoomOut} />
+      <ExportControls onExportPng={onExportPng} exporting={exporting} onPrint={onPrint} />
     </div>
   )
 }

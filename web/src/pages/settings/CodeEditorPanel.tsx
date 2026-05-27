@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import YAML from 'js-yaml'
+import type { Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { Columns2, FileCode } from 'lucide-react'
 import type { SettingEntry } from '@/api/types/settings'
@@ -13,15 +13,18 @@ import {
   settingsLinterExtension,
   settingsAutocompleteExtension,
 } from './editor-extensions'
-import {
-  type CodeFormat,
-  type ParsedSettings,
-  entriesToObject,
-  serializeEntries,
-  detectRemovedKeys,
-  buildChanges,
-  parseText,
-} from './code-editor-utils'
+import { type CodeFormat, serializeEntries } from './code-editor-utils'
+import { changeFormat, computeDiffSummary, resetEditor, saveSettings } from './code-editor-format'
+
+function useEntryLookup(entries: SettingEntry[]): Map<string, SettingEntry> {
+  return useMemo(() => {
+    const map = new Map<string, SettingEntry>()
+    for (const e of entries) {
+      map.set(`${e.definition.namespace}/${e.definition.key}`, e)
+    }
+    return map
+  }, [entries])
+}
 
 export interface CodeEditorPanelProps {
   entries: SettingEntry[]
@@ -35,28 +38,202 @@ const FORMAT_OPTIONS = [
   { value: 'yaml' as const, label: 'YAML' },
 ]
 
-export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: CodeEditorPanelProps) {
-  const [format, setFormat] = useState<CodeFormat>('json')
-  const [text, setText] = useState('')
-  const [parseError, setParseError] = useState<string | null>(null)
-  const [dirty, setDirty] = useState(false)
+interface EditorExtensions {
+  editedExtensions: Extension[]
+  handleEditedViewReady: (view: EditorView) => void
+}
 
-  const entryLookup = useMemo(() => {
-    const map = new Map<string, SettingEntry>()
-    for (const e of entries) {
-      map.set(`${e.definition.namespace}/${e.definition.key}`, e)
-    }
-    return map
-  }, [entries])
+function useSettingsEditorExtensions(
+  format: CodeFormat,
+  entries: SettingEntry[],
+  splitView: boolean,
+  serverText: string,
+  text: string,
+): EditorExtensions {
+  // Stable refs so extension closures always see current values.
+  const formatRef = useRef(format)
+  formatRef.current = format
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
 
-  const updateDirty = useCallback((next: boolean) => {
-    setDirty(next)
-    onDirtyChange?.(next)
-  }, [onDirtyChange])
+  const diffGutter = useMemo(() => diffGutterExtension(), [])
+  const linterExt = useMemo(
+    () => settingsLinterExtension(() => formatRef.current, () => entriesRef.current),
+    [],
+  )
+  const autocompleteExt = useMemo(
+    () => settingsAutocompleteExtension(() => formatRef.current, () => entriesRef.current),
+    [],
+  )
+  const editedExtensions = useMemo(
+    () => (splitView ? [diffGutter, linterExt, autocompleteExt] : [linterExt, autocompleteExt]),
+    [splitView, diffGutter, linterExt, autocompleteExt],
+  )
 
-  // Sync from entries during render (not useEffect) to avoid a flash of stale
-  // content. Only syncs when user hasn't made edits (dirty=false).
-  const prevEntriesRef = useRef<typeof entries | undefined>(undefined)
+  const editedViewRef = useRef<EditorView | null>(null)
+  const handleEditedViewReady = useCallback((view: EditorView) => {
+    editedViewRef.current = view
+  }, [])
+
+  useEffect(() => {
+    const view = editedViewRef.current
+    if (!view || !splitView) return
+    dispatchDiff(view, serverText, text)
+  }, [splitView, serverText, text])
+
+  return { editedExtensions, handleEditedViewReady }
+}
+
+interface CodeEditorToolbarProps {
+  format: CodeFormat
+  onFormatChange: (format: CodeFormat) => void
+  saving: boolean
+  splitView: boolean
+  onToggleSplit: () => void
+  diffSummary: string | null
+}
+
+function CodeEditorToolbar({
+  format,
+  onFormatChange,
+  saving,
+  splitView,
+  onToggleSplit,
+  diffSummary,
+}: CodeEditorToolbarProps) {
+  return (
+    <div className="flex items-center gap-3">
+      <SegmentedControl<CodeFormat>
+        label="Editor format"
+        options={FORMAT_OPTIONS}
+        value={format}
+        onChange={onFormatChange}
+        disabled={saving}
+      />
+      <button
+        type="button"
+        onClick={onToggleSplit}
+        className={cn(
+          'rounded-md p-1.5 transition-colors',
+          splitView ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
+        )}
+        title={splitView ? 'Single pane' : 'Split pane (diff)'}
+        aria-label={splitView ? 'Single pane' : 'Split pane (diff)'}
+        aria-pressed={splitView}
+      >
+        {splitView ? <FileCode className="size-4" /> : <Columns2 className="size-4" />}
+      </button>
+      {diffSummary && <span className="text-xs text-text-muted">{diffSummary}</span>}
+    </div>
+  )
+}
+
+interface CodeEditorPanesProps {
+  splitView: boolean
+  serverText: string
+  text: string
+  format: CodeFormat
+  saving: boolean
+  editedExtensions: Extension[]
+  onChange: (value: string) => void
+  onViewReady: (view: EditorView) => void
+}
+
+function CodeEditorPanes({
+  splitView,
+  serverText,
+  text,
+  format,
+  saving,
+  editedExtensions,
+  onChange,
+  onViewReady,
+}: CodeEditorPanesProps) {
+  return (
+    <div className={cn('gap-grid-gap', splitView ? 'grid grid-cols-1 md:grid-cols-2' : 'grid grid-cols-1')}>
+      {splitView && (
+        <div className="space-y-1">
+          <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Current</span>
+          <LazyCodeMirrorEditor
+            value={serverText}
+            onChange={() => {}}
+            language={format}
+            readOnly
+            aria-label={`Current ${format.toUpperCase()} (read-only)`}
+          />
+        </div>
+      )}
+      <div className="space-y-1">
+        {splitView && (
+          <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Edited</span>
+        )}
+        <LazyCodeMirrorEditor
+          value={text}
+          onChange={onChange}
+          language={format}
+          readOnly={saving}
+          aria-label={`${format.toUpperCase()} editor`}
+          extensions={editedExtensions}
+          onViewReady={onViewReady}
+        />
+      </div>
+    </div>
+  )
+}
+
+interface CodeEditorFooterProps {
+  dirty: boolean
+  saving: boolean
+  format: CodeFormat
+  onSave: () => void
+  onReset: () => void
+}
+
+function CodeEditorFooter({ dirty, saving, format, onSave, onReset }: CodeEditorFooterProps) {
+  const busy = !dirty || saving
+  return (
+    <div className="flex items-center gap-3">
+      <Button onClick={onSave} disabled={busy}>
+        {saving ? 'Saving...' : `Save ${format.toUpperCase()}`}
+      </Button>
+      <Button variant="outline" onClick={onReset} disabled={busy}>
+        Reset
+      </Button>
+      {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
+    </div>
+  )
+}
+
+interface CodeEditorState {
+  format: CodeFormat
+  text: string
+  parseError: string | null
+  dirty: boolean
+  splitView: boolean
+  serverText: string
+  diffSummary: string | null
+  toggleSplit: () => void
+  handleFormatChange: (format: CodeFormat) => void
+  handleChange: (value: string) => void
+  handleSave: () => Promise<void>
+  handleReset: () => void
+}
+
+type Entries = CodeEditorPanelProps['entries']
+
+/**
+ * Sync editor text from server entries during render (not in an effect,
+ * to avoid a flash of stale content) but only while the user has no
+ * unsaved edits.
+ */
+function useSyncTextFromEntries(
+  entries: Entries,
+  format: CodeFormat,
+  dirty: boolean,
+  setText: (value: string) => void,
+  setParseError: (value: string | null) => void,
+): void {
+  const prevEntriesRef = useRef<Entries | undefined>(undefined)
   if (entries !== prevEntriesRef.current) {
     prevEntriesRef.current = entries
     if (!dirty) {
@@ -64,242 +241,146 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
       setParseError(null)
     }
   }
+}
 
-  const handleFormatChange = useCallback(
-    (newFormat: CodeFormat) => {
-      if (!dirty) {
-        setFormat(newFormat)
-        try {
-          setText(serializeEntries(entries, newFormat))
-        } catch (err) {
-          setParseError(err instanceof Error ? err.message : `Failed to serialize as ${newFormat.toUpperCase()}`)
-        }
-      } else {
-        // Try to convert existing text to new format
-        try {
-          const parsed = parseText(text, format)
-          setFormat(newFormat)
-          if (newFormat === 'json') {
-            setText(JSON.stringify(parsed, null, 2))
-          } else {
-            setText(YAML.dump(parsed, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false }))
-          }
-          setParseError(null)
-        } catch (err) {
-          setParseError(err instanceof Error ? err.message : `Cannot convert to ${newFormat.toUpperCase()}`)
-        }
-      }
-    },
-    [dirty, entries, format, text],
-  )
+interface CodeEditorView {
+  splitView: boolean
+  serverText: string
+  diffSummary: string | null
+  toggleSplit: () => void
+}
 
-  const handleChange = useCallback((value: string) => {
-    setText(value)
-    updateDirty(true)
-    setParseError(null)
-  }, [updateDirty])
-
-  const handleSave = useCallback(async () => {
-    let parsed: ParsedSettings
-    try {
-      parsed = parseText(text, format)
-    } catch (err) {
-      setParseError(err instanceof Error ? err.message : `Failed to parse ${format.toUpperCase()}`)
-      return
-    }
-
-    const original = entriesToObject(entries)
-    const removed = detectRemovedKeys(original, parsed)
-    if (removed.length > 0) {
-      setParseError(`Cannot remove settings via code editor. Use GUI to reset. Removed: ${removed.join(', ')}`)
-      return
-    }
-
-    const { changes, unknownKeys, envKeys } = buildChanges(parsed, original, entryLookup)
-    if (unknownKeys.length > 0) {
-      setParseError(`Unknown setting(s): ${unknownKeys.join(', ')}`)
-      return
-    }
-    if (envKeys.length > 0) {
-      setParseError(`Cannot edit env-sourced setting(s): ${envKeys.join(', ')}`)
-      return
-    }
-    if (changes.size === 0) { updateDirty(false); return }
-
-    const textBeforeSave = text
-    let failedKeys: Set<string>
-    try {
-      failedKeys = await onSave(changes)
-    } catch (err) {
-      setParseError(err instanceof Error ? err.message : 'Save failed unexpectedly')
-      return
-    }
-    if (failedKeys.size === 0) {
-      if (text === textBeforeSave) updateDirty(false)
-    } else {
-      setParseError(`${failedKeys.size} setting(s) failed to save.`)
-    }
-  }, [text, format, entries, entryLookup, onSave, updateDirty])
-
-  const handleReset = useCallback(() => {
-    try {
-      setText(serializeEntries(entries, format))
-    } catch (err) {
-      setParseError(err instanceof Error ? err.message : 'Failed to serialize settings')
-      return
-    }
-    updateDirty(false)
-    setParseError(null)
-  }, [entries, format, updateDirty])
-
+/** Split-view toggle plus the server text + dirty diff summary. */
+function useCodeEditorView(
+  entries: Entries,
+  format: CodeFormat,
+  dirty: boolean,
+  text: string,
+): CodeEditorView {
   const [splitView, setSplitView] = useState(false)
   const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
+  const diffSummary = useMemo(
+    () => (dirty ? computeDiffSummary(serverText, text) : null),
+    [dirty, serverText, text],
+  )
+  const toggleSplit = useCallback(() => setSplitView((v) => !v), [])
+  return { splitView, serverText, diffSummary, toggleSplit }
+}
 
-  // ── Editor extensions (diff gutter, linter, autocomplete) ──────
+function useCodeEditorState(props: CodeEditorPanelProps): CodeEditorState {
+  const { entries, onSave, onDirtyChange } = props
+  const [format, setFormat] = useState<CodeFormat>('json')
+  const [text, setText] = useState('')
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const textRef = useRef(text)
+  textRef.current = text
+  const entryLookup = useEntryLookup(entries)
 
-  // Stable refs so extension closures always see current values
-  const formatRef = useRef(format)
-  formatRef.current = format
-  const entriesRef = useRef(entries)
-  entriesRef.current = entries
+  const updateDirty = useCallback(
+    (next: boolean) => {
+      setDirty(next)
+      onDirtyChange?.(next)
+    },
+    [onDirtyChange],
+  )
 
-  // Diff gutter extension -- only active in split-view on the edited pane
-  const diffGutter = useMemo(() => diffGutterExtension(), [])
+  useSyncTextFromEntries(entries, format, dirty, setText, setParseError)
+  const { splitView, serverText, diffSummary, toggleSplit } = useCodeEditorView(
+    entries,
+    format,
+    dirty,
+    text,
+  )
 
-  // Linter extension -- debounced syntax + schema validation
-  const linterExt = useMemo(
+  const handleFormatChange = useCallback(
+    (newFormat: CodeFormat) =>
+      changeFormat({ newFormat, dirty, text, format, entries, setFormat, setText, setParseError }),
+    [dirty, text, format, entries],
+  )
+
+  const handleChange = useCallback(
+    (value: string) => {
+      setText(value)
+      updateDirty(true)
+      setParseError(null)
+    },
+    [updateDirty],
+  )
+
+  const handleSave = useCallback(
     () =>
-      settingsLinterExtension(
-        () => formatRef.current,
-        () => entriesRef.current,
-      ),
-    [],
+      saveSettings({
+        text,
+        format,
+        entries,
+        entryLookup,
+        onSave,
+        setParseError,
+        updateDirty,
+        getText: () => textRef.current,
+      }),
+    [text, format, entries, entryLookup, onSave, updateDirty],
   )
 
-  // Autocomplete extension -- namespace/key/enum-value suggestions
-  const autocompleteExt = useMemo(
-    () =>
-      settingsAutocompleteExtension(
-        () => formatRef.current,
-        () => entriesRef.current,
-      ),
-    [],
+  const handleReset = useCallback(
+    () => resetEditor({ entries, format, setText, setParseError, updateDirty }),
+    [entries, format, updateDirty],
   )
 
-  // Extensions array for the edited pane (stable when splitView toggles)
-  const editedExtensions = useMemo(
-    () => (splitView ? [diffGutter, linterExt, autocompleteExt] : [linterExt, autocompleteExt]),
-    [splitView, diffGutter, linterExt, autocompleteExt],
-  )
+  return {
+    format,
+    text,
+    parseError,
+    dirty,
+    splitView,
+    serverText,
+    diffSummary,
+    toggleSplit,
+    handleFormatChange,
+    handleChange,
+    handleSave,
+    handleReset,
+  }
+}
 
-  // Keep a ref to the edited pane's EditorView for dispatching diff updates
-  const editedViewRef = useRef<EditorView | null>(null)
-
-  const handleEditedViewReady = useCallback((view: EditorView) => {
-    editedViewRef.current = view
-  }, [])
-
-  // Update diff markers whenever the server text or edited text changes
-  useEffect(() => {
-    const view = editedViewRef.current
-    if (!view || !splitView) return
-    dispatchDiff(view, serverText, text)
-  }, [splitView, serverText, text])
-
-  // Compute diff summary
-  const diffSummary = useMemo(() => {
-    if (!dirty) return null
-    const serverLines = serverText.split('\n')
-    const editedLines = text.split('\n')
-    let changed = 0
-    let added = 0
-    let removed = 0
-    const maxLen = Math.max(serverLines.length, editedLines.length)
-    for (let i = 0; i < maxLen; i++) {
-      const s = serverLines[i]
-      const e = editedLines[i]
-      if (s === undefined) added++
-      else if (e === undefined) removed++
-      else if (s !== e) changed++
-    }
-    if (changed === 0 && added === 0 && removed === 0) return null
-    const parts: string[] = []
-    if (changed > 0) parts.push(`${changed} changed`)
-    if (added > 0) parts.push(`${added} added`)
-    if (removed > 0) parts.push(`${removed} removed`)
-    return parts.join(', ')
-  }, [dirty, serverText, text])
+export function CodeEditorPanel(props: CodeEditorPanelProps) {
+  const { entries, saving } = props
+  const s = useCodeEditorState(props)
+  const ext = useSettingsEditorExtensions(s.format, entries, s.splitView, s.serverText, s.text)
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <SegmentedControl<CodeFormat>
-          label="Editor format"
-          options={FORMAT_OPTIONS}
-          value={format}
-          onChange={handleFormatChange}
-          disabled={saving}
-        />
-        <button
-          type="button"
-          onClick={() => setSplitView((v) => !v)}
-          className={cn(
-            'rounded-md p-1.5 transition-colors',
-            splitView ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
-          )}
-          title={splitView ? 'Single pane' : 'Split pane (diff)'}
-          aria-label={splitView ? 'Single pane' : 'Split pane (diff)'}
-          aria-pressed={splitView}
-        >
-          {splitView ? <FileCode className="size-4" /> : <Columns2 className="size-4" />}
-        </button>
-        {diffSummary && (
-          <span className="text-xs text-text-muted">{diffSummary}</span>
-        )}
-      </div>
-
-      <div className={cn('gap-grid-gap', splitView ? 'grid grid-cols-1 md:grid-cols-2' : 'grid grid-cols-1')}>
-        {splitView && (
-          <div className="space-y-1">
-            <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Current</span>
-            <LazyCodeMirrorEditor
-              value={serverText}
-              onChange={() => {}}
-              language={format}
-              readOnly
-              aria-label={`Current ${format.toUpperCase()} (read-only)`}
-            />
-          </div>
-        )}
-        <div className="space-y-1">
-          {splitView && (
-            <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Edited</span>
-          )}
-          <LazyCodeMirrorEditor
-            value={text}
-            onChange={handleChange}
-            language={format}
-            readOnly={saving}
-            aria-label={`${format.toUpperCase()} editor`}
-            extensions={editedExtensions}
-            onViewReady={handleEditedViewReady}
-          />
-        </div>
-      </div>
-
-      {parseError && (
-        <p className="text-xs text-danger" role="alert">{parseError}</p>
+      <CodeEditorToolbar
+        format={s.format}
+        onFormatChange={s.handleFormatChange}
+        saving={saving}
+        splitView={s.splitView}
+        onToggleSplit={s.toggleSplit}
+        diffSummary={s.diffSummary}
+      />
+      <CodeEditorPanes
+        splitView={s.splitView}
+        serverText={s.serverText}
+        text={s.text}
+        format={s.format}
+        saving={saving}
+        editedExtensions={ext.editedExtensions}
+        onChange={s.handleChange}
+        onViewReady={ext.handleEditedViewReady}
+      />
+      {s.parseError && (
+        <p className="text-xs text-danger" role="alert">
+          {s.parseError}
+        </p>
       )}
-
-      <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={!dirty || saving}>
-          {saving ? 'Saving...' : `Save ${format.toUpperCase()}`}
-        </Button>
-        <Button variant="outline" onClick={handleReset} disabled={!dirty || saving}>
-          Reset
-        </Button>
-        {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
-      </div>
+      <CodeEditorFooter
+        dirty={s.dirty}
+        saving={saving}
+        format={s.format}
+        onSave={s.handleSave}
+        onReset={s.handleReset}
+      />
     </div>
   )
 }

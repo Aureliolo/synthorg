@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'motion/react'
-import { ClipboardCheck } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/ui/metric-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -10,481 +7,35 @@ import { InputField } from '@/components/ui/input-field'
 import { ListHeader } from '@/components/ui/list-header'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { useApprovalsData } from '@/hooks/useApprovalsData'
-import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
-import { useToastStore } from '@/stores/toast'
-import {
-  filterApprovals,
-  groupByRiskLevel,
-  type ApprovalPageFilters,
-} from '@/utils/approvals'
-import { formatBatchErrors } from '@/utils/errors'
 import { formatNumber } from '@/utils/format'
-
+import type { ApprovalRiskLevel } from '@/api/types/enums'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
-import { REJECTION_REASON_REQUIRED } from './approvals/errors'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
-import type { ApprovalRiskLevel } from '@/api/types/enums'
+import {
+  type ApprovalsPageController,
+  useApprovalsPageController,
+} from './approvals/useApprovalsPage'
 
-const VALID_STATUSES: ReadonlySet<string> = new Set(['pending', 'approved', 'rejected', 'expired'])
-const VALID_RISK_LEVELS: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])
-
-export default function ApprovalsPage() {
-  const {
-    approvals,
-    selectedApproval,
-    loading,
-    loadingDetail,
-    error,
-    wsConnected,
-    wsSetupError,
-    fetchApproval,
-    approveOne,
-    rejectOne,
-    optimisticApprove,
-    selectedIds,
-    toggleSelection,
-    selectAllInGroup,
-    deselectAllInGroup,
-    clearSelection,
-    batchApprove,
-    batchReject,
-    detailError,
-    isRefetching,
-  } = useApprovalsData()
-
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [batchApproveOpen, setBatchApproveOpen] = useState(false)
-  const [batchRejectOpen, setBatchRejectOpen] = useState(false)
-  const [batchComment, setBatchComment] = useState('')
-  const [batchReason, setBatchReason] = useState('')
-  const [batchLoading, setBatchLoading] = useState(false)
-  // Track whether WS was ever connected to avoid flash on initial
-  // load. A ref + effect avoids the setState-in-render anti-pattern
-  // that would otherwise trigger a redundant render and a Strict-Mode
-  // warning in dev.
-  const wasConnectedRef = useRef(false)
-  useEffect(() => {
-    if (wsConnected) wasConnectedRef.current = true
-  }, [wsConnected])
-
-  // URL-synced filters
-  const filters: ApprovalPageFilters = useMemo(() => {
-    const rawStatus = searchParams.get('status')
-    const rawRisk = searchParams.get('risk')
-    return {
-      status: rawStatus && VALID_STATUSES.has(rawStatus) ? rawStatus as ApprovalPageFilters['status'] : undefined,
-      riskLevel: rawRisk && VALID_RISK_LEVELS.has(rawRisk) ? rawRisk as ApprovalPageFilters['riskLevel'] : undefined,
-      actionType: searchParams.get('type') ?? undefined,
-      search: searchParams.get('search') ?? undefined,
-    }
-  }, [searchParams])
-
-  const selectedId = searchParams.get('selected')
-
-  const handleFiltersChange = useCallback((newFilters: ApprovalPageFilters) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      // Replace filter params while preserving the 'selected' param for drawer state
-      const sel = next.get('selected')
-      // Clear old filter params
-      next.delete('status')
-      next.delete('risk')
-      next.delete('type')
-      next.delete('search')
-      // Set new ones
-      if (newFilters.status) next.set('status', newFilters.status)
-      if (newFilters.riskLevel) next.set('risk', newFilters.riskLevel)
-      if (newFilters.actionType) next.set('type', newFilters.actionType)
-      if (newFilters.search) next.set('search', newFilters.search)
-      if (sel) next.set('selected', sel)
-      return next
-    })
-  }, [setSearchParams])
-
-  const handleSelectApproval = useCallback((approvalId: string) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.set('selected', approvalId)
-      return next
-    })
-  }, [setSearchParams])
-
-  const handleCloseDrawer = useCallback(() => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.delete('selected')
-      return next
-    })
-  }, [setSearchParams])
-
-  // Fetch approval detail when URL selected param changes
-  useEffect(() => {
-    if (selectedId) {
-      void fetchApproval(selectedId)
-    }
-  }, [fetchApproval, selectedId])
-
-  // Single item approve -- optimistic update with rollback on failure
-  const handleApproveOne = useCallback(async (id: string) => {
-    const rollback = optimisticApprove(id)
-    const result = await approveOne(id)
-    if (!result) rollback()
-  }, [approveOne, optimisticApprove])
-
-  // Single item reject -- opens drawer for the user to provide a reason
-  const handleRejectOne = useCallback(async (id: string) => {
-    // For single reject, open the drawer so user can enter reason
-    handleSelectApproval(id)
-  }, [handleSelectApproval])
-
-  // Close batch dialogs when selection is emptied (e.g., by WS updates or optimistic transitions)
-  const prevSelectionSizeRef = useRef(selectedIds.size)
-  if (selectedIds.size === 0 && prevSelectionSizeRef.current > 0) {
-    setBatchApproveOpen(false)
-    setBatchRejectOpen(false)
-    setBatchComment('')
-    setBatchReason('')
-  }
-  prevSelectionSizeRef.current = selectedIds.size
-
-  // Batch actions
-  //
-  // The store owns error UX per ``web/CLAUDE.md`` "Zustand Store Error
-  // Handling": ``batchApprove`` / ``batchReject`` use ``allSettled``
-  // internally and always resolve to a structured ``{ succeeded,
-  // failed, failedReasons }`` result.  Per-item failures land in the
-  // result; the page just renders the right toast variant from the
-  // counts.  No try/catch wraps the store call (audit 38 + 58).
-  const handleBatchApprove = useCallback(async () => {
-    setBatchLoading(true)
-    const ids = Array.from(selectedIds)
-    const result = await batchApprove(ids, batchComment.trim() || undefined)
-    setBatchLoading(false)
-    setBatchApproveOpen(false)
-    setBatchComment('')
-    if (result.failed === 0) {
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Approved ${result.succeeded} items`,
-      })
-    } else {
-      useToastStore.getState().add({
-        variant: 'warning',
-        title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
-        description:
-          result.failedReasons.length > 0 ? formatBatchErrors(result.failedReasons) : undefined,
-      })
-    }
-  }, [selectedIds, batchApprove, batchComment])
-
-  const handleBatchReject = useCallback(async () => {
-    if (!batchReason.trim()) {
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Rejection reason required',
-        description: REJECTION_REASON_REQUIRED,
-      })
-      return
-    }
-    setBatchLoading(true)
-    const ids = Array.from(selectedIds)
-    const result = await batchReject(ids, batchReason.trim())
-    setBatchLoading(false)
-    setBatchRejectOpen(false)
-    setBatchReason('')
-    if (result.failed === 0) {
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Rejected ${result.succeeded} items`,
-      })
-    } else {
-      useToastStore.getState().add({
-        variant: 'warning',
-        title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
-        description:
-          result.failedReasons.length > 0 ? formatBatchErrors(result.failedReasons) : undefined,
-      })
-    }
-  }, [selectedIds, batchReject, batchReason])
-
-  // Derived data
-  const filtered = useMemo(() => filterApprovals(approvals, filters), [approvals, filters])
-  const grouped = useMemo(() => groupByRiskLevel(filtered), [filtered])
-  const pendingCount = useMemo(() => approvals.filter((a) => a.status === 'pending').length, [approvals])
-
-  const actionTypes = useMemo(
-    () => [...new Set(approvals.map((a) => a.action_type))].sort(),
-    [approvals],
-  )
-
-  // Metric cards for pending counts by risk level
-  const riskCounts = useMemo(() => {
-    const counts: Record<ApprovalRiskLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 }
-    for (const a of approvals) {
-      if (a.status === 'pending') counts[a.risk_level]++
-    }
-    return counts
-  }, [approvals])
-
-  const hasFilters = !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
-
-  // Hook must run before any early return (rules-of-hooks); loading
-  // state below short-circuits before the empty-state branch ever
-  // matters. ``filtered.length`` is the post-filter item count;
-  // ``grouped.size`` is the risk-bucket count (max 4) which works
-  // for the > 0 check today but is semantically wrong and would
-  // misreport when downstream code reads the count.
-  const emptyStateProps = useEmptyStateProps({
-    filteredCount: filtered.length,
-    totalCount: approvals.length,
-    filterActive: hasFilters,
-    icon: ClipboardCheck,
-    empty: {
-      title: 'No approvals',
-      description: "When agents request approval for actions, they'll appear here.",
-    },
-    filtered: {
-      title: 'No matching approvals',
-      description: 'Try adjusting your filters.',
-      action: { label: 'Clear filters', onClick: () => handleFiltersChange({}) },
-    },
-  })
-
-  // Loading state
-  if (loading && approvals.length === 0) {
-    return <ApprovalsSkeleton />
-  }
-
-  return (
-    <div className="space-y-section-gap">
-      <ListHeader
-        title="Approvals"
-        count={filtered.length}
-        countLabel={
-          filtered.length === approvals.length
-            ? undefined
-            : `${formatNumber(filtered.length)} of ${formatNumber(approvals.length)}`
-        }
-        refreshing={isRefetching}
-      />
-
-      {error && (
-        <ErrorBanner severity="error" title="Could not load approvals" description={error} />
-      )}
-
-      {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
-
-      <ApprovalFilterBar
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        pendingCount={pendingCount}
-        totalCount={approvals.length}
-        actionTypes={actionTypes}
-      />
-
-      {/* Pending counts by risk level. Each card is a toggle for the
-          matching risk_level filter so operators can shortcut the
-          filter bar from the metric they're focused on. */}
-      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
-        <StaggerItem>
-          <RiskFilterMetricCard
-            label="Critical"
-            value={riskCounts.critical}
-            riskLevel="critical"
-            activeFilter={filters.riskLevel}
-            onToggle={(level) =>
-              handleFiltersChange({
-                ...filters,
-                riskLevel: filters.riskLevel === level ? undefined : level,
-              })
-            }
-            className="border-l-2 border-l-danger"
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <RiskFilterMetricCard
-            label="High"
-            value={riskCounts.high}
-            riskLevel="high"
-            activeFilter={filters.riskLevel}
-            onToggle={(level) =>
-              handleFiltersChange({
-                ...filters,
-                riskLevel: filters.riskLevel === level ? undefined : level,
-              })
-            }
-            className="border-l-2 border-l-warning"
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <RiskFilterMetricCard
-            label="Medium"
-            value={riskCounts.medium}
-            riskLevel="medium"
-            activeFilter={filters.riskLevel}
-            onToggle={(level) =>
-              handleFiltersChange({
-                ...filters,
-                riskLevel: filters.riskLevel === level ? undefined : level,
-              })
-            }
-            className="border-l-2 border-l-accent"
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <RiskFilterMetricCard
-            label="Low"
-            value={riskCounts.low}
-            riskLevel="low"
-            activeFilter={filters.riskLevel}
-            onToggle={(level) =>
-              handleFiltersChange({
-                ...filters,
-                riskLevel: filters.riskLevel === level ? undefined : level,
-              })
-            }
-            className="border-l-2 border-l-accent-dim"
-          />
-        </StaggerItem>
-      </StaggerGroup>
-
-      {/* Risk-grouped sections */}
-      {emptyStateProps && <EmptyState {...emptyStateProps} />}
-
-      {[...grouped.entries()].map(([riskLevel, items]) => (
-        <ApprovalRiskGroupSection
-          key={riskLevel}
-          riskLevel={riskLevel}
-          items={items}
-          selectedIds={selectedIds}
-          onSelectAll={selectAllInGroup}
-          onDeselectAll={deselectAllInGroup}
-          onToggleSelect={toggleSelection}
-          onSelect={handleSelectApproval}
-          onApprove={(id) => { void handleApproveOne(id) }}
-          onReject={(id) => { void handleRejectOne(id) }}
-        />
-      ))}
-
-      {/* Detail drawer */}
-      <AnimatePresence>
-        {!!selectedId && (
-          <ApprovalDetailDrawer
-            approval={selectedApproval}
-            open={!!selectedId}
-            onClose={handleCloseDrawer}
-            onApprove={async (id, data) => {
-              const result = await approveOne(id, data)
-              if (result) handleCloseDrawer()
-              return result !== null
-            }}
-            onReject={async (id, data) => {
-              const result = await rejectOne(id, data)
-              if (result) handleCloseDrawer()
-              return result !== null
-            }}
-            loading={loadingDetail}
-            error={detailError}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Batch action bar */}
-      <AnimatePresence>
-        {selectedIds.size > 0 && (
-          <BatchActionBar
-            selectedCount={selectedIds.size}
-            onApproveAll={() => setBatchApproveOpen(true)}
-            onRejectAll={() => setBatchRejectOpen(true)}
-            onClearSelection={clearSelection}
-            loading={batchLoading}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Batch approve dialog */}
-      <ConfirmDialog
-        open={batchApproveOpen}
-        onOpenChange={(o) => { setBatchApproveOpen(o); if (!o) setBatchComment('') }}
-        title={`Approve ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
-        description="This will approve every selected pending item. Agents will resume work using the approved parameters."
-        confirmLabel={`Approve ${formatNumber(selectedIds.size)}`}
-        onConfirm={handleBatchApprove}
-        loading={batchLoading}
-      >
-        <InputField
-          multiline
-          label="Optional comment"
-          value={batchComment}
-          onValueChange={setBatchComment}
-          placeholder="Add context that applies to every approved item..."
-          rows={3}
-          maxLength={2000}
-          className="mt-2"
-        />
-      </ConfirmDialog>
-
-      {/* Batch reject dialog */}
-      <ConfirmDialog
-        open={batchRejectOpen}
-        onOpenChange={(o) => { setBatchRejectOpen(o); if (!o) setBatchReason('') }}
-        title={`Reject ${formatNumber(selectedIds.size)} approval${selectedIds.size === 1 ? '' : 's'}?`}
-        description="This will reject every selected pending item. The requester will see the reason below. This action cannot be undone."
-        confirmLabel={`Reject ${formatNumber(selectedIds.size)}`}
-        variant="destructive"
-        onConfirm={handleBatchReject}
-        loading={batchLoading}
-      >
-        <InputField
-          multiline
-          label="Reason for rejection"
-          value={batchReason}
-          onValueChange={setBatchReason}
-          placeholder="Give the requester enough context to iterate."
-          rows={3}
-          maxLength={2000}
-          required
-          autoFocus
-          className="mt-2"
-        />
-      </ConfirmDialog>
-    </div>
-  )
-}
+const RISK_CARDS: { label: string; riskLevel: ApprovalRiskLevel; className: string }[] = [
+  { label: 'Critical', riskLevel: 'critical', className: 'border-l-2 border-l-danger' },
+  { label: 'High', riskLevel: 'high', className: 'border-l-2 border-l-warning' },
+  { label: 'Medium', riskLevel: 'medium', className: 'border-l-2 border-l-accent' },
+  { label: 'Low', riskLevel: 'low', className: 'border-l-2 border-l-accent-dim' },
+]
 
 interface RiskFilterMetricCardProps {
   label: string
   value: number
   riskLevel: ApprovalRiskLevel
-  activeFilter: ApprovalRiskLevel | undefined
+  active: boolean
   onToggle: (level: ApprovalRiskLevel) => void
   className?: string
 }
 
-/**
- * Wraps a MetricCard in a button so clicking the metric toggles the
- * matching risk_level filter. ``aria-pressed`` exposes the toggle
- * state to assistive tech.
- */
-function RiskFilterMetricCard({
-  label,
-  value,
-  riskLevel,
-  activeFilter,
-  onToggle,
-  className,
-}: RiskFilterMetricCardProps) {
-  const active = activeFilter === riskLevel
+function RiskFilterMetricCard({ label, value, riskLevel, active, onToggle, className }: RiskFilterMetricCardProps) {
   return (
     <button
       type="button"
@@ -499,5 +50,235 @@ function RiskFilterMetricCard({
     >
       <MetricCard label={label} value={value} className={className} />
     </button>
+  )
+}
+
+function RiskMetricCards({
+  riskCounts,
+  activeFilter,
+  onToggle,
+}: {
+  riskCounts: Record<ApprovalRiskLevel, number>
+  activeFilter: ApprovalRiskLevel | undefined
+  onToggle: (level: ApprovalRiskLevel) => void
+}) {
+  return (
+    <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+      {RISK_CARDS.map((card) => (
+        <StaggerItem key={card.riskLevel}>
+          <RiskFilterMetricCard
+            label={card.label}
+            value={riskCounts[card.riskLevel]}
+            riskLevel={card.riskLevel}
+            active={activeFilter === card.riskLevel}
+            onToggle={onToggle}
+            className={card.className}
+          />
+        </StaggerItem>
+      ))}
+    </StaggerGroup>
+  )
+}
+
+function ApprovalsBanners({
+  error,
+  wsSetupError,
+  wsConnected,
+  wasConnected,
+  loading,
+}: {
+  error: string | null
+  wsSetupError: string | null
+  wsConnected: boolean
+  wasConnected: boolean
+  loading: boolean
+}) {
+  const wsOffline = Boolean((wsSetupError || (wasConnected && !wsConnected)) && !loading)
+  return (
+    <>
+      {error && <ErrorBanner severity="error" title="Could not load approvals" description={error} />}
+      {wsOffline && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
+      )}
+    </>
+  )
+}
+
+function ApprovalGroups({ ctrl }: { ctrl: ApprovalsPageController }) {
+  const { data, url } = ctrl
+  return (
+    <>
+      {[...ctrl.derived.grouped.entries()].map(([riskLevel, items]) => (
+        <ApprovalRiskGroupSection
+          key={riskLevel}
+          riskLevel={riskLevel}
+          items={items}
+          selectedIds={data.selectedIds}
+          onSelectAll={data.selectAllInGroup}
+          onDeselectAll={data.deselectAllInGroup}
+          onToggleSelect={data.toggleSelection}
+          onSelect={url.handleSelectApproval}
+          onApprove={(id) => void ctrl.handleApproveOne(id)}
+          onReject={(id) => ctrl.handleRejectOne(id)}
+        />
+      ))}
+    </>
+  )
+}
+
+function ApprovalDrawerHost({ ctrl }: { ctrl: ApprovalsPageController }) {
+  const { data, url } = ctrl
+  return (
+    <AnimatePresence>
+      {!!url.selectedId && (
+        <ApprovalDetailDrawer
+          approval={data.selectedApproval}
+          open={!!url.selectedId}
+          onClose={url.handleCloseDrawer}
+          onApprove={async (id, payload) => {
+            const result = await data.approveOne(id, payload)
+            if (result) url.handleCloseDrawer()
+            return result !== null
+          }}
+          onReject={async (id, payload) => {
+            const result = await data.rejectOne(id, payload)
+            if (result) url.handleCloseDrawer()
+            return result !== null
+          }}
+          loading={data.loadingDetail}
+          error={data.detailError}
+        />
+      )}
+    </AnimatePresence>
+  )
+}
+
+function ApprovalBatchSection({ ctrl }: { ctrl: ApprovalsPageController }) {
+  const { batch, data } = ctrl
+  const count = data.selectedIds.size
+  const plural = count === 1 ? '' : 's'
+  return (
+    <>
+      <AnimatePresence>
+        {count > 0 && (
+          <BatchActionBar
+            selectedCount={count}
+            onApproveAll={() => batch.setBatchApproveOpen(true)}
+            onRejectAll={() => batch.setBatchRejectOpen(true)}
+            onClearSelection={data.clearSelection}
+            loading={batch.batchLoading}
+          />
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={batch.batchApproveOpen}
+        onOpenChange={(o) => {
+          batch.setBatchApproveOpen(o)
+          if (!o) batch.setBatchComment('')
+        }}
+        title={`Approve ${formatNumber(count)} approval${plural}?`}
+        description="This will approve every selected pending item. Agents will resume work using the approved parameters."
+        confirmLabel={`Approve ${formatNumber(count)}`}
+        onConfirm={batch.handleBatchApprove}
+        loading={batch.batchLoading}
+      >
+        <InputField
+          multiline
+          label="Optional comment"
+          value={batch.batchComment}
+          onValueChange={batch.setBatchComment}
+          placeholder="Add context that applies to every approved item..."
+          rows={3}
+          maxLength={2000}
+          className="mt-2"
+        />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={batch.batchRejectOpen}
+        onOpenChange={(o) => {
+          batch.setBatchRejectOpen(o)
+          if (!o) batch.setBatchReason('')
+        }}
+        title={`Reject ${formatNumber(count)} approval${plural}?`}
+        description="This will reject every selected pending item. The requester will see the reason below. This action cannot be undone."
+        confirmLabel={`Reject ${formatNumber(count)}`}
+        variant="destructive"
+        onConfirm={batch.handleBatchReject}
+        loading={batch.batchLoading}
+      >
+        <InputField
+          multiline
+          label="Reason for rejection"
+          value={batch.batchReason}
+          onValueChange={batch.setBatchReason}
+          placeholder="Give the requester enough context to iterate."
+          rows={3}
+          maxLength={2000}
+          required
+          autoFocus
+          className="mt-2"
+        />
+      </ConfirmDialog>
+    </>
+  )
+}
+
+export default function ApprovalsPage() {
+  const ctrl = useApprovalsPageController()
+  const { data, url, derived } = ctrl
+
+  if (data.loading && data.approvals.length === 0) {
+    return <ApprovalsSkeleton />
+  }
+
+  const total = data.approvals.length
+
+  return (
+    <div className="space-y-section-gap">
+      <ListHeader
+        title="Approvals"
+        count={derived.filtered.length}
+        countLabel={
+          derived.filtered.length === total
+            ? undefined
+            : `${formatNumber(derived.filtered.length)} of ${formatNumber(total)}`
+        }
+        refreshing={data.isRefetching}
+      />
+
+      <ApprovalsBanners
+        error={data.error}
+        wsSetupError={data.wsSetupError}
+        wsConnected={data.wsConnected}
+        wasConnected={ctrl.wasConnectedRef.current}
+        loading={data.loading}
+      />
+
+      <ApprovalFilterBar
+        filters={url.filters}
+        onFiltersChange={url.handleFiltersChange}
+        pendingCount={derived.pendingCount}
+        totalCount={total}
+        actionTypes={derived.actionTypes}
+      />
+
+      <RiskMetricCards
+        riskCounts={derived.riskCounts}
+        activeFilter={url.filters.riskLevel}
+        onToggle={ctrl.handleRiskToggle}
+      />
+
+      {ctrl.emptyStateProps && <EmptyState {...ctrl.emptyStateProps} />}
+
+      <ApprovalGroups ctrl={ctrl} />
+      <ApprovalDrawerHost ctrl={ctrl} />
+      <ApprovalBatchSection ctrl={ctrl} />
+    </div>
   )
 }

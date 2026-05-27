@@ -16,15 +16,34 @@ export interface TeamEditDialogProps {
   disabled?: boolean
 }
 
-export function TeamEditDialog({
-  open,
-  onOpenChange,
-  mode,
-  team,
-  onCreateTeam,
-  onUpdateTeam,
-  disabled,
-}: TeamEditDialogProps) {
+/** Validate the team form; returns an error message or null. */
+function validateTeamForm(name: string, lead: string, members: readonly string[]): string | null {
+  if (!name.trim()) return 'Team name is required'
+  if (!lead.trim()) return 'Team lead is required'
+  // Ignore empty / whitespace-only tags so they do not register as
+  // duplicates of one another and trigger a false-positive error.
+  const lowerMembers = members.map((m) => m.trim().toLowerCase()).filter(Boolean)
+  if (new Set(lowerMembers).size !== lowerMembers.length) {
+    return 'Duplicate member names are not allowed'
+  }
+  return null
+}
+
+interface TeamEditForm {
+  name: string
+  setName: (value: string) => void
+  lead: string
+  setLead: (value: string) => void
+  members: readonly string[]
+  setMembers: (value: readonly string[]) => void
+  submitError: string | null
+  busy: boolean
+  saving: boolean
+  handleSubmit: () => Promise<void>
+}
+
+function useTeamEditForm(props: TeamEditDialogProps): TeamEditForm {
+  const { open, mode, team, onCreateTeam, onUpdateTeam, onOpenChange, disabled } = props
   const [name, setName] = useState('')
   const [lead, setLead] = useState('')
   const [members, setMembers] = useState<readonly string[]>([])
@@ -50,55 +69,82 @@ export function TeamEditDialog({
 
   const handleSubmit = useCallback(async () => {
     setSubmitError(null)
-
-    const trimmedName = name.trim()
-    const trimmedLead = lead.trim()
-    if (!trimmedName) {
-      setSubmitError('Team name is required')
+    const error = validateTeamForm(name, lead, members)
+    if (error) {
+      setSubmitError(error)
       return
     }
-    if (!trimmedLead) {
-      setSubmitError('Team lead is required')
-      return
+    const payload = {
+      name: name.trim(),
+      lead: lead.trim(),
+      members: members.map((m) => m.trim()).filter(Boolean),
     }
-
-    // Check duplicate members (case-insensitive).
-    const lowerMembers = members.map((m) => m.trim().toLowerCase())
-    if (new Set(lowerMembers).size !== lowerMembers.length) {
-      setSubmitError('Duplicate member names are not allowed')
-      return
-    }
-
-    const trimmedMembers = members.map((m) => m.trim()).filter(Boolean)
-
     setSaving(true)
     try {
       let result: unknown
       if (mode === 'create') {
-        result = await onCreateTeam({
-          name: trimmedName,
-          lead: trimmedLead,
-          members: trimmedMembers,
-        })
+        result = await onCreateTeam(payload)
       } else if (team) {
-        result = await onUpdateTeam(team.name, {
-          name: trimmedName,
-          lead: trimmedLead,
-          members: trimmedMembers,
-        })
+        result = await onUpdateTeam(team.name, payload)
       }
-      // Store owns the toast UX; keep the dialog open on failure so
-      // the user can see what they typed.
+      // Store owns the toast UX; keep the dialog open on failure so the
+      // user can see what they typed.
       if (result === null) return
       onOpenChange(false)
     } finally {
-      // ``finally`` (not the happy path only) so an unexpected reject
-      // from the store never leaves the dialog locked.
       setSaving(false)
     }
   }, [name, lead, members, mode, team, onCreateTeam, onUpdateTeam, onOpenChange])
 
-  const busy = saving || disabled
+  return {
+    name,
+    setName,
+    lead,
+    setLead,
+    members,
+    setMembers,
+    submitError,
+    busy: saving || Boolean(disabled),
+    saving,
+    handleSubmit,
+  }
+}
+
+function TeamEditFields({ form }: { form: TeamEditForm }) {
+  return (
+    <div className="mt-4 space-y-4">
+      <InputField
+        label="Team Name"
+        value={form.name}
+        onChange={(e) => form.setName(e.target.value)}
+        disabled={form.busy}
+      />
+      <InputField
+        label="Team Lead"
+        value={form.lead}
+        onChange={(e) => form.setLead(e.target.value)}
+        hint="Agent name of the team lead"
+        disabled={form.busy}
+      />
+      <div>
+        <label className="mb-1.5 block text-xs font-medium text-text-secondary">Members</label>
+        <TagInput
+          value={[...form.members]}
+          onChange={(vals) => form.setMembers(vals)}
+          placeholder="Add member name..."
+          disabled={form.busy}
+        />
+        <p className="mt-1 text-xs text-text-muted">Press Enter to add a member</p>
+      </div>
+
+      {form.submitError && <p className="text-xs text-danger">{form.submitError}</p>}
+    </div>
+  )
+}
+
+export function TeamEditDialog(props: TeamEditDialogProps) {
+  const { open, onOpenChange, mode } = props
+  const form = useTeamEditForm(props)
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -114,46 +160,16 @@ export function TeamEditDialog({
               : 'Edit the team name, lead, and members.'}
           </Dialog.Description>
 
-          <div className="mt-4 space-y-4">
-            <InputField
-              label="Team Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={busy}
-            />
-            <InputField
-              label="Team Lead"
-              value={lead}
-              onChange={(e) => setLead(e.target.value)}
-              hint="Agent name of the team lead"
-              disabled={busy}
-            />
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                Members
-              </label>
-              <TagInput
-                value={[...members]}
-                onChange={(vals) => setMembers(vals)}
-                placeholder="Add member name..."
-                disabled={busy}
-              />
-              <p className="mt-1 text-xs text-text-muted">
-                Press Enter to add a member
-              </p>
-            </div>
-
-            {submitError && (
-              <p className="text-xs text-danger">{submitError}</p>
-            )}
-          </div>
+          <TeamEditFields form={form} />
 
           <div className="mt-6 flex justify-end gap-3">
             <Dialog.Close>
-              <Button variant="outline" disabled={saving}>Cancel</Button>
+              <Button variant="outline" disabled={form.saving}>
+                Cancel
+              </Button>
             </Dialog.Close>
-            <Button onClick={handleSubmit} disabled={busy}>
-              {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+            <Button onClick={form.handleSubmit} disabled={form.busy}>
+              {form.saving && <Loader2 className="mr-2 size-4 animate-spin" />}
               {mode === 'create' ? 'Create' : 'Save'}
             </Button>
           </div>

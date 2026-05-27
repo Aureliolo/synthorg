@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Filter, Plus } from 'lucide-react'
-import type { Connection } from '@/api/types/integrations'
+import type { Connection, HealthReport } from '@/api/types/integrations'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -19,10 +19,85 @@ import { ConnectionFormModal } from './connections/ConnectionFormModal'
 import { ConnectionGridView } from './connections/ConnectionGridView'
 import { ConnectionsSkeleton } from './connections/ConnectionsSkeleton'
 
-type ModalState =
-  | { kind: 'closed' }
-  | { kind: 'create' }
-  | { kind: 'edit'; connection: Connection }
+type ModalState = { kind: 'closed' } | { kind: 'create' } | { kind: 'edit'; connection: Connection }
+
+interface ConnectionsBodyProps {
+  loading: boolean
+  hasData: boolean
+  totalConnections: number
+  filteredCount: number
+  pagination: ReturnType<typeof useListPagination<Connection>>
+  healthMap: Record<string, HealthReport>
+  checkingHealth: readonly string[]
+  onClearFilters: () => void
+  onRunHealthCheck: (name: string) => void
+  onEdit: (connection: Connection) => void
+  onDelete: (connection: Connection) => void
+  onCreate: () => void
+}
+
+function ConnectionsBody(props: ConnectionsBodyProps) {
+  const { loading, hasData, totalConnections, filteredCount, pagination } = props
+  if (loading && !hasData) {
+    return <ConnectionsSkeleton />
+  }
+  if (totalConnections > 0 && filteredCount === 0) {
+    return (
+      <EmptyState
+        icon={Filter}
+        title="No matching connections"
+        description="Try a different search or clear your filters."
+        action={{ label: 'Clear filters', onClick: props.onClearFilters }}
+      />
+    )
+  }
+  return (
+    <ErrorBoundary level="section">
+      <ConnectionGridView
+        connections={pagination.paginatedItems}
+        healthMap={props.healthMap}
+        checkingHealth={props.checkingHealth}
+        onRunHealthCheck={props.onRunHealthCheck}
+        onEdit={props.onEdit}
+        onDelete={props.onDelete}
+        onCreate={props.onCreate}
+      />
+      <Pagination
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        total={pagination.totalItems}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+      />
+    </ErrorBoundary>
+  )
+}
+
+function ConnectionDeleteDialog({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: Connection | null
+  onCancel: () => void
+  onConfirm: (connection: Connection) => Promise<void>
+}) {
+  return (
+    <ConfirmDialog
+      open={target !== null}
+      title={`Delete ${target?.name ?? ''}?`}
+      description="This will permanently remove the connection and its stored credentials. This action cannot be undone."
+      confirmLabel="Delete"
+      variant="destructive"
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
+      onConfirm={async () => {
+        if (target) await onConfirm(target)
+      }}
+    />
+  )
+}
 
 export default function ConnectionsPage() {
   const { filteredConnections, connections, healthMap, loading, error, checkingHealth } =
@@ -42,27 +117,14 @@ export default function ConnectionsPage() {
   }
 
   const hasData = connections.length > 0 || filteredConnections.length > 0
-
-  // URL-persisted pagination over the client-filtered list.
-  const {
-    page,
-    pageSize,
-    totalItems,
-    paginatedItems: pagedConnections,
-    setPage,
-    setPageSize,
-  } = useListPagination({ items: filteredConnections, namespace: 'connections' })
+  const pagination = useListPagination({ items: filteredConnections, namespace: 'connections' })
 
   return (
     <div className="space-y-section-gap">
       <ListHeader
         title="Connections"
         description="External integrations your agents authenticate against."
-        // ``totalItems`` is the count after filters, which matches
-        // what pagination paginates and what the user actually sees
-        // in the grid. Showing the raw connections.length here would
-        // diverge from the table contents the moment a filter is set.
-        count={totalItems}
+        count={pagination.totalItems}
         primaryAction={
           <Button size="sm" onClick={() => setModal({ kind: 'create' })}>
             <Plus aria-hidden="true" />
@@ -71,50 +133,28 @@ export default function ConnectionsPage() {
         }
       />
 
-      {/* Convention: page-level <ErrorBanner> sits immediately after
-          <ListHeader>, before any filter / pagination / informational
-          card. Documented in web/CLAUDE.md "List-page primitives". */}
       {error && (
         <ErrorBanner severity="error" title="Could not load connections" description={error} />
       )}
 
       <WsConnectionBanner />
-
       <TunnelCard />
-
-      {/* Wrap the existing filter component in SearchFilterSort so the
-          layout matches the rest of the dashboard's list pages. */}
       <SearchFilterSort filters={<ConnectionFilters />} />
 
-      {loading && !hasData ? (
-        <ConnectionsSkeleton />
-      ) : connections.length > 0 && filteredConnections.length === 0 ? (
-        <EmptyState
-          icon={Filter}
-          title="No matching connections"
-          description="Try a different search or clear your filters."
-          action={{ label: 'Clear filters', onClick: clearFilters }}
-        />
-      ) : (
-        <ErrorBoundary level="section">
-          <ConnectionGridView
-            connections={pagedConnections}
-            healthMap={healthMap}
-            checkingHealth={checkingHealth}
-            onRunHealthCheck={(name) => void runHealthCheck(name)}
-            onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
-            onDelete={(conn) => setPendingDelete(conn)}
-            onCreate={() => setModal({ kind: 'create' })}
-          />
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={totalItems}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-          />
-        </ErrorBoundary>
-      )}
+      <ConnectionsBody
+        loading={loading}
+        hasData={hasData}
+        totalConnections={connections.length}
+        filteredCount={filteredConnections.length}
+        pagination={pagination}
+        healthMap={healthMap}
+        checkingHealth={checkingHealth}
+        onClearFilters={clearFilters}
+        onRunHealthCheck={(name) => void runHealthCheck(name)}
+        onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
+        onDelete={(conn) => setPendingDelete(conn)}
+        onCreate={() => setModal({ kind: 'create' })}
+      />
 
       <ConnectionFormModal
         open={modal.kind !== 'closed'}
@@ -123,20 +163,12 @@ export default function ConnectionsPage() {
         onClose={() => setModal({ kind: 'closed' })}
       />
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={`Delete ${pendingDelete?.name ?? ''}?`}
-        description="This will permanently remove the connection and its stored credentials. This action cannot be undone."
-        confirmLabel="Delete"
-        variant="destructive"
-        onOpenChange={(next) => {
-          if (!next) setPendingDelete(null)
-        }}
-        onConfirm={async () => {
-          if (pendingDelete) {
-            await deleteConnection(pendingDelete.name)
-            setPendingDelete(null)
-          }
+      <ConnectionDeleteDialog
+        target={pendingDelete}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async (conn) => {
+          await deleteConnection(conn.name)
+          setPendingDelete(null)
         }}
       />
     </div>

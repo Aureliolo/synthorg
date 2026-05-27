@@ -115,5 +115,8 @@
     "workerDirectory": [
       "public"
     ]
+  },
+  "overrides": {
+    "tmp": "0.2.6"
   }
 }

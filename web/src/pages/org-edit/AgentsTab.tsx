@@ -10,7 +10,13 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Plus, Users } from 'lucide-react'
 import type { AgentConfig } from '@/api/types/agents'
@@ -38,24 +44,18 @@ export interface AgentsTabProps {
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
 
-function SortableAgentItem({
-  agent,
-  onClick,
-}: {
-  agent: AgentConfig
-  onClick: () => void
-}) {
+type AgentsByDept = Map<string, AgentConfig[]>
+
+function SortableAgentItem({ agent, onClick }: { agent: AgentConfig; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: agent.id ?? agent.name,
     data: { agent },
   })
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
-
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <button
@@ -98,20 +98,144 @@ function DepartmentAgentsSection({
       {agents.length === 0 ? (
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
-        <SortableContext items={agents.map((a) => a.id ?? a.name)} strategy={verticalListSortingStrategy}>
+        <SortableContext
+          items={agents.map((a) => a.id ?? a.name)}
+          strategy={verticalListSortingStrategy}
+        >
           <StaggerGroup className="grid gap-grid-gap">
             {agents.map((agent) => (
               <StaggerItem key={agent.id ?? agent.name}>
-                <SortableAgentItem
-                  agent={agent}
-                  onClick={() => onEditAgent(agent)}
-                />
+                <SortableAgentItem agent={agent} onClick={() => onEditAgent(agent)} />
               </StaggerItem>
             ))}
           </StaggerGroup>
         </SortableContext>
       )}
     </SectionCard>
+  )
+}
+
+/** Group agents by department, seeding an empty bucket per department. */
+function useAgentsByDept(config: CompanyConfig | null): AgentsByDept {
+  return useMemo(() => {
+    const map: AgentsByDept = new Map()
+    if (!config) return map
+    for (const dept of config.departments) map.set(dept.name, [])
+    for (const agent of config.agents) {
+      const list = map.get(agent.department) ?? []
+      list.push(agent)
+      map.set(agent.department, list)
+    }
+    return map
+  }, [config])
+}
+
+/** Resolve the reordered id list for a drag-end event, or null. */
+function reorderFromDragEvent(
+  event: DragEndEvent,
+  agentsByDept: AgentsByDept,
+): { department: string; orderedIds: string[] } | null {
+  const { active, over } = event
+  if (!over || active.id === over.id) return null
+  const draggedAgent = active.data.current?.agent as AgentConfig | undefined
+  if (!draggedAgent) return null
+  const deptAgents = agentsByDept.get(draggedAgent.department)
+  if (!deptAgents) return null
+  const oldIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === active.id)
+  const newIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === over.id)
+  if (oldIndex === -1 || newIndex === -1) return null
+  const reordered = arrayMove(deptAgents, oldIndex, newIndex)
+  return { department: draggedAgent.department, orderedIds: reordered.map((a) => a.id ?? a.name) }
+}
+
+interface AgentDragReorder {
+  sensors: ReturnType<typeof useSensors>
+  activeAgent: AgentConfig | null
+  handleDragStart: (event: DragStartEvent) => void
+  handleDragEnd: (event: DragEndEvent) => Promise<void>
+  clearActive: () => void
+}
+
+function useAgentDragReorder(
+  config: CompanyConfig | null,
+  agentsByDept: AgentsByDept,
+  optimisticReorderAgents: AgentsTabProps['optimisticReorderAgents'],
+  onReorderAgents: AgentsTabProps['onReorderAgents'],
+): AgentDragReorder {
+  const [activeAgent, setActiveAgent] = useState<AgentConfig | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveAgent(event.active.data.current?.agent ?? null)
+  }, [])
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setActiveAgent(null)
+      if (!config) return
+      const result = reorderFromDragEvent(event, agentsByDept)
+      if (!result) return
+      const rollback = optimisticReorderAgents(result.department, result.orderedIds)
+      // onReorderAgents returns false on failure (store owns the toast);
+      // roll back when the store reports failure.
+      const ok = await onReorderAgents(result.department, result.orderedIds)
+      if (!ok) rollback()
+    },
+    [config, agentsByDept, optimisticReorderAgents, onReorderAgents],
+  )
+
+  const clearActive = useCallback(() => setActiveAgent(null), [])
+
+  return { sensors, activeAgent, handleDragStart, handleDragEnd, clearActive }
+}
+
+function agentsTabIsEmpty(config: CompanyConfig | null): boolean {
+  return !config || (config.agents.length === 0 && config.departments.length === 0)
+}
+
+interface AgentsDndBoardProps {
+  config: CompanyConfig
+  agentsByDept: AgentsByDept
+  drag: AgentDragReorder
+  onEditAgent: (agent: AgentConfig) => void
+}
+
+function AgentsDndBoard({ config, agentsByDept, drag, onEditAgent }: AgentsDndBoardProps) {
+  return (
+    <DndContext
+      sensors={drag.sensors}
+      collisionDetection={closestCorners}
+      onDragStart={drag.handleDragStart}
+      onDragEnd={drag.handleDragEnd}
+      onDragCancel={drag.clearActive}
+    >
+      {Array.from(agentsByDept.entries()).map(([deptName, agents]) => {
+        const dept = config.departments.find((d) => d.name === deptName)
+        return (
+          <DepartmentAgentsSection
+            key={deptName}
+            displayName={dept?.display_name ?? deptName}
+            agents={agents}
+            onEditAgent={onEditAgent}
+          />
+        )
+      })}
+
+      <DragOverlay>
+        {drag.activeAgent && (
+          <AgentCard
+            name={drag.activeAgent.name}
+            role={drag.activeAgent.role}
+            department={drag.activeAgent.department}
+            status={toRuntimeStatus(drag.activeAgent.status ?? 'active')}
+            className="shadow-lg"
+          />
+        )}
+      </DragOverlay>
+    </DndContext>
   )
 }
 
@@ -126,86 +250,10 @@ export function AgentsTab({
 }: AgentsTabProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [editAgent, setEditAgent] = useState<AgentConfig | null>(null)
-  const [activeAgent, setActiveAgent] = useState<AgentConfig | null>(null)
+  const agentsByDept = useAgentsByDept(config)
+  const drag = useAgentDragReorder(config, agentsByDept, optimisticReorderAgents, onReorderAgents)
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
-
-  // Group agents by department
-  const agentsByDept = useMemo(() => {
-    if (!config) return new Map<string, AgentConfig[]>()
-    const map = new Map<string, AgentConfig[]>()
-    for (const dept of config.departments) {
-      map.set(dept.name, [])
-    }
-    for (const agent of config.agents) {
-      const list = map.get(agent.department) ?? []
-      list.push(agent)
-      map.set(agent.department, list)
-    }
-    return map
-  }, [config])
-
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveAgent(event.active.data.current?.agent ?? null)
-  }, [])
-
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      setActiveAgent(null)
-      const { active, over } = event
-      if (!over || active.id === over.id || !config) return
-
-      const draggedAgent = active.data.current?.agent as AgentConfig | undefined
-      if (!draggedAgent) return
-
-      const deptAgents = agentsByDept.get(draggedAgent.department)
-      if (!deptAgents) return
-
-      const oldIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === active.id)
-      const newIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === over.id)
-      if (oldIndex === -1 || newIndex === -1) return
-
-      const reordered = arrayMove(deptAgents, oldIndex, newIndex)
-      const orderedIds = reordered.map((a) => a.id ?? a.name)
-
-      const rollback = optimisticReorderAgents(draggedAgent.department, orderedIds)
-      // ``onReorderAgents`` returns false on failure (store owns the
-      // toast UX); callers must not wrap store mutations in try/catch.
-      // Roll back when the store reports failure.
-      const ok = await onReorderAgents(draggedAgent.department, orderedIds)
-      if (!ok) {
-        rollback()
-      }
-    },
-    [config, agentsByDept, optimisticReorderAgents, onReorderAgents],
-  )
-
-  if (!config || (config.agents.length === 0 && config.departments.length === 0)) {
-    return (
-      <div className="space-y-section-gap">
-        <div className="flex justify-end">
-          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
-            <Plus className="mr-1.5 size-3.5" />
-            Add Agent
-          </Button>
-        </div>
-        <EmptyState
-          icon={Users}
-          title="No agents"
-          description="Create your first agent to get started."
-        />
-        <AgentCreateDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          departments={config?.departments ?? []}
-          onCreate={onCreateAgent}
-        />
-      </div>
-    )
-  }
+  const isEmpty = agentsTabIsEmpty(config)
 
   return (
     <div className="space-y-section-gap">
@@ -216,54 +264,35 @@ export function AgentsTab({
         </Button>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={() => setActiveAgent(null)}
-      >
-        {Array.from(agentsByDept.entries()).map(([deptName, agents]) => {
-          const dept = config.departments.find((d) => d.name === deptName)
-          return (
-            <DepartmentAgentsSection
-              key={deptName}
-              displayName={dept?.display_name ?? deptName}
-              agents={agents}
-              onEditAgent={setEditAgent}
-            />
-          )
-        })}
-
-        <DragOverlay>
-          {activeAgent && (
-            <AgentCard
-              name={activeAgent.name}
-              role={activeAgent.role}
-              department={activeAgent.department}
-              status={toRuntimeStatus(activeAgent.status ?? 'active')}
-              className="shadow-lg"
-            />
-          )}
-        </DragOverlay>
-      </DndContext>
+      {config && !isEmpty ? (
+        <AgentsDndBoard
+          config={config}
+          agentsByDept={agentsByDept}
+          drag={drag}
+          onEditAgent={setEditAgent}
+        />
+      ) : (
+        <EmptyState icon={Users} title="No agents" description="Create your first agent to get started." />
+      )}
 
       <AgentCreateDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        departments={config.departments}
+        departments={config?.departments ?? []}
         onCreate={onCreateAgent}
       />
 
-      <AgentEditDrawer
-        open={editAgent !== null}
-        onClose={() => setEditAgent(null)}
-        agent={editAgent}
-        departments={config.departments}
-        onUpdate={onUpdateAgent}
-        onDelete={onDeleteAgent}
-        saving={saving}
-      />
+      {!isEmpty && config && (
+        <AgentEditDrawer
+          open={editAgent !== null}
+          onClose={() => setEditAgent(null)}
+          agent={editAgent}
+          departments={config.departments}
+          onUpdate={onUpdateAgent}
+          onDelete={onDeleteAgent}
+          saving={saving}
+        />
+      )}
     </div>
   )
 }

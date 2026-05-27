@@ -144,21 +144,15 @@ export default tseslint.config(
     },
   },
   {
-    // Existing src/ files exceed the new caps in 500+ sites. Mirroring
+    // Existing src/ files exceed the four caps in 500+ sites. Mirroring
     // the Python ruff per-file-ignore pattern for src/synthorg/**, the
-    // same rules are absorbed here until later decomposition (controllers,
-    // store slicing) brings the surface under the tier limits.
-    //
-    // EPIC #2066 lifts the override one bucket at a time. Each PR moves
-    // a cleaned area into the `ignores:` list (which excludes those
-    // paths from this override block, so the global four caps apply).
-    // The final PR deletes the whole override block.
-    //
-    // Cleaned (rules apply normally):
-    //   PR A (#2092): src/utils/**, src/hooks/**, src/lib/**, src/cookie-shim.ts
-    //   PR B (#2093): src/stores/**
-    //   PR C (#2094): src/components/**, src/api/types/**,
-    //                 src/api/endpoints/**, src/mocks/**
+    // caps are absorbed here for areas not yet decomposed, then lifted
+    // one area at a time: each cleaned area moves into the `ignores:`
+    // list below (which excludes it from this disabling block, so the
+    // global caps govern it again). When every area is decomposed and
+    // listed, this whole override block is deleted. The `ignores:`
+    // entries below are the authoritative record of which areas the
+    // caps already govern.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
@@ -170,6 +164,20 @@ export default tseslint.config(
       'src/api/types/**',
       'src/api/endpoints/**',
       'src/mocks/**',
+      'src/pages/org/**',
+      'src/pages/org-edit/**',
+      'src/pages/settings/**',
+      'src/pages/approvals/**',
+      'src/pages/connections/**',
+      'src/pages/escalations/**',
+      'src/pages/OrgChartPage.tsx',
+      'src/pages/OrgEditPage.tsx',
+      'src/pages/SettingsPage.tsx',
+      'src/pages/SettingsNamespacePage.tsx',
+      'src/pages/SettingsSinksPage.tsx',
+      'src/pages/ApprovalsPage.tsx',
+      'src/pages/ConnectionsPage.tsx',
+      'src/pages/EscalationQueuePage.tsx',
     ],
     rules: {
       complexity: 'off',

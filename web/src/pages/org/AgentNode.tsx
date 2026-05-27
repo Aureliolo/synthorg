@@ -41,7 +41,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
   return (
     <div
       className={cn(
-        'group/agent relative rounded-lg border border-border bg-card px-3 py-2',
+        'group/agent relative rounded-lg border border-border bg-card p-card',
         'min-w-36 max-w-44',
         'ring-1 transition-all duration-200',
         'hover:shadow-md hover:ring-2',

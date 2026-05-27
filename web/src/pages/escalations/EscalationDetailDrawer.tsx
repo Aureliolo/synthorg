@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -27,12 +27,7 @@ const MODE_OPTIONS: ReadonlyArray<{ value: DecisionMode; label: string }> = [
   { value: 'cancel', label: 'Cancel' },
 ]
 
-/**
- * One radio-row for picking the winning agent from a conflict's
- * positions list.  Extracted so the ``positions.map(...)`` body in
- * ``DecisionForm`` stays small and the row's accessibility shape
- * (label wrapping radio + descriptive children) can be unit-tested.
- */
+/** One radio-row for picking the winning agent from a conflict. */
 function WinnerOptionRow({
   position,
   selected,
@@ -59,24 +54,66 @@ function WinnerOptionRow({
             {position.agent_department} · {position.agent_level}
           </span>
         </span>
-        <span className="text-text-secondary">
-          {position.position}
-        </span>
+        <span className="text-text-secondary">{position.position}</span>
       </div>
     </label>
   )
 }
 
-
-function DecisionForm({
-  escalationId,
-  detail,
-  onClose,
+function WinnerPicker({
+  positions,
+  winnerId,
+  onSelect,
 }: {
-  escalationId: string
-  detail: EscalationResponse
-  onClose: () => void
+  positions: readonly ConflictPosition[]
+  winnerId: string
+  onSelect: (agentId: string) => void
 }) {
+  if (positions.length === 0) return null
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="text-sm font-medium text-foreground">Winning agent</legend>
+      <div className="flex flex-col gap-1">
+        {positions.map((position) => (
+          <WinnerOptionRow
+            key={position.agent_id}
+            position={position}
+            selected={winnerId === position.agent_id}
+            onSelect={() => onSelect(position.agent_id)}
+          />
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function buildEscalationDecision(
+  mode: 'winner' | 'reject',
+  winnerId: string,
+  reasoning: string,
+): EscalationDecision {
+  return mode === 'winner'
+    ? { type: 'winner', winning_agent_id: winnerId, reasoning }
+    : { type: 'reject', reasoning }
+}
+
+interface DecisionFormState {
+  mode: DecisionMode
+  setMode: (mode: DecisionMode) => void
+  winnerId: string
+  setWinnerId: (id: string) => void
+  reasoning: string
+  setReasoning: (value: string) => void
+  validationError: string | null
+  submitting: boolean
+  handleSubmit: () => Promise<void>
+}
+
+function useDecisionForm(
+  escalationId: string,
+  detail: EscalationResponse,
+  onClose: () => void,
+): DecisionFormState {
   const submitDecision = useEscalationsStore((s) => s.submitDecision)
   const cancelEscalation = useEscalationsStore((s) => s.cancelEscalation)
   const submitting = useEscalationsStore((s) => s.submitting)
@@ -88,179 +125,154 @@ function DecisionForm({
   const [reasoning, setReasoning] = useState<string>('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const handleSubmit = async (): Promise<void> => {
-    if (!reasoning.trim()) {
+  const handleSubmit = useCallback(async () => {
+    const trimmed = reasoning.trim()
+    if (!trimmed) {
       setValidationError('Please provide reasoning for the decision.')
       return
     }
     setValidationError(null)
-
     if (mode === 'cancel') {
-      const result = await cancelEscalation(escalationId, {
-        reason: reasoning.trim(),
-      })
-      if (result !== null) {
-        onClose()
-      }
+      const result = await cancelEscalation(escalationId, { reason: trimmed })
+      if (result !== null) onClose()
       return
     }
-
-    const decision: EscalationDecision =
-      mode === 'winner'
-        ? {
-            type: 'winner',
-            winning_agent_id: winnerId,
-            reasoning: reasoning.trim(),
-          }
-        : {
-            type: 'reject',
-            reasoning: reasoning.trim(),
-          }
     if (mode === 'winner' && !winnerId.trim()) {
       setValidationError('Pick a winning agent.')
       return
     }
-    const result = await submitDecision(escalationId, { decision })
-    if (result !== null) {
-      onClose()
-    }
+    const result = await submitDecision(escalationId, {
+      decision: buildEscalationDecision(mode, winnerId, trimmed),
+    })
+    if (result !== null) onClose()
+  }, [mode, winnerId, reasoning, escalationId, submitDecision, cancelEscalation, onClose])
+
+  return {
+    mode,
+    setMode,
+    winnerId,
+    setWinnerId,
+    reasoning,
+    setReasoning,
+    validationError,
+    submitting,
+    handleSubmit,
   }
+}
 
-  const positions = detail.escalation.conflict.positions
-
+function DecisionForm({
+  escalationId,
+  detail,
+  onClose,
+}: {
+  escalationId: string
+  detail: EscalationResponse
+  onClose: () => void
+}) {
+  const f = useDecisionForm(escalationId, detail, onClose)
   return (
     <>
-      {validationError && (
-        <ErrorBanner severity="warning" title={validationError} />
-      )}
+      {f.validationError && <ErrorBanner severity="warning" title={f.validationError} />}
 
-      <SegmentedControl
-        label="Action"
-        value={mode}
-        onChange={setMode}
-        options={MODE_OPTIONS}
-        size="sm"
-      />
+      <SegmentedControl label="Action" value={f.mode} onChange={f.setMode} options={MODE_OPTIONS} size="sm" />
 
-      {mode === 'winner' && positions.length > 0 && (
-        <fieldset className="flex flex-col gap-1">
-          <legend className="text-sm font-medium text-foreground">
-            Winning agent
-          </legend>
-          <div className="flex flex-col gap-1">
-            {positions.map((position) => (
-              <WinnerOptionRow
-                key={position.agent_id}
-                position={position}
-                selected={winnerId === position.agent_id}
-                onSelect={() => setWinnerId(position.agent_id)}
-              />
-            ))}
-          </div>
-        </fieldset>
+      {f.mode === 'winner' && (
+        <WinnerPicker
+          positions={detail.escalation.conflict.positions}
+          winnerId={f.winnerId}
+          onSelect={f.setWinnerId}
+        />
       )}
 
       <InputField
-        label={mode === 'cancel' ? 'Cancellation reason' : 'Reasoning'}
-        value={reasoning}
-        onChange={(e) => setReasoning(e.target.value)}
+        label={f.mode === 'cancel' ? 'Cancellation reason' : 'Reasoning'}
+        value={f.reasoning}
+        onChange={(e) => f.setReasoning(e.target.value)}
         multiline
         rows={4}
         required
       />
 
       <div className="flex justify-end gap-grid-gap pt-card">
-        <Button variant="secondary" onClick={onClose} disabled={submitting}>
+        <Button variant="secondary" onClick={onClose} disabled={f.submitting}>
           Close
         </Button>
         <Button
-          onClick={() => void handleSubmit()}
-          disabled={submitting}
-          variant={mode === 'cancel' ? 'destructive' : 'default'}
+          onClick={() => void f.handleSubmit()}
+          disabled={f.submitting}
+          variant={f.mode === 'cancel' ? 'destructive' : 'default'}
         >
-          {submitting ? 'Submitting…' : 'Submit'}
+          {f.submitting ? 'Submitting…' : 'Submit'}
         </Button>
       </div>
     </>
   )
 }
 
-/**
- * Drawer surface for one escalation: shows the underlying conflict
- * and lets an operator pick a winner, reject, or cancel.  Form state
- * is seeded via remount-on-key so we never set state from props in an
- * effect (eslint-react/set-state-in-effect).
- */
-export function EscalationDetailDrawer({
-  escalationId,
-  open,
-  onClose,
-}: EscalationDetailDrawerProps) {
+interface EscalationDetailState {
+  visibleDetail: EscalationResponse | null
+  visibleError: string | null
+  loading: boolean
+  retry: (() => void) | undefined
+}
+
+function useEscalationDetail(escalationId: string | null, open: boolean): EscalationDetailState {
   const detail = useEscalationsStore((s) => s.selected)
   const loading = useEscalationsStore((s) => s.detailLoading)
   const error = useEscalationsStore((s) => s.detailError)
-  const detailRequestedId = useEscalationsStore(
-    (s) => s.detailRequestedId,
-  )
+  const detailRequestedId = useEscalationsStore((s) => s.detailRequestedId)
   const fetchDetail = useEscalationsStore((s) => s.fetchEscalationDetail)
   const clearDetail = useEscalationsStore((s) => s.clearDetail)
 
   useEffect(() => {
-    if (open && escalationId) {
-      void fetchDetail(escalationId)
-    } else if (!open) {
-      clearDetail()
-    }
+    if (open && escalationId) void fetchDetail(escalationId)
+    else if (!open) clearDetail()
   }, [open, escalationId, fetchDetail, clearDetail])
 
-  // Gate visible detail on the active escalation: while a new fetch
-  // is in flight the previously-loaded escalation must NOT render
-  // (showing it would let the operator review or submit a decision
-  // on the wrong record).  ``detailRequestedId`` is the id whose
-  // fetch is currently outstanding; render only when ``detail``
-  // matches the active prop.
-  const isActiveEscalation =
-    escalationId !== null
-    && detail !== null
-    && detail.escalation.id === escalationId
-    && detailRequestedId === escalationId
-  const visibleDetail = isActiveEscalation ? detail : null
-  const visibleError = escalationId !== null
-    && detailRequestedId === escalationId
-    ? error
-    : null
+  // Gate visible detail on the active escalation: while a fetch is in
+  // flight the previously-loaded record must NOT render (the operator
+  // could review/submit a decision on the wrong escalation).
+  const isActive =
+    escalationId !== null &&
+    detail !== null &&
+    detail.escalation.id === escalationId &&
+    detailRequestedId === escalationId
+  const visibleError = escalationId !== null && detailRequestedId === escalationId ? error : null
+
+  return {
+    visibleDetail: isActive ? detail : null,
+    visibleError,
+    loading,
+    retry: escalationId ? () => void fetchDetail(escalationId) : undefined,
+  }
+}
+
+/**
+ * Drawer surface for one escalation. Form state is seeded via
+ * remount-on-key so we never set state from props in an effect.
+ */
+export function EscalationDetailDrawer({ escalationId, open, onClose }: EscalationDetailDrawerProps) {
+  const { visibleDetail, visibleError, loading, retry } = useEscalationDetail(escalationId, open)
 
   return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="Review escalation"
-      ariaLabel="Review escalation"
-      width="wide"
-    >
+    <Drawer open={open} onClose={onClose} title="Review escalation" ariaLabel="Review escalation" width="wide">
       <div className="flex flex-col gap-section-gap p-card">
         {visibleError && (
           <ErrorBanner
             severity="error"
             title="Failed to load escalation"
             description={visibleError}
-            onRetry={
-              escalationId
-                ? () => {
-                    void fetchDetail(escalationId)
-                  }
-                : undefined
-            }
+            onRetry={retry}
           />
         )}
 
-        {loading || visibleDetail === null ? (
+        {loading ? (
           <div className="flex flex-col gap-grid-gap">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
-        ) : (
+        ) : visibleDetail === null ? null : (
           <>
             <header>
               <h2 className="text-base font-semibold text-foreground">

@@ -121,6 +121,37 @@ function findYamlKeyPosition(
 
 // ── Schema validation ─────────────────────────────────────────
 
+type KeyFinder = (text: string, namespace: string, key?: string) => { from: number; to: number } | null
+
+function unknownNamespaceDiagnostic(ns: string, findKey: KeyFinder, text: string): Diagnostic | null {
+  const pos = findKey(text, ns)
+  if (!pos) return null
+  return { from: pos.from, to: pos.to, severity: 'warning', message: `Unknown namespace "${ns}"` }
+}
+
+function unknownKeyDiagnostics(
+  ns: string,
+  keys: Record<string, unknown>,
+  knownKeys: Set<string>,
+  findKey: KeyFinder,
+  text: string,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = []
+  for (const key of Object.keys(keys)) {
+    if (knownKeys.has(key)) continue
+    const pos = findKey(text, ns, key)
+    if (pos) {
+      diagnostics.push({
+        from: pos.from,
+        to: pos.to,
+        severity: 'warning',
+        message: `Unknown setting key "${key}" in namespace "${ns}"`,
+      })
+    }
+  }
+  return diagnostics
+}
+
 /**
  * Validate parsed settings against the schema, returning diagnostics
  * for unknown namespaces and unknown keys.
@@ -138,35 +169,14 @@ export function validateSchema(
 
   for (const [ns, keys] of Object.entries(parsed)) {
     if (!schema.knownNamespaces.has(ns)) {
-      const pos = findKey(text, ns)
-      if (pos) {
-        diagnostics.push({
-          from: pos.from,
-          to: pos.to,
-          severity: 'warning',
-          message: `Unknown namespace "${ns}"`,
-        })
-      }
+      const diag = unknownNamespaceDiagnostic(ns, findKey, text)
+      if (diag) diagnostics.push(diag)
       continue
     }
-
     if (!keys || typeof keys !== 'object') continue
     const knownKeys = schema.namespaceKeys.get(ns)
     if (!knownKeys) continue
-
-    for (const key of Object.keys(keys)) {
-      if (!knownKeys.has(key)) {
-        const pos = findKey(text, ns, key)
-        if (pos) {
-          diagnostics.push({
-            from: pos.from,
-            to: pos.to,
-            severity: 'warning',
-            message: `Unknown setting key "${key}" in namespace "${ns}"`,
-          })
-        }
-      }
-    }
+    diagnostics.push(...unknownKeyDiagnostics(ns, keys, knownKeys, findKey, text))
   }
 
   return diagnostics
@@ -215,6 +225,57 @@ const linterTheme = EditorView.theme({
   },
 })
 
+// ── Syntax parsing ────────────────────────────────────────────
+
+/** Best-effort character span for a syntax error in the document. */
+function errorPosition(err: unknown, text: string): { from: number; to: number } {
+  if (err instanceof SyntaxError) {
+    // JSON.parse errors often include "at position N".
+    const posMatch = /position\s+(\d+)/i.exec(err.message)
+    if (posMatch) {
+      const from = Math.min(Number(posMatch[1]), text.length)
+      return { from, to: Math.min(from + 1, text.length) }
+    }
+  }
+  // js-yaml YAMLException carries a mark with a position.
+  if (
+    err &&
+    typeof err === 'object' &&
+    'mark' in err &&
+    typeof (err as { mark?: { position?: number } }).mark?.position === 'number'
+  ) {
+    const from = Math.min((err as { mark: { position: number } }).mark.position, text.length)
+    return { from, to: Math.min(from + 1, text.length) }
+  }
+  return { from: 0, to: Math.min(text.length, 1) }
+}
+
+type ParseOutcome =
+  | { parsed: Record<string, Record<string, unknown>> }
+  | { diagnostic: Diagnostic }
+
+function parseSettingsDoc(text: string, format: 'json' | 'yaml'): ParseOutcome {
+  let raw: unknown
+  try {
+    raw = format === 'json' ? JSON.parse(text) : YAML.load(text, { schema: YAML.CORE_SCHEMA })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Parse error'
+    const { from, to } = errorPosition(err, text)
+    return { diagnostic: { from, to, severity: 'error', message: `Syntax error: ${msg}` } }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {
+      diagnostic: {
+        from: 0,
+        to: Math.min(text.length, 50),
+        severity: 'error',
+        message: `${format.toUpperCase()} must be an object at the top level`,
+      },
+    }
+  }
+  return { parsed: raw as Record<string, Record<string, unknown>> }
+}
+
 // ── Extension factory ─────────────────────────────────────────
 
 /**
@@ -235,71 +296,12 @@ export function settingsLinterExtension(
         if (!text.trim()) return []
 
         const format = getFormat()
-        const diagnostics: Diagnostic[] = []
+        const outcome = parseSettingsDoc(text, format)
+        if ('diagnostic' in outcome) return [outcome.diagnostic]
 
-        // Phase 1: Syntax validation
-        let parsed: Record<string, Record<string, unknown>>
-        try {
-          const raw: unknown = format === 'json'
-            ? JSON.parse(text)
-            : YAML.load(text, { schema: YAML.CORE_SCHEMA })
-
-          if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-            diagnostics.push({
-              from: 0,
-              to: Math.min(text.length, 50),
-              severity: 'error',
-              message: `${format.toUpperCase()} must be an object at the top level`,
-            })
-            return diagnostics
-          }
-
-          parsed = raw as Record<string, Record<string, unknown>>
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Parse error'
-          // Try to extract position from error message
-          let from = 0
-          let to = Math.min(text.length, 1)
-
-          if (err instanceof SyntaxError) {
-            // JSON.parse errors often include "at position N"
-            const posMatch = /position\s+(\d+)/i.exec(msg)
-            if (posMatch) {
-              from = Math.min(Number(posMatch[1]), text.length)
-              to = Math.min(from + 1, text.length)
-            }
-          }
-
-          // js-yaml YAMLException includes mark with position
-          if (
-            err &&
-            typeof err === 'object' &&
-            'mark' in err &&
-            typeof (err as { mark?: { position?: number } }).mark?.position === 'number'
-          ) {
-            const yamlErr = err as { mark: { position: number } }
-            from = Math.min(yamlErr.mark.position, text.length)
-            to = Math.min(from + 1, text.length)
-          }
-
-          diagnostics.push({
-            from,
-            to,
-            severity: 'error',
-            message: `Syntax error: ${msg}`,
-          })
-          return diagnostics
-        }
-
-        // Phase 2: Schema validation
         const entries = getEntries()
-        if (entries.length > 0) {
-          const schema = buildSchemaInfo(entries)
-          const schemaErrors = validateSchema(parsed, schema, text, format)
-          diagnostics.push(...schemaErrors)
-        }
-
-        return diagnostics
+        if (entries.length === 0) return []
+        return validateSchema(outcome.parsed, buildSchemaInfo(entries), text, format)
       },
       { delay: 300 },
     ),

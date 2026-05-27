@@ -4,12 +4,14 @@ import type { Node } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useToastStore } from '@/stores/toast'
 import { isDepartmentName, type DepartmentName } from '@/api/types/enums'
-import type { AgentNodeData } from './build-org-tree'
+import type { AgentNodeData, DepartmentGroupData } from './build-org-tree'
 import { findDropTarget, type DepartmentBounds } from './drop-target'
 import type { ViewMode } from './OrgChartToolbar'
 
 const AGENT_NODE_WIDTH = 160
 const AGENT_NODE_HEIGHT = 80
+
+type AddToast = ReturnType<typeof useToastStore.getState>['add']
 
 export interface OrgChartDragDropResult {
   dragOverDeptId: string | null
@@ -24,6 +26,81 @@ interface UseOrgChartDragDropArgs {
   announce: (msg: string) => void
 }
 
+/** Centre point of a dragged node, falling back to default agent size. */
+function nodeCenter(node: Node): { x: number; y: number } {
+  return {
+    x: node.position.x + (node.measured?.width ?? AGENT_NODE_WIDTH) / 2,
+    y: node.position.y + (node.measured?.height ?? AGENT_NODE_HEIGHT) / 2,
+  }
+}
+
+interface ReassignArgs {
+  agentName: string
+  originalDept: string
+  newDept: string
+  newDeptName: DepartmentName
+  announce: (msg: string) => void
+  addToast: AddToast
+}
+
+/**
+ * Optimistically reassign an agent to a new department, then persist.
+ * ``updateAgent`` owns its own error toast and returns ``null`` on
+ * failure (sentinel-return contract; never throws, never wrapped in
+ * try/catch). On the null branch we roll the optimistic reorder back
+ * and announce the rollback so screen readers know the move did not
+ * stick; on success a drag-and-drop move gets its own verbal cue +
+ * toast even though the store already emits an "updated" toast.
+ */
+function reassignAgent(args: ReassignArgs): void {
+  const store = useCompanyStore.getState()
+  const rollback = store.optimisticReassignAgent(args.agentName, args.newDeptName)
+  const existingAgent = store.config?.agents.find((a) => a.name === args.agentName)
+  void useCompanyStore
+    .getState()
+    .updateAgent(args.agentName, {
+      department: args.newDeptName,
+      autonomy_level: existingAgent?.autonomy_level ?? null,
+      level: existingAgent?.level ?? null,
+    })
+    .then((result) => onReassignSettled(result, args, rollback))
+}
+
+function onReassignSettled(
+  result: unknown,
+  args: ReassignArgs,
+  rollback: () => void,
+): void {
+  if (result === null) {
+    rollback()
+    const currentDept = useCompanyStore
+      .getState()
+      .config?.agents.find((a) => a.name === args.agentName)?.department
+    args.announce(
+      currentDept === args.originalDept
+        ? `Failed to move ${args.agentName}, returned to ${args.originalDept}`
+        : `Failed to move ${args.agentName}`,
+    )
+    return
+  }
+  args.announce(`Moved ${args.agentName} to ${args.newDept}`)
+  args.addToast({ variant: 'success', title: `Moved ${args.agentName} to ${args.newDept}` })
+}
+
+/** Drop-target hit boxes derived from the rendered department group nodes. */
+function computeDeptBounds(displayNodes: Node[]): DepartmentBounds[] {
+  return displayNodes
+    .filter((n) => n.type === 'department')
+    .map((n) => ({
+      departmentName: (n.data as DepartmentGroupData).departmentName,
+      nodeId: n.id,
+      x: n.position.x,
+      y: n.position.y,
+      width: (n.measured?.width ?? n.width ?? 200) as number,
+      height: (n.measured?.height ?? n.height ?? 120) as number,
+    }))
+}
+
 export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDragDropResult {
   const { viewMode, displayNodes, announce } = args
   const addToast = useToastStore((s) => s.add)
@@ -32,27 +109,17 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   const dragOverDeptIdRef = useRef<string | null>(null)
   const dragOriginalDeptRef = useRef<string | null>(null)
 
-  const deptBounds = useMemo<DepartmentBounds[]>(() => {
-    return displayNodes
-      .filter((n) => n.type === 'department')
-      .map((n) => ({
-        departmentName: (n.data as import('./build-org-tree').DepartmentGroupData).departmentName,
-        nodeId: n.id,
-        x: n.position.x,
-        y: n.position.y,
-        width: (n.measured?.width ?? n.width ?? 200) as number,
-        height: (n.measured?.height ?? n.height ?? 120) as number,
-      }))
-  }, [displayNodes])
+  const deptBounds = useMemo<DepartmentBounds[]>(
+    () => computeDeptBounds(displayNodes),
+    [displayNodes],
+  )
 
   const handleNodeDragStart = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
       if (node.type !== 'agent') return
       if (viewMode !== 'hierarchy') return
-      const dept = (node.data as AgentNodeData).department
-      dragOriginalDeptRef.current = dept
-      const name = (node.data as AgentNodeData).name
-      announce(`Started dragging ${name}`)
+      dragOriginalDeptRef.current = (node.data as AgentNodeData).department
+      announce(`Started dragging ${(node.data as AgentNodeData).name}`)
     },
     [viewMode, announce],
   )
@@ -60,9 +127,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   const handleNodeDrag = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
       if (!dragOriginalDeptRef.current) return
-      const centerX = node.position.x + ((node.measured?.width ?? AGENT_NODE_WIDTH) / 2)
-      const centerY = node.position.y + ((node.measured?.height ?? AGENT_NODE_HEIGHT) / 2)
-      const target = findDropTarget({ x: centerX, y: centerY }, deptBounds)
+      const target = findDropTarget(nodeCenter(node), deptBounds)
       const newOverId = target?.nodeId ?? null
       const shouldAnnounce = dragOverDeptIdRef.current !== newOverId && target
       dragOverDeptIdRef.current = newOverId
@@ -84,10 +149,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       if (!originalDept) return
       if (node.type !== 'agent') return
 
-      const centerX = node.position.x + ((node.measured?.width ?? AGENT_NODE_WIDTH) / 2)
-      const centerY = node.position.y + ((node.measured?.height ?? AGENT_NODE_HEIGHT) / 2)
-      const target = findDropTarget({ x: centerX, y: centerY }, deptBounds)
-
+      const target = findDropTarget(nodeCenter(node), deptBounds)
       const agentName = (node.data as AgentNodeData).name
       const newDept = target?.departmentName
 
@@ -95,54 +157,17 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
         announce(`Cancelled moving ${agentName}`)
         return
       }
-
       if (!isDepartmentName(newDept)) {
         announce(`Failed to move ${agentName}`)
-        addToast({ variant: 'error', title: 'Reassignment failed', description: 'Invalid department target' })
+        addToast({
+          variant: 'error',
+          title: 'Reassignment failed',
+          description: 'Invalid department target',
+        })
         return
       }
 
-      const newDeptName: DepartmentName = newDept
-      const store = useCompanyStore.getState()
-      const rollback = store.optimisticReassignAgent(agentName, newDeptName)
-      const existingAgent = store.config?.agents.find((a) => a.name === agentName)
-
-      // ``updateAgent`` now returns ``null`` on failure and owns the
-      // error toast itself. We branch on the sentinel: roll the
-      // optimistic reorder back and announce the rollback so screen
-      // readers know the move did not stick. On success the store
-      // emits its own "Agent X updated" toast already, but a drag-and-
-      // drop move is a distinct user action that deserves its own
-      // verbal cue, so the success branch keeps the "Moved" toast.
-      // Store mutation owns its own error UX and never throws
-      // (sentinel-return contract: ``updateAgent`` returns ``null`` on
-      // failure). The caller MUST NOT wrap it in try/catch/.catch;
-      // failure is handled via the ``result === null`` branch below.
-      // ``void`` marks the fire-and-forget intent for
-      // @typescript-eslint/no-floating-promises.
-      void useCompanyStore
-        .getState()
-        .updateAgent(agentName, {
-          department: newDeptName,
-          autonomy_level: existingAgent?.autonomy_level ?? null,
-          level: existingAgent?.level ?? null,
-        })
-        .then((result) => {
-          if (result === null) {
-            rollback()
-            const currentDept = useCompanyStore
-              .getState()
-              .config?.agents.find((a) => a.name === agentName)?.department
-            if (currentDept === originalDept) {
-              announce(`Failed to move ${agentName}, returned to ${originalDept}`)
-            } else {
-              announce(`Failed to move ${agentName}`)
-            }
-            return
-          }
-          announce(`Moved ${agentName} to ${newDept}`)
-          addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })
-        })
+      reassignAgent({ agentName, originalDept, newDept, newDeptName: newDept, announce, addToast })
     },
     [deptBounds, addToast, announce],
   )

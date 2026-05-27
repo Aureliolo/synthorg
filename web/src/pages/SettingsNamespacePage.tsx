@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router'
 import { ArrowLeft, Settings } from 'lucide-react'
-import type { SettingNamespace } from '@/api/types/settings'
+import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -9,58 +9,113 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
-import {
-  HIDDEN_SETTINGS,
-  NAMESPACE_DISPLAY_NAMES,
-  NAMESPACE_ORDER,
-  SETTINGS_ADVANCED_KEY,
-} from '@/utils/constants'
+import { NAMESPACE_DISPLAY_NAMES, NAMESPACE_ORDER, SETTINGS_ADVANCED_KEY } from '@/utils/constants'
 import { ROUTES } from '@/router/routes'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
-import { buildControllerDisabledMap, matchesSetting } from './settings/utils'
+import { buildControllerDisabledMap } from './settings/utils'
+import { filterNamespaceEntries } from './settings/settings-page-helpers'
+
+function SettingsBackHeader({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex items-center gap-4">
+        <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
+          <Link to={ROUTES.SETTINGS}>
+            <ArrowLeft className="size-4" />
+          </Link>
+        </Button>
+        <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+      </div>
+      {children != null && children !== false && children}
+    </div>
+  )
+}
+
+interface NamespaceContentProps {
+  displayName: string
+  filteredEntries: SettingEntry[]
+  searchQuery: string
+  dirtyValues: ReturnType<typeof useSettingsDirtyState>['dirtyValues']
+  onValueChange: ReturnType<typeof useSettingsDirtyState>['handleValueChange']
+  savingKeys: ReturnType<typeof useSettingsStore.getState>['savingKeys']
+  controllerDisabledMap: ReturnType<typeof buildControllerDisabledMap>
+}
+
+function NamespaceContent({
+  displayName,
+  filteredEntries,
+  searchQuery,
+  dirtyValues,
+  onValueChange,
+  savingKeys,
+  controllerDisabledMap,
+}: NamespaceContentProps) {
+  if (filteredEntries.length === 0) {
+    return (
+      <EmptyState
+        icon={Settings}
+        title={searchQuery ? 'No matching settings' : 'No settings available'}
+        description={
+          searchQuery
+            ? 'Try a different search term or clear the filter.'
+            : `No ${displayName.toLowerCase()} settings are available.`
+        }
+      />
+    )
+  }
+  return (
+    <ErrorBoundary level="section">
+      <NamespaceSection
+        displayName={displayName}
+        icon={<Settings className="size-4" />}
+        entries={filteredEntries}
+        dirtyValues={dirtyValues}
+        onValueChange={onValueChange}
+        savingKeys={savingKeys}
+        controllerDisabledMap={controllerDisabledMap}
+        highlightQuery={searchQuery}
+        forceOpen
+      />
+    </ErrorBoundary>
+  )
+}
+
+function UnknownNamespaceView({ namespace }: { namespace: string | undefined }) {
+  return (
+    <div className="space-y-section-gap">
+      <SettingsBackHeader title="Settings" />
+      <EmptyState
+        icon={Settings}
+        title="Unknown namespace"
+        description={`"${namespace}" is not a valid settings namespace.`}
+      />
+    </div>
+  )
+}
 
 export default function SettingsNamespacePage() {
   const { namespace } = useParams<{ namespace: string }>()
-  const {
-    entries,
-    loading,
-    error,
-    saving,
-    saveError,
-    wsConnected,
-    wsSetupError,
-    updateSetting,
-  } = useSettingsData()
-
+  const { entries, loading, error, saving, saveError, wsConnected, wsSetupError, updateSetting } =
+    useSettingsData()
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [advancedMode] = useState(() => localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true')
 
-  const {
-    dirtyValues,
-    handleValueChange,
-    handleDiscard,
-    handleSave,
-  } = useSettingsDirtyState(entries, updateSetting)
+  const { dirtyValues, handleValueChange, handleDiscard, handleSave } = useSettingsDirtyState(
+    entries,
+    updateSetting,
+  )
   const validNamespace = NAMESPACE_ORDER.includes(namespace as SettingNamespace)
   const ns = namespace as SettingNamespace
 
-  const filteredEntries = useMemo(() => {
-    if (!validNamespace) return []
-    return entries.filter((e) => {
-      if (e.definition.namespace !== ns) return false
-      const compositeKey = `${e.definition.namespace}/${e.definition.key}`
-      if (HIDDEN_SETTINGS.has(compositeKey)) return false
-      if (!advancedMode && e.definition.level === 'advanced') return false
-      if (searchQuery && !matchesSetting(e, searchQuery)) return false
-      return true
-    })
-  }, [entries, ns, validNamespace, advancedMode, searchQuery])
-
+  const filteredEntries = useMemo(
+    () => (validNamespace ? filterNamespaceEntries(entries, ns, advancedMode, searchQuery) : []),
+    [entries, ns, validNamespace, advancedMode, searchQuery],
+  )
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(entries, dirtyValues),
     [entries, dirtyValues],
@@ -71,36 +126,16 @@ export default function SettingsNamespacePage() {
   }
 
   if (!validNamespace) {
-    return (
-      <div className="space-y-section-gap">
-        <div className="flex items-center gap-4">
-          <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
-            <Link to={ROUTES.SETTINGS}><ArrowLeft className="size-4" /></Link>
-          </Button>
-          <h1 className="text-lg font-semibold text-foreground">Settings</h1>
-        </div>
-        <EmptyState
-          icon={Settings}
-          title="Unknown namespace"
-          description={`"${namespace}" is not a valid settings namespace.`}
-        />
-      </div>
-    )
+    return <UnknownNamespaceView namespace={namespace} />
   }
 
   const displayName = NAMESPACE_DISPLAY_NAMES[ns]
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
-            <Link to={ROUTES.SETTINGS}><ArrowLeft className="size-4" /></Link>
-          </Button>
-          <h1 className="text-lg font-semibold text-foreground">{displayName} Settings</h1>
-        </div>
+      <SettingsBackHeader title={`${displayName} Settings`}>
         <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
-      </div>
+      </SettingsBackHeader>
 
       {error && (
         <ErrorBanner severity="error" title="Could not load settings namespace" description={error} />
@@ -114,30 +149,15 @@ export default function SettingsNamespacePage() {
         />
       )}
 
-      {filteredEntries.length === 0 ? (
-        <EmptyState
-          icon={Settings}
-          title={searchQuery ? 'No matching settings' : 'No settings available'}
-          description={
-            searchQuery
-              ? 'Try a different search term or clear the filter.'
-              : `No ${displayName.toLowerCase()} settings are available.`
-          }
-        />
-      ) : (
-        <ErrorBoundary level="section">
-          <NamespaceSection
-            displayName={displayName}
-            icon={<Settings className="size-4" />}
-            entries={filteredEntries}
-            dirtyValues={dirtyValues}
-            onValueChange={handleValueChange}
-            savingKeys={storeSavingKeys}
-            controllerDisabledMap={controllerDisabledMap}
-            forceOpen
-          />
-        </ErrorBoundary>
-      )}
+      <NamespaceContent
+        displayName={displayName}
+        filteredEntries={filteredEntries}
+        searchQuery={searchQuery}
+        dirtyValues={dirtyValues}
+        onValueChange={handleValueChange}
+        savingKeys={storeSavingKeys}
+        controllerDisabledMap={controllerDisabledMap}
+      />
 
       <FloatingSaveBar
         dirtyCount={dirtyValues.size}

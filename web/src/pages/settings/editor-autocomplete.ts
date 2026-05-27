@@ -7,6 +7,7 @@
 
 import {
   autocompletion,
+  type Completion,
   type CompletionContext,
   type CompletionResult,
 } from '@codemirror/autocomplete'
@@ -15,26 +16,23 @@ import type { SettingEntry, SettingNamespace, SettingType } from '@/api/types/se
 
 // ── Completion schema ─────────────────────────────────────────
 
+interface SchemaKeyInfo {
+  key: string
+  type: SettingType
+  description: string
+  enumValues: readonly string[]
+}
+
 interface CompletionSchemaInfo {
   /** All known namespaces. */
   namespaces: SettingNamespace[]
-  /** Maps namespace -> array of { key, type, description, enumValues }. */
-  keys: Map<string, Array<{
-    key: string
-    type: SettingType
-    description: string
-    enumValues: readonly string[]
-  }>>
+  /** Maps namespace -> array of key descriptors. */
+  keys: Map<string, SchemaKeyInfo[]>
 }
 
 function buildCompletionSchema(entries: SettingEntry[]): CompletionSchemaInfo {
   const nsSet = new Set<SettingNamespace>()
-  const keys = new Map<string, Array<{
-    key: string
-    type: SettingType
-    description: string
-    enumValues: readonly string[]
-  }>>()
+  const keys = new Map<string, SchemaKeyInfo[]>()
 
   for (const entry of entries) {
     const ns = entry.definition.namespace
@@ -48,219 +46,195 @@ function buildCompletionSchema(entries: SettingEntry[]): CompletionSchemaInfo {
     })
   }
 
-  return {
-    namespaces: [...nsSet].sort(),
-    keys,
-  }
+  return { namespaces: [...nsSet].sort(), keys }
+}
+
+// ── Shared option builders ────────────────────────────────────
+
+function keyDetail(k: SchemaKeyInfo): string {
+  return k.enumValues.length > 0 ? `${k.type} (${k.enumValues.join(' | ')})` : k.type
+}
+
+function enumOptions(enumValues: readonly string[], detail: string): Completion[] {
+  return enumValues.map((val) => ({ label: val, type: 'enum', detail }))
+}
+
+function namespaceOptions(namespaces: SettingNamespace[], apply?: (ns: string) => string): Completion[] {
+  return namespaces.map((ns) => ({
+    label: ns,
+    type: 'keyword',
+    detail: 'namespace',
+    info: `Settings namespace: ${ns}`,
+    ...(apply ? { apply: apply(ns) } : {}),
+  }))
 }
 
 // ── JSON completion source ────────────────────────────────────
 
-/**
- * Determine the current context for autocomplete:
- * - At top level: suggest namespace keys
- * - Inside a namespace: suggest setting keys
- * - At a value position for an enum key: suggest enum values
- */
+/** Walk backward from the cursor to the namespace object it sits in. */
+function findJsonNamespace(text: string, pos: number): string | null {
+  // braceDepth counts unmatched '{' seen scanning backward; the first
+  // unmatched '{' is the innermost enclosing object.
+  let braceDepth = 0
+  for (let i = pos - 1; i >= 0; i--) {
+    const ch = text[i]
+    if (ch === '{') {
+      braceDepth++
+      if (braceDepth === 1) {
+        const preceding = text.slice(0, i).trimEnd()
+        const nsMatch = /"(\w+)"\s*:\s*$/.exec(preceding)
+        return nsMatch ? (nsMatch[1] ?? null) : null
+      }
+    } else if (ch === '}') {
+      braceDepth--
+    }
+  }
+  return null
+}
+
+function jsonEnumCompletion(
+  valueMatch: RegExpExecArray,
+  pos: number,
+  currentNamespace: string,
+  schema: CompletionSchemaInfo,
+): CompletionResult | null {
+  const settingKey = valueMatch[1] ?? ''
+  const partial = valueMatch[2] ?? ''
+  const setting = schema.keys.get(currentNamespace)?.find((k) => k.key === settingKey)
+  if (setting && setting.enumValues.length > 0) {
+    return {
+      from: pos - partial.length,
+      options: enumOptions(setting.enumValues, `${currentNamespace}/${settingKey}`),
+    }
+  }
+  return null
+}
+
+function jsonKeyCompletion(
+  before: string,
+  pos: number,
+  currentNamespace: string | null,
+  schema: CompletionSchemaInfo,
+): CompletionResult | null {
+  // After { or , or newline, possibly whitespace, then "partial.
+  const keyMatch = /(?:^|[{,])\s*"(\w*)$/.exec(before)
+  if (!keyMatch) return null
+  const partial = keyMatch[1] ?? ''
+  const from = pos - partial.length
+  if (currentNamespace) {
+    const keyInfo = schema.keys.get(currentNamespace)
+    if (!keyInfo) return null
+    return {
+      from,
+      options: keyInfo.map((k) => ({
+        label: k.key,
+        type: 'property',
+        detail: keyDetail(k),
+        info: k.description,
+      })),
+    }
+  }
+  return { from, options: namespaceOptions(schema.namespaces) }
+}
+
 function jsonCompletionSource(
   schema: CompletionSchemaInfo,
 ): (ctx: CompletionContext) => CompletionResult | null {
   return (ctx: CompletionContext) => {
     const text = ctx.state.doc.toString()
     const pos = ctx.pos
-
-    // Get the text before cursor for context analysis
     const before = text.slice(0, pos)
+    const currentNamespace = findJsonNamespace(text, pos)
 
-    // Check if we're typing a key (after { or , and before :)
-    // Determine nesting depth to know if we're at namespace or key level
-    let braceDepth = 0
-    let currentNamespace: string | null = null
-
-    // Walk backwards to determine context.
-    // braceDepth counts unmatched '{' seen while scanning backward.
-    // The first unmatched '{' is the innermost enclosing object.
-    for (let i = pos - 1; i >= 0; i--) {
-      const ch = text[i]
-      if (ch === '{') {
-        braceDepth++
-        if (braceDepth === 1) {
-          // First enclosing '{' -- check if it belongs to a namespace
-          const preceding = text.slice(0, i).trimEnd()
-          const nsMatch = /"(\w+)"\s*:\s*$/.exec(preceding)
-          if (nsMatch) {
-            // We're inside a namespace object (e.g. "api": { | })
-            currentNamespace = nsMatch[1] ?? null
-          }
-          // If no nsMatch, we're at the root object level
-          break
-        }
-      } else if (ch === '}') {
-        braceDepth--
-      }
-    }
-
-    // Check if we're in a string value position (after "key": )
-    // Look for pattern: "someKey": "| (cursor in a value string)
+    // Value position: "someKey": "| (cursor inside a value string).
     const valueMatch = /"(\w+)"\s*:\s*"([^"]*?)$/.exec(before)
     if (valueMatch && currentNamespace) {
-      const settingKey = valueMatch[1] ?? ''
-      const partial = valueMatch[2] ?? ''
-      const keyInfo = schema.keys.get(currentNamespace)
-      const setting = keyInfo?.find((k) => k.key === settingKey)
-      if (setting && setting.enumValues.length > 0) {
-        const from = pos - partial.length
-        return {
-          from,
-          options: setting.enumValues.map((val) => ({
-            label: val,
-            type: 'enum',
-            detail: `${currentNamespace}/${settingKey}`,
-          })),
-        }
-      }
-      return null
+      return jsonEnumCompletion(valueMatch, pos, currentNamespace, schema)
     }
-
-    // Check if we're typing a key name (inside quotes at key position)
-    // Pattern: after { or , or newline, possibly whitespace, then "partial
-    const keyMatch = /(?:^|[{,])\s*"(\w*)$/.exec(before)
-    if (!keyMatch) return null
-
-    const partial = keyMatch[1] ?? ''
-    const from = pos - partial.length
-
-    if (currentNamespace) {
-      // Inside a namespace -- suggest setting keys
-      const keyInfo = schema.keys.get(currentNamespace)
-      if (!keyInfo) return null
-      return {
-        from,
-        options: keyInfo.map((k) => ({
-          label: k.key,
-          type: 'property',
-          detail: k.enumValues.length > 0
-            ? `${k.type} (${k.enumValues.join(' | ')})`
-            : k.type,
-          info: k.description,
-        })),
-      }
-    }
-
-    // At root level -- suggest namespaces
-    return {
-      from,
-      options: schema.namespaces.map((ns) => ({
-        label: ns,
-        type: 'keyword',
-        detail: 'namespace',
-        info: `Settings namespace: ${ns}`,
-      })),
-    }
+    return jsonKeyCompletion(before, pos, currentNamespace, schema)
   }
 }
 
 // ── YAML completion source ────────────────────────────────────
 
+interface LineCtx {
+  text: string
+  lineFrom: number
+  indent: number
+}
+
+/** Nearest unindented key above a line -- the enclosing namespace. */
+function findYamlNamespace(text: string, lineFrom: number): string | null {
+  const linesAbove = text.slice(0, lineFrom).split('\n')
+  for (let i = linesAbove.length - 1; i >= 0; i--) {
+    const nsMatch = /^(\w[\w_]*)\s*:/.exec(linesAbove[i] ?? '')
+    if (nsMatch) return nsMatch[1] ?? null
+  }
+  return null
+}
+
+function yamlEnumCompletion(
+  valueMatch: RegExpExecArray,
+  pos: number,
+  ctx: LineCtx,
+  schema: CompletionSchemaInfo,
+): CompletionResult | null {
+  const settingKey = valueMatch[1] ?? ''
+  const partial = valueMatch[2] ?? ''
+  const ns = findYamlNamespace(ctx.text, ctx.lineFrom)
+  if (!ns) return null
+  const setting = schema.keys.get(ns)?.find((k) => k.key === settingKey)
+  if (setting && setting.enumValues.length > 0) {
+    return { from: pos - partial.length, options: enumOptions(setting.enumValues, `${ns}/${settingKey}`) }
+  }
+  return null
+}
+
+function yamlKeyCompletion(
+  beforeOnLine: string,
+  pos: number,
+  ctx: LineCtx,
+  schema: CompletionSchemaInfo,
+): CompletionResult | null {
+  const keyTyping = beforeOnLine.trimStart()
+  // Only complete a key before its colon is typed.
+  if (keyTyping.includes(':')) return null
+  const from = pos - keyTyping.length
+  if (ctx.indent > 0) {
+    const ns = findYamlNamespace(ctx.text, ctx.lineFrom)
+    if (!ns) return null
+    const keyInfo = schema.keys.get(ns)
+    if (!keyInfo) return null
+    return {
+      from,
+      options: keyInfo.map((k) => ({
+        label: k.key,
+        type: 'property',
+        detail: keyDetail(k),
+        info: k.description,
+        apply: `${k.key}: `,
+      })),
+    }
+  }
+  return { from, options: namespaceOptions(schema.namespaces, (ns) => `${ns}:\n  `) }
+}
+
 function yamlCompletionSource(
   schema: CompletionSchemaInfo,
 ): (ctx: CompletionContext) => CompletionResult | null {
-  return (ctx: CompletionContext) => {
-    const text = ctx.state.doc.toString()
-    const pos = ctx.pos
+  return (cmCtx: CompletionContext) => {
+    const pos = cmCtx.pos
+    const text = cmCtx.state.doc.toString()
+    const lineObj = cmCtx.state.doc.lineAt(pos)
+    const beforeOnLine = lineObj.text.slice(0, pos - lineObj.from)
+    const indent = /^(\s*)/.exec(lineObj.text)?.[1]?.length ?? 0
+    const ctx: LineCtx = { text, lineFrom: lineObj.from, indent }
 
-    // Get the current line and text before cursor
-    const lineObj = ctx.state.doc.lineAt(pos)
-    const lineText = lineObj.text
-    const colPos = pos - lineObj.from
-    const beforeOnLine = lineText.slice(0, colPos)
-
-    // Determine indentation level
-    const indentMatch = /^(\s*)/.exec(lineText)
-    const indent = indentMatch?.[1]?.length ?? 0
-
-    // Check if we're typing a value after "key: " for enum autocomplete
     const valueMatch = /^\s+(\w[\w_]*)\s*:\s*(\S*)$/.exec(beforeOnLine)
     if (valueMatch && indent > 0) {
-      const settingKey = valueMatch[1] ?? ''
-      const partial = valueMatch[2] ?? ''
-
-      // Find the namespace by looking at the previous unindented key
-      const linesAbove = text.slice(0, lineObj.from).split('\n')
-      let ns: string | null = null
-      for (let i = linesAbove.length - 1; i >= 0; i--) {
-        const nsMatch = /^(\w[\w_]*)\s*:/.exec(linesAbove[i] ?? '')
-        if (nsMatch) {
-          ns = nsMatch[1] ?? null
-          break
-        }
-      }
-
-      if (ns) {
-        const keyInfo = schema.keys.get(ns)
-        const setting = keyInfo?.find((k) => k.key === settingKey)
-        if (setting && setting.enumValues.length > 0) {
-          const from = pos - partial.length
-          return {
-            from,
-            options: setting.enumValues.map((val) => ({
-              label: val,
-              type: 'enum',
-              detail: `${ns}/${settingKey}`,
-            })),
-          }
-        }
-      }
-      return null
+      return yamlEnumCompletion(valueMatch, pos, ctx, schema)
     }
-
-    // Check if we're typing a key
-    const keyTyping = beforeOnLine.trimStart()
-    // Only complete if we haven't typed a colon yet
-    if (keyTyping.includes(':')) return null
-
-    const partial = keyTyping
-    const from = pos - partial.length
-
-    if (indent > 0) {
-      // Indented -- inside a namespace, suggest setting keys
-      const linesAbove = text.slice(0, lineObj.from).split('\n')
-      let ns: string | null = null
-      for (let i = linesAbove.length - 1; i >= 0; i--) {
-        const nsMatch = /^(\w[\w_]*)\s*:/.exec(linesAbove[i] ?? '')
-        if (nsMatch) {
-          ns = nsMatch[1] ?? null
-          break
-        }
-      }
-      if (!ns) return null
-      const keyInfo = schema.keys.get(ns)
-      if (!keyInfo) return null
-      return {
-        from,
-        options: keyInfo.map((k) => ({
-          label: k.key,
-          type: 'property',
-          detail: k.enumValues.length > 0
-            ? `${k.type} (${k.enumValues.join(' | ')})`
-            : k.type,
-          info: k.description,
-          apply: `${k.key}: `,
-        })),
-      }
-    }
-
-    // Top level -- suggest namespaces
-    return {
-      from,
-      options: schema.namespaces.map((ns) => ({
-        label: ns,
-        type: 'keyword',
-        detail: 'namespace',
-        info: `Settings namespace: ${ns}`,
-        apply: `${ns}:\n  `,
-      })),
-    }
+    return yamlKeyCompletion(beforeOnLine, pos, ctx, schema)
   }
 }
 
@@ -269,12 +243,8 @@ function yamlCompletionSource(
 let _cachedEntries: SettingEntry[] | null = null
 let _cachedSchema: CompletionSchemaInfo | null = null
 
-function getOrBuildSchema(
-  entries: SettingEntry[],
-): CompletionSchemaInfo {
-  if (_cachedEntries === entries && _cachedSchema) {
-    return _cachedSchema
-  }
+function getOrBuildSchema(entries: SettingEntry[]): CompletionSchemaInfo {
+  if (_cachedEntries === entries && _cachedSchema) return _cachedSchema
   _cachedSchema = buildCompletionSchema(entries)
   _cachedEntries = entries
   return _cachedSchema
@@ -296,10 +266,8 @@ export function settingsAutocompleteExtension(
         const entries = getEntries()
         if (entries.length === 0) return null
         const schema = getOrBuildSchema(entries)
-        const format = getFormat()
-        const source = format === 'json'
-          ? jsonCompletionSource(schema)
-          : yamlCompletionSource(schema)
+        const source =
+          getFormat() === 'json' ? jsonCompletionSource(schema) : yamlCompletionSource(schema)
         return source(ctx)
       },
     ],

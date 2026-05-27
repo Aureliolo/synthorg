@@ -27,7 +27,7 @@ function DeptAdminNodeComponent({ data }: NodeProps<DeptAdminNodeType>) {
   return (
     <div
       className={cn(
-        'relative rounded-lg border-2 border-info/50 bg-card px-3 py-2',
+        'relative rounded-lg border-2 border-info/50 bg-card p-card',
         'shadow-[var(--so-shadow-card)]',
       )}
       style={{ width: DEPT_ADMIN_WIDTH }}

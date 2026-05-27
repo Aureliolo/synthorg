@@ -81,6 +81,16 @@ export function detectRemovedKeys(
   return removed
 }
 
+function stringifyValue(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/** New string value when it differs from the original, else null. */
+function computeChange(value: unknown, origValue: unknown): string | null {
+  const strValue = stringifyValue(value)
+  return stringifyValue(origValue) !== strValue ? strValue : null
+}
+
 /** Validate and diff parsed settings against original. */
 export function buildChanges(
   parsed: ParsedSettings,
@@ -99,19 +109,38 @@ export function buildChanges(
     for (const [key, value] of Object.entries(keys)) {
       const ck = `${ns}/${key}`
       const entry = entryLookup.get(ck)
-      if (!entry) { unknownKeys.push(ck); continue }
-      if (entry.source === 'env') { envKeys.push(ck); continue }
-      const strValue = typeof value === 'string'
-        ? value : JSON.stringify(value)
-      const origValue = origNs[key]
-      const origStr = typeof origValue === 'string'
-        ? origValue : JSON.stringify(origValue)
-      if (origStr !== strValue) {
-        changes.set(ck, strValue)
+      if (!entry) {
+        unknownKeys.push(ck)
+        continue
       }
+      if (entry.source === 'env') {
+        envKeys.push(ck)
+        continue
+      }
+      const changed = computeChange(value, origNs[key])
+      if (changed !== null) changes.set(ck, changed)
     }
   }
   return { changes, unknownKeys, envKeys }
+}
+
+function parseRawDocument(text: string, format: CodeFormat): unknown {
+  if (format === 'json') return JSON.parse(text)
+  if (format === 'yaml') {
+    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
+    // tags that could execute arbitrary code. Do not change to
+    // DEFAULT_SCHEMA.
+    return YAML.load(text, { schema: YAML.CORE_SCHEMA })
+  }
+  throw new Error(`Unsupported format: ${String(format)}`)
+}
+
+function assertNamespaceObjects(raw: Record<string, unknown>): void {
+  for (const [ns, nsValue] of Object.entries(raw)) {
+    if (!nsValue || typeof nsValue !== 'object' || Array.isArray(nsValue)) {
+      throw new Error(`Namespace "${ns}" must be an object, got ${typeof nsValue}`)
+    }
+  }
 }
 
 export function parseText(text: string, format: CodeFormat): ParsedSettings {
@@ -120,27 +149,10 @@ export function parseText(text: string, format: CodeFormat): ParsedSettings {
     throw new Error(`Input too large (max ${MAX_EDITOR_BYTES / 1024} KiB)`)
   }
 
-  let raw: unknown
-  if (format === 'json') {
-    raw = JSON.parse(text)
-  } else if (format === 'yaml') {
-    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
-    // tags that could execute arbitrary code. Do not change to
-    // DEFAULT_SCHEMA.
-    raw = YAML.load(text, { schema: YAML.CORE_SCHEMA })
-  } else {
-    throw new Error(`Unsupported format: ${String(format)}`)
-  }
-
+  const raw = parseRawDocument(text, format)
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error(`${format.toUpperCase()} must be an object at the top level`)
   }
-
-  for (const [ns, nsValue] of Object.entries(raw as Record<string, unknown>)) {
-    if (!nsValue || typeof nsValue !== 'object' || Array.isArray(nsValue)) {
-      throw new Error(`Namespace "${ns}" must be an object, got ${typeof nsValue}`)
-    }
-  }
-
+  assertNamespaceObjects(raw as Record<string, unknown>)
   return raw as Record<string, Record<string, unknown>>
 }

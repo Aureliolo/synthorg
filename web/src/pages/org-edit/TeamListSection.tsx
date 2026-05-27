@@ -43,15 +43,15 @@ function SortableTeamCard({
   onDelete: () => void
   disabled: boolean
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: team.name, disabled })
-
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: team.name,
+    disabled,
+  })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
   }
-
   return (
     <div
       ref={setNodeRef}
@@ -68,9 +68,7 @@ function SortableTeamCard({
         <GripVertical className="size-4" />
       </button>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-text-primary truncate">
-          {team.name}
-        </p>
+        <p className="text-sm font-medium text-text-primary truncate">{team.name}</p>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-text-secondary">
           {team.lead && <span>Lead: {team.lead}</span>}
           <StatPill label="members" value={team.members.length} />
@@ -98,14 +96,25 @@ function SortableTeamCard({
   )
 }
 
-export function TeamListSection({
-  teams,
-  saving,
-  onCreateTeam,
-  onUpdateTeam,
-  onDeleteTeam,
-  onReorderTeams,
-}: TeamListSectionProps) {
+interface TeamListState {
+  createOpen: boolean
+  setCreateOpen: (open: boolean) => void
+  editTeam: TeamConfig | null
+  setEditTeam: (team: TeamConfig | null) => void
+  deleteTeam: TeamConfig | null
+  setDeleteTeam: (team: TeamConfig | null) => void
+  deleting: boolean
+  sensors: ReturnType<typeof useSensors>
+  handleDragEnd: (event: DragEndEvent) => Promise<void>
+  handleDeleteConfirm: (teamName: string, reassignTo?: string) => Promise<void>
+  siblingTeams: readonly TeamConfig[]
+}
+
+function useTeamList(
+  teams: readonly TeamConfig[],
+  onDeleteTeam: TeamListSectionProps['onDeleteTeam'],
+  onReorderTeams: TeamListSectionProps['onReorderTeams'],
+): TeamListState {
   const [createOpen, setCreateOpen] = useState(false)
   const [editTeam, setEditTeam] = useState<TeamConfig | null>(null)
   const [deleteTeam, setDeleteTeam] = useState<TeamConfig | null>(null)
@@ -116,94 +125,123 @@ export function TeamListSection({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event
-    if (!over || active.id === over.id) return
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const names = teams.map((t) => t.name)
+      const oldIndex = names.indexOf(String(active.id))
+      const newIndex = names.indexOf(String(over.id))
+      if (oldIndex === -1 || newIndex === -1) return
+      // Store owns the toast UX; this view keeps no optimistic state to
+      // roll back (the company store updates `config` directly).
+      await onReorderTeams(arrayMove(names, oldIndex, newIndex))
+    },
+    [teams, onReorderTeams],
+  )
 
-    const names = teams.map((t) => t.name)
-    const oldIndex = names.indexOf(String(active.id))
-    const newIndex = names.indexOf(String(over.id))
-    if (oldIndex === -1 || newIndex === -1) return
-
-    const reordered = arrayMove(names, oldIndex, newIndex)
-    // Store owns the toast UX; the sentinel return is for callers
-    // that need to roll back local optimistic state, which this view
-    // does not maintain (the company store updates ``config``
-    // directly).
-    await onReorderTeams(reordered)
-  }, [teams, onReorderTeams])
-
-  const handleDeleteConfirm = useCallback(async (teamName: string, reassignTo?: string) => {
-    setDeleting(true)
-    try {
-      const ok = await onDeleteTeam(teamName, reassignTo)
-      if (ok) {
-        setDeleteTeam(null)
+  const handleDeleteConfirm = useCallback(
+    async (teamName: string, reassignTo?: string) => {
+      setDeleting(true)
+      try {
+        const ok = await onDeleteTeam(teamName, reassignTo)
+        if (ok) setDeleteTeam(null)
+      } finally {
+        // `finally` so an unexpected reject never leaves the dialog stuck.
+        setDeleting(false)
       }
-    } finally {
-      // ``finally`` (not the happy path only) so an unexpected reject
-      // from the store never leaves the confirm dialog stuck in
-      // loading state.
-      setDeleting(false)
-    }
-  }, [onDeleteTeam])
+    },
+    [onDeleteTeam],
+  )
 
-  const siblingTeams = deleteTeam
-    ? teams.filter((t) => t.name !== deleteTeam.name)
-    : []
+  const siblingTeams = deleteTeam ? teams.filter((t) => t.name !== deleteTeam.name) : []
+
+  return {
+    createOpen,
+    setCreateOpen,
+    editTeam,
+    setEditTeam,
+    deleteTeam,
+    setDeleteTeam,
+    deleting,
+    sensors,
+    handleDragEnd,
+    handleDeleteConfirm,
+    siblingTeams,
+  }
+}
+
+interface TeamCardsProps {
+  teams: readonly TeamConfig[]
+  disabled: boolean
+  sensors: ReturnType<typeof useSensors>
+  onDragEnd: (event: DragEndEvent) => Promise<void>
+  onEdit: (team: TeamConfig) => void
+  onDelete: (team: TeamConfig) => void
+}
+
+function TeamCards({ teams, disabled, sensors, onDragEnd, onEdit, onDelete }: TeamCardsProps) {
+  if (teams.length === 0) {
+    return (
+      <p className="text-xs text-text-secondary">
+        No teams configured. Click "Add Team" to create one.
+      </p>
+    )
+  }
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+      <SortableContext items={teams.map((t) => t.name)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {teams.map((team) => (
+            <SortableTeamCard
+              key={team.name}
+              team={team}
+              onEdit={() => onEdit(team)}
+              onDelete={() => onDelete(team)}
+              disabled={disabled}
+            />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+export function TeamListSection({
+  teams,
+  saving,
+  onCreateTeam,
+  onUpdateTeam,
+  onDeleteTeam,
+  onReorderTeams,
+}: TeamListSectionProps) {
+  const list = useTeamList(teams, onDeleteTeam, onReorderTeams)
 
   return (
     <div className="border-t border-border pt-4 space-y-section-gap">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Users className="size-3.5 text-text-muted" aria-hidden="true" />
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-            Teams
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Teams</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCreateOpen(true)}
-          disabled={saving}
-        >
+        <Button variant="outline" size="sm" onClick={() => list.setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1 size-3.5" />
           Add Team
         </Button>
       </div>
 
-      {teams.length === 0 ? (
-        <p className="text-xs text-text-secondary">
-          No teams configured. Click "Add Team" to create one.
-        </p>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={teams.map((t) => t.name)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-2">
-              {teams.map((team) => (
-                <SortableTeamCard
-                  key={team.name}
-                  team={team}
-                  onEdit={() => setEditTeam(team)}
-                  onDelete={() => setDeleteTeam(team)}
-                  disabled={saving}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
+      <TeamCards
+        teams={teams}
+        disabled={saving}
+        sensors={list.sensors}
+        onDragEnd={list.handleDragEnd}
+        onEdit={list.setEditTeam}
+        onDelete={list.setDeleteTeam}
+      />
 
       <TeamEditDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
+        open={list.createOpen}
+        onOpenChange={list.setCreateOpen}
         mode="create"
         onCreateTeam={onCreateTeam}
         onUpdateTeam={onUpdateTeam}
@@ -211,22 +249,26 @@ export function TeamListSection({
       />
 
       <TeamEditDialog
-        open={editTeam !== null}
-        onOpenChange={(isOpen) => { if (!isOpen) setEditTeam(null) }}
+        open={list.editTeam !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) list.setEditTeam(null)
+        }}
         mode="edit"
-        team={editTeam ?? undefined}
+        team={list.editTeam ?? undefined}
         onCreateTeam={onCreateTeam}
         onUpdateTeam={onUpdateTeam}
         disabled={saving}
       />
 
       <TeamDeleteConfirmDialog
-        open={deleteTeam !== null}
-        onOpenChange={(isOpen) => { if (!isOpen) setDeleteTeam(null) }}
-        team={deleteTeam}
-        siblingTeams={siblingTeams}
-        onConfirm={handleDeleteConfirm}
-        loading={deleting}
+        open={list.deleteTeam !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) list.setDeleteTeam(null)
+        }}
+        team={list.deleteTeam}
+        siblingTeams={list.siblingTeams}
+        onConfirm={list.handleDeleteConfirm}
+        loading={list.deleting}
       />
     </div>
   )
