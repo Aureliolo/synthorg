@@ -157,3 +157,23 @@ export const evaluationConfigVersionsClient = createReadOnlyVersionHistoryClient
 export const companyVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/company')
+
+/**
+ * Build the read-only role-versions client for ``roleName``.
+ *
+ * Per-role (like the per-workflow case) rather than a singleton, so it
+ * is a factory. The role backend exposes list + get ONLY (no diff and
+ * no rollback), so consumers MUST gate the diff affordance off via
+ * ``VersionHistorySection``'s ``diffSupported={false}``.
+ *
+ * ``createReadOnlyVersionHistoryClient`` stays module-private: its only
+ * callers are in this file, so exporting it would reintroduce the
+ * dead-export Knip flagged. This factory is the public entry point.
+ */
+export function createRoleVersionsClient(
+  roleName: string,
+): ReadOnlyVersionHistoryClient<Record<string, unknown>> {
+  return createReadOnlyVersionHistoryClient<Record<string, unknown>>(
+    `/roles/${encodeURIComponent(roleName)}`,
+  )
+}

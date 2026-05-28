@@ -1,6 +1,7 @@
 import {
   Activity,
   BookOpen,
+  Briefcase,
   ClipboardList,
   Cpu,
   DollarSign,
@@ -45,6 +46,7 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
           <SidebarNavItem to={ROUTES.DASHBOARD} icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
           <SidebarNavItem to={ROUTES.MISSION_CONTROL} icon={Radio} label="Mission Control" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ORG} icon={GitBranch} label="Org Chart" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.ROLES} icon={Briefcase} label="Roles" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.TASKS} icon={KanbanSquare} label="Task Board" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.REPORTS} icon={FileText} label="Reports" collapsed={collapsed} />

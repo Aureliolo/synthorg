@@ -27,6 +27,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.SETUP]: 'Setup',
   [ROUTES.ORG]: 'Org Chart',
   [ROUTES.ORG_EDIT]: 'Edit Organization',
+  [ROUTES.ROLES]: 'Roles',
   [ROUTES.TASKS]: 'Tasks',
   [ROUTES.BUDGET]: 'Budget',
   [ROUTES.BUDGET_FORECAST]: 'Budget Forecast',
@@ -79,6 +80,7 @@ const EXACT_TITLES: Record<string, string> = {
  */
 const SECTION_TITLES: Record<string, string> = {
   agents: 'Agent',
+  roles: 'Role',
   tasks: 'Task',
   meetings: 'Meeting',
   providers: 'Provider',

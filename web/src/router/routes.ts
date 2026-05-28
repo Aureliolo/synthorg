@@ -12,6 +12,8 @@ export const ROUTES = {
   MISSION_CONTROL: '/mission-control',
   ORG: '/org',
   ORG_EDIT: '/org/edit',
+  ROLES: '/roles',
+  ROLE_VERSIONS: '/roles/:roleName/versions',
   TASKS: '/tasks',
   TASK_DETAIL: '/tasks/:taskId',
   BUDGET: '/budget',

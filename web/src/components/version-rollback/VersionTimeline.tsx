@@ -25,6 +25,8 @@ export interface VersionTimelineProps<T extends TimelineItem> {
   onLoadMore: () => void
   emptyTitle?: string
   emptyDescription?: string
+  /** When false, rows render as static text (no select / compare). */
+  selectable?: boolean
 }
 
 export function VersionTimeline<T extends TimelineItem>({
@@ -37,6 +39,9 @@ export function VersionTimeline<T extends TimelineItem>({
   onLoadMore,
   emptyTitle = 'No versions',
   emptyDescription = 'Versioned changes will appear here.',
+  // Defaulting is delegated to VersionHistoryItem (selectable=true) to
+  // keep this function under the complexity cap; undefined => interactive.
+  selectable,
 }: VersionTimelineProps<T>) {
   if (loading && items.length === 0) {
     return (
@@ -65,6 +70,7 @@ export function VersionTimeline<T extends TimelineItem>({
             item={item}
             active={selectedVersion === item.version}
             onSelect={onSelect}
+            selectable={selectable}
           />
         ))}
       </ol>

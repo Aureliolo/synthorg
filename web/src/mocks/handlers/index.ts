@@ -74,6 +74,7 @@ import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
+import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
@@ -129,6 +130,7 @@ export const defaultHandlers = [
   ...projectsHandlers,
   ...providersHandlers,
   ...qualityHandlers,
+  ...rolesHandlers,
   ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,

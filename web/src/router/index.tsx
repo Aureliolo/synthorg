@@ -9,6 +9,8 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const SetupPage = lazy(() => import('@/pages/SetupPage'))
 const OrgChartPage = lazy(() => import('@/pages/OrgChartPage'))
 const OrgEditPage = lazy(() => import('@/pages/OrgEditPage'))
+const RolesPage = lazy(() => import('@/pages/RolesPage'))
+const RoleVersionsPage = lazy(() => import('@/pages/RoleVersionsPage'))
 const TaskBoardPage = lazy(() => import('@/pages/TaskBoardPage'))
 const TaskDetailPage = lazy(() => import('@/pages/TaskDetailPage'))
 const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
@@ -135,6 +137,8 @@ export const router = createBrowserRouter([
               { index: true, element: <DashboardPage /> },
               { path: 'org', element: <OrgChartPage /> },
               { path: 'org/edit', element: <OrgEditPage /> },
+              { path: 'roles', element: <RolesPage /> },
+              { path: 'roles/:roleName/versions', element: <RoleVersionsPage /> },
               { path: 'tasks', element: <TaskBoardPage /> },
               { path: 'tasks/:taskId', element: <TaskDetailPage /> },
               { path: 'budget', element: <BudgetPage /> },
