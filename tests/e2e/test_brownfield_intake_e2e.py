@@ -96,8 +96,10 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
         """Use ``ProactorEventLoop`` so the real git seed can spawn.
 
         The unit-tier root pins ``SelectorEventLoop`` on Windows, which
-        cannot drive ``asyncio.create_subprocess_exec`` (the embedded
-        git backend's seed). Mirrors the git-backend unit conftest.
+        cannot drive ``asyncio.create_subprocess_exec`` (no IOCP
+        integration means ``CreateProcessW`` cannot be wired into the
+        loop) -- and the embedded git backend's seed depends on it.
+        Mirrors the git-backend unit conftest.
         """
         return {"proactor": asyncio.ProactorEventLoop}
 

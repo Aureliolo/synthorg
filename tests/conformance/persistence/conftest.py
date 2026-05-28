@@ -60,9 +60,10 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
         """Use ``SelectorEventLoop`` on Windows so psycopg async mode works.
 
-        psycopg 3 refuses to run under ``ProactorEventLoop`` (the
-        default Windows asyncio loop since 3.8). Scoped to this
-        directory so other test suites keep their default factory.
+        psycopg 3's async path does not support ``ProactorEventLoop``
+        (the default Windows asyncio loop since 3.8); it requires a
+        select-style loop. Scoped to this directory so other test
+        suites keep their default factory.
         """
         return {"selector": asyncio.SelectorEventLoop}
 
@@ -255,10 +256,10 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     referencing test's ``pytest_runtest_setup`` -- which IS covered by
     ``pytest-timeout``. Workers queued behind the container starter
     spend their wait in the FileLock poll loop; if total wait exceeds
-    the per-test 30s budget the worker dies with no useful diagnostic.
-    Verified in PR #2080 on the sibling ``migrated_db`` template build
-    where the autouse-session-fixture attempt killed 3 unrelated tests
-    at exactly t+30s.
+    the per-test 30s budget the worker dies with no useful diagnostic
+    (observed previously on the sibling ``migrated_db`` template build,
+    where moving the coordination into an autouse session fixture
+    killed every test on a queued worker at exactly t+30s).
 
     ``pytest_sessionstart`` runs before any test, is NOT covered by
     ``pytest-timeout``, and runs once per xdist worker subprocess.

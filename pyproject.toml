@@ -854,10 +854,10 @@ pythonpath = ["src", "."]
 asyncio_mode = "auto"
 # Explicit per pytest-asyncio 1.4: an unset loop scope emits a
 # deprecation warning, and our ``filterwarnings = ["error", ...]``
-# promotes it to error. ``"function"`` matches the stated future
-# default (see pytest-asyncio's 1.4 release notes); this line silences
-# the warning and locks the behaviour in regardless of the upstream
-# default-change cadence.
+# promotes it to error. ``"function"`` matches the stated upstream
+# future default (per pytest-asyncio 1.4 release notes); pinning it
+# explicitly silences the warning and decouples our behaviour from any
+# subsequent upstream default change.
 asyncio_default_test_loop_scope = "function"
 asyncio_default_fixture_loop_scope = "function"
 timeout = 30

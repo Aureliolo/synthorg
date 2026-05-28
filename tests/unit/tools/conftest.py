@@ -20,10 +20,12 @@ from synthorg.tools.registry import ToolRegistry
 # avoid a Python 3.14 IOCP teardown race
 # (https://github.com/python/cpython/issues/116773), but
 # ``SelectorEventLoop`` on Windows cannot drive
-# ``asyncio.create_subprocess_exec`` -- which the git and sandbox tools
-# call into directly. Tool tests do not use Litestar TestClient or
-# asgi-lifespan, so they do not trigger the rapid event-loop-creation
-# pattern that exposes the race in ``tests/unit/api/`` and elsewhere.
+# ``asyncio.create_subprocess_exec`` (no IOCP integration means
+# ``CreateProcessW`` cannot be wired into the loop) -- which the git
+# and sandbox tools call into directly. Tool tests do not use Litestar
+# TestClient or asgi-lifespan, so they do not trigger the rapid
+# event-loop-creation pattern that exposes the race in
+# ``tests/unit/api/`` and elsewhere.
 #
 # pluggy calls hooks in reverse registration order under
 # ``firstresult=True``, so the deeper conftest's hook wins; tool tests

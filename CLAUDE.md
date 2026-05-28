@@ -96,7 +96,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - Markers: `@pytest.mark.{unit,integration,e2e,slow}`. Async `auto`. Timeout 30s global. Coverage 80% min.
 - xdist `-n 8 --dist=loadfile` auto-applied via pyproject `addopts` (`loadfile` prevents 3.14+Windows ProactorEventLoop leak).
-- Windows: unit tests use `WindowsSelectorEventLoopPolicy` (3.14 IOCP teardown race). Subprocess tests override back.
+- Windows: unit tests pin pytest-asyncio loops to `SelectorEventLoop` via the per-conftest `pytest_asyncio_loop_factories` hook in `tests/unit/conftest.py` (avoids the 3.14 IOCP teardown race). Subprocess-driving tiers (`tests/unit/tools/`, `tests/unit/engine/workspace/git_backend/`) shadow the hook with `ProactorEventLoop`; pluggy's reverse-order invocation under `firstresult=True` lets the deeper conftest's hook win.
 - Test doubles: ladder in [conventions.md](docs/reference/conventions.md) section 12.1. `FakeClock` for the Clock seam, `mock_of[T](**overrides)` for typed-boundary substitutions, `SimpleNamespace` for attribute-bags. Bare `MagicMock` at a typed boundary (constructor / fn arg / annotated local / typed fixture return) is blocked by `scripts/check_mock_spec.py` (zero-tolerance, no baseline).
 - FakeClock and `mock_of` import from `tests._shared`; inject via `clock=` and the helper's spec subscript.
 - Vendor-agnostic: NEVER use real vendor names in project code/tests. Use `example-provider`, `test-provider`, `example-{large,medium,small}-001`. Allowed in `.claude/`, third-party imports, `providers/presets.py`, `web/public/provider-logos/`.

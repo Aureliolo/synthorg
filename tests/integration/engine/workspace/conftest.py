@@ -8,8 +8,10 @@ import pytest
 
 # The acceptance suite drives ``git`` via ``asyncio.create_subprocess_exec``
 # (through ``EmbeddedGitBackend``) and direct ``subprocess.run`` for worktree
-# setup. ``SelectorEventLoop`` on Windows cannot drive ``create_subprocess_exec``;
-# restore ``ProactorEventLoop`` here so the subprocess calls work.
+# setup. ``SelectorEventLoop`` on Windows cannot drive ``create_subprocess_exec``
+# (no IOCP integration means ``CreateProcessW`` cannot be wired into
+# the loop); restore ``ProactorEventLoop`` here so the subprocess
+# calls work.
 
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 

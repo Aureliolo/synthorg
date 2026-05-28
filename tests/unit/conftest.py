@@ -14,9 +14,12 @@ import pytest
 # ``tests/unit/tools/conftest.py`` and
 # ``tests/unit/engine/workspace/git_backend/conftest.py`` shadow this
 # hook for tests that drive real ``asyncio.create_subprocess_exec``
-# (``SelectorEventLoop`` on Windows cannot drive subprocess); pluggy's
-# reverse-order invocation under ``firstresult=True`` lets the deeper
-# conftest win.
+# (``SelectorEventLoop`` on Windows cannot drive subprocess; it has no
+# IOCP integration, so ``CreateProcessW`` cannot be wired into the
+# event loop). pytest registers conftest hooks in path order (root
+# first, progressively deeper); pluggy invokes ``firstresult=True``
+# hooks in REVERSE registration order, so the deeper conftest's hook
+# fires first and its non-None result wins.
 
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 

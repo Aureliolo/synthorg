@@ -40,6 +40,8 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
         """Use ``SelectorEventLoop`` on Windows so psycopg async mode works.
 
+        psycopg 3's async path requires a select-style loop on Windows
+        (it does not integrate with ``ProactorEventLoop``'s IOCP).
         Scoped to the integration directory so other test suites keep
         their default ``ProactorEventLoop``.
         """

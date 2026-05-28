@@ -18,10 +18,8 @@ SQLite is exercised in-process; Postgres is exercised via a
 testcontainer when Docker is available and skipped otherwise.
 """
 
-import asyncio
-import sys
 import uuid
-from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
+from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -50,20 +48,6 @@ pytestmark = pytest.mark.integration
 # call writes state, the test disconnects, and the second call observes
 # the persisted record without any in-memory carryover.
 BackendFactory = Callable[[], Coroutine[Any, Any, PersistenceBackend]]
-
-
-if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
-
-    def pytest_asyncio_loop_factories(
-        config: pytest.Config,
-        item: pytest.Item,
-    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
-        """Use ``SelectorEventLoop`` on Windows so psycopg async mode works.
-
-        Mirrors the hook in ``tests/conformance/persistence/conftest.py``;
-        psycopg 3 refuses to run under ``ProactorEventLoop`` on Windows.
-        """
-        return {"selector": asyncio.SelectorEventLoop}
 
 
 @pytest.fixture(params=["sqlite", "postgres"], ids=["sqlite", "postgres"])
