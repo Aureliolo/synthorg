@@ -147,14 +147,19 @@ function EntityCatalogEmpty({ hasActiveFilters, onClearFilters }: EntityCatalogE
 interface EntityCatalogGridProps {
   entities: readonly EntityResponse[]
   onSelect: (entity: EntityResponse) => void
+  onDelete: (name: string) => boolean | void | Promise<boolean | void>
 }
 
-function EntityCatalogGrid({ entities, onSelect }: EntityCatalogGridProps) {
+function EntityCatalogGrid({ entities, onSelect, onDelete }: EntityCatalogGridProps) {
   return (
     <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
       {entities.map((entity) => (
         <StaggerItem key={entity.name}>
-          <EntityCard entity={entity} onClick={() => onSelect(entity)} />
+          <EntityCard
+            entity={entity}
+            onClick={() => onSelect(entity)}
+            onDelete={onDelete}
+          />
         </StaggerItem>
       ))}
     </StaggerGroup>
@@ -170,6 +175,7 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
   const setSearchQuery = useOntologyStore((s) => s.setSearchQuery)
   const setEntitySort = useOntologyStore((s) => s.setEntitySort)
   const setSelectedEntity = useOntologyStore((s) => s.setSelectedEntity)
+  const deleteEntity = useOntologyStore((s) => s.deleteEntity)
 
   const hasActiveFilters = searchQuery.trim().length > 0 || tierFilter !== 'all'
 
@@ -198,7 +204,11 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
       {sortedEntities.length === 0 ? (
         <EntityCatalogEmpty hasActiveFilters={hasActiveFilters} onClearFilters={handleClearFilters} />
       ) : (
-        <EntityCatalogGrid entities={sortedEntities} onSelect={setSelectedEntity} />
+        <EntityCatalogGrid
+          entities={sortedEntities}
+          onSelect={setSelectedEntity}
+          onDelete={deleteEntity}
+        />
       )}
     </SectionCard>
   )
