@@ -71,18 +71,7 @@ export function useRuleBuilderForm({
   const [errors, setErrors] = useState<RuleBuilderFormErrors>({})
   const [submitting, setSubmitting] = useState(false)
 
-  // React's documented "reset state when a prop changes" idiom: detect the
-  // identity change in render so the new editRule's fields render in the
-  // same commit instead of a useEffect-driven double render. Avoids the
-  // set-state-in-effect lint rule and matches useResetOnAgentChange in
-  // pages/agents/useQualityScoreOverride.ts.
-  const prevEditRuleRef = useRef(editRule)
-  if (prevEditRuleRef.current !== editRule) {
-    prevEditRuleRef.current = editRule
-    setForm(editRule ? formFromRule(editRule) : INITIAL_FORM)
-    setErrors({})
-    setSubmitting(false)
-  }
+  useResetFormOnEditRuleChange(editRule, setForm, setErrors, setSubmitting)
 
   const createRule = useCustomRulesStore((s) => s.createRule)
   const updateRule = useCustomRulesStore((s) => s.updateRule)
@@ -153,6 +142,26 @@ export function useRuleBuilderForm({
     updateField,
     toggleAltitude,
     handleSubmit,
+  }
+}
+
+function useResetFormOnEditRuleChange(
+  editRule: CustomRule | null,
+  setForm: (form: RuleBuilderFormState) => void,
+  setErrors: (errors: RuleBuilderFormErrors) => void,
+  setSubmitting: (submitting: boolean) => void,
+): void {
+  // React's documented "reset state when a prop changes" idiom: detect the
+  // identity change in render so the new editRule's fields render in the
+  // same commit instead of a useEffect-driven double render. Avoids the
+  // set-state-in-effect lint rule and matches useResetOnAgentChange in
+  // pages/agents/useQualityScoreOverride.ts.
+  const prevEditRuleRef = useRef(editRule)
+  if (prevEditRuleRef.current !== editRule) {
+    prevEditRuleRef.current = editRule
+    setForm(editRule ? formFromRule(editRule) : INITIAL_FORM)
+    setErrors({})
+    setSubmitting(false)
   }
 }
 
