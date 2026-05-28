@@ -275,7 +275,7 @@ def _check_parity(
     """Return human-readable parity failures between manifest and claims."""
     enforced = frozenset(e.symbol for e in entries if e.state == "ENFORCED")
     manifest_only = enforced - claimed
-    feature_only = claimed - frozenset(e.symbol for e in entries)
+    feature_only = claimed - enforced
     lines: list[str] = []
     if manifest_only:
         lines.append(

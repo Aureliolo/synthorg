@@ -192,6 +192,25 @@ def test_parity_passes_when_claimed_equals_enforced(tmp_path: Path) -> None:
     assert _MODULE._run(tmp_path, claimed_symbols=frozenset({"Foo"})) == 0
 
 
+def test_parity_failure_when_feature_claims_pending_only_symbol(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A symbol that is only PENDING in the manifest cannot satisfy parity."""
+    _seed(
+        tmp_path,
+        manifest="PENDING Bar #1956 -- being wired\n",
+        files={
+            "src/synthorg/engine/bar.py": "class Bar:\n    pass\n",
+            "src/synthorg/api/app.py": "from x import Bar\n\nBar()\n",
+        },
+    )
+    rc = _MODULE._run(tmp_path, claimed_symbols=frozenset({"Bar"}))
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "parity" in out.lower()
+    assert "Bar" in out
+
+
 def test_pending_with_site_emits_nudge_and_passes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

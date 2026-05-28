@@ -31,6 +31,8 @@ from synthorg._core.features import FeatureModule  # noqa: TC001
 from synthorg.core.codebase_structure_map import RelPath  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
+FEATURE_INDEX_SCHEMA_VERSION: int = 1
+
 
 class FeatureMap(BaseModel):
     """One feature's navigable surface.
@@ -147,7 +149,7 @@ def protocol_exports(directory: str) -> tuple[str, ...]:
     package_name = ".".join(Path(directory).parts[1:])
     try:
         package = importlib.import_module(package_name)
-    except ImportError:
+    except Exception:
         return ()
     exported: tuple[str, ...] = tuple(getattr(package, "__all__", ()))
     return tuple(

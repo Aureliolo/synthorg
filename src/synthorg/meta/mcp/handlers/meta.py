@@ -274,6 +274,7 @@ async def _meta_query_feature_map(
             feature_directories,
         )
         from synthorg.core.feature_map import (  # noqa: PLC0415
+            FEATURE_INDEX_SCHEMA_VERSION,
             FeatureIndex,
             build_feature_map,
         )
@@ -286,7 +287,7 @@ async def _meta_query_feature_map(
             if name_filter is None or feature.name == name_filter
         )
         index = FeatureIndex(
-            schema_version=1,
+            schema_version=FEATURE_INDEX_SCHEMA_VERSION,
             generated_at=datetime.now(UTC),
             features=maps,
         )

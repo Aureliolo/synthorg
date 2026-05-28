@@ -88,12 +88,16 @@ def check(*, repo_root: Path) -> list[str]:
         build_map = generator.build_codebase_map  # type: ignore[attr-defined]
         expected_index = build_index().model_dump(mode="json")
         expected_map = {"modules": build_map()}
-    except (OSError, ImportError) as exc:
+    except Exception as exc:
         findings.append(f"generator failed: {exc}")
         return findings
 
-    committed_index_raw = _load_json(index_path)
-    committed_map_raw = _load_json(map_path)
+    try:
+        committed_index_raw = _load_json(index_path)
+        committed_map_raw = _load_json(map_path)
+    except ValueError as exc:
+        findings.append(f"failed to parse committed JSON: {exc}")
+        return findings
     if not isinstance(committed_index_raw, dict):
         findings.append(
             f"{FEATURE_INDEX_REL.as_posix()} is not a JSON object (corrupt)"

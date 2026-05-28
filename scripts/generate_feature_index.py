@@ -35,6 +35,7 @@ from synthorg._core.features import (
     feature_directories,
 )
 from synthorg.core.feature_map import (
+    FEATURE_INDEX_SCHEMA_VERSION,
     FeatureIndex,
     build_feature_map,
 )
@@ -42,7 +43,6 @@ from synthorg.core.feature_map import (
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src" / "synthorg"
 _DATA_DIR = _REPO_ROOT / "data"
-_SCHEMA_VERSION = 1
 
 
 def build_feature_index() -> FeatureIndex:
@@ -62,7 +62,7 @@ def build_feature_index() -> FeatureIndex:
         for feature in features_by_name
     )
     return FeatureIndex(
-        schema_version=_SCHEMA_VERSION,
+        schema_version=FEATURE_INDEX_SCHEMA_VERSION,
         generated_at=datetime.now(UTC),
         features=maps,
     )

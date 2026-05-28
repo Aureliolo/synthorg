@@ -1,10 +1,11 @@
 # module-kind: feature
 """Tools feature manifest.
 
-Declares the tools feature's surface: its settings namespace and state
-slice (the tool-invocation tracker). The agent tool registry itself is
-built per-task by the engine, so the feature exposes no controller, MCP
-domain, or ghost-wired symbols here.
+Declares the tools feature's surface: its settings namespace, state
+slice (the tool-invocation tracker), and ghost-wired symbols owned by
+the feature (the boot-time parity check expects them here). The agent
+tool registry itself is built per-task by the engine, so the feature
+exposes no controller or MCP domain.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
