@@ -1,10 +1,8 @@
 """Tests for coordination metrics query controller."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.coordination_metrics import (
     CoordinationMetrics,
@@ -15,6 +13,7 @@ from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,
 )
 from synthorg.persistence._shared import parse_iso_utc
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -42,11 +41,11 @@ def _make_record(
 
 @pytest.mark.unit
 class TestCoordinationMetricsController:
-    def test_empty_store(
+    async def test_empty_store(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             headers=_HEADERS,
         )
@@ -55,16 +54,16 @@ class TestCoordinationMetricsController:
         assert body["success"] is True
         assert body["data"] == []
 
-    def test_returns_records(
+    async def test_returns_records(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         coordination_metrics_store.record(_make_record())
         coordination_metrics_store.record(
             _make_record(task_id="task-2"),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             headers=_HEADERS,
         )
@@ -78,9 +77,9 @@ class TestCoordinationMetricsController:
         assert len(body["data"]) == 2
         assert {row["task_id"] for row in body["data"]} == {"task-1", "task-2"}
 
-    def test_filter_by_task_id(
+    async def test_filter_by_task_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         coordination_metrics_store.record(
@@ -89,7 +88,7 @@ class TestCoordinationMetricsController:
         coordination_metrics_store.record(
             _make_record(task_id="task-2"),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"task_id": "task-1"},
             headers=_HEADERS,
@@ -98,9 +97,9 @@ class TestCoordinationMetricsController:
         body = resp.json()
         assert body["data"][0]["task_id"] == "task-1"
 
-    def test_filter_by_agent_id(
+    async def test_filter_by_agent_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         coordination_metrics_store.record(
@@ -109,7 +108,7 @@ class TestCoordinationMetricsController:
         coordination_metrics_store.record(
             _make_record(agent_id="bob"),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"agent_id": "alice"},
             headers=_HEADERS,
@@ -124,9 +123,9 @@ class TestCoordinationMetricsController:
         assert len(body["data"]) == 1
         assert all(row.get("agent_id") == "alice" for row in body["data"])
 
-    def test_filter_by_time_range(
+    async def test_filter_by_time_range(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         t1 = datetime(2026, 4, 1, tzinfo=UTC)
@@ -141,7 +140,7 @@ class TestCoordinationMetricsController:
         coordination_metrics_store.record(
             _make_record(timestamp=t3, task_id="task-3"),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={
                 "since": t1.isoformat(),
@@ -160,9 +159,9 @@ class TestCoordinationMetricsController:
         task_ids = {row["task_id"] for row in body["data"]}
         assert task_ids == {"task-1", "task-2"}
 
-    def test_pagination(
+    async def test_pagination(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         for i in range(5):
@@ -170,7 +169,7 @@ class TestCoordinationMetricsController:
                 _make_record(task_id=f"task-{i}"),
             )
         # Walk one page, then use the returned cursor to advance.
-        resp1 = test_client.get(
+        resp1 = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"limit": 1},
             headers=_HEADERS,
@@ -187,7 +186,7 @@ class TestCoordinationMetricsController:
         assert cursor is not None
         page1_task_ids = {row["task_id"] for row in body1["data"]}
         assert len(page1_task_ids) == len(body1["data"])
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"limit": 2, "cursor": cursor},
             headers=_HEADERS,
@@ -205,9 +204,9 @@ class TestCoordinationMetricsController:
         assert len(page2_task_ids) == len(body["data"])
         assert page1_task_ids.isdisjoint(page2_task_ids)
 
-    def test_message_overhead_is_quadratic_surfaced(
+    async def test_message_overhead_is_quadratic_surfaced(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         overhead = MessageOverhead(
@@ -218,7 +217,7 @@ class TestCoordinationMetricsController:
         coordination_metrics_store.record(
             _make_record(message_overhead=overhead),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             headers=_HEADERS,
         )
@@ -227,9 +226,9 @@ class TestCoordinationMetricsController:
         msg_oh = body["data"][0]["metrics"]["message_overhead"]
         assert msg_oh["is_quadratic"] is True
 
-    def test_combined_filters_and(
+    async def test_combined_filters_and(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         coordination_metrics_store: CoordinationMetricsStore,
     ) -> None:
         """Multiple filters are AND-combined."""
@@ -244,7 +243,7 @@ class TestCoordinationMetricsController:
         coordination_metrics_store.record(
             _make_record(task_id="t3", agent_id="bob", timestamp=t1),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"agent_id": "alice", "since": t1.isoformat()},
             headers=_HEADERS,
@@ -270,14 +269,14 @@ class TestCoordinationMetricsController:
             assert "computed_at" in row
             assert parse_iso_utc(row["computed_at"]) >= t1
 
-    def test_rejects_inverted_time_window(
+    async def test_rejects_inverted_time_window(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """since > until is a validation failure (HTTP 422)."""
         t1 = datetime(2026, 4, 1, tzinfo=UTC)
         t2 = t1 - timedelta(hours=1)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/coordination/metrics",
             params={"since": t1.isoformat(), "until": t2.isoformat()},
             headers=_HEADERS,

@@ -1,13 +1,12 @@
 """Tests for org-role grant and revoke endpoints on users."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.core.auth.models import OrgRole, User
 from synthorg.core.auth.roles import HumanRole
+from tests._shared import LoopAsyncClient
 from tests.unit.api.fakes import FakePersistenceBackend
 
 
@@ -39,13 +38,13 @@ def _seed_target_user(  # noqa: PLR0913
 
 @pytest.mark.unit
 class TestGrantOrgRole:
-    def test_grant_editor_happy_path(
+    async def test_grant_editor_happy_path(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={"role": "editor"},
         )
@@ -53,13 +52,13 @@ class TestGrantOrgRole:
         data = resp.json()["data"]
         assert "editor" in data["org_roles"]
 
-    def test_grant_owner_happy_path(
+    async def test_grant_owner_happy_path(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={"role": "owner"},
         )
@@ -67,25 +66,25 @@ class TestGrantOrgRole:
         data = resp.json()["data"]
         assert "owner" in data["org_roles"]
 
-    def test_grant_department_admin_without_scoped_departments_422(
+    async def test_grant_department_admin_without_scoped_departments_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={"role": "department_admin", "scoped_departments": []},
         )
         assert resp.status_code == 422
 
-    def test_grant_department_admin_with_departments(
+    async def test_grant_department_admin_with_departments(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={
                 "role": "department_admin",
@@ -98,38 +97,38 @@ class TestGrantOrgRole:
         assert "eng" in data["scoped_departments"]
         assert "sales" in data["scoped_departments"]
 
-    def test_grant_non_department_admin_with_scopes_422(
+    async def test_grant_non_department_admin_with_scopes_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={"role": "owner", "scoped_departments": ["eng"]},
         )
         assert resp.status_code == 422
 
-    def test_grant_duplicate_role_409(
+    async def test_grant_duplicate_role_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(
             fake_persistence,
             org_roles=(OrgRole.EDITOR,),
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/users/{user.id}/org-roles",
             json={"role": "editor"},
         )
         assert resp.status_code == 409
 
-    def test_grant_to_nonexistent_user_404(
+    async def test_grant_to_nonexistent_user_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/users/nonexistent-user/org-roles",
             json={"role": "editor"},
         )
@@ -138,23 +137,23 @@ class TestGrantOrgRole:
 
 @pytest.mark.unit
 class TestRevokeOrgRole:
-    def test_revoke_editor_happy_path(
+    async def test_revoke_editor_happy_path(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(
             fake_persistence,
             org_roles=(OrgRole.EDITOR,),
         )
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"/api/v1/users/{user.id}/org-roles/editor",
         )
         assert resp.status_code == 204
 
-    def test_revoke_last_owner_409(
+    async def test_revoke_last_owner_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         # App startup auto-promotes the first seeded user to OWNER.
@@ -171,14 +170,14 @@ class TestRevokeOrgRole:
             username="sole-owner",
             org_roles=(OrgRole.OWNER,),
         )
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"/api/v1/users/{target.id}/org-roles/owner",
         )
         assert resp.status_code == 409
 
-    def test_revoke_owner_when_multiple_owners_exist(
+    async def test_revoke_owner_when_multiple_owners_exist(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user1 = _seed_target_user(
@@ -193,38 +192,38 @@ class TestRevokeOrgRole:
             username="owner-b",
             org_roles=(OrgRole.OWNER,),
         )
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"/api/v1/users/{user1.id}/org-roles/owner",
         )
         assert resp.status_code == 204
 
-    def test_revoke_role_user_does_not_have_404(
+    async def test_revoke_role_user_does_not_have_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"/api/v1/users/{user.id}/org-roles/editor",
         )
         assert resp.status_code == 404
 
-    def test_revoke_invalid_role_string_422(
+    async def test_revoke_invalid_role_string_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         user = _seed_target_user(fake_persistence)
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"/api/v1/users/{user.id}/org-roles/invalid_role",
         )
         assert resp.status_code == 422
 
-    def test_revoke_from_nonexistent_user_404(
+    async def test_revoke_from_nonexistent_user_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             "/api/v1/users/nonexistent-user/org-roles/editor",
         )
         assert resp.status_code == 404
