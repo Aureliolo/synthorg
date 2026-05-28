@@ -49,6 +49,7 @@ Cross-worker coordination rule (read before adding a new fixture):
 """
 
 import asyncio
+import contextlib
 import faulthandler
 import logging
 import os
@@ -122,6 +123,98 @@ def _fast_getfqdn(name: str = "") -> str:
 
 
 socket.getfqdn = _fast_getfqdn
+
+
+# ── socket.socketpair: bounded retry on Windows (tactical) ───────────
+#
+# Tracked as issue #2151 (Migrate api tests to AsyncTestClient). The
+# long-term fix is to remove the per-test ``anyio.start_blocking_portal``
+# pattern in ``litestar.TestClient.__enter__`` so each test stops
+# constructing a fresh asyncio loop and therefore stops calling
+# ``socket.socketpair()`` ~half a million times per ``--count=2``
+# session. Until that ~63-file refactor lands this wrapper makes the
+# pre-push isolation gate survive the load: REMOVE THIS BLOCK in the
+# PR that closes #2151.
+#
+# Root cause: CPython https://github.com/python/cpython/issues/122797
+# ``socket._fallback_socketpair`` (added in the CVE-2024-3219 patch
+# series) creates a TCP listener on loopback, ``setblocking(False)``,
+# ``connect()``, then a blocking ``lsock.accept()`` -- with NO timeout
+# and NO retry. Under heavy concurrent socketpair creation on Windows
+# (8 xdist workers each spawning litestar TestClients), the listener's
+# backlog occasionally fails to deliver the connection to ``accept()``
+# before the 30s ``pytest-timeout`` fires; the worker then ``os.abort``s
+# inside ``_timeout_timer_with_faulthandler``.
+#
+# Fix shape: bound ``accept()`` with a per-attempt timeout via
+# ``settimeout`` and retry the whole bind/connect/accept dance a small
+# number of times. ``settimeout`` makes ``accept`` raise ``TimeoutError``
+# (an ``OSError`` subclass) instead of blocking forever, so the wrapper
+# can close the half-built pair and try again. The clearing
+# ``settimeout(None)`` on the returned ``ssock`` restores the
+# blocking-mode contract expected by every caller (asyncio's
+# ``_make_self_pipe`` reads/writes a single byte to wake the selector,
+# and uses default blocking I/O on the read side).
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
+    _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 2.0
+    _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 5
+    _SOCKETPAIR_RETRY_BASE_DELAY_SECONDS: Final[float] = 0.05
+    _orig_socketpair = socket.socketpair
+
+    def _socketpair_with_retry(
+        family: int = socket.AF_INET,
+        type: int = socket.SOCK_STREAM,  # noqa: A002 -- match stock socketpair signature
+        proto: int = 0,
+    ) -> tuple[socket.socket, socket.socket]:
+        """Drop-in ``socket.socketpair`` that retries a stuck ``accept``.
+
+        Falls through to the stock implementation for any unusual call
+        shape (non-INET family, non-stream type, custom proto) so any
+        future caller that wants the real semantics still gets them.
+        """
+        if (
+            family not in (socket.AF_INET, socket.AF_INET6)
+            or type != socket.SOCK_STREAM
+            or proto != 0
+        ):
+            return _orig_socketpair(family, type, proto)
+        host = "127.0.0.1" if family == socket.AF_INET else "::1"
+        last_err: BaseException | None = None
+        for attempt in range(_SOCKETPAIR_MAX_ATTEMPTS):
+            lsock = socket.socket(family, type, proto)
+            csock: socket.socket | None = None
+            try:
+                lsock.bind((host, 0))
+                lsock.listen()
+                lsock.settimeout(_SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS)
+                addr, port = lsock.getsockname()[:2]
+                csock = socket.socket(family, type, proto)
+                csock.setblocking(False)
+                with contextlib.suppress(BlockingIOError, InterruptedError):
+                    csock.connect((addr, port))
+                csock.setblocking(True)
+                ssock, _ = lsock.accept()
+            except OSError as exc:
+                last_err = exc
+                if csock is not None:
+                    csock.close()
+                if attempt < _SOCKETPAIR_MAX_ATTEMPTS - 1:
+                    time.sleep(_SOCKETPAIR_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                    continue
+                raise
+            else:
+                ssock.settimeout(None)
+                return ssock, csock
+            finally:
+                lsock.close()
+        # Unreachable: the loop either returns or re-raises on the final attempt.
+        raise (
+            last_err
+            if last_err is not None
+            else RuntimeError("socketpair retry exhausted with no captured error")
+        )
+
+    socket.socketpair = _socketpair_with_retry
 
 
 # ── pytest-timeout: guarantee a visible stack on every fire ─────────
