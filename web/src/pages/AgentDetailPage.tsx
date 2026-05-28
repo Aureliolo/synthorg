@@ -14,6 +14,7 @@ import { CareerTimeline } from './agents/CareerTimeline'
 import { TaskHistory } from './agents/TaskHistory'
 import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
+import { CollaborationPanel } from './agents/CollaborationPanel'
 import { TrainingSection } from './agents/TrainingSection'
 import {
   useAgentDetailPageController,
@@ -121,6 +122,9 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       </ErrorBoundary>
       <ErrorBoundary level="section">
         {agent.id && <QualityScoreOverride agentId={agent.id} />}
+      </ErrorBoundary>
+      <ErrorBoundary level="section">
+        {agent.id && <CollaborationPanel agentId={agent.id} />}
       </ErrorBoundary>
       <ErrorBoundary level="section">
         <TrainingSection agentName={agent.name} />
