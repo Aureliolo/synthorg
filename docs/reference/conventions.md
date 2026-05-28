@@ -699,7 +699,7 @@ persistence-conformance fixtures under `tests/conformance/persistence/`,
 etc.). Per-tier loop selection on Windows uses the
 `pytest_asyncio_loop_factories` pluggy hook in each tier's
 `conftest.py` rather than a process-wide policy override: the unit
-tier hook returns `SelectorEventLoop`, and deeper conftests
+tier hook returns `SelectorEventLoop`, and deeper conftest files
 (`tests/unit/tools/`, `tests/unit/engine/workspace/git_backend/`,
 `tests/integration/engine/workspace/`, `tests/e2e/`) shadow it with
 `ProactorEventLoop` for subprocess-driving tests. Pluggy's
