@@ -20,7 +20,6 @@ is a local git repo; knowledge ingestion is mocked).
 
 import asyncio
 import os
-import warnings
 from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
@@ -85,19 +84,6 @@ from tests.unit.api.fakes import FakePersistenceBackend
 pytestmark = pytest.mark.e2e
 
 _PROJECT = "acquired-co"
-
-
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Restore ``ProactorEventLoopPolicy`` so the real git seed can spawn.
-
-    The unit/e2e root pins ``SelectorEventLoopPolicy`` on Windows, which
-    cannot drive ``asyncio.create_subprocess_exec`` (the embedded git
-    backend's seed). Mirrors the git-backend unit conftest.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
 
 
 class _StopStrategy:

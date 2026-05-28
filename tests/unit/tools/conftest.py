@@ -2,7 +2,8 @@
 """Unit test fixtures for the tool system."""
 
 import asyncio
-import warnings
+import sys
+from collections.abc import Callable, Mapping
 from typing import Any, override
 
 import pytest
@@ -14,31 +15,31 @@ from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 from synthorg.tools.registry import ToolRegistry
 
+# Shadows ``tests/unit/conftest.py::pytest_asyncio_loop_factories``:
+# the unit-tier root pins Windows tests to ``SelectorEventLoop`` to
+# avoid a Python 3.14 IOCP teardown race
+# (https://github.com/python/cpython/issues/116773), but
+# ``SelectorEventLoop`` on Windows cannot drive
+# ``asyncio.create_subprocess_exec`` (no IOCP integration means
+# ``CreateProcessW`` cannot be wired into the loop) -- which the git
+# and sandbox tools call into directly. Tool tests do not use Litestar
+# TestClient or asgi-lifespan, so they do not trigger the rapid
+# event-loop-creation pattern that exposes the race in
+# ``tests/unit/api/`` and elsewhere.
+#
+# pluggy calls hooks in reverse registration order under
+# ``firstresult=True``, so the deeper conftest's hook wins; tool tests
+# get ``ProactorEventLoop`` while api/ tests still see the unit-tier
+# Selector factory.
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Restore the default ``ProactorEventLoopPolicy`` for tool tests.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 
-    Shadows ``tests/unit/conftest.py::event_loop_policy``: the unit-tier
-    root pins Windows tests to ``SelectorEventLoopPolicy`` to avoid a
-    Python 3.14 IOCP teardown race
-    (https://github.com/python/cpython/issues/116773), but
-    SelectorEventLoop on Windows cannot drive
-    ``asyncio.create_subprocess_exec`` -- which the git and sandbox
-    tools call into directly.  Tool tests don't use Litestar
-    TestClient or asgi-lifespan, so they don't trigger the rapid
-    event-loop-creation pattern that exposes the race in
-    ``tests/unit/api/`` and elsewhere.
-
-    pytest resolves the closest conftest fixture per test, so api/
-    tests still see the parent SelectorEventLoopPolicy fixture while
-    tools/ tests see this override.  Verified empirically by running
-    ``pytest tests/unit/`` (mixed directories) on Windows: both tiers
-    observe the right policy and pass.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``ProactorEventLoop`` for subprocess-driving tool tests."""
+        return {"proactor": asyncio.ProactorEventLoop}
 
 
 # ── Concrete test tools (private to tests) ────────────────────────

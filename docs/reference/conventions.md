@@ -693,11 +693,18 @@ backends.
 
 `tests/conftest.py` (one file at the top level) hosts cross-suite
 fixtures: Hypothesis profile selection, the `FakeClock` factory, the
-repo-root resolver, the Windows `WindowsSelectorEventLoopPolicy`
-override. Per-domain `tests/<area>/conftest.py` files host fixtures
-local to that suite (controller fixtures under `tests/api/`,
+repo-root resolver. Per-domain `tests/<area>/conftest.py` files host
+fixtures local to that suite (controller fixtures under `tests/unit/api/`,
 persistence-conformance fixtures under `tests/conformance/persistence/`,
-etc.).
+etc.). Per-tier loop selection on Windows uses the
+`pytest_asyncio_loop_factories` pluggy hook in each tier's
+`conftest.py` rather than a process-wide policy override: the unit
+tier hook returns `SelectorEventLoop`, and deeper conftest files
+(`tests/unit/tools/`, `tests/unit/engine/workspace/git_backend/`,
+`tests/integration/engine/workspace/`, `tests/e2e/`) shadow it with
+`ProactorEventLoop` for subprocess-driving tests. Pluggy's
+reverse-order invocation under `firstresult=True` lets the deeper
+conftest's hook win.
 
 `tests/_shared/` is not a pytest suite and carries no `conftest.py`;
 it exposes the test-double ladder (`FakeClock`, `mock_of`,

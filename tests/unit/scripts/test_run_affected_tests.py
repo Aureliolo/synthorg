@@ -5,7 +5,7 @@ Covers ``_check_timing_regression`` and its helpers
 (``_load_baseline_snapshot``, ``_check_per_test_regression``,
 ``_check_env_cap``), the isolation-gate output classifier, the banner
 emitter, the ``_run_isolation_gate`` orchestrator, and the
-``event_loop_policy`` fixture wired by ``tests/unit/conftest.py``.
+``pytest_asyncio_loop_factories`` hook wired by ``tests/unit/conftest.py``.
 Loads the script as a module so the private helpers are callable.
 """
 
@@ -949,12 +949,12 @@ def test_run_isolation_gate_short_circuits_on_hung_exit_code(
 async def test_unit_tier_uses_selector_event_loop_on_windows() -> None:
     """Async tests in the unit tier run under a non-Proactor loop on Windows.
 
-    The unit-tier ``event_loop_policy`` fixture pins
-    ``WindowsSelectorEventLoopPolicy``, so pytest-asyncio creates a
-    selector-based loop for every async test.  Checking the running
-    loop directly catches a regression where the policy fixture
-    silently disappeared and tests fell back to the Python default
-    ProactorEventLoop -- the exact failure mode the policy guards
+    The unit-tier ``pytest_asyncio_loop_factories`` hook returns
+    ``SelectorEventLoop`` on Windows, so pytest-asyncio creates a
+    selector-based loop for every async test. Checking the running
+    loop directly catches a regression where the hook silently
+    disappeared and tests fell back to the Python default
+    ``ProactorEventLoop`` -- the exact failure mode the hook guards
     against.
     """
     loop_class_name = type(asyncio.get_running_loop()).__name__
