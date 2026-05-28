@@ -27,5 +27,5 @@ class JsonExportReport:
             "format": "json_export",
             "schema_version": _SCHEMA_VERSION,
             "exported_at": datetime.now(UTC).isoformat(),
-            "metrics": metrics.model_dump(),
+            "metrics": metrics.model_dump(mode="json"),
         }

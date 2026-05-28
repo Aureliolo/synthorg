@@ -18,4 +18,4 @@ class MetricsOnlyReport:
         metrics: SimulationMetrics,
     ) -> dict[str, JsonValue]:
         """Return the Pydantic model dump of metrics."""
-        return metrics.model_dump()
+        return metrics.model_dump(mode="json")

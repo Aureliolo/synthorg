@@ -151,6 +151,15 @@ class LLMGenerator:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+        skipped = len(payload) - len(requirements)
+        if skipped:
+            logger.info(
+                CLIENT_REQUIREMENT_GENERATED,
+                strategy="llm",
+                generated=len(requirements),
+                skipped=skipped,
+                requested=context.count,
+            )
         logger.debug(
             CLIENT_REQUIREMENT_GENERATED,
             strategy="llm",

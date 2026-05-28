@@ -47,7 +47,9 @@ def _make_client(*, client_id: str, strictness: float = 0.5) -> AIClient:
             persona=f"Persona {client_id}",
             strictness_level=strictness,
         ),
-        generator=ProceduralGenerator(seed=hash(client_id) & 0xFFFF),
+        generator=ProceduralGenerator(
+            seed=sum(ord(c) for c in client_id) & 0xFFFF,
+        ),
         feedback=BinaryFeedback(client_id=client_id),
     )
 

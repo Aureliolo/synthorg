@@ -177,6 +177,22 @@ class TestLLMGenerator:
         assert "Also good" in titles
         assert "   " not in titles
 
+    async def test_skips_item_with_non_str_title(self) -> None:
+        provider = _StubProvider(
+            content=_payload(
+                [
+                    {"title": 99, "description": "D"},
+                    {"title": "Good", "description": "D"},
+                ]
+            )
+        )
+        gen = LLMGenerator(
+            provider=cast(CompletionProvider, provider), model="test-small-001"
+        )
+        result = await gen.generate(_ctx(count=2))
+        assert len(result) == 1
+        assert result[0].title == "Good"
+
     async def test_prompt_includes_context(self) -> None:
         provider = _StubProvider(content="[]")
         gen = LLMGenerator(

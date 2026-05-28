@@ -141,3 +141,16 @@ class TestTemplateGeneratorGenerate:
         a = await gen_a.generate(_ctx(count=3))
         b = await gen_b.generate(_ctx(count=3))
         assert [r.title for r in a] == [r.title for r in b]
+
+    async def test_skips_row_with_non_str_title(self, tmp_path: Path) -> None:
+        path = _write_templates(
+            tmp_path,
+            [
+                {"title": 42, "description": "D"},
+                {"title": "Valid", "description": "D"},
+            ],
+        )
+        gen = TemplateGenerator(template_path=path, seed=42)
+        result = await gen.generate(_ctx(count=2))
+        assert len(result) == 1
+        assert result[0].title == "Valid"

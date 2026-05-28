@@ -337,10 +337,10 @@ class _RunningTotals:
         self._round_snapshots: list[RoundMetrics] = []
 
     def accumulate(self, round_metrics: RoundMetrics) -> None:
-        self._total_requirements += int(round_metrics["total_requirements"])
-        self._total_tasks_created += int(round_metrics["tasks_created"])
-        self._tasks_accepted += int(round_metrics["accepted"])
-        self._tasks_rejected += int(round_metrics["rejected"])
+        self._total_requirements += round_metrics["total_requirements"]
+        self._total_tasks_created += round_metrics["tasks_created"]
+        self._tasks_accepted += round_metrics["accepted"]
+        self._tasks_rejected += round_metrics["rejected"]
         self._round_snapshots.append(round_metrics)
 
     def freeze(self) -> SimulationMetrics:

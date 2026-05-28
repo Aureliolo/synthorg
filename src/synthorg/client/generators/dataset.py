@@ -101,6 +101,15 @@ class DatasetGenerator:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+        skipped = len(samples) - len(requirements)
+        if skipped:
+            logger.info(
+                CLIENT_REQUIREMENT_GENERATED,
+                strategy="dataset",
+                generated=len(requirements),
+                skipped=skipped,
+                requested=context.count,
+            )
         logger.debug(
             CLIENT_REQUIREMENT_GENERATED,
             strategy="dataset",

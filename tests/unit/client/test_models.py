@@ -355,6 +355,20 @@ class TestClientRequest:
         assert updated.status == RequestStatus.TRIAGING
         assert updated.client_id == req.client_id
 
+    def test_with_status_carries_requirement_override(self) -> None:
+        req = ClientRequest(
+            client_id="client-1",
+            requirement=self._make_requirement(),
+        )
+        refined = TaskRequirement(
+            title="Refined title",
+            description="Refined description",
+        )
+        updated = req.with_status(RequestStatus.TRIAGING, requirement=refined)
+        assert updated.status == RequestStatus.TRIAGING
+        assert updated.requirement.title == "Refined title"
+        assert updated.request_id == req.request_id
+
     def test_with_status_invalid(self) -> None:
         req = ClientRequest(
             client_id="client-1",

@@ -368,10 +368,7 @@ class ClientRequest(BaseModel):
             )
             raise ValueError(msg)
         validate_request_transition(self.status, target)
-        payload = self.model_dump()
-        payload.update(overrides)
-        payload["status"] = target
-        return ClientRequest.model_validate(payload)
+        return self.model_copy(update={"status": target, **overrides})
 
 
 class PoolConstraints(BaseModel):
