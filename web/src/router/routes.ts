@@ -45,6 +45,7 @@ export const ROUTES = {
   META_ANALYTICS: '/analytics/meta',
   PERSONALITIES_ADMIN: '/admin/personalities',
   ADMIN_AUDIT_LOG: '/admin/audit',
+  ADMIN_BACKUPS: '/admin/backups',
   BUDGET_VERSIONS: '/budget/versions',
   COMPANY_VERSIONS: '/org/versions',
   EVALUATION_VERSIONS: '/evaluation/versions',

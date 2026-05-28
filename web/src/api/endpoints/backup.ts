@@ -1,4 +1,4 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, unwrapVoid } from '../client'
 import type { BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types/backup'
 import type { ApiResponse } from '../types/http'
 
@@ -32,6 +32,11 @@ export async function listBackups(): Promise<BackupInfo[]> {
 export async function getBackup(backupId: string): Promise<BackupManifest> {
   const response = await apiClient.get<ApiResponse<BackupManifest>>(`/admin/backups/${encodeURIComponent(backupId)}`)
   return unwrap(response)
+}
+
+export async function deleteBackup(backupId: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(`/admin/backups/${encodeURIComponent(backupId)}`)
+  unwrapVoid(response)
 }
 
 export async function restoreBackup(data: RestoreRequest): Promise<RestoreResponse> {

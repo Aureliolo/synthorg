@@ -63,6 +63,15 @@ function getFooterAction(ns: SettingNamespace): React.ReactNode {
       />
     )
   }
+  if (ns === 'backup') {
+    return (
+      <SettingsActionCard
+        to={ROUTES.ADMIN_BACKUPS}
+        title="Backups"
+        description="Create, restore, and delete system backups"
+      />
+    )
+  }
   if (ns === 'observability') {
     return (
       <SettingsActionCard

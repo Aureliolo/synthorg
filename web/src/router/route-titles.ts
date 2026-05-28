@@ -50,6 +50,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.COORDINATION_METRICS]: 'Coordination Metrics',
   [ROUTES.META_ANALYTICS]: 'Meta Analytics',
   [ROUTES.PERSONALITIES_ADMIN]: 'Personalities',
+  [ROUTES.ADMIN_BACKUPS]: 'Backups',
   [ROUTES.BUDGET_VERSIONS]: 'Budget Versions',
   [ROUTES.COMPANY_VERSIONS]: 'Org Versions',
   [ROUTES.EVALUATION_VERSIONS]: 'Evaluation Versions',

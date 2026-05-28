@@ -46,6 +46,7 @@ const MissionControlPage = lazy(() => import('@/pages/MissionControlPage'))
 const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
 const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
+const AdminBackupsPage = lazy(() => import('@/pages/AdminBackupsPage'))
 const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
 const CompanyVersionsPage = lazy(() => import('@/pages/CompanyVersionsPage'))
 const EvaluationVersionsPage = lazy(() => import('@/pages/EvaluationVersionsPage'))
@@ -178,6 +179,7 @@ export const router = createBrowserRouter([
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
               { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
+              { path: ROUTES.ADMIN_BACKUPS.slice(1), element: <AdminBackupsPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },
               { path: 'org/versions', element: <CompanyVersionsPage /> },
               { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },
