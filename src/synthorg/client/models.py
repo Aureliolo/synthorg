@@ -358,6 +358,8 @@ class ClientRequest(BaseModel):
         Raises:
             ValueError: If the transition is not valid or overrides
                 contain ``status``.
+            ValidationError: If the merged overrides violate
+                ``ClientRequest`` field constraints.
         """
         if "status" in overrides:
             msg = "status override is not allowed; pass transition target explicitly"
@@ -368,7 +370,12 @@ class ClientRequest(BaseModel):
             )
             raise ValueError(msg)
         validate_request_transition(self.status, target)
-        return self.model_copy(update={"status": target, **overrides})
+        # ``model_copy(update=...)`` applies overrides without validation, so
+        # malformed values would silently break model invariants. Round-trip
+        # through ``model_validate`` so the new instance is fully validated.
+        payload = self.model_dump(mode="python")
+        payload.update({"status": target, **overrides})
+        return ClientRequest.model_validate(payload)
 
 
 class PoolConstraints(BaseModel):
