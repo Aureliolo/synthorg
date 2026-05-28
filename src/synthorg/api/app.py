@@ -17,7 +17,6 @@ from litestar.datastructures import State
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import ScalarRenderPlugin
 from pydantic import ValidationError
-from typeguard import suppress_type_checks
 
 from synthorg import __version__
 from synthorg.api._app_wiring import (
@@ -339,7 +338,6 @@ def _build_default_approval_timeout_scheduler(
 # construction; runtime DB changes only affect code calling get_api_config().
 
 
-@suppress_type_checks  # signature touches types behind pre-existing source-side cycles
 def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,

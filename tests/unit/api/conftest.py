@@ -13,6 +13,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 from typeguard import suppress_type_checks
 
+import synthorg.api.app as _app_mod
 import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
@@ -62,6 +63,15 @@ from tests.unit.api.fakes import (
 )
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
+
+# Test-side ``@suppress_type_checks`` wrap on ``create_app``: the signature
+# touches types behind pre-existing source-side import cycles, so typeguard's
+# eager ``inspect.signature`` fails to resolve their annotations until the
+# import-layering refactor breaks the cycles. Keeping the decorator here
+# (rather than at the source) keeps ``typeguard`` a pure test dependency.
+# See ADR-0006 Section F for the deferred work.
+create_app = suppress_type_checks(create_app)
+_app_mod.create_app = create_app
 
 # ── Test auth constants ───────────────────────────────────────
 
@@ -476,39 +486,33 @@ def _shared_app(  # noqa: PLR0913
         registry=get_registry(),
     )
 
-    # ``suppress_type_checks`` context: ``create_app`` and the auto_wire_*
-    # helpers it calls have signatures referencing types that live behind
-    # pre-existing source-side import cycles (api.config / synthorg.config /
-    # communication.config). Until the import-layering refactor breaks those
-    # cycles structurally, typeguard's eager ``inspect.signature`` fails to
-    # resolve those annotations with NameError. Suppressing here keeps the
-    # API-fixture cascade green; typeguard still runs across the rest of
-    # the synthorg package. See ADR-0006 Section F for the deferred work.
-    with suppress_type_checks():
-        return create_app(
-            config=root_config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=cost_tracker,
-            approval_store=approval_store,
-            auth_service=auth_service,
-            task_engine=fake_task_engine,
-            performance_tracker=performance_tracker,
-            agent_registry=agent_registry,
-            settings_service=settings_service,
-            provider_registry=provider_registry,
-            provider_health_tracker=provider_health_tracker,
-            tool_invocation_tracker=tool_invocation_tracker,
-            delegation_record_store=delegation_record_store,
-            artifact_storage=FakeArtifactStorage(),
-            audit_log=audit_log,
-            trust_service=trust_service,
-            coordination_metrics_store=coordination_metrics_store,
-            event_stream_hub=event_stream_hub,
-            interrupt_store=interrupt_store,
-            task_board_entry_adapter=task_board_entry_adapter,
-            _skip_lifecycle_shutdown=True,
-        )
+    # ``create_app`` is wrapped with ``@suppress_type_checks`` at conftest
+    # import time -- see the module-top wrapping. Wrapping here (rather
+    # than at the source) keeps ``typeguard`` a pure test dependency.
+    return create_app(
+        config=root_config,
+        persistence=fake_persistence,
+        message_bus=fake_message_bus,
+        cost_tracker=cost_tracker,
+        approval_store=approval_store,
+        auth_service=auth_service,
+        task_engine=fake_task_engine,
+        performance_tracker=performance_tracker,
+        agent_registry=agent_registry,
+        settings_service=settings_service,
+        provider_registry=provider_registry,
+        provider_health_tracker=provider_health_tracker,
+        tool_invocation_tracker=tool_invocation_tracker,
+        delegation_record_store=delegation_record_store,
+        artifact_storage=FakeArtifactStorage(),
+        audit_log=audit_log,
+        trust_service=trust_service,
+        coordination_metrics_store=coordination_metrics_store,
+        event_stream_hub=event_stream_hub,
+        interrupt_store=interrupt_store,
+        task_board_entry_adapter=task_board_entry_adapter,
+        _skip_lifecycle_shutdown=True,
+    )
 
 
 # ── Function-scoped test_client with per-test reset ────────────
