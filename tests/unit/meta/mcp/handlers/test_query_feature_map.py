@@ -40,17 +40,24 @@ async def test_query_without_filter_returns_full_index() -> None:
 async def test_query_filters_by_exact_name() -> None:
     envelope = await _invoke({"name": "charter"})
     assert envelope["status"] == "ok"
-    features = envelope["data"]["features"]
+    data = envelope["data"]
+    assert isinstance(data, dict)
+    features = data["features"]
+    assert isinstance(features, list)
     assert len(features) == 1
-    assert features[0]["name"] == "charter"
-    assert features[0]["settings_namespace"] == "charter"
-    assert "CharterController" in features[0]["controllers"]
+    charter = features[0]
+    assert isinstance(charter, dict)
+    assert charter["name"] == "charter"
+    assert charter["settings_namespace"] == "charter"
+    assert "CharterController" in charter["controllers"]
 
 
 async def test_query_unknown_name_returns_empty_features() -> None:
     envelope = await _invoke({"name": "no_such_feature_anywhere"})
     assert envelope["status"] == "ok"
-    assert envelope["data"]["features"] == []
+    data = envelope["data"]
+    assert isinstance(data, dict)
+    assert data["features"] == []
 
 
 async def test_query_args_model_rejects_blank_name() -> None:
