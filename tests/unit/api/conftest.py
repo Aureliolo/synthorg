@@ -11,6 +11,7 @@ import argon2
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
+from typeguard import suppress_type_checks
 
 import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
@@ -475,30 +476,41 @@ def _shared_app(  # noqa: PLR0913
         registry=get_registry(),
     )
 
-    return create_app(
-        config=root_config,
-        persistence=fake_persistence,
-        message_bus=fake_message_bus,
-        cost_tracker=cost_tracker,
-        approval_store=approval_store,
-        auth_service=auth_service,
-        task_engine=fake_task_engine,
-        performance_tracker=performance_tracker,
-        agent_registry=agent_registry,
-        settings_service=settings_service,
-        provider_registry=provider_registry,
-        provider_health_tracker=provider_health_tracker,
-        tool_invocation_tracker=tool_invocation_tracker,
-        delegation_record_store=delegation_record_store,
-        artifact_storage=FakeArtifactStorage(),
-        audit_log=audit_log,
-        trust_service=trust_service,
-        coordination_metrics_store=coordination_metrics_store,
-        event_stream_hub=event_stream_hub,
-        interrupt_store=interrupt_store,
-        task_board_entry_adapter=task_board_entry_adapter,
-        _skip_lifecycle_shutdown=True,
-    )
+    # ``suppress_type_checks`` context: ``create_app`` and the auto_wire_*
+    # helpers it calls have signatures referencing types that live behind
+    # pre-existing import cycles (api.config / synthorg.config /
+    # communication.config). Breaking those cycles is in scope for #2050
+    # (codebase modularity 4/4: import-layering contracts). Until #2050
+    # lands and the cycles are eliminated structurally, typeguard's
+    # eager ``inspect.signature`` fails to resolve those annotations
+    # with NameError. Suppressing here keeps the API-fixture cascade
+    # green; typeguard still runs across the rest of the synthorg
+    # package. Tracked under #2068.
+    with suppress_type_checks():
+        return create_app(
+            config=root_config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=cost_tracker,
+            approval_store=approval_store,
+            auth_service=auth_service,
+            task_engine=fake_task_engine,
+            performance_tracker=performance_tracker,
+            agent_registry=agent_registry,
+            settings_service=settings_service,
+            provider_registry=provider_registry,
+            provider_health_tracker=provider_health_tracker,
+            tool_invocation_tracker=tool_invocation_tracker,
+            delegation_record_store=delegation_record_store,
+            artifact_storage=FakeArtifactStorage(),
+            audit_log=audit_log,
+            trust_service=trust_service,
+            coordination_metrics_store=coordination_metrics_store,
+            event_stream_hub=event_stream_hub,
+            interrupt_store=interrupt_store,
+            task_board_entry_adapter=task_board_entry_adapter,
+            _skip_lifecycle_shutdown=True,
+        )
 
 
 # ── Function-scoped test_client with per-test reset ────────────
