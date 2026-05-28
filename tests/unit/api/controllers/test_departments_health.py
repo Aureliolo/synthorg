@@ -1,11 +1,9 @@
 """Tests for department health endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -17,6 +15,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     make_auth_headers,
@@ -98,8 +97,8 @@ def _build_dept_client(
     cost_tracker: CostTracker | None = None,
     performance_tracker: PerformanceTracker | None = None,
     agent_registry: AgentRegistryService | None = None,
-) -> TestClient[Any]:
-    """Build a TestClient with the given config for department tests.
+) -> LoopAsyncClient:
+    """Build a LoopAsyncClient with the given config for department tests.
 
     Constructs a fresh :class:`FakePersistenceBackend` per call so the
     settings repository the controller reads through is empty at test
@@ -130,7 +129,7 @@ def _build_dept_client(
         performance_tracker=performance_tracker or PerformanceTracker(),
         agent_registry=agent_registry or AgentRegistryService(),
     )
-    return TestClient(app)
+    return LoopAsyncClient(app)
 
 
 # ── Tests ─────────────────────────────────────────────────────
@@ -138,22 +137,22 @@ def _build_dept_client(
 
 @pytest.mark.unit
 class TestDepartmentHealth:
-    def test_department_not_found(
+    async def test_department_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/departments/nonexistent/health")
+        resp = await async_test_client.get("/api/v1/departments/nonexistent/health")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    def test_auth_required(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_auth_required(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             "/api/v1/departments/eng/health",
             headers={"Authorization": "Bearer invalid"},
         )
         assert resp.status_code == 401
 
-    def test_empty_department(
+    async def test_empty_department(
         self,
         fake_message_bus: FakeMessageBus,
     ) -> None:
@@ -164,11 +163,11 @@ class TestDepartmentHealth:
             company_name="test",
             departments=(Department(name="eng", budget_percent=50.0),),
         )
-        with _build_dept_client(
+        async with _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/departments/eng/health",
                 headers=_HEADERS,
             )
@@ -241,14 +240,14 @@ class TestDepartmentHealth:
             ),
         )
 
-        with _build_dept_client(
+        async with _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,
             performance_tracker=perf,
             agent_registry=registry,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/departments/eng/health",
                 headers=_HEADERS,
             )
@@ -265,7 +264,7 @@ class TestDepartmentHealth:
             assert "avg_performance_score" in data
             assert "collaboration_score" in data
 
-    def test_other_department_agents_excluded(
+    async def test_other_department_agents_excluded(
         self,
         fake_message_bus: FakeMessageBus,
     ) -> None:
@@ -283,11 +282,11 @@ class TestDepartmentHealth:
                 AgentConfig(name="bob", role="rep", department="sales"),
             ),
         )
-        with _build_dept_client(
+        async with _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/departments/eng/health",
                 headers=_HEADERS,
             )
@@ -295,7 +294,7 @@ class TestDepartmentHealth:
             data = resp.json()["data"]
             assert data["agent_count"] == 1
 
-    def test_cost_trend_is_daily_sparkline(
+    async def test_cost_trend_is_daily_sparkline(
         self,
         fake_message_bus: FakeMessageBus,
     ) -> None:
@@ -307,11 +306,11 @@ class TestDepartmentHealth:
             departments=(Department(name="eng", budget_percent=100.0),),
             agents=(AgentConfig(name="alice", role="dev", department="eng"),),
         )
-        with _build_dept_client(
+        async with _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/departments/eng/health",
                 headers=_HEADERS,
             )
@@ -529,12 +528,12 @@ class TestDepartmentHealthDegradation:
             spec=CostTracker.get_records,
             side_effect=RuntimeError("simulated cost failure"),
         )
-        with _build_dept_client(
+        async with _build_dept_client(
             fake_message_bus=fake_message_bus,
             config=config,
             cost_tracker=cost_tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/departments/eng/health",
                 headers=_HEADERS,
             )
