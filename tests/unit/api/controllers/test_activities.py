@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from litestar import Litestar
-from litestar.testing import TestClient
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -23,6 +22,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -133,15 +133,15 @@ async def _make_app_with_broken_tracker(
 
 
 class TestActivityFeed:
-    def test_empty_feed(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/activities")
+    async def test_empty_feed(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
 
-    def test_auth_required(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_auth_required(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             "/api/v1/activities",
             headers={"Authorization": "Bearer invalid"},
         )
@@ -149,7 +149,7 @@ class TestActivityFeed:
 
     async def test_feed_with_lifecycle_events(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         await fake_persistence.lifecycle_events.save(
@@ -164,7 +164,7 @@ class TestActivityFeed:
                 event_type=LifecycleEventType.ONBOARDED,
             ),
         )
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         # Most recent first
@@ -173,20 +173,20 @@ class TestActivityFeed:
 
     async def test_feed_with_task_metrics(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         performance_tracker: PerformanceTracker,
     ) -> None:
         await performance_tracker.record_task_metric(
             _make_task_metric(completed_at=_NOW - timedelta(hours=1)),
         )
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["event_type"] == "task_completed"
 
     async def test_feed_with_task_started(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         performance_tracker: PerformanceTracker,
     ) -> None:
         await performance_tracker.record_task_metric(
@@ -195,7 +195,7 @@ class TestActivityFeed:
                 completed_at=_NOW - timedelta(hours=1),
             ),
         )
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         # Both task_completed and task_started from same record
@@ -204,7 +204,7 @@ class TestActivityFeed:
 
     async def test_filter_by_type(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         performance_tracker: PerformanceTracker,
     ) -> None:
@@ -217,7 +217,7 @@ class TestActivityFeed:
         await performance_tracker.record_task_metric(
             _make_task_metric(completed_at=_NOW - timedelta(hours=2)),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"type": "task_completed"},
         )
@@ -227,7 +227,7 @@ class TestActivityFeed:
 
     async def test_filter_by_agent_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         other_id = "00000000-0000-0000-0000-000000000bbb"
@@ -244,49 +244,49 @@ class TestActivityFeed:
                 timestamp=_NOW - timedelta(hours=2),
             ),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"agent_id": _AGENT_ID},
         )
         assert resp.status_code == 200
 
-    def test_last_n_hours_default(
+    async def test_last_n_hours_default(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Default last_n_hours is 24."""
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
 
     @pytest.mark.parametrize("hours", [24, 48, 168])
-    def test_last_n_hours_valid_values(
+    async def test_last_n_hours_valid_values(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         hours: int,
     ) -> None:
         """24, 48, and 168 are valid values."""
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"last_n_hours": hours},
         )
         assert resp.status_code == 200
 
-    def test_last_n_hours_invalid(
+    async def test_last_n_hours_invalid(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Invalid last_n_hours values should return 400."""
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"last_n_hours": 12},
         )
         assert resp.status_code == 400
 
-    def test_pagination(
+    async def test_pagination(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"limit": 10},
         )
@@ -305,8 +305,8 @@ class TestActivityFeed:
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
         app = await _make_app_with_broken_tracker(fake_persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/api/v1/activities",
                 headers=make_auth_headers("ceo"),
             )
@@ -314,7 +314,7 @@ class TestActivityFeed:
 
     async def test_feed_with_cost_records(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         record = CostRecord(
@@ -329,14 +329,14 @@ class TestActivityFeed:
             timestamp=_NOW - timedelta(hours=1),
         )
         await cost_tracker.record(record)
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["event_type"] == "cost_incurred"
 
     async def test_filter_by_type_cost_incurred(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         cost_tracker: CostTracker,
     ) -> None:
@@ -355,7 +355,7 @@ class TestActivityFeed:
             timestamp=_NOW - timedelta(hours=2),
         )
         await cost_tracker.record(record)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"type": "cost_incurred"},
         )
@@ -365,7 +365,7 @@ class TestActivityFeed:
 
     async def test_feed_with_tool_invocations(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         tool_invocation_tracker: ToolInvocationTracker,
     ) -> None:
         record = ToolInvocationRecord(
@@ -375,14 +375,14 @@ class TestActivityFeed:
             timestamp=_NOW - timedelta(hours=1),
         )
         await tool_invocation_tracker.record(record)
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["event_type"] == "tool_used"
 
     async def test_feed_with_delegation_events(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         delegation_record_store: DelegationRecordStore,
     ) -> None:
         record = DelegationRecord(
@@ -394,7 +394,7 @@ class TestActivityFeed:
             timestamp=_NOW - timedelta(hours=1),
         )
         delegation_record_store.record_sync(record)
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         # Org-wide: both sent and received
@@ -403,7 +403,7 @@ class TestActivityFeed:
 
     async def test_filter_delegation_by_agent(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         delegation_record_store: DelegationRecordStore,
     ) -> None:
         record = DelegationRecord(
@@ -416,7 +416,7 @@ class TestActivityFeed:
         )
         delegation_record_store.record_sync(record)
         # Filter by delegator agent -- only sees delegation_sent
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"agent_id": _AGENT_ID},
         )
@@ -431,7 +431,7 @@ class TestActivityFeed:
 
     async def test_graceful_degradation_broken_tool_tracker(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         tool_invocation_tracker: ToolInvocationTracker,
     ) -> None:
@@ -447,12 +447,12 @@ class TestActivityFeed:
 
         tool_invocation_tracker.get_records = _raise  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
 
     async def test_graceful_degradation_broken_delegation_store(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         delegation_record_store: DelegationRecordStore,
     ) -> None:
@@ -470,28 +470,28 @@ class TestActivityFeed:
         delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
         delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
 
-    def test_filter_by_invalid_type_returns_400(
+    async def test_filter_by_invalid_type_returns_400(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Invalid event_type values are rejected with 400."""
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"type": "bogus_event"},
         )
         assert resp.status_code == 400
 
     @pytest.mark.parametrize("event_type", list(ActivityEventType))
-    def test_filter_by_valid_enum_types(
+    async def test_filter_by_valid_enum_types(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         event_type: ActivityEventType,
     ) -> None:
         """All 13 known event type values are accepted."""
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             params={"type": event_type.value},
         )
@@ -499,7 +499,7 @@ class TestActivityFeed:
 
     async def test_service_unavailable_error_propagates(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         performance_tracker: PerformanceTracker,
     ) -> None:
@@ -516,7 +516,7 @@ class TestActivityFeed:
 
         performance_tracker.get_task_metrics = _raise_svc  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 503
 
 
@@ -544,13 +544,13 @@ class TestCostEventRedaction:
     @pytest.mark.parametrize("role", ["ceo", "manager", "pair_programmer"])
     async def test_write_role_sees_full_cost_description(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
         role: str,
     ) -> None:
         """Write roles see the unredacted cost description."""
         await cost_tracker.record(_make_cost_record())
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             headers=make_auth_headers(role),
         )
@@ -562,13 +562,13 @@ class TestCostEventRedaction:
     @pytest.mark.parametrize("role", ["observer", "board_member"])
     async def test_read_role_sees_redacted_cost_description(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
         role: str,
     ) -> None:
         """Read-only roles see redacted cost descriptions."""
         await cost_tracker.record(_make_cost_record())
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             headers=make_auth_headers(role),
         )
@@ -580,15 +580,15 @@ class TestCostEventRedaction:
 
     async def test_missing_auth_user_sees_redacted(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         """Read-only role triggers redaction (fail-closed)."""
         await cost_tracker.record(_make_cost_record())
         # Use a read-only role to verify fail-closed redaction behavior.
-        # The default test_client uses CEO (write role); observer proves
+        # The default async_test_client uses CEO (write role); observer proves
         # that non-write users get redacted descriptions.
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/activities",
             headers=make_auth_headers("observer"),
         )
@@ -602,11 +602,11 @@ class TestCostEventRedaction:
 class TestDegradedSources:
     """Degraded data sources are reported in the response."""
 
-    def test_no_degradation_returns_empty_list(
+    async def test_no_degradation_returns_empty_list(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         assert resp.json()["degraded_sources"] == []
 
@@ -619,8 +619,8 @@ class TestDegradedSources:
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
         app = await _make_app_with_broken_tracker(fake_persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/api/v1/activities",
                 headers=make_auth_headers("ceo"),
             )
@@ -629,7 +629,7 @@ class TestDegradedSources:
 
     async def test_degraded_tool_tracker(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         tool_invocation_tracker: ToolInvocationTracker,
     ) -> None:
@@ -644,14 +644,14 @@ class TestDegradedSources:
 
         tool_invocation_tracker.get_records = _raise  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert "tool_invocation_tracker" in body["degraded_sources"]
 
     async def test_degraded_delegation_store(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         delegation_record_store: DelegationRecordStore,
     ) -> None:
@@ -668,14 +668,14 @@ class TestDegradedSources:
         delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
         delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         body = resp.json()
         assert "delegation_record_store" in body["degraded_sources"]
 
     async def test_degraded_cost_tracker(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         cost_tracker: CostTracker,
     ) -> None:
@@ -690,13 +690,13 @@ class TestDegradedSources:
 
         cost_tracker.get_records = _raise  # type: ignore[assignment]
 
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
         assert "cost_tracker" in resp.json()["degraded_sources"]
 
     async def test_degraded_budget_config(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         """Budget config failure is reported in degraded_sources."""
@@ -704,13 +704,13 @@ class TestDegradedSources:
             _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
         )
         # Break the config resolver
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         original = config_resolver_of(app_state).get_budget_config
         cast(Any, config_resolver_of(app_state)).get_budget_config = AsyncMock(
             side_effect=RuntimeError("simulated failure"),
         )
         try:
-            resp = test_client.get("/api/v1/activities")
+            resp = await async_test_client.get("/api/v1/activities")
             assert resp.status_code == 200
             assert "budget_config" in resp.json()["degraded_sources"]
         finally:
@@ -728,7 +728,7 @@ class TestActivityFeedLifecycleCap:
 
     async def test_default_cap_passed_to_list_events(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -740,10 +740,10 @@ class TestActivityFeedLifecycleCap:
             return await original(**kwargs)
 
         monkeypatch.setattr(fake_persistence.lifecycle_events, "list_events", _spy)
-        resp = test_client.get("/api/v1/activities")
+        resp = await async_test_client.get("/api/v1/activities")
 
         assert resp.status_code == 200
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         assert (
             captured["limit"]
             == app_state.api_bridge_config.max_lifecycle_events_per_query
@@ -751,13 +751,13 @@ class TestActivityFeedLifecycleCap:
 
     async def test_swapped_cap_takes_effect_immediately(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from synthorg.settings.bridge_configs import ApiBridgeConfig
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         previous = app_state.api_bridge_config
         app_state.swap_api_bridge_config(
             previous.model_copy(update={"max_lifecycle_events_per_query": 137}),
@@ -771,7 +771,7 @@ class TestActivityFeedLifecycleCap:
 
         monkeypatch.setattr(fake_persistence.lifecycle_events, "list_events", _spy)
         try:
-            resp = test_client.get("/api/v1/activities")
+            resp = await async_test_client.get("/api/v1/activities")
         finally:
             app_state.swap_api_bridge_config(previous)
 
