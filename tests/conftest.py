@@ -127,37 +127,35 @@ socket.getfqdn = _fast_getfqdn
 
 # ── socket.socketpair: bounded retry on Windows (tactical) ───────────
 #
-# Tracked as issue #2151 (Migrate api tests to AsyncTestClient). The
-# long-term fix is to remove the per-test ``anyio.start_blocking_portal``
-# pattern in ``litestar.TestClient.__enter__`` so each test stops
-# constructing a fresh asyncio loop and therefore stops calling
-# ``socket.socketpair()`` ~half a million times per ``--count=2``
-# session. Until that ~63-file refactor lands this wrapper makes the
-# pre-push isolation gate survive the load: REMOVE THIS BLOCK in the
-# PR that closes #2151.
+# CPython https://github.com/python/cpython/issues/122797: the
+# post-CVE-2024-3219 ``socket._fallback_socketpair`` creates a TCP
+# listener on loopback, ``setblocking(False)``, ``connect()``, then a
+# blocking ``lsock.accept()`` -- with NO timeout and NO retry. Under
+# heavy concurrent socketpair creation on Windows (8 xdist workers each
+# spawning litestar ``TestClient`` instances via
+# ``anyio.start_blocking_portal`` -> a fresh asyncio loop ->
+# ``_make_self_pipe`` -> ``socket.socketpair`` per test, ~500k calls per
+# ``--count=2`` unit run), the listener's backlog occasionally fails to
+# deliver the connection to ``accept()`` before the 30s
+# ``pytest-timeout`` fires; the worker then ``os.abort``s inside
+# ``_timeout_timer_with_faulthandler``.
 #
-# Root cause: CPython https://github.com/python/cpython/issues/122797
-# ``socket._fallback_socketpair`` (added in the CVE-2024-3219 patch
-# series) creates a TCP listener on loopback, ``setblocking(False)``,
-# ``connect()``, then a blocking ``lsock.accept()`` -- with NO timeout
-# and NO retry. Under heavy concurrent socketpair creation on Windows
-# (8 xdist workers each spawning litestar TestClients), the listener's
-# backlog occasionally fails to deliver the connection to ``accept()``
-# before the 30s ``pytest-timeout`` fires; the worker then ``os.abort``s
-# inside ``_timeout_timer_with_faulthandler``.
+# Bound ``accept()`` with a per-attempt timeout via ``settimeout`` and
+# retry the whole bind/connect/accept dance a small number of times.
+# ``settimeout`` makes ``accept`` raise ``TimeoutError`` (an ``OSError``
+# subclass) instead of blocking forever, so the wrapper closes the
+# half-built pair and tries again. Clearing ``settimeout(None)`` on the
+# returned ``ssock`` restores the blocking-mode contract callers expect
+# (asyncio's ``_make_self_pipe`` reads/writes a single byte to wake the
+# selector, with default blocking I/O on the read side).
 #
-# Fix shape: bound ``accept()`` with a per-attempt timeout via
-# ``settimeout`` and retry the whole bind/connect/accept dance a small
-# number of times. ``settimeout`` makes ``accept`` raise ``TimeoutError``
-# (an ``OSError`` subclass) instead of blocking forever, so the wrapper
-# can close the half-built pair and try again. The clearing
-# ``settimeout(None)`` on the returned ``ssock`` restores the
-# blocking-mode contract expected by every caller (asyncio's
-# ``_make_self_pipe`` reads/writes a single byte to wake the selector,
-# and uses default blocking I/O on the read side).
+# Tactical bridge. Long-term cure: drop the per-test BlockingPortal
+# pattern in ``litestar.TestClient.__enter__`` (migrate to
+# ``AsyncTestClient``); the socketpair stops being called per-test and
+# this wrapper becomes dead code. Delete this block in that same PR.
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
-    _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 2.0
-    _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 5
+    _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 1.0
+    _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 3
     _SOCKETPAIR_RETRY_BASE_DELAY_SECONDS: Final[float] = 0.05
     _orig_socketpair = socket.socketpair
 
@@ -168,8 +166,15 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     ) -> tuple[socket.socket, socket.socket]:
         """Drop-in ``socket.socketpair`` that retries a stuck ``accept``.
 
-        Falls through to the stock implementation for any unusual call
-        shape (non-INET family, non-stream type, custom proto) so any
+        Three short, bounded attempts (~3.3s worst case before fallback)
+        catch the common load-induced hang. If all three time out, the
+        call falls through to the stock implementation so a truly
+        pathological wait is still subject to ``pytest-timeout``'s 30s
+        ceiling rather than failing the caller with a misleading
+        ``TimeoutError`` from the wrapper itself -- and stays well under
+        the affected-suite per-test 6s wall-clock guard in the happy
+        retry-recovery path. Unusual call shapes (non-INET family,
+        non-stream type, custom proto) go straight to stock so any
         future caller that wants the real semantics still gets them.
         """
         if (
@@ -179,7 +184,6 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
         ):
             return _orig_socketpair(family, type, proto)
         host = "127.0.0.1" if family == socket.AF_INET else "::1"
-        last_err: BaseException | None = None
         for attempt in range(_SOCKETPAIR_MAX_ATTEMPTS):
             lsock = socket.socket(family, type, proto)
             csock: socket.socket | None = None
@@ -194,25 +198,20 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
                     csock.connect((addr, port))
                 csock.setblocking(True)
                 ssock, _ = lsock.accept()
-            except OSError as exc:
-                last_err = exc
+            except OSError:
                 if csock is not None:
                     csock.close()
-                if attempt < _SOCKETPAIR_MAX_ATTEMPTS - 1:
-                    time.sleep(_SOCKETPAIR_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
-                    continue
-                raise
+                time.sleep(_SOCKETPAIR_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                continue
             else:
                 ssock.settimeout(None)
                 return ssock, csock
             finally:
                 lsock.close()
-        # Unreachable: the loop either returns or re-raises on the final attempt.
-        raise (
-            last_err
-            if last_err is not None
-            else RuntimeError("socketpair retry exhausted with no captured error")
-        )
+        # Bounded retries exhausted: defer to the stock implementation so
+        # the original blocking behaviour (and pytest-timeout's 30s wall)
+        # decides the outcome rather than raising a wrapper-local timeout.
+        return _orig_socketpair(family, type, proto)
 
     socket.socketpair = _socketpair_with_retry
 
