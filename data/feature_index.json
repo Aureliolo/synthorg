@@ -1,0 +1,818 @@
+{
+  "features": [
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/a2a",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "a2a",
+      "protocol_exports": [],
+      "settings_namespace": "a2a",
+      "state_slice_fields": [
+        "card_builder",
+        "client",
+        "peer_registry"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/api",
+      "ghost_wired_symbols": [
+        "build_chief_of_staff_proposer"
+      ],
+      "mcp_tool_names": [],
+      "name": "api_core",
+      "protocol_exports": [],
+      "settings_namespace": "api",
+      "state_slice_fields": [
+        "cursor_secret",
+        "auth_service",
+        "session_store",
+        "lockout_store",
+        "refresh_store",
+        "ticket_store",
+        "user_presence",
+        "org_mutation_service",
+        "workflow_rollback_service",
+        "idempotency_service"
+      ]
+    },
+    {
+      "controllers": [
+        "ApprovalsController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/approval",
+      "ghost_wired_symbols": [
+        "ApprovalGate"
+      ],
+      "mcp_tool_names": [
+        "synthorg_approvals_list",
+        "synthorg_approvals_get",
+        "synthorg_approvals_create",
+        "synthorg_approvals_approve",
+        "synthorg_approvals_reject"
+      ],
+      "name": "approval",
+      "protocol_exports": [
+        "ApprovalStoreProtocol"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "store",
+        "gate",
+        "timeout_scheduler",
+        "review_gate"
+      ]
+    },
+    {
+      "controllers": [
+        "BackupController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/backup",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "backup",
+      "protocol_exports": [],
+      "settings_namespace": "backup",
+      "state_slice_fields": [
+        "service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/budget",
+      "ghost_wired_symbols": [
+        "BaselineStore",
+        "CoordinationMetricsCollector",
+        "CostForecaster",
+        "ParetoAnalyzer",
+        "StubBenchmarkScoreProvider"
+      ],
+      "mcp_tool_names": [],
+      "name": "budget",
+      "protocol_exports": [
+        "CallClassificationStrategy",
+        "ProjectCostAggregateRepository",
+        "SimilarityComputer"
+      ],
+      "settings_namespace": "budget",
+      "state_slice_fields": [
+        "cost_tracker",
+        "cost_forecaster",
+        "cost_forecast_repo",
+        "pareto_analyzer",
+        "benchmark_provider",
+        "budget_config",
+        "report_service"
+      ]
+    },
+    {
+      "controllers": [
+        "CharterController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/meta/charter",
+      "ghost_wired_symbols": [
+        "CharterInterviewService",
+        "CharterDispatcher"
+      ],
+      "mcp_tool_names": [
+        "synthorg_charter_interview",
+        "synthorg_charter_list",
+        "synthorg_charter_get",
+        "synthorg_charter_cancel",
+        "synthorg_charter_approve"
+      ],
+      "name": "charter",
+      "protocol_exports": [
+        "CharterInterviewStrategy"
+      ],
+      "settings_namespace": "charter",
+      "state_slice_fields": [
+        "interview_service",
+        "dispatcher"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/client",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "client",
+      "protocol_exports": [
+        "ClientInterface",
+        "ClientPoolStrategy",
+        "EntryPointStrategy",
+        "FeedbackStrategy",
+        "HumanInputQueue",
+        "ReportStrategy",
+        "RequirementGenerator"
+      ],
+      "settings_namespace": "client",
+      "state_slice_fields": [
+        "simulation_state"
+      ]
+    },
+    {
+      "controllers": [
+        "CockpitController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/engine/cockpit",
+      "ghost_wired_symbols": [
+        "CockpitService",
+        "FlightRecorderService",
+        "build_steering_directive",
+        "build_flight_recorder_sink"
+      ],
+      "mcp_tool_names": [
+        "synthorg_cockpit_get_live_activity",
+        "synthorg_cockpit_get_flight_recorder_frames",
+        "synthorg_cockpit_seek_flight_recorder",
+        "synthorg_cockpit_intervene_pause",
+        "synthorg_cockpit_intervene_kill",
+        "synthorg_cockpit_intervene_hint",
+        "synthorg_cockpit_intervene_redirect"
+      ],
+      "name": "cockpit",
+      "protocol_exports": [],
+      "settings_namespace": "cockpit",
+      "state_slice_fields": [
+        "cockpit_service",
+        "flight_recorder_service",
+        "steering_directive"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/communication",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "communication",
+      "protocol_exports": [
+        "ConflictDetector",
+        "ConflictResolver",
+        "JudgeEvaluator",
+        "MeetingProtocol",
+        "MessageBus",
+        "MessageHandler"
+      ],
+      "settings_namespace": "communication",
+      "state_slice_fields": [
+        "message_bus",
+        "message_service",
+        "meeting_orchestrator",
+        "meeting_scheduler",
+        "meeting_service",
+        "event_stream_hub",
+        "interrupt_store",
+        "delegation_record_store",
+        "escalation_store",
+        "escalation_registry",
+        "escalation_processor",
+        "escalation_sweeper",
+        "escalation_notify_subscriber"
+      ]
+    },
+    {
+      "controllers": [
+        "CoordinationMetricsController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/coordination",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "coordination",
+      "protocol_exports": [],
+      "settings_namespace": "coordination",
+      "state_slice_fields": [
+        "metrics_store",
+        "coordination_service",
+        "ceremony_policy_service"
+      ]
+    },
+    {
+      "controllers": [
+        "ProjectDocsController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/docs_engine",
+      "ghost_wired_symbols": [
+        "build_docs_service",
+        "DocsService",
+        "DocChunker",
+        "DocIndexer",
+        "DocWriter",
+        "ProjectAwareMemoryFacade",
+        "DocsToolFactory",
+        "WriteLivingDocTool",
+        "SearchLivingDocsTool"
+      ],
+      "mcp_tool_names": [
+        "synthorg_docs_write",
+        "synthorg_docs_get",
+        "synthorg_docs_list",
+        "synthorg_docs_search",
+        "synthorg_docs_history"
+      ],
+      "name": "docs",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service",
+        "memory_facade",
+        "tool_factory"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/engine",
+      "ghost_wired_symbols": [
+        "AgentEngine",
+        "IntakeEngine",
+        "DirectIntake",
+        "AgentIntake",
+        "IntakeEntryAdapter",
+        "build_work_entry_adapter",
+        "TaskBoardEntryAdapter",
+        "ObjectiveEntryAdapter",
+        "BrownfieldEntryAdapter",
+        "build_brownfield_entry_adapter",
+        "BrownfieldImportService",
+        "BrownfieldSourceResolver",
+        "build_structure_map_scanners",
+        "wire_real_brownfield_entry",
+        "build_mcp_self_consumer",
+        "build_coordinator",
+        "build_stakes_router",
+        "build_work_pipeline",
+        "ForecastGate"
+      ],
+      "mcp_tool_names": [],
+      "name": "engine",
+      "protocol_exports": [
+        "AgentMiddleware",
+        "CandidatePoolFilter",
+        "CandidateRanker",
+        "CoordinationMiddleware",
+        "DecompositionStrategy",
+        "ExecutionLoop",
+        "PromptTokenEstimator",
+        "RecoveryStrategy",
+        "ResourceLock",
+        "ShutdownStrategy",
+        "StagnationDetector",
+        "TaskAssignmentStrategy",
+        "TopologyDispatcher",
+        "WorkspaceIsolationStrategy"
+      ],
+      "settings_namespace": "engine",
+      "state_slice_fields": [
+        "task_engine",
+        "work_pipeline",
+        "workflow_service",
+        "workflow_version_service",
+        "workflow_execution_service",
+        "subworkflow_service",
+        "evaluation_version_service",
+        "ceremony_scheduler",
+        "intake_entry_adapter",
+        "objective_entry_adapter",
+        "brownfield_entry_adapter",
+        "task_board_entry_adapter",
+        "structure_map_tool_factory"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/infrastructure",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "facades",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "artifact_facade_service",
+        "audit_read_service",
+        "backup_facade_service",
+        "client_facade_service",
+        "events_read_service",
+        "integration_health_facade_service",
+        "mcp_catalog_facade_service",
+        "oauth_facade_service",
+        "ontology_facade_service",
+        "project_facade_service",
+        "project_doc_memory_facade",
+        "provider_read_service",
+        "quality_facade_service",
+        "requests_facade_service",
+        "review_facade_service",
+        "setup_facade_service",
+        "simulation_facade_service",
+        "template_pack_facade_service",
+        "user_facade_service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/hr",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "hr",
+      "protocol_exports": [],
+      "settings_namespace": "hr",
+      "state_slice_fields": [
+        "agent_registry",
+        "performance_tracker",
+        "training_service",
+        "training_plan_service",
+        "personality_service",
+        "agent_version_service",
+        "activity_feed_service",
+        "agent_health_service",
+        "scaling_service",
+        "scaling_decision_service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/integrations",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "integrations",
+      "protocol_exports": [],
+      "settings_namespace": "integrations",
+      "state_slice_fields": [
+        "connection_catalog",
+        "connection_service",
+        "oauth_token_manager",
+        "oauth_state_service",
+        "webhook_event_bridge",
+        "webhook_service",
+        "tunnel_provider",
+        "tunnel_service",
+        "mcp_catalog_service",
+        "mcp_installations_repo",
+        "health_prober_service"
+      ]
+    },
+    {
+      "controllers": [
+        "ProjectKnowledgeController",
+        "GlobalKnowledgeController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/knowledge",
+      "ghost_wired_symbols": [
+        "build_knowledge_service",
+        "KnowledgeService",
+        "KnowledgeIndexer",
+        "KnowledgeRetriever",
+        "build_knowledge_tool_factory",
+        "SearchKnowledgeTool",
+        "IngestKnowledgeTool"
+      ],
+      "mcp_tool_names": [
+        "synthorg_knowledge_search",
+        "synthorg_knowledge_ingest",
+        "synthorg_knowledge_reindex",
+        "synthorg_knowledge_list",
+        "synthorg_knowledge_get",
+        "synthorg_knowledge_delete"
+      ],
+      "name": "knowledge",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service",
+        "tool_factory"
+      ]
+    },
+    {
+      "controllers": [
+        "MemoryAdminController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/memory",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "memory",
+      "protocol_exports": [
+        "ArchivalStore",
+        "ConsolidationStrategy",
+        "MemoryBackend",
+        "MemoryCapabilities",
+        "MemoryInjectionStrategy",
+        "OrgFactRepository",
+        "OrgMemoryBackend",
+        "QueryReformulator",
+        "SharedKnowledgeStore",
+        "SufficiencyChecker",
+        "TokenEstimator"
+      ],
+      "settings_namespace": "memory",
+      "state_slice_fields": [
+        "backend",
+        "fine_tune_orchestrator",
+        "service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/meta",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "meta",
+      "protocol_exports": [],
+      "settings_namespace": "meta",
+      "state_slice_fields": [
+        "signals_service",
+        "experiment_service",
+        "self_improvement_service",
+        "reports_service",
+        "analytics_service",
+        "chief_of_staff_proposer",
+        "chief_of_staff_chat",
+        "conversational_proposal_repo"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/notifications",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "notifications",
+      "protocol_exports": [
+        "NotificationSink"
+      ],
+      "settings_namespace": "notifications",
+      "state_slice_fields": [
+        "dispatcher"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/observability",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "observability",
+      "protocol_exports": [],
+      "settings_namespace": "observability",
+      "state_slice_fields": [
+        "prometheus_collector",
+        "trace_handler"
+      ]
+    },
+    {
+      "controllers": [
+        "OntologyController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/ontology",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "ontology",
+      "protocol_exports": [
+        "OntologyEntityRepository"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service",
+        "drift_report_store",
+        "drift_detection_service",
+        "sync_service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/organization",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "organization",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "company_read_service",
+        "department_service",
+        "role_version_service",
+        "team_service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/persistence",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "persistence",
+      "protocol_exports": [
+        "AgentStateRepository",
+        "ApiKeyRepository",
+        "ArtifactRepository",
+        "AuditRepository",
+        "CeremonySchedulerStateRepository",
+        "CheckpointRepository",
+        "ConnectionRepository",
+        "ConnectionSecretRepository",
+        "CostRecordRepository",
+        "DecisionRepository",
+        "HeartbeatRepository",
+        "LockoutRepository",
+        "MeetingCooldownRepository",
+        "MessageRepository",
+        "OAuthStateRepository",
+        "ParkedContextRepository",
+        "PersistenceBackend",
+        "PersonalityPresetRepository",
+        "ProjectRepository",
+        "RefreshTokenRepository",
+        "SessionRepository",
+        "SettingsRepository",
+        "SubworkflowRepository",
+        "TaskRepository",
+        "TrackedContainerRepository",
+        "TrainingPlanRepository",
+        "TrainingResultRepository",
+        "UserRepository",
+        "VersionRepository",
+        "WebhookReceiptRepository",
+        "WorkflowExecutionRepository"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "backend"
+      ]
+    },
+    {
+      "controllers": [
+        "ProviderController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/providers",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "providers",
+      "protocol_exports": [
+        "CassetteRedactor",
+        "CompletionProvider",
+        "RoutingStrategy"
+      ],
+      "settings_namespace": "providers",
+      "state_slice_fields": [
+        "registry",
+        "model_router",
+        "health_tracker",
+        "management",
+        "audit_service",
+        "preset_override_service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/research",
+      "ghost_wired_symbols": [
+        "build_research_service",
+        "ResearchService",
+        "LlmQueryPlanner",
+        "HybridCredibilityTriage",
+        "LexicalDeduplicator",
+        "LlmSynthesizer",
+        "KnowledgeRetrievalSource",
+        "WebRetrievalSource",
+        "AcademicRetrievalSource",
+        "CodeRetrievalSource",
+        "build_research_tool_factory",
+        "ResearchTool"
+      ],
+      "mcp_tool_names": [
+        "synthorg_research_run",
+        "synthorg_research_get",
+        "synthorg_research_list"
+      ],
+      "name": "research",
+      "protocol_exports": [],
+      "settings_namespace": "research",
+      "state_slice_fields": [
+        "service",
+        "tool_factory"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/workers",
+      "ghost_wired_symbols": [
+        "build_distributed_backend_services",
+        "DeadLetterConsumer",
+        "SeenClaimsPruner",
+        "WorkerHeartbeatSubscriber"
+      ],
+      "mcp_tool_names": [],
+      "name": "runtime",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "worker_execution_service",
+        "coordinator",
+        "distributed_task_queue",
+        "distributed_backend_services"
+      ]
+    },
+    {
+      "controllers": [
+        "AuditController",
+        "AutonomyController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/security",
+      "ghost_wired_symbols": [
+        "TrustService",
+        "build_autonomy_change_strategy",
+        "build_red_team_runtime",
+        "RedTeamGateService",
+        "AgentEngineRunner",
+        "SubmitRedTeamReportTool",
+        "InMemoryRedTeamReportRepository",
+        "HeuristicGroundingChecker",
+        "build_red_team_agent_identity"
+      ],
+      "mcp_tool_names": [],
+      "name": "security",
+      "protocol_exports": [
+        "OutputScanResponsePolicy",
+        "RiskScorer",
+        "SecurityInterceptionStrategy",
+        "SecurityRule"
+      ],
+      "settings_namespace": "security",
+      "state_slice_fields": [
+        "audit_log",
+        "trust_service",
+        "autonomy_change_strategy"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/settings",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "settings",
+      "protocol_exports": [
+        "SettingsSubscriber"
+      ],
+      "settings_namespace": "settings",
+      "state_slice_fields": [
+        "settings_service",
+        "settings_read_service",
+        "config_resolver"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/telemetry",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [],
+      "name": "telemetry",
+      "protocol_exports": [
+        "TelemetryReporter"
+      ],
+      "settings_namespace": "telemetry",
+      "state_slice_fields": [
+        "collector"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/tools",
+      "ghost_wired_symbols": [
+        "BrowserTool",
+        "SSIMDiffer",
+        "WorkspaceBaselineStore",
+        "build_structure_map_tool_factory",
+        "QueryStructureMapTool",
+        "create_lifecycle_strategy"
+      ],
+      "mcp_tool_names": [],
+      "name": "tools",
+      "protocol_exports": [
+        "SandboxBackend",
+        "ToolDisclosureManager",
+        "WebSearchProvider"
+      ],
+      "settings_namespace": "tools",
+      "state_slice_fields": [
+        "invocation_tracker"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/meta/toolsmith",
+      "ghost_wired_symbols": [
+        "build_toolsmith",
+        "ToolsmithService",
+        "RingBufferCapabilityGapStore",
+        "LLMToolBlueprintGenerator",
+        "BenchmarkToolValidationGate",
+        "SandboxBriefRunner",
+        "ToolCreationApplier",
+        "DynamicToolRegistry",
+        "install_dynamic_tool_layer"
+      ],
+      "mcp_tool_names": [],
+      "name": "toolsmith",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service"
+      ]
+    },
+    {
+      "controllers": [],
+      "depends_on": [],
+      "directory": "src/synthorg/engine/workspace",
+      "ghost_wired_symbols": [
+        "ProjectWorkspaceService",
+        "PushQueueCoordinator",
+        "build_git_backend",
+        "EmbeddedGitBackend",
+        "LocalPathGitBackend",
+        "ExternalRemoteGitBackend"
+      ],
+      "mcp_tool_names": [],
+      "name": "workspace",
+      "protocol_exports": [
+        "SemanticAnalyzer",
+        "WorkspaceIsolationStrategy"
+      ],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "project_workspace_service",
+        "environment_service",
+        "artifact_storage",
+        "agent_workspace_root"
+      ]
+    }
+  ],
+  "generated_at": "2026-05-28T11:04:05.707455Z",
+  "schema_version": 1
+}

@@ -552,7 +552,7 @@ class SettingsChangeDispatcher:
         a sane default rather than aborting on the first error.
 
         The bootstrap literal (30) duplicates the registered default
-        in ``settings/definitions/settings_ns.py``
+        in ``settings/definitions/settings.py``
         (``dispatcher_max_consecutive_errors``); kept inline as a
         literal because importing the registry value at module-load
         risks a circular import (registry depends on settings models;
@@ -582,7 +582,7 @@ class SettingsChangeDispatcher:
         drain still bounds the lifecycle lock.
 
         The bootstrap literal (10.0) duplicates the registered
-        default in ``settings/definitions/settings_ns.py``
+        default in ``settings/definitions/settings.py``
         (``dispatcher_stop_drain_timeout_seconds``); kept inline
         for the same circular-import reason described on
         ``_resolve_max_consecutive_errors``. Keep both in lockstep

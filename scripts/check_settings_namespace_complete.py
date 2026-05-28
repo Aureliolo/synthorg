@@ -32,7 +32,7 @@ _BASELINE_REL = Path("scripts") / "_settings_namespace_baseline.txt"
 _ENUMS_REL: Final[str] = "src/synthorg/settings/enums.py"
 _DEFINITIONS_REL: Final[str] = "src/synthorg/settings/definitions"
 _ENUM_CLASS_NAME: Final[str] = "SettingNamespace"
-_SKIP_DEFINITION_NAMES: Final[frozenset[str]] = frozenset({"__init__", "settings_ns"})
+_SKIP_DEFINITION_NAMES: Final[frozenset[str]] = frozenset({"__init__"})
 
 _BASELINE_HEADER = (
     "# Frozen baseline of SettingNamespace values lacking a corresponding\n"

@@ -204,10 +204,11 @@ class TestHandlerParity:
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the
         MCP tool surface is intentionally grown or shrunk (current
-        composition: 219 baseline + 7 cockpit + 5 charter).
+        composition: 219 baseline + 7 cockpit + 5 charter +
+        1 query_feature_map).
         """
         registry = build_full_registry()
-        assert registry.tool_count == 231
+        assert registry.tool_count == 232
 
 
 class TestNoPlaceholderInProduction:

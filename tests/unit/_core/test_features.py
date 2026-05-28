@@ -21,6 +21,8 @@ from synthorg._core.features import (
     FeatureModule,
     LifecycleHook,
     McpHandlerModule,
+    discover_features,
+    feature_directories,
     require_service,
     resolve_feature_order,
 )
@@ -140,3 +142,49 @@ class TestRequireService:
             ServiceUnavailableError, match="Auth Service not configured"
         ):
             require_service(None, "Auth Service")
+
+
+class TestDiscoverFeatures:
+    """End-to-end discovery walk over the live ``src/synthorg/`` tree."""
+
+    def test_returns_at_least_thirty_feature_manifests(self) -> None:
+        # The post-#2149 tree carries 32 feature directories; lock a
+        # floor that catches accidental discovery regressions without
+        # tying the test to the exact count.
+        features = discover_features(force=True)
+        assert len(features) >= 30
+
+    def test_every_discovered_manifest_satisfies_protocol(self) -> None:
+        for feature in discover_features(force=True):
+            assert isinstance(feature, FeatureModule), feature
+
+    def test_returns_dependency_ordered(self) -> None:
+        # Independents resolve before dependents (the resolver invariant
+        # under live data, not just the synthetic chain).
+        features = discover_features(force=True)
+        positions = {feature.name: idx for idx, feature in enumerate(features)}
+        for feature in features:
+            for dependency in feature.depends_on:
+                assert positions[dependency] < positions[feature.name]
+
+    def test_memoised_between_calls_without_force(self) -> None:
+        first = discover_features()
+        second = discover_features()
+        assert first is second
+
+
+class TestFeatureDirectories:
+    """Repo-relative directory mapping the navigation index consumes."""
+
+    def test_maps_charter_to_meta_charter_dir(self) -> None:
+        dirs = feature_directories()
+        assert dirs["charter"] == "src/synthorg/meta/charter"
+
+    def test_maps_api_core_to_api_dir(self) -> None:
+        dirs = feature_directories()
+        assert dirs["api_core"] == "src/synthorg/api"
+
+    def test_directory_count_matches_discovery(self) -> None:
+        features = discover_features(force=True)
+        dirs = feature_directories()
+        assert set(dirs.keys()) == {feature.name for feature in features}

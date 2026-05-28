@@ -2,8 +2,8 @@
 
 The settings dispatcher is the notification pump for all other
 setting changes, so it needs configuration for its own poll
-behaviour.  These values are read on a best-effort basis after the
-settings service has booted -- the dispatcher falls back to
+behaviour. These values are read on a best-effort basis after the
+settings service has booted; the dispatcher falls back to
 compile-time bootstrap defaults for the first pump cycle.
 """
 
@@ -68,7 +68,7 @@ _r.register(
             " loop. When False the loop sleeps the configured poll-timeout"
             " each iteration without consuming the bus or invoking"
             " subscribers; flip back to True to resume without restarting"
-            " the dispatcher. Resolver outage falls back to enabled --"
+            " the dispatcher. Resolver outage falls back to enabled;"
             " operators silence dispatch by setting the value explicitly,"
             " never by inducing a settings outage."
         ),

@@ -22,7 +22,11 @@ class _GateModule(Protocol):
     """Subset of ``scripts/check_no_ghost_wiring.py`` the tests drive."""
 
     @staticmethod
-    def _run(repo_root: Path) -> int: ...
+    def _run(
+        repo_root: Path,
+        *,
+        claimed_symbols: frozenset[str] | None = ...,
+    ) -> int: ...
     @staticmethod
     def main() -> int: ...
 
@@ -130,6 +134,64 @@ def test_non_runtime_prefix_does_not_count(
     assert "Ghost-wiring regression" in capsys.readouterr().out
 
 
+def test_parity_failure_when_manifest_drops_claimed_symbol(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Symbol claimed by a feature manifest but missing from the file fails."""
+    _seed(
+        tmp_path,
+        manifest="ENFORCED Foo #1 -- wired\n",
+        files={
+            "src/synthorg/engine/foo.py": (
+                "class Foo:\n    pass\nclass Bar:\n    pass\n"
+            ),
+            "src/synthorg/api/app.py": ("from x import Foo, Bar\n\nFoo()\nBar()\n"),
+        },
+    )
+    # Feed the parity branch a feature claim set that includes a symbol
+    # the manifest does NOT list ("Bar"); the parity check must fail.
+    rc = _MODULE._run(tmp_path, claimed_symbols=frozenset({"Foo", "Bar"}))
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "parity" in out.lower()
+    assert "Bar" in out
+
+
+def test_parity_failure_when_feature_drops_manifest_symbol(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ENFORCED symbol missing from any feature manifest claim fails."""
+    _seed(
+        tmp_path,
+        manifest=("ENFORCED Foo #1 -- wired\nENFORCED Baz #2 -- wired\n"),
+        files={
+            "src/synthorg/engine/foo.py": (
+                "class Foo:\n    pass\nclass Baz:\n    pass\n"
+            ),
+            "src/synthorg/api/app.py": ("from x import Foo, Baz\n\nFoo()\nBaz()\n"),
+        },
+    )
+    # Feature manifests claim Foo but NOT Baz; parity must fail.
+    rc = _MODULE._run(tmp_path, claimed_symbols=frozenset({"Foo"}))
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "parity" in out.lower()
+    assert "Baz" in out
+
+
+def test_parity_passes_when_claimed_equals_enforced(tmp_path: Path) -> None:
+    """Identical sets pass parity (and the reachability check)."""
+    _seed(
+        tmp_path,
+        manifest="ENFORCED Foo #1 -- wired\n",
+        files={
+            "src/synthorg/engine/foo.py": "class Foo:\n    pass\n",
+            "src/synthorg/api/app.py": "from x import Foo\n\nFoo()\n",
+        },
+    )
+    assert _MODULE._run(tmp_path, claimed_symbols=frozenset({"Foo"})) == 0
+
+
 def test_pending_with_site_emits_nudge_and_passes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -216,6 +278,11 @@ def test_main_uses_repo_root_argument(
         files={
             "src/synthorg/engine/foo.py": "class Foo:\n    pass\n",
             "src/synthorg/api/app.py": "from x import Foo\n\nFoo()\n",
+            # Feature manifest required so the parity check passes; main()
+            # now derives claimed_symbols from feature.py ghost_wired_symbols.
+            "src/synthorg/engine/feature.py": (
+                'FEATURE = dict(ghost_wired_symbols=("Foo",))\n'
+            ),
         },
     )
     monkeypatch.setattr(

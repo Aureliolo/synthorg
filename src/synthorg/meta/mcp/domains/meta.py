@@ -10,6 +10,7 @@ from synthorg.meta.mcp.domains._simple_args import (
     MetaGetMcpServerConfigArgs,
     MetaListMcpToolsArgs,
     MetaListRulesArgs,
+    MetaQueryFeatureMapArgs,
     MetaTriggerCycleArgs,
 )
 from synthorg.meta.mcp.tool_builder import admin_tool, read_tool
@@ -47,5 +48,24 @@ META_TOOLS: tuple[MCPToolDef, ...] = (
         "trigger_cycle",
         "Manually trigger a self-improvement cycle.",
         args_model=MetaTriggerCycleArgs,
+    ),
+    read_tool(
+        "meta",
+        "query_feature_map",
+        (
+            "Query the AI-navigation feature index (all features, or a single"
+            " feature by exact name)."
+        ),
+        {
+            "name": {
+                "type": "string",
+                "description": (
+                    "Optional exact feature name; omit to return the full index."
+                ),
+                "minLength": 1,
+                "pattern": r".*\S.*",
+            },
+        },
+        args_model=MetaQueryFeatureMapArgs,
     ),
 )

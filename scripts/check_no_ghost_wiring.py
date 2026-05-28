@@ -214,7 +214,82 @@ def _scan_sites(repo_root: Path, symbols: set[str]) -> _Sites:
     return _Sites(calls=calls, defs=defs)
 
 
-def _run(repo_root: Path) -> int:
+def _claimed_symbols_from_features(repo_root: Path) -> frozenset[str]:
+    """Aggregate ``ghost_wired_symbols`` from every ``feature.py`` under *repo_root*.
+
+    Pure AST walk: parses each ``src/synthorg/**/feature.py``, finds the
+    ``FEATURE = FeatureManifest(... ghost_wired_symbols=(...))`` kwarg, and
+    collects the string literals. Avoids importing the synthorg package
+    (the gate runs at pre-push; an AST scan is faster and tolerates the
+    boot-time import cycle the live ``discover_features`` would trip).
+    """
+    src_root = repo_root / "src" / "synthorg"
+    if not src_root.is_dir():
+        return frozenset()
+    symbols: set[str] = set()
+    for feature_py in sorted(src_root.rglob("feature.py")):
+        try:
+            tree = ast.parse(
+                feature_py.read_text(encoding="utf-8"), filename=str(feature_py)
+            )
+        except OSError, SyntaxError, UnicodeDecodeError:
+            continue
+        for value in _ghost_wired_kwarg_values(tree):
+            symbols.update(value)
+    return frozenset(symbols)
+
+
+def _ghost_wired_kwarg_values(tree: ast.AST) -> list[list[str]]:
+    """Return every ``ghost_wired_symbols=(...)`` literal tuple in *tree*."""
+    values: list[list[str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "ghost_wired_symbols":
+                continue
+            arg = keyword.value
+            if isinstance(arg, (ast.Tuple, ast.List)):
+                values.append(
+                    [
+                        element.value
+                        for element in arg.elts
+                        if isinstance(element, ast.Constant)
+                        and isinstance(element.value, str)
+                    ]
+                )
+    return values
+
+
+def _check_parity(
+    entries: list[ManifestEntry],
+    claimed: frozenset[str],
+) -> list[str]:
+    """Return human-readable parity failures between manifest and claims."""
+    enforced = frozenset(e.symbol for e in entries if e.state == "ENFORCED")
+    manifest_only = enforced - claimed
+    feature_only = claimed - frozenset(e.symbol for e in entries)
+    lines: list[str] = []
+    if manifest_only:
+        lines.append(
+            "ghost-wiring parity: ENFORCED symbols missing from every "
+            "feature.py ghost_wired_symbols claim:"
+        )
+        lines.extend(f"  - {sym}" for sym in sorted(manifest_only))
+    if feature_only:
+        lines.append(
+            "ghost-wiring parity: symbols claimed by a feature.py manifest "
+            "but missing from scripts/_ghost_wiring_manifest.txt:"
+        )
+        lines.extend(f"  - {sym}" for sym in sorted(feature_only))
+    return lines
+
+
+def _run(
+    repo_root: Path,
+    *,
+    claimed_symbols: frozenset[str] | None = None,
+) -> int:
     repo_root = repo_root.resolve()
     manifest_path = repo_root / MANIFEST
     if not manifest_path.is_file():
@@ -249,6 +324,13 @@ def _run(repo_root: Path) -> int:
             f"ENFORCED in scripts/_ghost_wiring_manifest.txt:{e.lineno}."
         )
 
+    if claimed_symbols is not None:
+        parity_lines = _check_parity(entries, claimed_symbols)
+        if parity_lines:
+            for line in parity_lines:
+                print(line)
+            return 1
+
     if not failures:
         return 0
 
@@ -271,7 +353,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     args = parser.parse_args()
-    return _run(args.repo_root.resolve())
+    repo_root = args.repo_root.resolve()
+    return _run(
+        repo_root,
+        claimed_symbols=_claimed_symbols_from_features(repo_root),
+    )
 
 
 if __name__ == "__main__":
