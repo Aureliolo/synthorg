@@ -175,7 +175,7 @@ function TaskBoardContent({ ctrl }: TaskBoardCtrlProps) {
       onDragStart={ctrl.handleDragStart}
       onDragEnd={ctrl.handleDragEnd}
     >
-      <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-4 md:snap-none">
+      <div className="flex snap-x snap-mandatory gap-grid-gap overflow-x-auto pb-4 md:snap-none">
         {visibleColumns.map((col) => {
           const columnTasks = ctrl.columns[col.id] ?? []
           const containsSelected =

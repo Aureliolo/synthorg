@@ -18,7 +18,7 @@ export default function MessagesPage() {
   if (ctrl.showInitialSkeleton) return <MessagesSkeleton />
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16))] gap-6">
+    <div className="flex h-[calc(100vh-theme(spacing.16))] gap-section-gap">
       <ErrorBoundary level="section">
         <ChannelSidebar
           channels={ctrl.data.channels}
@@ -51,7 +51,7 @@ interface MessagesMainContentProps {
 
 function MessagesMainContent({ ctrl }: MessagesMainContentProps) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4">
+    <div className="flex min-w-0 flex-1 flex-col gap-section-gap">
       <h1 className="text-lg font-semibold text-foreground">Messages</h1>
       <MessagesErrorBanners ctrl={ctrl} />
       {!ctrl.activeChannel && (

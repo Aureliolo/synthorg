@@ -152,7 +152,11 @@ export default tseslint.config(
     // global caps govern it again). When every area is decomposed and
     // listed, this whole override block is deleted. The `ignores:`
     // entries below are the authoritative record of which areas the
-    // caps already govern.
+    // caps already govern; entries are a mix of directory globs
+    // (e.g. `src/pages/agents/**` for cleaned sub-buckets) and
+    // individual root-level files (e.g. `src/pages/AgentsPage.tsx`)
+    // since top-level `*Page.tsx` files are decomposed in place
+    // alongside their sub-bucket.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
