@@ -159,6 +159,9 @@ def idempotency_service_of(app_state: AppStateSliceMixin) -> IdempotencyService:
         return existing
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
-    service = IdempotencyService(persistence_of(app_state).idempotency_keys)
-    app_state.wire(ApiCoreStateSlice, idempotency_service=service)
-    return service
+    # Concurrent first-readers race here; ``wire_if_field_absent`` makes
+    # the check + install atomic so two simultaneous requests cannot both
+    # construct a service and overwrite each other's wiring.
+    candidate = IdempotencyService(persistence_of(app_state).idempotency_keys)
+    app_state.wire_if_field_absent(ApiCoreStateSlice, "idempotency_service", candidate)
+    return app_state.slice(ApiCoreStateSlice).idempotency_service or candidate

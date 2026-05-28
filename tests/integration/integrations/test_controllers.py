@@ -18,7 +18,6 @@ on the real HTTP path.
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
@@ -44,6 +43,7 @@ from synthorg.integrations.connections.models import (
 from synthorg.integrations.errors import (
     DuplicateConnectionError,
 )
+from tests._shared import make_app_state
 
 
 def _make_conn(name: str = "c1") -> Connection:
@@ -62,7 +62,12 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.list_all = AsyncMock(return_value=(_make_conn("a"), _make_conn("b")))
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {
+            "app_state": make_app_state(
+                connection_catalog=catalog,
+                cursor_secret=CursorSecret.ephemeral(),
+            ),
+        }
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.list_connections.fn(ctrl, state=state)
@@ -74,7 +79,7 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.get = AsyncMock(return_value=None)
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError):
@@ -111,7 +116,7 @@ class TestConnectionsController:
         catalog.create = AsyncMock(
             side_effect=DuplicateConnectionError("dup"),
         )
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(ConflictError):
@@ -134,7 +139,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             return_value={"client_secret": "real-secret-value"},
         )
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.reveal_secret.fn(
@@ -153,7 +158,7 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.get_credentials = AsyncMock(return_value={"other": "x"})
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -175,7 +180,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             side_effect=ConnectionNotFoundError("Connection 'gh' not found"),
         )
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -196,7 +201,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             side_effect=SecretRetrievalError("vault timeout"),
         )
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -213,14 +218,11 @@ class TestConnectionsController:
 def _make_audit_state(catalog: object) -> dict[str, object]:
     """Build a minimal ``state`` mapping that pins ``connection_catalog``.
 
-    Uses ``SimpleNamespace`` instead of ``MagicMock`` so we don't need
-    a Mock-spec declaration just to satisfy the ``state["app_state"]
-    .connection_catalog`` attribute access -- ``SimpleNamespace`` is
-    typed and accepts arbitrary attributes by construction. The
-    controller only reads ``connection_catalog``; nothing else needs
-    to exist on the namespace.
+    Uses ``make_app_state`` so the controller resolves the catalog
+    through the IntegrationsStateSlice. The controller only reads
+    ``connection_catalog``; every other slice field stays ``None``.
     """
-    return {"app_state": SimpleNamespace(connection_catalog=catalog)}
+    return {"app_state": make_app_state(connection_catalog=catalog)}
 
 
 def _capture_emission(
@@ -454,15 +456,12 @@ class TestWebhooksController:
         catalog.get = AsyncMock(return_value=_make_conn())
         catalog.get_credentials = AsyncMock(return_value={})
 
-        app_state = MagicMock(
+        from synthorg.communication.bus_protocol import MessageBus
+
+        app_state = make_app_state(
             connection_catalog=catalog,
-            message_bus=MagicMock(),
+            message_bus=MagicMock(spec=MessageBus),
         )
-        # Pin concrete ints on the config so the body-size guard
-        # can compare against real values instead of MagicMock-vs-int.
-        app_state.config.integrations.webhooks.max_payload_bytes = 1_000_000
-        app_state.config.integrations.webhooks.replay_window_seconds = 300
-        app_state._webhook_replay_protector = None
         state = {"app_state": app_state}
 
         request = MagicMock()
@@ -505,13 +504,12 @@ class TestWebhooksController:
             return_value={"signing_secret": "supersecret"},
         )
 
-        app_state = MagicMock(
+        from synthorg.communication.bus_protocol import MessageBus
+
+        app_state = make_app_state(
             connection_catalog=catalog,
-            message_bus=MagicMock(),
+            message_bus=MagicMock(spec=MessageBus),
         )
-        app_state.config.integrations.webhooks.max_payload_bytes = 1_000_000
-        app_state.config.integrations.webhooks.replay_window_seconds = 300
-        app_state._webhook_replay_protector = None
         state = {"app_state": app_state}
 
         body = b'{"hello":1}'
@@ -578,11 +576,13 @@ class TestIntegrationHealthController:
 
         monkeypatch.setattr(controller_mod, "check_connection_health", fake_check)
 
-        state = MagicMock()
-        state.app_state = MagicMock(connection_catalog=catalog)
-        state.app_state.cursor_secret = CursorSecret.from_key(
-            "test-secret-32-bytes-long-enough!",
+        app_state = make_app_state(
+            connection_catalog=catalog,
+            cursor_secret=CursorSecret.from_key(
+                "test-secret-32-bytes-long-enough!",
+            ),
         )
+        state = State({"app_state": app_state})
         ctrl = IntegrationHealthController(owner=IntegrationHealthController)  # type: ignore[arg-type]
         response = await ctrl.aggregate_health.fn(ctrl, state=state)
 
@@ -638,11 +638,13 @@ class TestIntegrationHealthController:
             tracking_check,
         )
 
-        state = MagicMock()
-        state.app_state = MagicMock(connection_catalog=catalog)
-        state.app_state.cursor_secret = CursorSecret.from_key(
-            "test-secret-32-bytes-long-enough!",
+        app_state = make_app_state(
+            connection_catalog=catalog,
+            cursor_secret=CursorSecret.from_key(
+                "test-secret-32-bytes-long-enough!",
+            ),
         )
+        state = State({"app_state": app_state})
         ctrl = IntegrationHealthController(owner=IntegrationHealthController)  # type: ignore[arg-type]
         response = await ctrl.aggregate_health.fn(
             ctrl,
@@ -670,7 +672,7 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     cursor_secret=CursorSecret.ephemeral(),
                 ),
@@ -694,7 +696,7 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     cursor_secret=CursorSecret.ephemeral(),
                 ),
@@ -727,10 +729,9 @@ class TestMCPCatalogController:
         repo = InMemoryMcpInstallationRepository()
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=repo,
-                    has_connection_catalog=False,
                 ),
             }
         )
@@ -769,10 +770,9 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                    has_connection_catalog=False,
                 ),
             }
         )
@@ -804,10 +804,9 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                    has_connection_catalog=True,
                     connection_catalog=catalog,
                 ),
             }
@@ -841,10 +840,9 @@ class TestMCPCatalogController:
         )
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=repo,
-                    has_connection_catalog=False,
                 ),
             }
         )
@@ -866,10 +864,9 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=InMemoryMcpInstallationRepository(),
-                    has_connection_catalog=False,
                 ),
             }
         )
@@ -919,7 +916,7 @@ class TestMCPCatalogController:
 
         state = State(
             {
-                "app_state": MagicMock(
+                "app_state": make_app_state(
                     mcp_catalog_service=CatalogService(),
                     mcp_installations_repo=repo,
                     cursor_secret=CursorSecret.ephemeral(),
@@ -949,7 +946,7 @@ class TestTunnelController:
 
         tunnel = MagicMock()
         tunnel.start = AsyncMock(return_value="https://tunnel.example.com")
-        state = {"app_state": MagicMock(tunnel_provider=tunnel)}
+        state = {"app_state": make_app_state(tunnel_provider=tunnel)}
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.start_tunnel.fn(ctrl, state=state)
         assert response.data == {"public_url": "https://tunnel.example.com"}
@@ -960,7 +957,7 @@ class TestTunnelController:
         tunnel = MagicMock()
         tunnel.get_url = AsyncMock(return_value="https://tunnel.example.com")
         tunnel.has_auth_token = True
-        state = {"app_state": MagicMock(tunnel_provider=tunnel)}
+        state = {"app_state": make_app_state(tunnel_provider=tunnel)}
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.get_status.fn(ctrl, state=state)
         assert response.data == {
@@ -1076,7 +1073,7 @@ class TestOAuthController:
         catalog = MagicMock()
         catalog.get_or_raise = AsyncMock(return_value=conn)
         catalog.get_credentials = AsyncMock(return_value={})
-        state = {"app_state": MagicMock(connection_catalog=catalog)}
+        state = {"app_state": make_app_state(connection_catalog=catalog)}
 
         ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
         response = await ctrl.token_status.fn(
@@ -1113,7 +1110,10 @@ class TestControllerHttpLayer:
         )
         from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 
-        app_state_stub = MagicMock(connection_catalog=catalog)
+        app_state_stub = make_app_state(
+            connection_catalog=catalog,
+            cursor_secret=CursorSecret.ephemeral(),
+        )
 
         class _TestUser:
             role = "ceo"

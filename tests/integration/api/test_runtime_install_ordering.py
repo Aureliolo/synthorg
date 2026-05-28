@@ -20,6 +20,7 @@ from synthorg.workers.execution_service import (
     LifecycleAdvancingExecutionService,
     NoProviderExecutionService,
 )
+from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import mock_of
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
@@ -41,8 +42,9 @@ def test_no_provider_installs_backstop_not_lazy_default(
     )
     with TestClient(app) as client:
         app_state = client.app.state["app_state"]
-        service = app_state.worker_execution_service
-        has_coordinator = app_state.has_coordinator
+        runtime_slice = app_state.slice(RuntimeStateSlice)
+        service = runtime_slice.worker_execution_service
+        has_coordinator = runtime_slice.coordinator is not None
     assert isinstance(service, NoProviderExecutionService)
     assert not isinstance(service, LifecycleAdvancingExecutionService)
     # Empty company: no coordinator, /coordinate honestly 503s.
@@ -61,9 +63,10 @@ def test_provider_installs_agent_engine_service_and_coordinator(
     )
     with TestClient(app) as client:
         app_state = client.app.state["app_state"]
-        service = app_state.worker_execution_service
-        has_coordinator = app_state.has_coordinator
-        coordinator = app_state.coordinator
+        runtime_slice = app_state.slice(RuntimeStateSlice)
+        service = runtime_slice.worker_execution_service
+        coordinator = runtime_slice.coordinator
+        has_coordinator = coordinator is not None
     assert isinstance(service, AgentEngineExecutionService)
     # Same provider switch wires the coordinator behind /coordinate.
     assert has_coordinator is True
@@ -90,5 +93,5 @@ def test_injected_coordinator_wins_over_autowired(
     )
     with TestClient(app) as client:
         app_state = client.app.state["app_state"]
-        coordinator = app_state.coordinator
+        coordinator = app_state.slice(RuntimeStateSlice).coordinator
     assert coordinator is injected

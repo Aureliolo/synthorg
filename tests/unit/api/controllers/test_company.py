@@ -103,7 +103,9 @@ class TestCompanyControllerDbOverride:
         app, _settings_service = db_override_app
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resolver = app.state.app_state.config_resolver
+            from synthorg.settings.state import SettingsStateSlice
+
+            resolver = app.state.app_state.slice(SettingsStateSlice).config_resolver
             original_get_str = resolver.get_str
             resolver.get_str = AsyncMock(
                 spec=original_get_str,

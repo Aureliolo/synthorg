@@ -74,12 +74,16 @@ def experiment_service_of(app_state: AppState) -> ExperimentService:
         InMemoryExperimentRepository,
     )
 
-    service = ExperimentService(
+    # Concurrent first-readers race here; ``wire_if_field_absent`` makes
+    # the check + install atomic so they all converge on one shared
+    # ``InMemoryExperimentRepository`` rather than each composing their
+    # own and losing experiments registered against the discarded copies.
+    candidate = ExperimentService(
         repository=InMemoryExperimentRepository(),
         clock=app_state.clock,
     )
-    app_state.wire(MetaStateSlice, experiment_service=service)
-    return service
+    app_state.wire_if_field_absent(MetaStateSlice, "experiment_service", candidate)
+    return app_state.slice(MetaStateSlice).experiment_service or candidate
 
 
 def self_improvement_service_of(

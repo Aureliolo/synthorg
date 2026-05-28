@@ -100,7 +100,6 @@ class TestDepartmentCeremonyPolicyCas:
     ) -> None:
         """Writer A and writer B both complete; final state contains both."""
         import asyncio
-        from types import SimpleNamespace
 
         from synthorg.api.controllers.departments import (
             _load_dept_policies_versioned,
@@ -111,10 +110,9 @@ class TestDepartmentCeremonyPolicyCas:
             repository=fake_persistence.settings,
             registry=get_registry(),
         )
-        app_state = SimpleNamespace(
-            has_settings_service=True,
-            settings_service=settings_service,
-        )
+        from tests._shared import make_app_state
+
+        app_state = make_app_state(settings_service=settings_service)
 
         policy_a: dict[str, Any] = {"strategy": "task_driven"}
         policy_b: dict[str, Any] = {"strategy": "calendar"}
@@ -141,7 +139,6 @@ class TestDepartmentCeremonyPolicyCas:
         deterministically (no thread timing) and asserts the second
         attempt actually persists the mutation.
         """
-        from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
         from synthorg.api.controllers.departments import (
@@ -154,10 +151,9 @@ class TestDepartmentCeremonyPolicyCas:
             repository=fake_persistence.settings,
             registry=get_registry(),
         )
-        app_state = SimpleNamespace(
-            has_settings_service=True,
-            settings_service=settings_service,
-        )
+        from tests._shared import make_app_state
+
+        app_state = make_app_state(settings_service=settings_service)
         policy = {"strategy": "task_driven"}
 
         original_set = settings_service.set
@@ -200,7 +196,6 @@ class TestDepartmentCeremonyPolicyCas:
         Also asserts the retry loop is bounded by
         ``_DEPT_POLICY_CAS_MAX_ATTEMPTS``.
         """
-        from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
         from synthorg.api.controllers.departments import (
@@ -217,14 +212,12 @@ class TestDepartmentCeremonyPolicyCas:
         # loop runs to exhaustion.
         set_mock = AsyncMock(side_effect=VersionConflictError("forced conflict"))
         settings_service.set = set_mock  # type: ignore[method-assign]
-        # has_config_resolver=False so the retry helper falls back to
+        # No config_resolver wired so the retry helper falls back to
         # the registered default attempts count, matching the
         # standalone construction path the test simulates.
-        app_state = SimpleNamespace(
-            has_settings_service=True,
-            settings_service=settings_service,
-            has_config_resolver=False,
-        )
+        from tests._shared import make_app_state
+
+        app_state = make_app_state(settings_service=settings_service)
 
         with pytest.raises(VersionConflictError):
             await _mutate_dept_policies_with_retry(
@@ -248,7 +241,6 @@ class TestDepartmentCeremonyPolicyCas:
         run exactly 7 attempts before surfacing
         ``VersionConflictError``.
         """
-        from types import SimpleNamespace
         from unittest.mock import AsyncMock
 
         from synthorg.api.controllers.departments import (
@@ -265,10 +257,10 @@ class TestDepartmentCeremonyPolicyCas:
 
         resolver = AsyncMock()
         resolver.get_int = AsyncMock(return_value=7)
-        app_state = SimpleNamespace(
-            has_settings_service=True,
+        from tests._shared import make_app_state
+
+        app_state = make_app_state(
             settings_service=settings_service,
-            has_config_resolver=True,
             config_resolver=resolver,
         )
 
