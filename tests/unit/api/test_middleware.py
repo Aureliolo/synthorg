@@ -7,7 +7,6 @@ import structlog
 from litestar import Litestar, get, post
 from litestar.enums import ScopeType
 from litestar.exceptions import ValidationException
-from litestar.testing import TestClient
 
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.middleware import (
@@ -22,6 +21,7 @@ from synthorg.api.middleware import (
     security_headers_hook,
     set_docs_csp_origins,
 )
+from tests._shared import LoopAsyncClient
 
 pytestmark = pytest.mark.unit
 
@@ -76,19 +76,19 @@ def _assert_all_security_headers(
 class TestSecurityHeadersHook:
     """Verify security headers appear on ALL response types."""
 
-    def test_success_response_has_all_security_headers(self) -> None:
+    async def test_success_response_has_all_security_headers(self) -> None:
         """200 OK carries every static security header and CSP."""
 
         @get("/ok")
         async def handler() -> dict[str, str]:
             return {"status": "ok"}
 
-        with TestClient(_make_app(handler)) as client:
-            resp = client.get("/ok")
+        async with LoopAsyncClient(_make_app(handler)) as client:
+            resp = await client.get("/ok")
             assert resp.status_code == 200
             _assert_all_security_headers(resp, status=200)
 
-    def test_exception_handler_response_has_security_headers(
+    async def test_exception_handler_response_has_security_headers(
         self,
     ) -> None:
         """Exception-handler 400 carries all security headers."""
@@ -97,36 +97,36 @@ class TestSecurityHeadersHook:
         async def handler() -> None:
             raise ValidationException
 
-        with TestClient(_make_app(handler)) as client:
-            resp = client.get("/fail")
+        async with LoopAsyncClient(_make_app(handler)) as client:
+            resp = await client.get("/fail")
             assert resp.status_code == 400
             _assert_all_security_headers(resp, status=400)
 
-    def test_unmatched_route_404_has_security_headers(self) -> None:
+    async def test_unmatched_route_404_has_security_headers(self) -> None:
         """Router-level 404 (no matching route) carries headers."""
 
         @get("/exists")
         async def handler() -> str:
             return "ok"
 
-        with TestClient(_make_app(handler)) as client:
-            resp = client.get("/nonexistent")
+        async with LoopAsyncClient(_make_app(handler)) as client:
+            resp = await client.get("/nonexistent")
             assert resp.status_code == 404
             _assert_all_security_headers(resp, status=404)
 
-    def test_method_not_allowed_405_has_security_headers(self) -> None:
+    async def test_method_not_allowed_405_has_security_headers(self) -> None:
         """Router-level 405 carries security headers."""
 
         @post("/only-post")
         async def handler() -> str:
             return "ok"
 
-        with TestClient(_make_app(handler)) as client:
-            resp = client.get("/only-post")
+        async with LoopAsyncClient(_make_app(handler)) as client:
+            resp = await client.get("/only-post")
             assert resp.status_code == 405
             _assert_all_security_headers(resp, status=405)
 
-    def test_500_error_has_security_headers(self) -> None:
+    async def test_500_error_has_security_headers(self) -> None:
         """Unexpected error 500 carries security headers."""
 
         @get("/boom")
@@ -134,8 +134,8 @@ class TestSecurityHeadersHook:
             msg = "unexpected"
             raise RuntimeError(msg)
 
-        with TestClient(_make_app(handler)) as client:
-            resp = client.get("/boom")
+        async with LoopAsyncClient(_make_app(handler)) as client:
+            resp = await client.get("/boom")
             assert resp.status_code == 500
             _assert_all_security_headers(resp, status=500)
 
@@ -178,28 +178,32 @@ class TestCSPPathSelection:
             "docs-openapi-relaxed",
         ],
     )
-    def test_csp_path_selection(
+    async def test_csp_path_selection(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         path: str,
         expected_csp: str,
     ) -> None:
         """Verify CSP assignment: strict for API, relaxed for /docs."""
-        response = test_client.get(path)
+        response = await async_test_client.get(path)
         csp = response.headers.get("content-security-policy")
         assert csp == expected_csp
 
-    def test_docs_path_relaxes_coop(self, test_client: TestClient[Any]) -> None:
+    async def test_docs_path_relaxes_coop(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """Docs paths get COOP same-origin-allow-popups for Scalar UI."""
-        response = test_client.get("/docs/openapi.json")
+        response = await async_test_client.get("/docs/openapi.json")
         assert (
             response.headers.get("cross-origin-opener-policy")
             == "same-origin-allow-popups"
         )
 
-    def test_api_path_keeps_strict_coop(self, test_client: TestClient[Any]) -> None:
+    async def test_api_path_keeps_strict_coop(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """API paths keep COOP same-origin."""
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.headers.get("cross-origin-opener-policy") == "same-origin"
 
 
@@ -403,32 +407,32 @@ class TestCacheControlPathSelection:
             "docs-openapi-cached",
         ],
     )
-    def test_cache_control_path_selection(
+    async def test_cache_control_path_selection(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         path: str,
         expected: str,
     ) -> None:
         """Verify cache-control: no-store for API, brief caching for /docs."""
-        response = test_client.get(path)
+        response = await async_test_client.get(path)
         assert response.headers.get("cache-control") == expected
 
-    def test_docs_path_applies_cache_and_coop_relaxations(
-        self, test_client: TestClient[Any]
+    async def test_docs_path_applies_cache_and_coop_relaxations(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """Cache-Control and COOP relaxation both apply to /docs paths."""
-        response = test_client.get("/docs/openapi.json")
+        response = await async_test_client.get("/docs/openapi.json")
         assert response.headers.get("cache-control") == _DOCS_CACHE_CONTROL
         assert (
             response.headers.get("cross-origin-opener-policy")
             == "same-origin-allow-popups"
         )
 
-    def test_api_responses_carry_strict_cache_directives(
-        self, test_client: TestClient[Any]
+    async def test_api_responses_carry_strict_cache_directives(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """Every directive in the strengthened Cache-Control is present."""
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         cache_header = response.headers.get("cache-control") or ""
         for directive in (
             "no-store",
@@ -440,15 +444,15 @@ class TestCacheControlPathSelection:
                 f"missing {directive!r} in {cache_header!r}"
             )
 
-    def test_api_responses_carry_pragma_no_cache(
-        self, test_client: TestClient[Any]
+    async def test_api_responses_carry_pragma_no_cache(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """The HTTP/1.0 Pragma directive is set on every API response."""
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.headers.get("pragma") == "no-cache"
 
-    def test_docs_responses_omit_pragma_header(
-        self, test_client: TestClient[Any]
+    async def test_docs_responses_omit_pragma_header(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """Docs paths serve cacheable, non-user-specific content -- the
         ``Pragma: no-cache`` API hint MUST NOT bleed onto them.
@@ -457,7 +461,7 @@ class TestCacheControlPathSelection:
         regression because some intermediaries treat any Pragma header
         as a no-cache hint.
         """
-        response = test_client.get("/docs/openapi.json")
+        response = await async_test_client.get("/docs/openapi.json")
         pragma = response.headers.get("pragma")
         assert pragma is None, f"docs response unexpectedly carries Pragma={pragma!r}"
 
@@ -466,21 +470,23 @@ class TestCacheControlPathSelection:
 
 
 class TestRequestLoggingMiddleware:
-    def test_request_completes_with_status(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/healthz")
+    async def test_request_completes_with_status(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.status_code == 200
 
-    def test_not_found_returns_correct_status(
-        self, test_client: TestClient[Any]
+    async def test_not_found_returns_correct_status(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        response = test_client.get("/api/v1/agents/nonexistent")
+        response = await async_test_client.get("/api/v1/agents/nonexistent")
         assert response.status_code == 404
 
 
 class TestCorrelationIdBinding:
     """Verify request correlation ID lifecycle in middleware."""
 
-    def test_correlation_id_bound_during_request(self) -> None:
+    async def test_correlation_id_bound_during_request(self) -> None:
         """Middleware binds a request_id into structlog context."""
         import structlog
 
@@ -498,14 +504,14 @@ class TestCorrelationIdBinding:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app) as client:
-            resp = client.get("/capture")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/capture")
             assert resp.status_code == 200
 
         assert captured_id is not None
         assert len(captured_id) > 0
 
-    def test_correlation_id_cleared_after_request(self) -> None:
+    async def test_correlation_id_cleared_after_request(self) -> None:
         """Context is cleaned up after request completes."""
         import structlog
 
@@ -518,14 +524,14 @@ class TestCorrelationIdBinding:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app) as client:
-            client.get("/clear-test")
+        async with LoopAsyncClient(app) as client:
+            await client.get("/clear-test")
 
         # After request completes, request_id should be cleared
         ctx = structlog.contextvars.get_contextvars()
         assert "request_id" not in ctx
 
-    def test_correlation_id_cleared_on_error(self) -> None:
+    async def test_correlation_id_cleared_on_error(self) -> None:
         """Context is cleaned up even when request raises."""
         import structlog
 
@@ -539,8 +545,8 @@ class TestCorrelationIdBinding:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app) as client:
-            resp = client.get("/error-clear")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/error-clear")
             assert resp.status_code == 500
 
         ctx = structlog.contextvars.get_contextvars()
@@ -595,7 +601,7 @@ class TestHealthcheckLogSuppression:
         "path",
         ["/healthz", "/readyz", "/api/v1/healthz", "/api/v1/readyz"],
     )
-    def test_healthcheck_paths_emit_no_request_log_pair(self, path: str) -> None:
+    async def test_healthcheck_paths_emit_no_request_log_pair(self, path: str) -> None:
         """No ``api.request.started`` / ``api.request.completed`` for probes."""
 
         @get(path)
@@ -607,9 +613,10 @@ class TestHealthcheckLogSuppression:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
-            resp = client.get(path)
-            assert resp.status_code == 200
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(app) as client:
+                resp = await client.get(path)
+                assert resp.status_code == 200
 
         events = [entry.get("event") for entry in logs]
         assert "api.request.started" not in events, (
@@ -619,7 +626,7 @@ class TestHealthcheckLogSuppression:
             f"healthcheck path {path} emitted api.request.completed"
         )
 
-    def test_non_healthcheck_path_still_logs(self) -> None:
+    async def test_non_healthcheck_path_still_logs(self) -> None:
         """Regular routes continue to emit the started/completed pair."""
 
         @get("/some/business/endpoint")
@@ -631,9 +638,10 @@ class TestHealthcheckLogSuppression:
             middleware=[RequestLoggingMiddleware],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with structlog.testing.capture_logs() as logs, TestClient(app) as client:
-            resp = client.get("/some/business/endpoint")
-            assert resp.status_code == 200
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(app) as client:
+                resp = await client.get("/some/business/endpoint")
+                assert resp.status_code == 200
 
         events = [entry.get("event") for entry in logs]
         # Exactly one of each, started before completed; bare presence

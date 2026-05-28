@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 from litestar import Litestar
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.app_builders import _bootstrap_app_logging
@@ -23,7 +22,7 @@ from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 
 
 @pytest.mark.unit
@@ -59,8 +58,10 @@ class TestCreateApp:
         )
         assert app.logging_config is None
 
-    def test_openapi_schema_accessible(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/docs/openapi.json")
+    async def test_openapi_schema_accessible(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/docs/openapi.json")
         assert response.status_code == 200
         data = response.json()
         assert data["info"]["title"] == "SynthOrg API"
@@ -69,14 +70,14 @@ class TestCreateApp:
         ("header", "expected"),
         list(_SECURITY_HEADERS.items()),
     )
-    def test_security_response_headers(
+    async def test_security_response_headers(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         header: str,
         expected: str,
     ) -> None:
         # Use a non-docs endpoint -- /docs paths relax COOP for Scalar UI.
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.headers.get(header) == expected
 
     def test_agent_registry_built_before_auto_wire_meetings(
