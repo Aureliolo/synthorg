@@ -59,12 +59,14 @@ export function MessageFilterBar({
   )
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      // Don't trim mid-typing: the user can't type "hello world" if every
-      // keystroke strips trailing whitespace. The downstream filter logic
-      // handles whitespace tolerance; if a fully-trimmed value is required
-      // for persistence, do that at submit/blur, not onChange.
+      // Don't trim the value being stored: trimming mid-typing strips the
+      // space the user just hit, so 'hello world' becomes 'helloworld'.
+      // Only collapse to ``undefined`` when the *whole* value is whitespace
+      // (so a deliberate three-space input still clears the filter, matching
+      // the original UX). Mid-word spaces stay intact.
       const value = e.target.value
-      onFiltersChange({ ...filters, search: value || undefined })
+      const search = value.trim() === '' ? undefined : value
+      onFiltersChange({ ...filters, search })
     },
     [filters, onFiltersChange],
   )
