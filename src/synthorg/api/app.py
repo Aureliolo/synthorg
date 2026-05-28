@@ -339,7 +339,7 @@ def _build_default_approval_timeout_scheduler(
 # construction; runtime DB changes only affect code calling get_api_config().
 
 
-@suppress_type_checks  # see #2068 + #2050; signature touches cycle-bound types
+@suppress_type_checks  # signature touches types behind pre-existing source-side cycles
 def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,

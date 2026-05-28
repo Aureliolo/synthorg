@@ -478,14 +478,12 @@ def _shared_app(  # noqa: PLR0913
 
     # ``suppress_type_checks`` context: ``create_app`` and the auto_wire_*
     # helpers it calls have signatures referencing types that live behind
-    # pre-existing import cycles (api.config / synthorg.config /
-    # communication.config). Breaking those cycles is in scope for #2050
-    # (codebase modularity 4/4: import-layering contracts). Until #2050
-    # lands and the cycles are eliminated structurally, typeguard's
-    # eager ``inspect.signature`` fails to resolve those annotations
-    # with NameError. Suppressing here keeps the API-fixture cascade
-    # green; typeguard still runs across the rest of the synthorg
-    # package. Tracked under #2068.
+    # pre-existing source-side import cycles (api.config / synthorg.config /
+    # communication.config). Until the import-layering refactor breaks those
+    # cycles structurally, typeguard's eager ``inspect.signature`` fails to
+    # resolve those annotations with NameError. Suppressing here keeps the
+    # API-fixture cascade green; typeguard still runs across the rest of
+    # the synthorg package. See ADR-0006 Section F for the deferred work.
     with suppress_type_checks():
         return create_app(
             config=root_config,

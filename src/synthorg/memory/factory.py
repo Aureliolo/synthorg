@@ -10,11 +10,11 @@ import builtins
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.memory.backends.mem0.config import (
-    Mem0EmbedderConfig,  # noqa: TC001 -- typeguard resolves the registry-factory annotations at runtime
+    Mem0EmbedderConfig,
 )
-from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
+from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.errors import MemoryConfigError
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.registry import MemoryBackendRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
