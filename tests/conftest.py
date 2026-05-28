@@ -48,20 +48,47 @@ Cross-worker coordination rule (read before adding a new fixture):
     same shape and link to this rule in its hook docstring.
 """
 
-import asyncio
-import contextlib
-import faulthandler
-import logging
-import os
-import shutil
-import socket
-import subprocess
-import sys
-import time
-from collections.abc import AsyncGenerator, Iterable, Iterator
-from pathlib import Path
-from typing import Any, Final, override
-from unittest.mock import AsyncMock
+# ── typeguard import hook (MUST run before any synthorg import) ────
+#
+# The typeguard pytest plugin (configured via ``--typeguard-packages=synthorg``
+# in pyproject.toml addopts) installs its import hook from
+# ``pytest_configure``, which fires AFTER pytest loads conftest.py. Because
+# this conftest's import chain pulls in ``synthorg.persistence.migrations``
+# (needed by ``pytest_sessionstart`` to pre-build the migrated_db template),
+# typeguard's plugin would emit ``InstrumentationWarning: typeguard cannot
+# check these packages because they are already imported: synthorg``, and
+# the project's ``filterwarnings = ["error", ...]`` would promote that to a
+# hard error, exiting the suite with code 2 before any test runs.
+#
+# Installing the hook here -- BEFORE the first synthorg import below --
+# closes that gap: typeguard rewrites the synthorg modules' bytecode as
+# they are imported. The plugin's later (redundant) install attempt still
+# emits the InstrumentationWarning (it has no way to know the hook is
+# already active), so we suppress it via ``warnings.filterwarnings`` here
+# rather than via pyproject ``filterwarnings`` ini -- the plugin's
+# ``pytest_configure`` runs BEFORE pytest installs the ini-driven filters,
+# so an ini-level ignore arrives too late.
+import warnings as _warnings
+
+import typeguard
+
+_warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
+typeguard.install_import_hook(["synthorg"])
+
+import asyncio  # noqa: E402
+import contextlib  # noqa: E402
+import faulthandler  # noqa: E402
+import logging  # noqa: E402
+import os  # noqa: E402
+import shutil  # noqa: E402
+import socket  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+from collections.abc import AsyncGenerator, Iterable, Iterator  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any, Final, override  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -74,14 +101,18 @@ os.environ.setdefault(
     "test-suite-stable-cursor-secret-not-a-real-secret",
 )
 
-import aiosqlite
-import pytest
-import structlog
-from hypothesis import HealthCheck, settings
-from hypothesis.database import (
+import aiosqlite  # noqa: E402
+import pytest  # noqa: E402
+import structlog  # noqa: E402
+from hypothesis import HealthCheck, settings  # noqa: E402
+from hypothesis.database import (  # noqa: E402
     DirectoryBasedExampleDatabase,
     ExampleDatabase,
     MultiplexedDatabase,
+)
+
+from synthorg.persistence import (  # noqa: E402 -- runs after typeguard hook install
+    migrations,
 )
 
 # ``socket.getfqdn()`` does a reverse-DNS lookup that on GHA Linux runners
@@ -1126,19 +1157,6 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
         lock = await asyncio.to_thread(_try_acquire, slice_s)
         if lock is not None:
             break
-
-    # Local import: deferring ``synthorg.persistence.migrations`` out of the
-    # conftest module body keeps the typeguard pytest plugin's
-    # ``pytest_configure`` hook -- which installs typeguard's bytecode-
-    # instrumentation import hook -- ahead of our first synthorg import.
-    # If conftest body imported synthorg, typeguard's plugin would emit
-    # ``InstrumentationWarning: typeguard cannot check these packages
-    # because they are already imported: synthorg`` and the ini-level
-    # ``filterwarnings = ["error", ...]`` would promote it before our
-    # ``ignore::typeguard.InstrumentationWarning`` filter can run.
-    # ``pytest_sessionstart`` (the only caller chain into this function)
-    # runs after ``pytest_configure``, so the import is safely instrumented.
-    from synthorg.persistence import migrations
 
     global _template_build_secs  # noqa: PLW0603
     try:

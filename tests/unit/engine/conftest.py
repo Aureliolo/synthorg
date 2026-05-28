@@ -1,7 +1,7 @@
 """Unit test configuration and fixtures for engine modules."""
 
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -16,6 +16,7 @@ from synthorg.core.company import Company, CompanyConfig, Department
 from synthorg.core.enums import (
     AgentStatus,
     Complexity,
+    ConflictEscalation,
     CoordinationTopology,
     CreativityLevel,
     DepartmentName,
@@ -47,6 +48,11 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.task_execution import TaskExecution
+from synthorg.engine.workspace.models import (
+    MergeConflict,
+    MergeResult,
+    Workspace,
+)
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
@@ -58,16 +64,6 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistence
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Mapping
-
-    from synthorg.core.enums import ConflictEscalation
-    from synthorg.engine.workspace.models import (
-        MergeConflict,
-        MergeResult,
-        Workspace,
-    )
 
 
 @pytest.fixture

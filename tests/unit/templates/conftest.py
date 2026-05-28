@@ -1,13 +1,11 @@
 # mypy: disable-error-code="explicit-any"
 """Unit test configuration and fixtures for templates."""
 
-from typing import TYPE_CHECKING, Any, Protocol
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, Protocol
 
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
 
 
 class TemplateFileFactory(Protocol):
