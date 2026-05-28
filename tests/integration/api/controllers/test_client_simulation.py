@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 from typing import Any, override
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
@@ -30,6 +29,7 @@ from synthorg.engine.pipeline.models import (
 )
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,
@@ -141,7 +141,7 @@ def _build_client_with_adapter(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     intake_entry_adapter: _StubEntryAdapter | None = None,
-) -> tuple[TestClient[Any], ClientSimulationState]:
+) -> tuple[LoopAsyncClient, ClientSimulationState]:
     config = RootConfig(company_name="test")
     auth_service = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
@@ -155,13 +155,13 @@ def _build_client_with_adapter(
         client_simulation_state=sim_state,
         intake_entry_adapter=intake_entry_adapter or _StubEntryAdapter(),
     )
-    return TestClient(app), sim_state
+    return LoopAsyncClient(app), sim_state
 
 
 def _build_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> TestClient[Any]:
+) -> LoopAsyncClient:
     config = RootConfig(company_name="test")
     auth_service = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
@@ -178,7 +178,7 @@ def _build_client(
         auth_service=auth_service,
         client_simulation_state=_build_sim_state(),
     )
-    return TestClient(app)
+    return LoopAsyncClient(app)
 
 
 class TestClientController:
@@ -187,9 +187,9 @@ class TestClientController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            create_resp = client.post(
+            create_resp = await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "c-1",
@@ -202,18 +202,18 @@ class TestClientController:
             assert create_resp.status_code == 201
             assert create_resp.json()["data"]["client_id"] == "c-1"
 
-            list_resp = client.get("/api/v1/clients")
+            list_resp = await client.get("/api/v1/clients")
             assert list_resp.status_code == 200
             body = list_resp.json()
             assert len(body["data"]) == 1
 
-            get_resp = client.get("/api/v1/clients/c-1")
+            get_resp = await client.get("/api/v1/clients/c-1")
             assert get_resp.status_code == 200
             assert get_resp.json()["data"]["name"] == "Alice"
 
-            delete_resp = client.delete("/api/v1/clients/c-1")
+            delete_resp = await client.delete("/api/v1/clients/c-1")
             assert delete_resp.status_code == 204
-            final = client.get("/api/v1/clients")
+            final = await client.get("/api/v1/clients")
             assert len(final.json()["data"]) == 0
 
     async def test_duplicate_client_id_conflict(
@@ -221,16 +221,16 @@ class TestClientController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
             payload = {
                 "client_id": "dup",
                 "name": "Dup",
                 "persona": "Persona",
             }
-            first = client.post("/api/v1/clients/", json=payload)
+            first = await client.post("/api/v1/clients/", json=payload)
             assert first.status_code == 201
-            second = client.post("/api/v1/clients/", json=payload)
+            second = await client.post("/api/v1/clients/", json=payload)
             assert second.status_code == 409
 
     async def test_get_missing_returns_404(
@@ -238,9 +238,9 @@ class TestClientController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/clients/missing")
+            resp = await client.get("/api/v1/clients/missing")
             assert resp.status_code == 404
 
     async def test_update_patches_fields(
@@ -248,9 +248,9 @@ class TestClientController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "patch",
@@ -258,7 +258,7 @@ class TestClientController:
                     "persona": "Persona",
                 },
             )
-            resp = client.patch(
+            resp = await client.patch(
                 "/api/v1/clients/patch",
                 json={"name": "Renamed", "strictness_level": 0.9},
             )
@@ -273,9 +273,9 @@ class TestRequestController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "client-req",
@@ -283,7 +283,7 @@ class TestRequestController:
                     "persona": "Persona",
                 },
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "client-req",
@@ -296,7 +296,7 @@ class TestRequestController:
             assert submit.status_code == 201
             assert submit.json()["data"]["status"] == "submitted"
 
-            listing = client.get("/api/v1/requests")
+            listing = await client.get("/api/v1/requests")
             assert listing.status_code == 200
             assert len(listing.json()["data"]) == 1
 
@@ -306,13 +306,13 @@ class TestRequestController:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """No work-entry adapter wired -> honest runtime-not-configured."""
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={"client_id": "na", "name": "NA", "persona": "P"},
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "na",
@@ -320,7 +320,7 @@ class TestRequestController:
                 },
             )
             rid = submit.json()["data"]["request_id"]
-            approve = client.post(f"/api/v1/requests/{rid}/approve")
+            approve = await client.post(f"/api/v1/requests/{rid}/approve")
             assert approve.status_code == 409
 
     async def test_approve_accepts_and_spawns_pipeline(
@@ -334,13 +334,13 @@ class TestRequestController:
             fake_message_bus,
             intake_entry_adapter=_SlowStubEntryAdapter(),
         )
-        with client:
+        async with client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={"client_id": "ok", "name": "OK", "persona": "P"},
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "ok",
@@ -348,7 +348,7 @@ class TestRequestController:
                 },
             )
             rid = submit.json()["data"]["request_id"]
-            approve = client.post(f"/api/v1/requests/{rid}/approve")
+            approve = await client.post(f"/api/v1/requests/{rid}/approve")
             assert approve.status_code == 202
             assert approve.json()["data"]["status"] == "approved"
             # The reconciliation task was registered synchronously
@@ -360,9 +360,9 @@ class TestRequestController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "rj",
@@ -370,7 +370,7 @@ class TestRequestController:
                     "persona": "Persona",
                 },
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "rj",
@@ -381,7 +381,7 @@ class TestRequestController:
                 },
             )
             rid = submit.json()["data"]["request_id"]
-            reject = client.post(
+            reject = await client.post(
                 f"/api/v1/requests/{rid}/reject",
                 json={"reason": "out of scope"},
             )
@@ -393,9 +393,9 @@ class TestRequestController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "missing",
@@ -414,9 +414,9 @@ class TestSimulationController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "sim",
@@ -424,7 +424,7 @@ class TestSimulationController:
                     "persona": "Persona",
                 },
             )
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/simulations/",
                 json={
                     "config": {
@@ -437,10 +437,10 @@ class TestSimulationController:
             )
             assert resp.status_code == 201
             sid = resp.json()["data"]["simulation_id"]
-            list_resp = client.get("/api/v1/simulations")
+            list_resp = await client.get("/api/v1/simulations")
             assert list_resp.status_code == 200
             assert len(list_resp.json()["data"]) == 1
-            detail = client.get(f"/api/v1/simulations/{sid}")
+            detail = await client.get(f"/api/v1/simulations/{sid}")
             assert detail.status_code == 200
 
     async def test_get_missing_simulation_returns_404(
@@ -448,9 +448,9 @@ class TestSimulationController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/simulations/missing")
+            resp = await client.get("/api/v1/simulations/missing")
             assert resp.status_code == 404
 
     async def test_start_simulation_duplicate_id_returns_409(
@@ -459,9 +459,9 @@ class TestSimulationController:
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """A second start with the same simulation_id is rejected."""
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "sim",
@@ -478,9 +478,9 @@ class TestSimulationController:
                     "requirements_per_client": 1,
                 },
             }
-            first = client.post("/api/v1/simulations/", json=payload)
+            first = await client.post("/api/v1/simulations/", json=payload)
             assert first.status_code == 201
-            second = client.post("/api/v1/simulations/", json=payload)
+            second = await client.post("/api/v1/simulations/", json=payload)
             assert second.status_code == 409
 
 
@@ -490,9 +490,9 @@ class TestReviewController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/reviews/missing-task/pipeline")
+            resp = await client.get("/api/v1/reviews/missing-task/pipeline")
             # task_engine may not be available in this minimal test app,
             # so either 404 or 503 is acceptable as a defensive response.
             assert resp.status_code in {404, 503}
@@ -502,9 +502,9 @@ class TestReviewController:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/reviews/missing-task/stages/internal/decide",
                 json={
                     "verdict": "pass",
@@ -529,9 +529,9 @@ class TestSatisfactionEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "sat-1",
@@ -539,7 +539,7 @@ class TestSatisfactionEndpoint:
                     "persona": "Persona",
                 },
             )
-            resp = client.get("/api/v1/clients/sat-1/satisfaction")
+            resp = await client.get("/api/v1/clients/sat-1/satisfaction")
             assert resp.status_code == 200
             body = resp.json()["data"]
             assert body["client_id"] == "sat-1"
@@ -552,9 +552,9 @@ class TestSatisfactionEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/clients/missing/satisfaction")
+            resp = await client.get("/api/v1/clients/missing/satisfaction")
             assert resp.status_code == 404
 
 
@@ -564,9 +564,9 @@ class TestScopeEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "scp",
@@ -574,7 +574,7 @@ class TestScopeEndpoint:
                     "persona": "Persona",
                 },
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "scp",
@@ -585,7 +585,7 @@ class TestScopeEndpoint:
                 },
             )
             rid = submit.json()["data"]["request_id"]
-            scope = client.post(
+            scope = await client.post(
                 f"/api/v1/requests/{rid}/scope",
                 json={
                     "notes": "Scoped by PM",
@@ -603,9 +603,9 @@ class TestScopeEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "scp2",
@@ -613,7 +613,7 @@ class TestScopeEndpoint:
                     "persona": "Persona",
                 },
             )
-            submit = client.post(
+            submit = await client.post(
                 "/api/v1/requests/",
                 json={
                     "client_id": "scp2",
@@ -624,11 +624,11 @@ class TestScopeEndpoint:
                 },
             )
             rid = submit.json()["data"]["request_id"]
-            client.post(
+            await client.post(
                 f"/api/v1/requests/{rid}/reject",
                 json={"reason": "drop"},
             )
-            resp = client.post(
+            resp = await client.post(
                 f"/api/v1/requests/{rid}/scope",
                 json={"notes": "too late"},
             )
@@ -641,9 +641,9 @@ class TestSimulationReportEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "rpt",
@@ -651,7 +651,7 @@ class TestSimulationReportEndpoint:
                     "persona": "Persona",
                 },
             )
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/simulations/",
                 json={
                     "config": {
@@ -663,7 +663,7 @@ class TestSimulationReportEndpoint:
                 },
             )
             sid = resp.json()["data"]["simulation_id"]
-            report = client.get(f"/api/v1/simulations/{sid}/report")
+            report = await client.get(f"/api/v1/simulations/{sid}/report")
             assert report.status_code == 200
             payload = report.json()["data"]
             assert payload["format"] == "summary"
@@ -676,9 +676,9 @@ class TestSimulationReportEndpoint:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "rpt2",
@@ -686,7 +686,7 @@ class TestSimulationReportEndpoint:
                     "persona": "Persona",
                 },
             )
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/simulations/",
                 json={
                     "config": {
@@ -698,7 +698,7 @@ class TestSimulationReportEndpoint:
                 },
             )
             sid = resp.json()["data"]["simulation_id"]
-            report = client.get(
+            report = await client.get(
                 f"/api/v1/simulations/{sid}/report?fmt=bogus",
             )
             assert report.status_code == 409
@@ -710,9 +710,9 @@ class TestSimulationCancel:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "cxl",
@@ -720,7 +720,7 @@ class TestSimulationCancel:
                     "persona": "Persona",
                 },
             )
-            start = client.post(
+            start = await client.post(
                 "/api/v1/simulations/",
                 json={
                     "config": {
@@ -732,7 +732,7 @@ class TestSimulationCancel:
                 },
             )
             sid = start.json()["data"]["simulation_id"]
-            resp = client.post(f"/api/v1/simulations/{sid}/cancel")
+            resp = await client.post(f"/api/v1/simulations/{sid}/cancel")
             # Either cancels the run or reports already-terminal
             # (the background task may finish before the cancel
             # lands in fast paths).
@@ -745,9 +745,9 @@ class TestClientDeactivation:
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        with _build_client(fake_persistence, fake_message_bus) as client:
+        async with _build_client(fake_persistence, fake_message_bus) as client:
             client.headers.update(make_auth_headers("ceo"))
-            client.post(
+            await client.post(
                 "/api/v1/clients/",
                 json={
                     "client_id": "deact",
@@ -755,11 +755,11 @@ class TestClientDeactivation:
                     "persona": "Persona",
                 },
             )
-            resp = client.delete("/api/v1/clients/deact")
+            resp = await client.delete("/api/v1/clients/deact")
             assert resp.status_code == 204
-            listing = client.get("/api/v1/clients")
+            listing = await client.get("/api/v1/clients")
             assert all(row["client_id"] != "deact" for row in listing.json()["data"])
-            satisfaction = client.get("/api/v1/clients/deact/satisfaction")
+            satisfaction = await client.get("/api/v1/clients/deact/satisfaction")
             assert satisfaction.status_code == 200
 
 

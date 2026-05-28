@@ -12,7 +12,6 @@ must swap both.
 """
 
 import pytest
-from litestar.testing import AsyncTestClient
 
 from synthorg.api.controllers.setup.agent_helpers import post_setup_reinit
 from synthorg.config.provider_schema import ProviderConfig
@@ -25,6 +24,7 @@ from synthorg.workers.execution_service import (
     NoProviderExecutionService,
 )
 from synthorg.workers.state import RuntimeStateSlice
+from tests._shared import LoopAsyncClient
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -43,7 +43,7 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         with_provider=False,
         company_name=_COMPANY_NAME,
     )
-    async with AsyncTestClient(app=app) as client:
+    async with LoopAsyncClient(app=app) as client:
         app_state = client.app.state["app_state"]
 
         # Empty company at boot: no coordinator, backstop worker seam.
@@ -95,7 +95,7 @@ async def test_reinit_raises_when_coordinator_swap_fails(
         with_provider=False,
         company_name=_COMPANY_NAME,
     )
-    async with AsyncTestClient(app=app) as client:
+    async with LoopAsyncClient(app=app) as client:
         app_state = client.app.state["app_state"]
         app_state.swap_provider_registry(
             ProviderRegistry.from_config(

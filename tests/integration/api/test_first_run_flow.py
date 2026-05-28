@@ -6,13 +6,11 @@ setup completion -- verifying that agents end up in the runtime
 registry.
 """
 
-import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litestar.testing import TestClient
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
@@ -25,6 +23,7 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 _TEST_JWT_SECRET = "integration-test-secret-at-least-32-characters"
@@ -57,10 +56,10 @@ async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
 
 
 @pytest.fixture
-def integration_client(
+async def integration_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> Generator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Build a full app with no pre-seeded users (fresh first-run state)."""
     config = RootConfig(company_name="test-company")
     auth_service = AuthService(
@@ -114,7 +113,7 @@ def integration_client(
     )
     app_state.wire(ProvidersStateSlice, management=mock_mgmt)
 
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         yield client
 
 
@@ -136,22 +135,22 @@ def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
 class TestFirstRunFlow:
     """Full first-run setup wizard integration test."""
 
-    def test_full_first_run_flow(
+    async def test_full_first_run_flow(
         self,
-        integration_client: TestClient[Any],
+        integration_client: LoopAsyncClient,
     ) -> None:
         """Exercise the entire first-run wizard from status to completion."""
         client = integration_client
 
         # ── 1. GET /setup/status -- needs_admin should be True ──
-        resp = client.get("/api/v1/setup/status")
+        resp = await client.get("/api/v1/setup/status")
         assert resp.status_code == 200
         status_data = resp.json()["data"]
         assert status_data["needs_admin"] is True
         assert status_data["needs_setup"] is True
 
         # ── 2. POST /auth/setup -- create admin account ──
-        resp = client.post(
+        resp = await client.post(
             "/api/v1/auth/setup",
             json={
                 "username": _TEST_USERNAME,
@@ -165,7 +164,7 @@ class TestFirstRunFlow:
         assert csrf_token, "missing CSRF cookie after setup"
 
         # ── 3. POST /auth/login -- verify credentials work ──
-        resp = client.post(
+        resp = await client.post(
             "/api/v1/auth/login",
             json={
                 "username": _TEST_USERNAME,
@@ -187,7 +186,7 @@ class TestFirstRunFlow:
         client.headers["X-CSRF-Token"] = csrf_token
 
         # ── 4. GET /setup/templates -- list available templates ──
-        resp = client.get("/api/v1/setup/templates")
+        resp = await client.get("/api/v1/setup/templates")
         assert resp.status_code == 200
         templates = resp.json()["data"]
         assert len(templates) >= 1
@@ -196,7 +195,7 @@ class TestFirstRunFlow:
         assert "solo_founder" in template_names
 
         # ── 5. POST /setup/company -- create a company ──
-        resp = client.post(
+        resp = await client.post(
             "/api/v1/setup/company",
             json={"company_name": "Integration Test Corp"},
         )
@@ -205,7 +204,7 @@ class TestFirstRunFlow:
         assert company_data["company_name"] == "Integration Test Corp"
 
         # ── 6. POST /setup/agent -- create an agent ──
-        resp = client.post(
+        resp = await client.post(
             "/api/v1/setup/agent",
             json={
                 "name": "test-agent-ceo",
@@ -220,7 +219,7 @@ class TestFirstRunFlow:
         assert agent_data["role"] == "CEO"
 
         # ── 7. POST /setup/complete -- mark setup as done ──
-        resp = client.post("/api/v1/setup/complete")
+        resp = await client.post("/api/v1/setup/complete")
         assert resp.status_code == 201
         complete_data = resp.json()["data"]
         assert complete_data["setup_complete"] is True
@@ -229,11 +228,5 @@ class TestFirstRunFlow:
         from synthorg.hr.state import HrStateSlice
 
         app_state = client.app.state.app_state
-        loop = asyncio.new_event_loop()
-        try:
-            agent_count = loop.run_until_complete(
-                app_state.slice(HrStateSlice).agent_registry.agent_count(),
-            )
-        finally:
-            loop.close()
+        agent_count = await app_state.slice(HrStateSlice).agent_registry.agent_count()
         assert agent_count >= 1

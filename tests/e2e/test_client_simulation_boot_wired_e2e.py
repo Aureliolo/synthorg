@@ -19,11 +19,9 @@ The kwarg-override path stays covered by
 ``tests/e2e/test_client_simulation_e2e.py``.
 """
 
-from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from collections.abc import AsyncGenerator
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
@@ -42,7 +40,7 @@ from synthorg.providers.drivers.scripted import ScriptedDriver, SingleResponseSt
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,
@@ -128,11 +126,11 @@ _SIM_CONFIG = SimulationConfig(
 
 
 @pytest.fixture
-def direct_client(
+async def direct_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     task_engine: TaskEngine,
-) -> Generator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Boot-wired app, default ``direct`` intake (no provider)."""
     auth_service = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
@@ -144,28 +142,28 @@ def direct_client(
         auth_service=auth_service,
         task_engine=task_engine,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         yield client
 
 
 class TestBootWiredHttpSurface:
     """The HTTP surface reflects the boot-wired runtime."""
 
-    def test_capabilities_and_routes_on(
+    async def test_capabilities_and_routes_on(
         self,
-        direct_client: TestClient[Any],
+        direct_client: LoopAsyncClient,
     ) -> None:
         headers = make_auth_headers("ceo")
-        caps = direct_client.get("/api/v1/capabilities/", headers=headers)
+        caps = await direct_client.get("/api/v1/capabilities/", headers=headers)
         assert caps.status_code == 200, caps.text
         data = caps.json()["data"]
         assert data["simulations"] is True
         assert data["requests"] is True
         # Routes are registered (200, not the 404 of an unwired runtime).
-        assert (
-            direct_client.get("/api/v1/simulations", headers=headers).status_code == 200
-        )
-        assert direct_client.get("/api/v1/requests", headers=headers).status_code == 200
+        sims_resp = await direct_client.get("/api/v1/simulations", headers=headers)
+        assert sims_resp.status_code == 200
+        requests_resp = await direct_client.get("/api/v1/requests", headers=headers)
+        assert requests_resp.status_code == 200
 
 
 class TestBootWiredDirectIntakeHarness:

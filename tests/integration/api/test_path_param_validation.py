@@ -18,7 +18,7 @@ or 128 depending on slot).  The typed alias is the only line of
 defence at the edge for these endpoints.
 """
 
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator
 from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
@@ -26,7 +26,6 @@ import pytest
 from litestar import Litestar, Router
 from litestar.datastructures import State
 from litestar.middleware import ASGIMiddleware
-from litestar.testing import TestClient
 
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.rate_limits._subject import STATE_KEY_CONFIG, STATE_KEY_STORE
@@ -36,6 +35,7 @@ from synthorg.api.state import AppState
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.mcp_catalog.service import CatalogService
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import LoopAsyncClient
 
 # Long-enough path component to overshoot every alias bound.  The
 # tightest cap is ``PathEventType`` at 64 chars; 200 is past every
@@ -80,7 +80,7 @@ def _build_client(
     catalog: MagicMock | None = None,
     mcp_service: MagicMock | None = None,
     persistence: MagicMock | None = None,
-) -> TestClient[Any]:
+) -> LoopAsyncClient:
     """Build a minimal Litestar app + client wired with the four controllers.
 
     Each test passes only the collaborator(s) it needs; the rest stay
@@ -142,11 +142,11 @@ def _build_client(
         middleware=[_InjectUserMiddleware()],
         exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
     )
-    return TestClient(app)
+    return LoopAsyncClient(app)
 
 
 @pytest.fixture
-def path_param_client() -> Iterator[TestClient[Any]]:
+async def path_param_client() -> AsyncGenerator[LoopAsyncClient]:
     """Build the test client once per test."""
     # Each AsyncMock declares the unbound method as its spec so the
     # gate (scripts/check_mock_spec.py) sees a typed contract and a
@@ -183,7 +183,7 @@ def path_param_client() -> Iterator[TestClient[Any]]:
         mcp_service=mcp_service,
         persistence=persistence,
     )
-    with client as http:
+    async with client as http:
         yield http
 
 
@@ -191,16 +191,16 @@ def path_param_client() -> Iterator[TestClient[Any]]:
 class TestConnectionsPathParams:
     """``connections.py`` -- typed path params on the 5 GET endpoints."""
 
-    def test_get_connection_rejects_oversized_name(
-        self, path_param_client: TestClient[Any]
+    async def test_get_connection_rejects_oversized_name(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(f"/api/v1/connections/{_OVER_128_CHARS}")
+        resp = await path_param_client.get(f"/api/v1/connections/{_OVER_128_CHARS}")
         # 400 (Bad Request) or 422 (Unprocessable Entity) -- both signal
         # the framework rejected the input before the handler ran.
         assert resp.status_code in (400, 422), resp.text
 
-    def test_oversized_name_with_valid_query_string_still_rejects(
-        self, path_param_client: TestClient[Any]
+    async def test_oversized_name_with_valid_query_string_still_rejects(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
         """Path-param validation is independent of the query string.
 
@@ -211,32 +211,32 @@ class TestConnectionsPathParams:
         The handler must still reject the oversized path segment even
         when sibling query params are well-formed.
         """
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/connections/{_OVER_128_CHARS}",
             params={"action": "retrieve"},
         )
         assert resp.status_code in (400, 422), resp.text
 
-    def test_check_health_rejects_oversized_name(
-        self, path_param_client: TestClient[Any]
+    async def test_check_health_rejects_oversized_name(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/connections/{_OVER_128_CHARS}/health",
         )
         assert resp.status_code in (400, 422), resp.text
 
-    def test_reveal_secret_rejects_oversized_name(
-        self, path_param_client: TestClient[Any]
+    async def test_reveal_secret_rejects_oversized_name(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/connections/{_OVER_128_CHARS}/secrets/api_key",
         )
         assert resp.status_code in (400, 422), resp.text
 
-    def test_reveal_secret_rejects_oversized_field(
-        self, path_param_client: TestClient[Any]
+    async def test_reveal_secret_rejects_oversized_field(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/connections/github-prod/secrets/{_OVER_128_CHARS}",
         )
         assert resp.status_code in (400, 422), resp.text
@@ -246,18 +246,18 @@ class TestConnectionsPathParams:
 class TestMcpCatalogPathParams:
     """``mcp_catalog.py`` -- typed entry_id on get + uninstall."""
 
-    def test_get_entry_rejects_oversized_id(
-        self, path_param_client: TestClient[Any]
+    async def test_get_entry_rejects_oversized_id(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/integrations/mcp/catalog/{_OVER_128_CHARS}",
         )
         assert resp.status_code in (400, 422), resp.text
 
-    def test_uninstall_entry_rejects_oversized_id(
-        self, path_param_client: TestClient[Any]
+    async def test_uninstall_entry_rejects_oversized_id(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.delete(
+        resp = await path_param_client.delete(
             f"/api/v1/integrations/mcp/catalog/install/{_OVER_128_CHARS}",
         )
         assert resp.status_code in (400, 422), resp.text
@@ -267,10 +267,10 @@ class TestMcpCatalogPathParams:
 class TestOAuthPathParams:
     """``oauth.py`` -- typed connection_name on token_status."""
 
-    def test_token_status_rejects_oversized_connection_name(
-        self, path_param_client: TestClient[Any]
+    async def test_token_status_rejects_oversized_connection_name(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/oauth/status/{_OVER_128_CHARS}",
         )
         assert resp.status_code in (400, 422), resp.text
@@ -288,10 +288,10 @@ class TestWebhooksPathParams:
     boundary test focuses on the type aliases directly.
     """
 
-    def test_list_activity_rejects_oversized_connection_name(
-        self, path_param_client: TestClient[Any]
+    async def test_list_activity_rejects_oversized_connection_name(
+        self, path_param_client: LoopAsyncClient
     ) -> None:
-        resp = path_param_client.get(
+        resp = await path_param_client.get(
             f"/api/v1/webhooks/{_OVER_128_CHARS}/activity",
         )
         assert resp.status_code in (400, 422), resp.text

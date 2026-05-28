@@ -3,11 +3,11 @@
 import json
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.config.schema import RootConfig
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -69,9 +69,9 @@ class TestProviderControllerDbOverride:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/providers")
+            resp = await client.get("/api/v1/providers")
             assert resp.status_code == 200
             body = resp.json()
             # /providers returns a paginated list; locate the provider
@@ -81,7 +81,7 @@ class TestProviderControllerDbOverride:
             assert providers_by_name["db-provider"]["driver"] == "litellm"
             assert providers_by_name["db-provider"]["auth_type"] == "api_key"
 
-            detail_resp = client.get("/api/v1/providers/db-provider")
+            detail_resp = await client.get("/api/v1/providers/db-provider")
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["driver"] == "litellm"

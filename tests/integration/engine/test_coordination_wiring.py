@@ -6,7 +6,7 @@ Validates the bootstrap-to-API wiring path:
 3. Create TaskEngine with mock persistence
 4. Create AgentRegistryService and register test agents
 5. Build app via create_app() with coordinator + agent_registry
-6. Use TestClient to create a task and trigger coordination
+6. Use LoopAsyncClient to create a task and trigger coordination
 """
 
 from collections.abc import AsyncIterator
@@ -14,7 +14,6 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
@@ -40,6 +39,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -303,8 +303,8 @@ class TestCoordinationWiring:
             ),
         )
 
-        # 6. Use TestClient
-        with TestClient(app) as client:
+        # 6. Use LoopAsyncClient
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
 
             # ``POST /tasks`` is a 202 board handoff (no task id in the
@@ -323,7 +323,7 @@ class TestCoordinationWiring:
             task_id = seeded.id
 
             # Coordinate
-            resp = client.post(
+            resp = await client.post(
                 f"/api/v1/tasks/{task_id}/coordinate",
                 json={"agent_names": ["alice"]},
             )
