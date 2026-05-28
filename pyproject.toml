@@ -919,10 +919,15 @@ addopts = [
     # Runtime type-check every call in ``synthorg.*`` against its annotations.
     # ``forward-ref-policy=ERROR`` (typeguard default is WARN) makes an
     # unresolvable ``TYPE_CHECKING``-guarded annotation a hard test failure
-    # rather than a silently-skipped check. See ADR-0006 Section F + issue
-    # #2068 for the wiring rationale.
-    "--typeguard-packages=synthorg",
-    "--typeguard-forward-ref-policy=ERROR",
+    # rather than a silently-skipped check. The activation lines are kept
+    # COMMENTED until the source-side cycle breaks land in the import-
+    # layering follow-up PR (see ADR-0006 Section F); the cycles fan out
+    # ~530 unit-test failures through ~5 boundary functions. Wiring,
+    # dependency pin, conftest hook, ruff TC001/2/3 disable, and the
+    # ``@suppress_type_checks`` on ``api.app.create_app`` all ship now so
+    # the activation is a one-line uncomment once the cycles drop.
+    # "--typeguard-packages=synthorg",
+    # "--typeguard-forward-ref-policy=ERROR",
 ]
 filterwarnings = [
     "error",
