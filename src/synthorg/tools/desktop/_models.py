@@ -9,7 +9,7 @@ text.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.tools.desktop._constants import SHA256_HEX_PATTERN
 
 _RESPONSE_CONFIG = ConfigDict(

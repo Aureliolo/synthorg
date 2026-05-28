@@ -19,7 +19,7 @@ import json
 import secrets
 from typing import ClassVar, Final, Self
 
-from synthorg.api.cursor_config import CursorConfig  # noqa: TC001
+from synthorg.api.cursor_config import CursorConfig
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description

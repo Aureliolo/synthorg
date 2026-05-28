@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.infrastructure.services import SettingsReadService  # noqa: TC001
-from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
-from synthorg.settings.service import SettingsService  # noqa: TC001
+from synthorg.infrastructure.services import SettingsReadService
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

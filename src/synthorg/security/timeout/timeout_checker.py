@@ -19,7 +19,7 @@ from synthorg.observability.events.timeout import (
     TIMEOUT_WAITING,
 )
 from synthorg.security.timeout.models import TimeoutAction
-from synthorg.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
+from synthorg.security.timeout.protocol import TimeoutPolicy
 
 if TYPE_CHECKING:
     # Runtime-deferred to avoid an ontology-consolidation import cycle

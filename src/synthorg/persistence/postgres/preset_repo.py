@@ -16,7 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.preset import (
     PRESET_CUSTOM_COUNT_FAILED,

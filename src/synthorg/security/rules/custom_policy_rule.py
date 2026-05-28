@@ -5,7 +5,7 @@ from typing import Final
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_CUSTOM_POLICY_MATCHED
-from synthorg.security.config import SecurityPolicyRule  # noqa: TC001
+from synthorg.security.config import SecurityPolicyRule
 from synthorg.security.models import (
     SecurityContext,
     SecurityVerdict,

@@ -17,13 +17,16 @@ need an actor (to populate ``requested_by`` / ``decided_by``).
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from synthorg.approval.state import ApprovalStateSlice
+from synthorg.core.agent import (
+    AgentIdentity,
+)
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -32,7 +35,7 @@ from synthorg.meta.mcp.errors import (
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     dump_many,
@@ -57,9 +60,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

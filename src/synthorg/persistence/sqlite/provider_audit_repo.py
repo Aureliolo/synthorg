@@ -29,7 +29,7 @@ from synthorg.persistence.provider_audit_protocol import (
     _DEFAULT_LIST_LIMIT_50,
     ProviderAuditFilterSpec,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.providers.management.capability_dtos import (
     ProviderAuditActor,
     ProviderAuditEvent,

@@ -12,18 +12,25 @@ MCP arguments, and the write path
 through :func:`require_admin_guardrails`.
 """
 
+from collections.abc import (
+    Callable,
+    Mapping,
+)
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import ValidationError
 
+from synthorg.core.agent import (
+    AgentIdentity,
+)
 from synthorg.core.enums import ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -46,11 +53,6 @@ from synthorg.meta.models import ImprovementProposal
 from synthorg.meta.state import signals_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_ADMIN_OP_EXECUTED
-
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

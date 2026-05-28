@@ -15,9 +15,9 @@ import json
 from http.cookies import SimpleCookie
 from typing import Any
 
-from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
+from litestar.types import ASGIApp, Receive, Scope, Send
 
-from synthorg.core.auth.config import AuthConfig  # noqa: TC001
+from synthorg.core.auth.config import AuthConfig
 from synthorg.core.normalization import normalize_path
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (

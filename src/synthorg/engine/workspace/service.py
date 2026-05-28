@@ -5,7 +5,7 @@ setup, merge, and teardown for groups of agent workspaces.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 

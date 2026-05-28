@@ -29,7 +29,7 @@ from pydantic import (
 )
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     ProposalAltitude,

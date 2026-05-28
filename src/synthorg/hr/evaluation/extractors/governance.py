@@ -14,7 +14,7 @@ exact (same trust-level numerics, same demotion penalty).
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.extractors._shared import log_disabled_metrics

@@ -12,7 +12,7 @@ from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 HEARTBEAT_SUBJECT_PREFIX: Final[str] = "synthorg.workers.heartbeat"
 """Core-NATS subject root for worker liveness beats.

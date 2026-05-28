@@ -13,9 +13,9 @@ from synthorg.core.enums import (
     ConsolidationInterval,
     MemoryLevel,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
-    CompositeBackendConfig,  # noqa: TC001
+    CompositeBackendConfig,
 )
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.procedural.models import ProceduralMemoryConfig

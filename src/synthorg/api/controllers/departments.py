@@ -5,7 +5,7 @@ import json
 from typing import Any, Final
 
 from litestar import Controller, Request, Response, delete, get, patch, post, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg._core.features import require_service
@@ -19,7 +19,7 @@ from synthorg.api.controllers._department_health import (
     filter_agents_by_department,
 )
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.dto_org import (  # noqa: TC001
+from synthorg.api.dto_org import (
     CreateDepartmentRequest,
     ReorderAgentsRequest,
     UpdateDepartmentRequest,
@@ -34,12 +34,12 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
-from synthorg.config.schema import AgentConfig  # noqa: TC001
-from synthorg.core.company import Department  # noqa: TC001
+from synthorg.config.schema import AgentConfig
+from synthorg.core.company import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -48,7 +48,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.normalization import find_by_name_ci
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

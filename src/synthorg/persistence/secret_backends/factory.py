@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.registry import StrategyRegistry
-from synthorg.integrations.config import SecretBackendConfig  # noqa: TC001
+from synthorg.integrations.config import SecretBackendConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
     SECRET_BACKEND_UNAVAILABLE,
@@ -23,7 +23,7 @@ from synthorg.persistence.secret_backends.env_var import (
     EnvVarSecretBackend,
 )
 from synthorg.persistence.secret_backends.protocol import (
-    SecretBackend,  # noqa: TC001
+    SecretBackend,
 )
 
 if TYPE_CHECKING:

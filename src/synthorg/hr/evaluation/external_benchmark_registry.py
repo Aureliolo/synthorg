@@ -10,13 +10,13 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.loop_protocol import BehaviorTag  # noqa: TC001
+from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     BenchmarkRunResult,
 )
 from synthorg.hr.evaluation.external_benchmark_protocol import (
-    ExternalBenchmark,  # noqa: TC001
+    ExternalBenchmark,
 )
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.eval_loop import (

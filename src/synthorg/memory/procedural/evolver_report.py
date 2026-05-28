@@ -8,9 +8,9 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.procedural.supersession import (  # noqa: TC001
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.procedural.supersession import (
     SupersessionResult,
 )
 

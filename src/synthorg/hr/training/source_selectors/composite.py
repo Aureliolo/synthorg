@@ -6,7 +6,7 @@ deduplicates agent IDs while preserving order.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_SELECTION_COMPLETE,

@@ -63,7 +63,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_MIGRATION_FAILED,
     PERSISTENCE_MIGRATION_STARTED,
 )
-from synthorg.persistence.config import PostgresConfig  # noqa: TC001
+from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)
 

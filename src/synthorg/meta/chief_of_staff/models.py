@@ -26,8 +26,8 @@ from synthorg.core.enums import (
     Priority,
     TaskType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.models import ProposalAltitude, RuleSeverity  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import ProposalAltitude, RuleSeverity
 
 # ── Proposal outcome learning ─────────────────────────────────────
 

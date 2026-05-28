@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from synthorg.api.ws_models import WsEventType
 from synthorg.api.ws_payloads._base import PAYLOAD_CONFIG
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 # ── Artifact domain ─────────────────────────────────────────────────
 

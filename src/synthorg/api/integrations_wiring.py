@@ -5,7 +5,7 @@ so ``create_app`` stays under the file-size budget.
 """
 
 from dataclasses import dataclass, field
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical

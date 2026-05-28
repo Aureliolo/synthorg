@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.engine.coordination.models import (  # noqa: TC001
+from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationWave,
 )
-from synthorg.engine.workspace.models import (  # noqa: TC001
+from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )

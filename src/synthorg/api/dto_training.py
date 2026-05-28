@@ -5,8 +5,8 @@ from typing import Annotated
 from annotated_types import Gt
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.training.models import ContentType, TrainingPlanStatus  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.training.models import ContentType, TrainingPlanStatus
 
 PositiveInt = Annotated[int, Gt(0)]
 

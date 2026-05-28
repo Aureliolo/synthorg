@@ -1,11 +1,11 @@
 """Shared helpers for conflict resolution strategies."""
 
-from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
+from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
     ConflictResolution,
 )
-from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.errors import (

@@ -10,8 +10,8 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONFIG_INVALID,

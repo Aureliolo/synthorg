@@ -8,7 +8,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final
 
 from litestar import Controller, delete, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
@@ -21,12 +21,12 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_repo_seek_meta,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import (
     per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
 )
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -38,7 +38,7 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
 )
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
@@ -72,8 +72,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_THRESHOLD_FALLBACK,
 )
 from synthorg.persistence.fine_tune_protocol import (
-    FineTuneCheckpointRepository,  # noqa: TC001
-    FineTuneRunRepository,  # noqa: TC001
+    FineTuneCheckpointRepository,
+    FineTuneRunRepository,
 )
 from synthorg.persistence.state import persistence_backend_label, persistence_of
 from synthorg.settings.definitions.memory import (

@@ -8,7 +8,7 @@ truncated at ``max_output_bytes``.
 from pathlib import Path
 from typing import Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (

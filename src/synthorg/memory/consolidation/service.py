@@ -4,15 +4,15 @@ Orchestrates retention cleanup, consolidation, archival, and
 max-memories enforcement into a single maintenance entry point.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
-from synthorg.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ArchivalIndexEntry,
@@ -22,10 +22,10 @@ from synthorg.memory.consolidation.models import (
 )
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.consolidation.strategy import (
-    ConsolidationStrategy,  # noqa: TC001
+    ConsolidationStrategy,
 )
 from synthorg.memory.models import MemoryEntry, MemoryQuery
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 

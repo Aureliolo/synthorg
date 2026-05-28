@@ -25,7 +25,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,

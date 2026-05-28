@@ -35,10 +35,10 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.conversation_protocol import (  # noqa: TC001
+from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from datetime import datetime

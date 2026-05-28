@@ -17,11 +17,11 @@ from pydantic import (
 )
 
 from synthorg.communication.enums import (
-    ConflictResolutionStrategy,  # noqa: TC001
-    ConflictType,  # noqa: TC001
+    ConflictResolutionStrategy,
+    ConflictType,
 )
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
 
 _MIN_POSITIONS: Final[int] = 2
 

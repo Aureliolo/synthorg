@@ -14,6 +14,7 @@ from synthorg.communication.message import Message
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
+from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.enums import (
     ExecutionStatus,
     TaskStatus,
@@ -24,8 +25,11 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.core.project import Project
+from synthorg.core.project_environment import ProjectEnvironment
+from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.models import DocMetadata
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 from synthorg.hr.enums import LifecycleEventType
@@ -46,6 +50,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_protocol import ProjectFilterSpec
+from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.persistence.user_protocol import ApiKeyFilterSpec
 from synthorg.security.models import AuditEntry
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -58,11 +63,6 @@ if TYPE_CHECKING:
     # access), preserving the historical circular-import workaround
     # without forcing 36 call sites onto a direct ``fakes_backend``
     # import path.
-    from synthorg.core.codebase_structure_map import CodebaseStructureMap
-    from synthorg.core.project_environment import ProjectEnvironment
-    from synthorg.core.project_workspace import ProjectWorkspace
-    from synthorg.docs_engine.models import DocMetadata
-    from synthorg.persistence.settings_protocol import SettingRow
     from tests.unit.api.fakes_backend import FakePersistenceBackend
 
     __all__ = ["FakePersistenceBackend"]

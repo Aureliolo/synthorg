@@ -7,7 +7,7 @@ logic resides in the workspace strategy layer.
 """
 
 import asyncio
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -15,11 +15,11 @@ from synthorg.budget.call_category import LLMCallCategory
 # These types appear in ``LlmSemanticAnalyzer.__init__`` and ``analyze``
 # annotations and must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workspace.config import SemanticAnalysisConfig  # noqa: TC001
-from synthorg.engine.workspace.models import (  # noqa: TC001
+from synthorg.engine.workspace.config import SemanticAnalysisConfig
+from synthorg.engine.workspace.models import (
     MergeConflict,
     Workspace,
 )
@@ -42,7 +42,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_RETRIES: Final[int] = 2

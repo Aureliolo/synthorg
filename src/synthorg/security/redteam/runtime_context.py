@@ -13,7 +13,7 @@ contextvar moves the trust boundary inside the host process.
 """
 
 from collections.abc import (
-    Iterator,  # noqa: TC003 -- runtime contextmanager return type
+    Iterator,
 )
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -21,7 +21,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class RedTeamRuntimeContext(BaseModel):

@@ -24,7 +24,7 @@ from synthorg.core.persistence_errors import (
     QueryError,
     RecordNotFoundError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
@@ -46,7 +46,7 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.workflow_execution_protocol import (
-    WorkflowExecutionFilterSpec,  # noqa: TC001
+    WorkflowExecutionFilterSpec,
 )
 
 if TYPE_CHECKING:

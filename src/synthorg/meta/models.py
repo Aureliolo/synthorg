@@ -21,7 +21,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.toolsmith.models import ToolBlueprint  # noqa: TC001 -- field type
+from synthorg.meta.toolsmith.models import ToolBlueprint
 
 # ── Enums ──────────────────────────────────────────────────────────
 

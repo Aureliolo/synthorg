@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from synthorg.core.enums import SourceType  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import SourceType
 from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_MAX_LIMIT,

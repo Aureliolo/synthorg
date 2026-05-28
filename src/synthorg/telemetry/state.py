@@ -8,7 +8,7 @@ controllers read it defensively.
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
-from synthorg.telemetry.collector import TelemetryCollector  # noqa: TC001
+from synthorg.telemetry.collector import TelemetryCollector
 
 
 class TelemetryStateSlice(BaseFeatureStateSlice):

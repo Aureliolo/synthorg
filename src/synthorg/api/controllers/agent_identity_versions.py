@@ -3,7 +3,7 @@
 from typing import Annotated, Final
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter, QueryParameter
 
 from synthorg._core.features import require_service
@@ -21,7 +21,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_repo_seek_meta,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (

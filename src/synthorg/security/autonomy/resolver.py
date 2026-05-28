@@ -7,7 +7,7 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_RESOLVED,
     AUTONOMY_SENIORITY_VIOLATION,
 )
-from synthorg.security.action_types import ActionTypeRegistry  # noqa: TC001
+from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import (
     AutonomyConfig,
     EffectiveAutonomy,

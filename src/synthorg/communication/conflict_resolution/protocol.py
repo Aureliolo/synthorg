@@ -7,12 +7,12 @@ lives on the service, not the protocol, because it is strategy-agnostic.
 
 from typing import NamedTuple, Protocol
 
-from synthorg.communication.conflict_resolution.models import (  # noqa: TC001
+from synthorg.communication.conflict_resolution.models import (
     Conflict,
     ConflictResolution,
     DissentRecord,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class JudgeDecision(NamedTuple):

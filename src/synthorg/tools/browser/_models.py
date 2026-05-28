@@ -11,7 +11,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.tools.browser._constants import SHA256_HEX_PATTERN
 
 _RESPONSE_CONFIG = ConfigDict(

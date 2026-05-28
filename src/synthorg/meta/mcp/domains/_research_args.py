@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ResearchRunStatus  # noqa: TC001 -- Pydantic field
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import ResearchRunStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import (
     RESEARCH_LIST_DEFAULT_LIMIT,
     RESEARCH_LIST_MAX_LIMIT,

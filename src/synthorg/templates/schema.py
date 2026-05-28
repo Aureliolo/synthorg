@@ -23,8 +23,8 @@ from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_identifier,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.config import EmbedderOverrideConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.config import EmbedderOverrideConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
 

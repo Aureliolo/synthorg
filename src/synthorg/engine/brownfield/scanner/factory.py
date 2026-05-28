@@ -5,7 +5,7 @@ ecosystem-specific scanners are active; the generic fallback is always
 appended (the aggregator invokes it only when no specific scanner matched).
 """
 
-from collections.abc import Callable  # noqa: TC003 -- runtime annotation
+from collections.abc import Callable
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,7 +14,7 @@ from synthorg.core.codebase_structure_map import Ecosystem
 from synthorg.engine.brownfield.scanner.generic_scanner import GenericScanner
 from synthorg.engine.brownfield.scanner.go_scanner import GoScanner
 from synthorg.engine.brownfield.scanner.node_scanner import NodeScanner
-from synthorg.engine.brownfield.scanner.protocol import (  # noqa: TC001 -- runtime
+from synthorg.engine.brownfield.scanner.protocol import (
     StructureMapScanner,
 )
 from synthorg.engine.brownfield.scanner.python_scanner import PythonScanner

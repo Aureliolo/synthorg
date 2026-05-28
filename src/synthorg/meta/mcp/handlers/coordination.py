@@ -15,14 +15,17 @@ stripped-down unit environments); production deployments wire the
 services in the application bootstrap.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.coordination.state import (
     CoordinationStateSlice,
     ceremony_policy_service_of,
     coordination_service_of,
+)
+from synthorg.core.agent import (
+    AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
@@ -32,7 +35,7 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -52,9 +55,6 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

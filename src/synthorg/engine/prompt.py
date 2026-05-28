@@ -29,7 +29,7 @@ from synthorg.budget.currency import (
     format_cost,
     get_currency_symbol,
 )
-from synthorg.communication.async_tasks.models import (  # noqa: TC001
+from synthorg.communication.async_tasks.models import (
     AsyncTaskStateChannel,
 )
 from synthorg.core.critical_errors import reraise_critical

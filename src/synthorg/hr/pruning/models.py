@@ -17,7 +17,7 @@ from pydantic import (
 
 from synthorg.core.enums import ApprovalStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.performance.models import AgentPerformanceSnapshot  # noqa: TC001
+from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
 
 class PruningEvaluation(BaseModel):

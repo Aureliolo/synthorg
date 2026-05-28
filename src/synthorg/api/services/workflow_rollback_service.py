@@ -22,9 +22,9 @@ from typing import TYPE_CHECKING
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import NotFoundError, VersionConflictError
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,  # noqa: TC001 -- runtime annotation
+    WorkflowDefinition,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (

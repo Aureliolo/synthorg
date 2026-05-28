@@ -11,8 +11,8 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.models import ProposalAltitude  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.models import ProposalAltitude
 
 
 class EvolutionOutcomeRecord(BaseModel):

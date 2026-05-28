@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Final, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.security.autonomy.change_strategy_config import (
     AutonomyStrategyConfig,
 )

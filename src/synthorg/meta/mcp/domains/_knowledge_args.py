@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import SourceType  # noqa: TC001 -- Pydantic field annotation
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import SourceType
+from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
     KNOWLEDGE_LIST_MAX_LIMIT,

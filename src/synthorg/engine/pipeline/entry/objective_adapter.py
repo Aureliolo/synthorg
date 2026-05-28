@@ -15,8 +15,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import Complexity, Priority, TaskType  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import Complexity, Priority, TaskType
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.observability import get_logger
 from synthorg.observability.events.objectives import OBJECTIVE_SUBMISSION_RECEIVED

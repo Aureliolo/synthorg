@@ -8,25 +8,25 @@ for stateful strategies.
 See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- used in Protocol
+from collections.abc import Mapping
 from typing import Any, Protocol, runtime_checkable
 
 from synthorg.engine.workflow.ceremony_context import (
-    CeremonyEvalContext,  # noqa: TC001
+    CeremonyEvalContext,
 )
 from synthorg.engine.workflow.ceremony_policy import (
-    CeremonyStrategyType,  # noqa: TC001
+    CeremonyStrategyType,
 )
 from synthorg.engine.workflow.sprint_config import (
-    SprintCeremonyConfig,  # noqa: TC001
-    SprintConfig,  # noqa: TC001
+    SprintCeremonyConfig,
+    SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import (
-    Sprint,  # noqa: TC001
-    SprintStatus,  # noqa: TC001
+    Sprint,
+    SprintStatus,
 )
 from synthorg.engine.workflow.velocity_types import (
-    VelocityCalcType,  # noqa: TC001
+    VelocityCalcType,
 )
 
 

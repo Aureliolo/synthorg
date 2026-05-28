@@ -17,8 +17,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata
 
 

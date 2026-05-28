@@ -11,7 +11,7 @@ from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.core.middleware_config import MiddlewareConfig
 from synthorg.core.normalization import normalize_identifier
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.company import (
     COMPANY_BUDGET_UNDER_ALLOCATED,

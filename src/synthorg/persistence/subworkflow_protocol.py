@@ -18,7 +18,7 @@ from synthorg.engine.workflow.definition import WorkflowDefinition
 # ``delete_if_unreferenced``, ``search``); under PEP 649 lazy
 # annotation evaluation they must be resolvable from module globals
 # when introspectors call ``typing.get_type_hints()``.
-from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )

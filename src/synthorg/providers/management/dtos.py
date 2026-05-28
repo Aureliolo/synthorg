@@ -4,7 +4,7 @@ Split from ``dto.py`` to keep that file under the 800-line limit.
 """
 
 import re
-from collections.abc import Mapping  # noqa: TC003 -- Pydantic field type at runtime
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Self
 from urllib.parse import urlparse
@@ -23,13 +23,13 @@ from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
 )
-from synthorg.config.schema import (  # noqa: TC001
+from synthorg.config.schema import (
     LocalModelParams,
     ProviderModelConfig,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
-from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import AuthType
 
 if TYPE_CHECKING:

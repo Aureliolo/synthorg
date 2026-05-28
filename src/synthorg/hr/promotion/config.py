@@ -5,14 +5,14 @@ promotion/demotion behavior.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import SeniorityLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class PromotionCriteriaConfig(BaseModel):

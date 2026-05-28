@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
-from synthorg.knowledge.models import (  # noqa: TC001 -- Pydantic field annotation
+from synthorg.knowledge.models import (
     KnowledgeChunk,
 )
 

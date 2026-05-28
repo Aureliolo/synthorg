@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
+from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 
 # ``prompt_safety`` is imported lazily inside this module's helpers
@@ -68,7 +68,7 @@ from synthorg.providers.models import (
     CompletionResponse,
     ToolDefinition,
 )
-from synthorg.security.config import SafetyClassifierConfig  # noqa: TC001
+from synthorg.security.config import SafetyClassifierConfig
 from synthorg.security.rules.credential_detector import CREDENTIAL_PATTERNS
 from synthorg.security.rules.data_leak_detector import PII_PATTERNS
 

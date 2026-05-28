@@ -8,7 +8,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from synthorg.communication.meeting.errors import NoParticipantsResolvedError
 from synthorg.core.normalization import compare_ci
-from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
     MEETING_NO_PARTICIPANTS,

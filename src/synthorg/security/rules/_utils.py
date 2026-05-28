@@ -1,6 +1,6 @@
 """Shared utilities for security rule detectors."""
 
-from collections.abc import Iterator  # noqa: TC003
+from collections.abc import Iterator
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import SECURITY_SCAN_DEPTH_EXCEEDED

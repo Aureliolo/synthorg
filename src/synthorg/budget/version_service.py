@@ -14,14 +14,14 @@ import asyncio
 # (``typing.get_type_hints``, ``inspect.get_annotations``) can resolve
 # the names at runtime.
 from synthorg.budget.config import (
-    BudgetConfig,  # noqa: TC001 -- runtime-resolvable annotation
+    BudgetConfig,
 )
 from synthorg.observability import get_logger
 from synthorg.persistence.version_protocol import (
-    VersionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+    VersionRepository,
 )
 from synthorg.versioning.models import (
-    VersionSnapshot,  # noqa: TC001 -- runtime-resolvable annotation
+    VersionSnapshot,
 )
 
 logger = get_logger(__name__)

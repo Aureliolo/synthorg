@@ -6,7 +6,7 @@ downgrade recommendations, and approval decisions. Used by
 :class:`~synthorg.budget.reports.ReportGenerator`.
 """
 
-from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
+from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 # ── Enums ─────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
-from synthorg.engine.routing_policy.protocol import (  # noqa: TC001 -- registry generic + annotations
+from synthorg.engine.routing_policy.protocol import (
     StakesRoutingStrategy,
 )
 from synthorg.engine.routing_policy.router import StakesRouter

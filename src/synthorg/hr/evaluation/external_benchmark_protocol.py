@@ -5,13 +5,13 @@ benchmark adapters implement.  No specific benchmarks are adopted
 in this issue -- the infrastructure is ready for future integration.
 """
 
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
-from synthorg.engine.loop_protocol import BehaviorTag  # noqa: TC001
+from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
-    BenchmarkGrade,  # noqa: TC001
-    EvalTestCase,  # noqa: TC001
+    BenchmarkGrade,
+    EvalTestCase,
 )
 
 

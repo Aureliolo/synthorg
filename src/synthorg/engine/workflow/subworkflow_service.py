@@ -27,14 +27,14 @@ from synthorg.engine.errors import (
 # ``SubworkflowHasParentsError.__init__`` when callers introspect via
 # ``typing.get_type_hints`` or ``inspect.get_annotations``.
 from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+    WorkflowDefinition,
 )
-from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
 from synthorg.engine.workflow.subworkflow_registry import (
-    SubworkflowRegistry,  # noqa: TC001 -- runtime-resolvable annotation
+    SubworkflowRegistry,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workflow_definition import (

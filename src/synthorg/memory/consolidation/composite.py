@@ -13,7 +13,7 @@ byte-identical with ``LLMConsolidationStrategy._run_groups``.
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.models import (
     ArchivalModeAssignment,
     ConsolidationResult,

@@ -8,7 +8,7 @@ under the ``"sqlite"`` discriminator.
 
 import asyncio
 import shutil
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent

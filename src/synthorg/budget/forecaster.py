@@ -37,9 +37,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.config import BudgetConfig  # noqa: TC001 -- runtime attr access
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_GENERATED,

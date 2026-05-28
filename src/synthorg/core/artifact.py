@@ -3,9 +3,9 @@
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import (
-    ArtifactType,  # noqa: TC001 -- required at runtime by Pydantic
+    ArtifactType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
 
 

@@ -2,12 +2,12 @@
 
 # Pydantic v2 resolves field annotations at runtime, so Callable /
 # Awaitable cannot live behind TYPE_CHECKING.
-from collections.abc import Awaitable, Callable  # noqa: TC003
+from collections.abc import Awaitable, Callable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.communication.message import Message
+from synthorg.core.types import NotBlankStr
 
 
 class Subscription(BaseModel):

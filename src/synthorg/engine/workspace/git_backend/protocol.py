@@ -8,13 +8,13 @@ storage is a config change only.
 """
 
 from enum import StrEnum
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import GitBackendType  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import GitBackendType
+from synthorg.core.types import NotBlankStr
 
 
 class SourceKind(StrEnum):

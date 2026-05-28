@@ -37,11 +37,11 @@ from synthorg.api.auth.cookies import (
     make_clear_refresh_cookie,
     make_clear_session_cookie,
 )
-from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole

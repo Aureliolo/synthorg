@@ -6,11 +6,11 @@ provides a guaranteed minimum cadence; task triggers fire on
 throughput milestones.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- used at runtime
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.workflow.ceremony_context import (
-    CeremonyEvalContext,  # noqa: TC001 -- used at runtime
+    CeremonyEvalContext,
 )
 from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus

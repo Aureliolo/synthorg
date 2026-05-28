@@ -7,7 +7,7 @@ in
 under the ``"postgres"`` discriminator.
 """
 
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.backup.errors import ComponentBackupError

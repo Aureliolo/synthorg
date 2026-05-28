@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import WorkflowType  # noqa: TC001
+from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.persistence._generics import (

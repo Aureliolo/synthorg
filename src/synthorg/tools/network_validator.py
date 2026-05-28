@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

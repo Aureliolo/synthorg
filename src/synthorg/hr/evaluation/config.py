@@ -12,7 +12,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- runtime-read by Pydantic validator
+    NotBlankStr,
 )
 
 

@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, Response, delete, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 

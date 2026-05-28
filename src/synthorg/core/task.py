@@ -4,11 +4,11 @@ import copy
 from collections import Counter
 from datetime import datetime
 from typing import Any, Self
-from uuid import UUID  # noqa: TC003
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.artifact import ExpectedArtifact  # noqa: TC001
+from synthorg.core.artifact import ExpectedArtifact
 from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
@@ -20,7 +20,7 @@ from synthorg.core.enums import (
     TaskType,
 )
 from synthorg.core.task_transitions import validate_transition
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
 from synthorg.ontology.decorator import ontology_entity

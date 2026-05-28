@@ -4,7 +4,7 @@ from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.types import NotBlankStr
 
 _MAX_VARIANT_WEIGHT: Final[int] = 1000
 

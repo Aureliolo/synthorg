@@ -4,7 +4,7 @@ Start/stop the local webhook tunnel for development.
 """
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse

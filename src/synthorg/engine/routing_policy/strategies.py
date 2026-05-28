@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import Stakes, compare_stakes
-from synthorg.core.types import ModelTier  # noqa: TC001
+from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.routing_policy.models import StakesRoutingDecision
 from synthorg.engine.routing_policy.tiers import (

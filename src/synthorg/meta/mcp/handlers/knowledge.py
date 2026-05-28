@@ -23,7 +23,7 @@ from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_arg

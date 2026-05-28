@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -32,9 +32,9 @@ from synthorg.engine.errors import (
     ProjectNotFoundError,
 )
 from synthorg.engine.loop_protocol import make_budget_checker
-from synthorg.engine.loop_selector import AutoLoopConfig  # noqa: TC001
+from synthorg.engine.loop_selector import AutoLoopConfig
 from synthorg.engine.recovery import FailAndReassignStrategy
-from synthorg.engine.run_result import AgentRunResult  # noqa: TC001
+from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -56,7 +56,7 @@ from synthorg.observability.events.session import (
     SESSION_REPLAY_LOW_COMPLETENESS,
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
-from synthorg.providers.models import ChatMessage  # noqa: TC001
+from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
 
 if TYPE_CHECKING:

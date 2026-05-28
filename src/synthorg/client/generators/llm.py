@@ -20,7 +20,7 @@ from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker

@@ -13,7 +13,7 @@ and controller boundary args.
 """
 
 from typing import Literal, Self
-from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
+from uuid import UUID
 
 from pydantic import (
     AwareDatetime,
@@ -23,9 +23,9 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
 from synthorg.core.enums import CharterStatus
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 # ── Charter content building blocks ───────────────────────────────
 

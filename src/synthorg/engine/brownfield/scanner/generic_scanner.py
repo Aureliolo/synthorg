@@ -6,7 +6,7 @@ well-known root build/automation files, with no dependency facts (none
 can be inferred without an ecosystem manifest).
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Final
 
 from synthorg.core.codebase_structure_map import (

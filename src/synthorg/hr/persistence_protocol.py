@@ -6,12 +6,12 @@ and collaboration metrics.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.enums import LifecycleEventType  # noqa: TC001
-from synthorg.hr.models import AgentLifecycleEvent  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,  # noqa: TC001
-    TaskMetricRecord,  # noqa: TC001
+    CollaborationMetricRecord,
+    TaskMetricRecord,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 

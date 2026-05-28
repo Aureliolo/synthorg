@@ -41,8 +41,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001 -- Pydantic field type
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,

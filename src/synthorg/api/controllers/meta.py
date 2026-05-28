@@ -1,10 +1,10 @@
 """Meta improvement controller -- self-improvement proposals and signals."""
 
 from typing import Any, Final
-from uuid import UUID  # noqa: TC003
+from uuid import UUID
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
@@ -17,7 +17,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor

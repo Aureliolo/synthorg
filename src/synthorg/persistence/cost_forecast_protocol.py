@@ -19,7 +19,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,

@@ -9,7 +9,7 @@ discover which experiment branch they belong to.
 from typing import Final
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 
 from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import (
@@ -25,11 +25,11 @@ from synthorg.api.pagination import (
     CursorParam,
     cursor_secret_of,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
-from synthorg.experiments.models import (  # noqa: TC001 -- runtime return-type annotations
+from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
 )

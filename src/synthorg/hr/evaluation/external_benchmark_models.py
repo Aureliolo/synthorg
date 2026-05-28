@@ -10,9 +10,9 @@ from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.loop_protocol import BehaviorTag  # noqa: TC001
-from synthorg.hr.evaluation.models import EvaluationReport  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.hr.evaluation.models import EvaluationReport
 
 
 class EvalTestCase(BaseModel):

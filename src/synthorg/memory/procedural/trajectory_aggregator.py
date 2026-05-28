@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.skill_evolver import (
     TRAJECTORY_AGGREGATE_COMPLETE,

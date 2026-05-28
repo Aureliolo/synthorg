@@ -5,7 +5,7 @@ See the Communication design page.
 
 import asyncio
 import inspect
-from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -18,7 +18,7 @@ from synthorg.communication.handler import (
     priority_at_least,
 )
 from synthorg.communication.message import (
-    Message,  # noqa: TC001 -- required at runtime by Pydantic
+    Message,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (

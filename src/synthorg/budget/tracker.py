@@ -63,7 +63,7 @@ if TYPE_CHECKING:
         ProjectCostAggregateRepository,
     )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use
+from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

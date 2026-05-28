@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from litestar import Controller, Request, delete, get, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
@@ -18,9 +18,9 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.ai_client import AIClient
 from synthorg.client.feedback.scored import ScoredFeedback
@@ -29,7 +29,7 @@ from synthorg.client.models import ClientProfile
 from synthorg.client.state import ClientStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_RESOLVE_FAILED,

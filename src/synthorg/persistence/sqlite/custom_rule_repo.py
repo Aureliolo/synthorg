@@ -4,14 +4,14 @@ import json
 import sqlite3
 from typing import TYPE_CHECKING
 
-import aiosqlite  # noqa: TC002
+import aiosqlite
 
 from synthorg.core.persistence_errors import (
     ConstraintViolationError,
     MalformedRowError,
     QueryError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CUSTOM_RULE_DELETE_FAILED,
@@ -31,7 +31,7 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.custom_rule_protocol import (
     CustomRuleFilterSpec,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from aiosqlite import Row

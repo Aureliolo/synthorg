@@ -25,9 +25,9 @@ from pydantic import (
     TypeAdapter,
 )
 
-from synthorg.a2a.models import A2AMessage  # noqa: TC001 -- Pydantic field type
+from synthorg.a2a.models import A2AMessage
 from synthorg.api.boundary import parse_typed
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from synthorg.a2a.models import JsonRpcRequest

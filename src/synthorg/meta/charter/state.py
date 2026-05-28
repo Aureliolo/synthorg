@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: TC001
+from synthorg.meta.charter.dispatch import CharterDispatcher
 from synthorg.meta.charter.service import (
-    CharterInterviewService,  # noqa: TC001
+    CharterInterviewService,
 )
 
 if TYPE_CHECKING:

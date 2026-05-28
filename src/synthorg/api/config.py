@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (

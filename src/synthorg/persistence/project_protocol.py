@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ProjectStatus  # noqa: TC001
+from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (

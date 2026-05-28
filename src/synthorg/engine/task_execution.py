@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import TaskStatus
-from synthorg.core.task import Task  # noqa: TC001
+from synthorg.core.task import Task
 from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger

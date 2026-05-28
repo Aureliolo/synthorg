@@ -1,10 +1,10 @@
 """Prometheus metrics scrape endpoint."""
 
 from litestar import Controller, Response, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from prometheus_client import generate_latest
 
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (

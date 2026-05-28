@@ -7,12 +7,12 @@ protocol to provide company-wide knowledge management.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.models import (
-    OrgFact,  # noqa: TC001
-    OrgFactAuthor,  # noqa: TC001
-    OrgFactWriteRequest,  # noqa: TC001
-    OrgMemoryQuery,  # noqa: TC001
+    OrgFact,
+    OrgFactAuthor,
+    OrgFactWriteRequest,
+    OrgMemoryQuery,
 )
 
 

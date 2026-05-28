@@ -15,7 +15,7 @@ called for validation only and never replaces the dict that goes into
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 
 class AuditChainEventPayload(BaseModel):

@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import jwt
-from litestar.connection import ASGIConnection  # noqa: TC002
+from litestar.connection import ASGIConnection
 from litestar.exceptions import PermissionDeniedException
 from pydantic import ValidationError
 
@@ -19,7 +19,7 @@ from synthorg.api.api_core_state import (
     auth_service_of,
     session_store_of,
 )
-from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
+from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.cookies import (
     generate_csrf_token,
     make_csrf_cookie,
@@ -83,7 +83,7 @@ async def make_session_cookies(  # noqa: PLR0913
         refresh_persisted = False
         if app_state is not None and session_id and user_id:
             try:
-                from synthorg.persistence.auth_protocol import (  # noqa: PLC0415, TC001
+                from synthorg.persistence.auth_protocol import (  # noqa: PLC0415
                     RefreshTokenRepository as RefreshStore,
                 )
 

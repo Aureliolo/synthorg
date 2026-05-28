@@ -22,7 +22,7 @@ from synthorg.memory.injection import (
     InjectionPoint,
     TokenEstimator,
 )
-from synthorg.memory.ranking import ScoredMemory  # noqa: TC001
+from synthorg.memory.ranking import ScoredMemory
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FORMAT_COMPLETE,

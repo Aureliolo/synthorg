@@ -4,7 +4,7 @@ import json
 from typing import Annotated, Any
 
 from litestar import Controller, delete, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,12 +14,12 @@ from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LO
 from synthorg.api.controllers.template_packs import _read_setting_list
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.path_params import PathName
+from synthorg.api.state import AppState
 from synthorg.core.company import Team
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.normalization import normalize_identifier
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,

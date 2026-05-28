@@ -10,7 +10,7 @@ from pydantic import (
     field_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _HOST_PORT_PATTERN = r"^[a-zA-Z0-9._\[\]%-]+:[0-9]{1,5}$"
 

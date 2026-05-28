@@ -13,16 +13,16 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.experiments import ExperimentService
-from synthorg.meta.analytics.service import AnalyticsService  # noqa: TC001
-from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: TC001
+from synthorg.meta.analytics.service import AnalyticsService
+from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.propose import (
-    ChiefOfStaffProposer,  # noqa: TC001
+    ChiefOfStaffProposer,
 )
-from synthorg.meta.reports.service import ReportsService  # noqa: TC001
-from synthorg.meta.service import SelfImprovementService  # noqa: TC001
-from synthorg.meta.signals.service import SignalsService  # noqa: TC001
+from synthorg.meta.reports.service import ReportsService
+from synthorg.meta.service import SelfImprovementService
+from synthorg.meta.signals.service import SignalsService
 from synthorg.persistence.conversational_proposal_protocol import (
-    ConversationalProposalRepository,  # noqa: TC001
+    ConversationalProposalRepository,
 )
 
 if TYPE_CHECKING:

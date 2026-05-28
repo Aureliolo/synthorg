@@ -12,7 +12,7 @@ from typing import Annotated, Literal, Self
 from annotated_types import Ge
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 NonNegativeInt = Annotated[int, Ge(0)]
 

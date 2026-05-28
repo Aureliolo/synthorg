@@ -6,9 +6,9 @@ cold (archival) storage, with search and restore capabilities.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.models import ArchivalEntry  # noqa: TC001
-from synthorg.memory.models import MemoryQuery  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.models import ArchivalEntry
+from synthorg.memory.models import MemoryQuery
 
 
 @runtime_checkable

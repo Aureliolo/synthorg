@@ -12,7 +12,7 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 HEURISTIC_CONFIDENCE_FLOOR: Final[float] = 0.4
 """Lower bound on heuristic-source claim confidence."""

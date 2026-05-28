@@ -29,7 +29,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     validate_pagination_args,
 )
-from synthorg.persistence.conversation_protocol import (  # noqa: TC001
+from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
 )
 

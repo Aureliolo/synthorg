@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.research.service import ResearchService  # noqa: TC001
+from synthorg.research.service import ResearchService
 from synthorg.research.tool_factory import (
-    ResearchToolFactory,  # noqa: TC001
+    ResearchToolFactory,
 )
 
 if TYPE_CHECKING:

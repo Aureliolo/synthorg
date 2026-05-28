@@ -39,7 +39,7 @@ from synthorg.persistence._shared import (
     safe_int,
     validate_pagination_args,
 )
-from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
+from synthorg.persistence.connection_protocol import ConnectionFilterSpec
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

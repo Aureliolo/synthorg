@@ -11,7 +11,7 @@ from typing import Any, ClassVar, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ActionType, ApprovalRiskLevel
-from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
+from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.security.models import SecurityVerdictType
 from synthorg.security.policy_engine.config import SecurityPolicyConfig
 from synthorg.settings.definitions.security import (

@@ -3,7 +3,7 @@
 from typing import Annotated, Final
 
 from litestar import Controller, Response, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter, QueryParameter
 
 from synthorg._core.features import require_service
@@ -18,7 +18,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_repo_seek_meta,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
@@ -42,7 +42,7 @@ from synthorg.observability.events.workflow_definition import (
 )
 from synthorg.versioning import VersionSnapshot
 from synthorg.versioning.models import (
-    RollbackWorkflowRequest,  # noqa: TC001 -- Litestar runtime request-body
+    RollbackWorkflowRequest,
 )
 
 logger = get_logger(__name__)

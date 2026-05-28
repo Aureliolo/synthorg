@@ -10,7 +10,7 @@ wrapped via ``wrap_untrusted`` before it can reach an agent prompt.
 import builtins
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
+from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory

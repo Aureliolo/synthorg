@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from synthorg.client.models import SimulationMetrics  # noqa: TC001
+from synthorg.client.models import SimulationMetrics
 
 _SCHEMA_VERSION: Final[str] = "1.0"
 

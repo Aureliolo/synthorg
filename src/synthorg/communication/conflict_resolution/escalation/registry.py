@@ -14,7 +14,7 @@ go through the persistent store, which is the durable source of truth.
 import asyncio
 
 from synthorg.communication.conflict_resolution.escalation.models import (
-    EscalationDecision,  # noqa: TC001
+    EscalationDecision,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (

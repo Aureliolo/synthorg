@@ -2,13 +2,13 @@
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import (
-    AtomicProbe,  # noqa: TC001
-    VerificationResult,  # noqa: TC001
-    VerificationRubric,  # noqa: TC001
+    AtomicProbe,
+    VerificationResult,
+    VerificationRubric,
 )
-from synthorg.engine.workflow.handoff import HandoffArtifact  # noqa: TC001
+from synthorg.engine.workflow.handoff import HandoffArtifact
 
 
 @runtime_checkable

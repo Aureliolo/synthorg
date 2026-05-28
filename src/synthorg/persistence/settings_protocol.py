@@ -1,6 +1,6 @@
 """Settings repository protocol."""
 
-from collections.abc import Mapping, Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field

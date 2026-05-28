@@ -4,7 +4,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.budget.category_analytics import OrchestrationRatio  # noqa: TC001
+from synthorg.budget.category_analytics import OrchestrationRatio
 
 
 class AnalyticsAggregation(BaseModel):

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.errors import (
     InvalidStateError,
     OIDCVerificationError,

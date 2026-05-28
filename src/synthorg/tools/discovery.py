@@ -14,10 +14,10 @@ Discovery tools signal load/unload state changes via
 import json
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
-from synthorg.core.tool_disclosure import (  # noqa: TC001
+from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
     ToolL2Body,
     ToolL3Resource,

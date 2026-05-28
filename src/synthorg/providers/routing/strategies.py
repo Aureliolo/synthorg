@@ -5,11 +5,11 @@ Each strategy selects a model given a ``RoutingRequest``, a
 singletons registered in a module-level mapping.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol, runtime_checkable
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role_catalog import get_seniority_info
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
@@ -32,7 +32,7 @@ from ._strategy_helpers import (
 )
 from .errors import ModelResolutionError, NoAvailableModelError
 from .models import RoutingDecision, RoutingRequest
-from .resolver import ModelResolver  # noqa: TC001
+from .resolver import ModelResolver
 
 if TYPE_CHECKING:
     from synthorg.config.schema import RoutingConfig

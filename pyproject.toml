@@ -94,6 +94,15 @@ test = [
     "pytest-repeat==0.9.4",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
+    # Runtime type checking during pytest. ``--typeguard-packages=synthorg``
+    # in [tool.pytest.ini_options].addopts instruments every function under
+    # ``synthorg.*`` so argument and return types are checked against their
+    # annotations at call time. Activation is staged: the wiring lives
+    # here and the activation flags are present-but-commented because the
+    # source tree still carries import cycles whose annotations cannot
+    # resolve at runtime. ADR-0006 Section F documents the re-activation
+    # checklist.
+    "typeguard==4.5.2",
     # CI matrix sharding of unit + integration test arms. Partitions tests by
     # recorded durations in `.test_durations.{unit,integration}` so each shard
     # ends within ~10% wall-clock of the slowest peer. Falls back to count-based
@@ -289,6 +298,17 @@ ignore = [
     "D104",   # missing docstring in public package
     "D107",   # missing docstring in __init__
     "ISC001", # conflicts with ruff formatter
+    # TC001/2/3 ("move-to-TYPE_CHECKING") conflict with typeguard's
+    # eager ``inspect.signature`` annotation evaluation. The project
+    # wires typeguard via ``--typeguard-packages=synthorg`` (see ADR-0006
+    # Section F + issue #2068); every type that appears in a function
+    # signature, NamedTuple field, or Pydantic model annotation must be
+    # importable at runtime so typeguard can resolve it. Other TC checks
+    # (TC004 move-out-of-TYPE_CHECKING, TC005 empty block, TC006/7/8
+    # quoted-annotation hygiene) remain active.
+    "TC001",
+    "TC002",
+    "TC003",
     # TRY400: "use logger.exception instead of logger.error" -- conflicts
     # with the project-wide SEC-1 redaction rule (CLAUDE.md Logging
     # section). logger.exception attaches a traceback whose frame-locals
@@ -885,9 +905,45 @@ markers = [
     "benchmark: CodSpeed CPU-instruction performance benchmarks (run only via `pytest --codspeed`; not part of `-m unit` runs)",
     "serial: Tests that legitimately require serial execution (route to a no-xdist suite); do not apply without prior approval",
 ]
-addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short", "--dist=loadfile", "-n=8", "-p", "no:randomly", "-p", "no:unraisableexception"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--tb=short",
+    "--dist=loadfile",
+    "-n=8",
+    "-p",
+    "no:randomly",
+    "-p",
+    "no:unraisableexception",
+    # Runtime type-check every call in ``synthorg.*`` against its annotations.
+    # ``forward-ref-policy=ERROR`` (typeguard default is WARN) makes an
+    # unresolvable ``TYPE_CHECKING``-guarded annotation a hard test failure
+    # rather than a silently-skipped check. The activation lines are kept
+    # COMMENTED until the source-side cycle breaks land in the import-
+    # layering follow-up PR (see ADR-0006 Section F); the cycles fan out
+    # ~530 unit-test failures through ~5 boundary functions. Wiring,
+    # dependency pin, conftest hook, ruff TC001/2/3 disable, and the
+    # ``@suppress_type_checks`` on ``api.app.create_app`` all ship now so
+    # the activation is a one-line uncomment once the cycles drop.
+    # "--typeguard-packages=synthorg",
+    # "--typeguard-forward-ref-policy=ERROR",
+]
 filterwarnings = [
     "error",
+    # typeguard's pytest plugin runs ``install_import_hook`` from
+    # ``pytest_configure``, which fires AFTER ``tests/conftest.py`` loads.
+    # Our conftest imports ``synthorg.persistence.migrations`` at module
+    # body (needed for ``pytest_sessionstart`` to pre-build the migrated_db
+    # template), and tests/conftest.py installs the hook EARLY (before that
+    # import) so the synthorg modules ARE instrumented. The plugin's later
+    # install_import_hook attempt sees synthorg already in sys.modules and
+    # emits ``InstrumentationWarning: typeguard cannot check these
+    # packages because they are already imported: synthorg`` -- a benign
+    # redundancy warning, not a check failure. Without this filter the
+    # ``error`` rule above promotes it and pytest exits 2 with zero tests
+    # run despite typeguard being live.
+    "ignore::typeguard.InstrumentationWarning",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
     # nats-py 2.14.0 (latest) calls ``asyncio.iscoroutinefunction`` in

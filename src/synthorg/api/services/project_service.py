@@ -10,9 +10,9 @@ audit logging, mirroring the structure of :class:`UserService` and
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ProjectStatus  # noqa: TC001
-from synthorg.core.project import Project  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import ProjectStatus
+from synthorg.core.project import Project
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_PROJECT_CREATED,

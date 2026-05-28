@@ -16,7 +16,7 @@ shared state owner and lock graph, which just relocates complexity.
 
 import asyncio
 import time
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from synthorg.communication.meeting.errors import (
@@ -30,10 +30,10 @@ from synthorg.communication.meeting.models import (
     MeetingRecord,
 )
 from synthorg.communication.meeting.orchestrator import (
-    MeetingOrchestrator,  # noqa: TC001
+    MeetingOrchestrator,
 )
 from synthorg.communication.meeting.participant import (
-    ParticipantResolver,  # noqa: TC001
+    ParticipantResolver,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (

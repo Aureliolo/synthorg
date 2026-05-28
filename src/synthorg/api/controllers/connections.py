@@ -8,7 +8,7 @@ import copy
 from typing import Annotated, Final
 
 from litestar import Controller, delete, get, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg._core.features import require_service
@@ -20,7 +20,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import (
     PathField,
     PathName,
 )
@@ -28,7 +28,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
+    NotBlankStr,
 )
 from synthorg.integrations.connections.catalog import _UNSET, _UnsetType
 from synthorg.integrations.connections.models import (

@@ -45,10 +45,10 @@ from synthorg.observability.events.integrations import (
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import paginate
 from synthorg.persistence.connection_protocol import (
-    ConnectionRepository,  # noqa: TC001
+    ConnectionRepository,
 )
 from synthorg.persistence.secret_backends.protocol import (
-    SecretBackend,  # noqa: TC001
+    SecretBackend,
 )
 
 logger = get_logger(__name__)

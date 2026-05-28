@@ -33,7 +33,7 @@ tests; all methods are ``async def`` because SynthOrg's persistence
 layer is uniformly async.
 """
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
+from datetime import datetime
 from typing import Final, Protocol, TypeVar, runtime_checkable
 
 #: Canonical page size for ``list_items`` / ``query`` across every

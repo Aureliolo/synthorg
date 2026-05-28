@@ -4,7 +4,7 @@ import asyncio
 from typing import Annotated, Final
 
 from litestar import Controller, Response, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter
 
 from synthorg.api.cursor import decode_cursor
@@ -16,7 +16,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_repo_seek_meta,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathName
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.role import Role
 from synthorg.observability import get_logger

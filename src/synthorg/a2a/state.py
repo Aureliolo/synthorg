@@ -9,9 +9,9 @@ A2A gateway is wired at boot (gated on the gateway being enabled); the
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
-from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
-from synthorg.a2a.client import A2AClient  # noqa: TC001
-from synthorg.a2a.peer_registry import PeerRegistry  # noqa: TC001
+from synthorg.a2a.agent_card import AgentCardBuilder
+from synthorg.a2a.client import A2AClient
+from synthorg.a2a.peer_registry import PeerRegistry
 
 
 class A2aStateSlice(BaseFeatureStateSlice):

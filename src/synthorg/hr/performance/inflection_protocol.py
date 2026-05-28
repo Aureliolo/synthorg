@@ -10,8 +10,8 @@ from typing import Protocol, Self, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.enums import TrendDirection  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.enums import TrendDirection
 
 
 class PerformanceInflection(BaseModel):

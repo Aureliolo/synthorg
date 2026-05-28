@@ -15,7 +15,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_DELETE_FAILED,

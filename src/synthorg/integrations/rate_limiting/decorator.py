@@ -5,7 +5,7 @@ the existing ``RateLimiter`` from the provider resilience layer.
 """
 
 import functools
-from collections.abc import Callable, Coroutine  # noqa: TC003
+from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
 from synthorg.core.resilience_config import RateLimiterConfig

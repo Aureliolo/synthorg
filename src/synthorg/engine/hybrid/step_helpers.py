@@ -26,7 +26,7 @@ from synthorg.engine.plan_helpers import (
     assess_step_success,
     extract_task_summary,
 )
-from synthorg.engine.plan_models import ExecutionPlan, PlanStep  # noqa: TC001
+from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.engine.plan_parsing import parse_plan
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger, safe_error_description

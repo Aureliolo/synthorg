@@ -28,7 +28,7 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
-from synthorg.api.rate_limits._subject import KeyPolicy  # noqa: TC001
+from synthorg.api.rate_limits._subject import KeyPolicy
 from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
 from synthorg.observability import get_logger

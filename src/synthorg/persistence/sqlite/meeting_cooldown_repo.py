@@ -22,7 +22,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.meeting_cooldown_protocol import MeetingCooldownRecord
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

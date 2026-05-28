@@ -22,7 +22,7 @@ field-name drift in dashboards.
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- pydantic field annotation
+from synthorg.core.types import NotBlankStr
 
 
 class ModelPinMetadata(BaseModel):

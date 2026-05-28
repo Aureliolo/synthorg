@@ -8,7 +8,7 @@ import asyncio
 import json
 from typing import Any
 
-from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.bus._nats_utils import decode_token, encode_token
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel

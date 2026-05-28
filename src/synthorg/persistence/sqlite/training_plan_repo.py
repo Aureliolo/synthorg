@@ -26,8 +26,8 @@ from synthorg.observability.events.training import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
-from synthorg.persistence.training_protocol import TrainingPlanFilterSpec  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 
 logger = get_logger(__name__)
 

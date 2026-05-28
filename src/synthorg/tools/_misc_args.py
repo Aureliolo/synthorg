@@ -28,7 +28,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 _ARGS_CONFIG = ConfigDict(
     frozen=True,

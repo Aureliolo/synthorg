@@ -8,7 +8,7 @@ stdlib ``html.parser`` module.
 from html.parser import HTMLParser
 from typing import Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType

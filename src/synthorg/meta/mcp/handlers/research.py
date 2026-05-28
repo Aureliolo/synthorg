@@ -21,7 +21,7 @@ from synthorg.meta.mcp.domains._research_args import (
 )
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.mcp.handlers.common_logging import (

@@ -2,8 +2,8 @@
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
-from synthorg.security.timeout.models import TimeoutAction  # noqa: TC001
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.security.timeout.models import TimeoutAction
 
 if TYPE_CHECKING:
     # Runtime-deferred to avoid an ontology-consolidation import cycle

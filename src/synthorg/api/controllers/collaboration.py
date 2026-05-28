@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from litestar import Controller, Request, delete, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import (
     AwareDatetime,
@@ -17,9 +17,9 @@ from pydantic import (
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     NotFoundError,
@@ -28,7 +28,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
-    CollaborationOverrideStore,  # noqa: TC001
+    CollaborationOverrideStore,
 )
 from synthorg.hr.performance.models import (
     CollaborationOverride,

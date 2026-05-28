@@ -46,7 +46,7 @@ import time
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002 -- used in protocol return type
+from pydantic import AwareDatetime
 
 
 @runtime_checkable

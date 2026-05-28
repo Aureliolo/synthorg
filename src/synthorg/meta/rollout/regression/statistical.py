@@ -12,7 +12,7 @@ detector refuses to fire without data rather than guessing.
 """
 
 import math
-from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
+from datetime import datetime
 from enum import Enum
 from typing import Final, Protocol, runtime_checkable
 

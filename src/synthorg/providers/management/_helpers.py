@@ -17,7 +17,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_LITELLM_MODELS_LOADED,
 )
 from synthorg.providers.enums import AuthType
-from synthorg.providers.management.dtos import (  # noqa: TC001
+from synthorg.providers.management.dtos import (
     CreateProviderRequest,
     UpdateProviderRequest,
 )

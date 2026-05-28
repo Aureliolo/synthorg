@@ -19,7 +19,7 @@ from synthorg.budget.quota import (
     QuotaCheckResult,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.degradation import (
     DEGRADATION_ALERT_RAISED,

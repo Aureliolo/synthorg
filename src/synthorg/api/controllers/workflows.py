@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from litestar import Controller, Response, delete, get, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError

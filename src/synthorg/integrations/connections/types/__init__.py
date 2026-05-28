@@ -8,7 +8,7 @@ from types import MappingProxyType
 
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.connections.protocol import (
-    ConnectionAuthenticator,  # noqa: TC001
+    ConnectionAuthenticator,
 )
 from synthorg.integrations.connections.types.a2a_peer import (
     A2APeerAuthenticator,

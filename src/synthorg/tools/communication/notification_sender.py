@@ -29,7 +29,7 @@ from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
 from synthorg.tools.communication.config import (
-    CommunicationToolsConfig,  # noqa: TC001
+    CommunicationToolsConfig,
 )
 
 

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
 from synthorg.observability import (
     get_logger,

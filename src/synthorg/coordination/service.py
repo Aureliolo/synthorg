@@ -19,7 +19,7 @@ owns that entry point, exposed over REST via
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_INVALID_REQUEST,

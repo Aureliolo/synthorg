@@ -15,9 +15,9 @@ from synthorg.observability.events.routing import (
 )
 
 from .errors import RoutingError, UnknownRoutingStrategyError
-from .models import RoutingDecision, RoutingRequest  # noqa: TC001
+from .models import RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
-from .selector import ModelCandidateSelector  # noqa: TC001
+from .selector import ModelCandidateSelector
 from .strategies import STRATEGY_MAP
 
 if TYPE_CHECKING:

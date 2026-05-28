@@ -9,7 +9,7 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.notifications.dispatcher import (
-    NotificationDispatcher,  # noqa: TC001
+    NotificationDispatcher,
 )
 
 

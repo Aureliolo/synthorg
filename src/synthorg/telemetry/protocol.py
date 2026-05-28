@@ -1,11 +1,11 @@
 """Telemetry reporter protocol and event model."""
 
-from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
+from datetime import datetime
 from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.telemetry.config import DEFAULT_ENVIRONMENT, MAX_STRING_LENGTH
 from synthorg.telemetry.property_rules import validate_event_properties
 

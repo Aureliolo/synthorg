@@ -7,7 +7,7 @@ clean exit and rolls back on exception.
 """
 
 import contextlib
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -28,7 +28,7 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
+from synthorg.persistence.auth_protocol import SessionFilterSpec
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

@@ -7,12 +7,12 @@ from action items, and records audit trail entries.
 """
 
 from collections import Counter
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from synthorg.communication.meeting.config import MeetingProtocolConfig  # noqa: TC001
+from synthorg.communication.meeting.config import MeetingProtocolConfig
 from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
@@ -27,7 +27,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
-from synthorg.communication.meeting.protocol import (  # noqa: TC001
+from synthorg.communication.meeting.protocol import (
     AgentCaller,
     MeetingProtocol,
     TaskCreator,

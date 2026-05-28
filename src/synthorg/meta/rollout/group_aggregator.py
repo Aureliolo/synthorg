@@ -8,13 +8,13 @@ extracts one sample per agent from its latest snapshot.
 """
 
 import asyncio
-from datetime import datetime  # noqa: TC003 -- Pydantic needs at runtime
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
     META_ABTEST_GROUP_AGGREGATOR_AGENT_SKIPPED,

@@ -26,7 +26,7 @@ from pydantic import (
 )
 
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 # Persistent (non-volatile) subset of MemoryCategory.  Archival memory
 # only stores content that survives the session; WORKING is the

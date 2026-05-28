@@ -9,7 +9,7 @@ prevent memory exhaustion.
 from typing import Any, ClassVar, Final
 
 import httpx
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.core.normalization import compare_ci
@@ -22,7 +22,7 @@ from synthorg.observability.events.web import (
 )
 from synthorg.providers.url_utils import redact_url
 from synthorg.tools.base import ToolExecutionResult
-from synthorg.tools.network_validator import (  # noqa: TC001
+from synthorg.tools.network_validator import (
     DnsValidationOk,
     NetworkPolicy,
 )

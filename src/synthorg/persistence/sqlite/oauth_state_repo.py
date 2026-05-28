@@ -25,7 +25,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

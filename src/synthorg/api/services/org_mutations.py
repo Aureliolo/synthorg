@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Final
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
 from synthorg.api.services._org_department_mutations import OrgDepartmentMutationsMixin
-from synthorg.config.schema import AgentConfig  # noqa: TC001
+from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Company, Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import ValidationError
@@ -26,13 +26,13 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
-from synthorg.organization.models import (  # noqa: TC001
+from synthorg.organization.models import (
     UpdateCompanyRequest,
     UpdateDepartmentRequest,
 )
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.resolver import ConfigResolver  # noqa: TC001
-from synthorg.settings.service import SettingsService  # noqa: TC001
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
 from synthorg.versioning import VersioningService
 
 if TYPE_CHECKING:

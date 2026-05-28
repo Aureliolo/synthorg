@@ -1,8 +1,8 @@
 """Intake engine orchestrator."""
 
 from synthorg.client.models import ClientRequest, RequestStatus
-from synthorg.engine.intake.models import IntakeResult  # noqa: TC001
-from synthorg.engine.intake.protocol import IntakeStrategy  # noqa: TC001
+from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.intake.protocol import IntakeStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_APPROVED,

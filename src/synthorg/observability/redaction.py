@@ -42,7 +42,7 @@ chain is still preserved for callers via ``raise ... from exc``.
 """
 
 import re
-from typing import Any, Final, Protocol
+from typing import Any, Final
 
 from synthorg.core.critical_errors import reraise_critical
 
@@ -250,24 +250,8 @@ def safe_error_description(exc: BaseException) -> str:
     return candidate[:keep] + _TRUNCATION_MARKER
 
 
-class _ErrorLogger(Protocol):
-    """Minimal logger surface used by :func:`log_exception_redacted`.
-
-    Structural typing so any structlog ``BoundLogger`` (the project's
-    ``get_logger`` return type) and test doubles both satisfy the
-    contract without an explicit base class. The signature mirrors
-    structlog's permissive ``error`` (event optional, ``*args``,
-    arbitrary kwargs, opaque return) so a real ``BoundLogger`` passes
-    the structural check.
-    """
-
-    def error(self, event: str | None = ..., *args: Any, **kwargs: Any) -> Any:
-        """Emit an ERROR-severity record under *event*."""
-        ...
-
-
 def log_exception_redacted(
-    logger: _ErrorLogger,
+    logger: Any,
     event: str,
     exc: BaseException,
     /,
@@ -294,7 +278,11 @@ def log_exception_redacted(
 
     Args:
         logger: A structlog (or compatible) logger with an ``error()``
-            method.
+            method. Typed as ``Any`` because structlog's
+            ``BoundLoggerLazyProxy`` (returned by ``get_logger``)
+            forwards attribute access through ``__getattr__`` until the
+            proxy is bound, so a nominal ``Protocol`` annotation cannot
+            describe its surface without false negatives at call sites.
         event: The event-name constant (from
             ``synthorg.observability.events.<domain>``).
         exc: The exception instance being logged.

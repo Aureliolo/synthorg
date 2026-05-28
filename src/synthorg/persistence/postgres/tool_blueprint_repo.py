@@ -39,7 +39,7 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.tool_blueprint_protocol import (  # noqa: TC001
+from synthorg.persistence.tool_blueprint_protocol import (
     ToolBlueprintFilterSpec,
 )
 

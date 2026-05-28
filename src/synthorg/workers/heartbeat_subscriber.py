@@ -27,7 +27,7 @@ from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_SUBSCRIBER_STARTED,
     WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED,
 )
-from synthorg.workers.config import QueueConfig  # noqa: TC001
+from synthorg.workers.config import QueueConfig
 from synthorg.workers.heartbeat_models import (
     HEARTBEAT_SUBJECT_PREFIX,
     WorkerHeartbeat,

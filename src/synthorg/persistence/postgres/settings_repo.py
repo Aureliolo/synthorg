@@ -6,7 +6,7 @@ from ISO strings at the boundary so the protocol surface
 (SettingRow instances) is identical for both backends.
 """
 
-from collections.abc import Mapping, Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, cast
 
 import psycopg

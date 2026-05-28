@@ -79,7 +79,7 @@ from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
 from synthorg.settings.state import config_resolver_of
-from synthorg.tools.base import BaseTool  # noqa: TC001
+from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry

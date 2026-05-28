@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.conflict_resolution.escalation.protocol import (
-    EscalationQueueStore,  # noqa: TC001
+    EscalationQueueStore,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description

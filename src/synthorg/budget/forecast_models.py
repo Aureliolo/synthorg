@@ -18,15 +18,15 @@ The state machine for :class:`ForecastDecision`:
   terminal row.
 """
 
-from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
+from datetime import datetime
 from enum import StrEnum
 from typing import Final, Self
-from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
+from synthorg.core.types import NotBlankStr
 
 # Approval-kind discriminator used by the ApprovalGate queue + UI cards
 # to distinguish cost-forecast approvals from other approval kinds.

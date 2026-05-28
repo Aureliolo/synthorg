@@ -6,10 +6,10 @@ that evaluate agent collaboration behavior (see Agents design page, D3).
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
-    CollaborationMetricRecord,  # noqa: TC001
-    CollaborationScoreResult,  # noqa: TC001
+    CollaborationMetricRecord,
+    CollaborationScoreResult,
 )
 
 

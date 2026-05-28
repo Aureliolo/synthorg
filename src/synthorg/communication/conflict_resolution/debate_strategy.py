@@ -16,7 +16,7 @@ from synthorg.communication.conflict_resolution._helpers import (
     find_position_or_raise,
     pick_highest_seniority,
 )
-from synthorg.communication.conflict_resolution.config import (  # noqa: TC001
+from synthorg.communication.conflict_resolution.config import (
     DebateConfig,
 )
 from synthorg.communication.conflict_resolution.models import (
@@ -29,7 +29,7 @@ from synthorg.communication.conflict_resolution.protocol import (
     JudgeDecision,
     JudgeEvaluator,
 )
-from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy

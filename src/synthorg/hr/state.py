@@ -14,18 +14,18 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.hr.activity_service import ActivityFeedService  # noqa: TC001
-from synthorg.hr.health.service import AgentHealthService  # noqa: TC001
-from synthorg.hr.identity.version_service import AgentVersionService  # noqa: TC001
-from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
-from synthorg.hr.personalities.service import PersonalityService  # noqa: TC001
-from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.activity_service import ActivityFeedService
+from synthorg.hr.health.service import AgentHealthService
+from synthorg.hr.identity.version_service import AgentVersionService
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.personalities.service import PersonalityService
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.scaling.decision_service import (
-    ScalingDecisionService,  # noqa: TC001
+    ScalingDecisionService,
 )
-from synthorg.hr.scaling.service import ScalingService  # noqa: TC001
-from synthorg.hr.training.plan_service import TrainingPlanService  # noqa: TC001
-from synthorg.hr.training.service import TrainingService  # noqa: TC001
+from synthorg.hr.scaling.service import ScalingService
+from synthorg.hr.training.plan_service import TrainingPlanService
+from synthorg.hr.training.service import TrainingService
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

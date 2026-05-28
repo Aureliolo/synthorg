@@ -9,7 +9,7 @@ memories on the normal ``memory.retrieve`` call.
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
+from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical

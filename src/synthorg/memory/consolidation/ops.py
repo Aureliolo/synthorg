@@ -24,8 +24,8 @@ exact store + delete failure semantics:
 import asyncio
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.axis import (
     ConsolidationContext,
     OpResult,

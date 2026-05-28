@@ -17,7 +17,7 @@ and **never touches the inner driver** -- the inner driver may even be
 calls in replay" structurally true rather than best-effort.
 """
 
-from collections.abc import (  # noqa: TC003 -- runtime override signatures
+from collections.abc import (
     AsyncIterator,
     Awaitable,
     Callable,
@@ -31,11 +31,11 @@ from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_REPLAYED,
 )
 from synthorg.providers.base import BaseCompletionProvider
-from synthorg.providers.capabilities import (  # noqa: TC001 -- override return type
+from synthorg.providers.capabilities import (
     ModelCapabilities,
 )
 from synthorg.providers.errors import ProviderError
-from synthorg.providers.models import (  # noqa: TC001 -- override signatures
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,

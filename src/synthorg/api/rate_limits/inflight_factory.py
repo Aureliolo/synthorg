@@ -2,9 +2,9 @@
 
 from synthorg.api.rate_limits.in_memory_inflight import InMemoryInflightStore
 from synthorg.api.rate_limits.inflight_config import (
-    PerOpConcurrencyConfig,  # noqa: TC001
+    PerOpConcurrencyConfig,
 )
-from synthorg.api.rate_limits.inflight_protocol import InflightStore  # noqa: TC001
+from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.core.registry import StrategyRegistry
 
 

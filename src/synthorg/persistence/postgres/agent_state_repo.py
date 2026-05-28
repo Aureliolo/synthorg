@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from synthorg.core.enums import ExecutionStatus
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (

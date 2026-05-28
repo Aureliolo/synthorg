@@ -6,11 +6,11 @@ protocol in addition to ``MemoryBackend``.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import (
-    MemoryEntry,  # noqa: TC001
-    MemoryQuery,  # noqa: TC001
-    MemoryStoreRequest,  # noqa: TC001
+    MemoryEntry,
+    MemoryQuery,
+    MemoryStoreRequest,
 )
 
 

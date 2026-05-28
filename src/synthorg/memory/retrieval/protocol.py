@@ -6,11 +6,11 @@ and the supervisor-worker hierarchical retriever.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.retrieval.models import (
-    FinalRetrievalResult,  # noqa: TC001
-    RetrievalQuery,  # noqa: TC001
-    RetrievalResult,  # noqa: TC001
+    FinalRetrievalResult,
+    RetrievalQuery,
+    RetrievalResult,
 )
 
 

@@ -7,7 +7,7 @@ the domain-specific :class:`NotFoundError` subclass selection are
 owned by one helper that every controller reuses.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
+from collections.abc import Mapping
 from typing import LiteralString
 
 from synthorg.core.domain_errors import NotFoundError, ResourceNotFoundError

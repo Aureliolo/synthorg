@@ -5,11 +5,11 @@ the service orchestration.
 """
 
 import json
-from collections.abc import Sequence  # noqa: TC003
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from synthorg.api.concurrency import check_if_match, compute_etag
-from synthorg.config.schema import AgentConfig  # noqa: TC001
+from synthorg.config.schema import AgentConfig
 from synthorg.core.company import Department
 from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import (

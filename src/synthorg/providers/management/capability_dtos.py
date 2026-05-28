@@ -19,7 +19,7 @@ PR; the existing CRUD DTOs (create / update / delete provider, pull
 model, ...) stay in ``dto_providers.py``.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- Pydantic field type at runtime
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Annotated, Any, Literal, Self, cast
@@ -36,11 +36,11 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
 from synthorg.providers.enums import (
-    AuthType,  # noqa: TC001 -- runtime literal discriminator
+    AuthType,
 )
 
 

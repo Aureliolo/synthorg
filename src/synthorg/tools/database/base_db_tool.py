@@ -9,7 +9,7 @@ from typing import Any
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools.base import BaseTool
-from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
+from synthorg.tools.database.config import DatabaseConnectionConfig
 
 
 class BaseDatabaseTool(BaseTool, ABC):

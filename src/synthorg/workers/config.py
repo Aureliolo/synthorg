@@ -10,7 +10,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _NATS_FORBIDDEN_CHARS: frozenset[str] = frozenset({"*", ">", " ", "\t", "\n", "\r"})
 """Characters rejected in JetStream stream and subject tokens.

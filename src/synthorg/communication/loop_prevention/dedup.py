@@ -1,7 +1,7 @@
 """Delegation deduplication within a time window."""
 
 import time
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import Final
 
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome

@@ -22,7 +22,7 @@ from pydantic import (
     TypeAdapter,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 
 
 class WsAuthMessage(BaseModel):

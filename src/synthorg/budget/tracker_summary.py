@@ -6,7 +6,7 @@ module under the size limit.
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence  # noqa: TC003 -- runtime type
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ from synthorg.budget.category_analytics import (
     compute_orchestration_ratio,
 )
 from synthorg.budget.coordination_config import (
-    OrchestrationAlertThresholds,  # noqa: TC001
+    OrchestrationAlertThresholds,
 )
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.enums import BudgetAlertLevel

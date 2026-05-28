@@ -6,8 +6,8 @@ turn limits, progress-summary checkpoints, and optional replanning.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.trajectory.models import TrajectoryConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.trajectory.models import TrajectoryConfig
 
 
 class HybridLoopConfig(BaseModel):

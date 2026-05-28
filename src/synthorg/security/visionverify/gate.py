@@ -33,7 +33,7 @@ from synthorg.security.visionverify.models import (
     VisionVerdict,
     VisionVerificationReport,
 )
-from synthorg.security.visionverify.protocol import VisionVerifier  # noqa: TC001
+from synthorg.security.visionverify.protocol import VisionVerifier
 from synthorg.security.visionverify.routing import compute_vision_verdict
 
 logger = get_logger(__name__)

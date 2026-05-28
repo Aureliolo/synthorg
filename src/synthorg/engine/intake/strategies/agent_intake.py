@@ -7,8 +7,8 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import (
-    ClientRequest,  # noqa: TC001
-    TaskRequirement,  # noqa: TC001
+    ClientRequest,
+    TaskRequirement,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult

@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,

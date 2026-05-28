@@ -7,8 +7,8 @@ strategies (see Agents design page, D11).
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.hr.performance.models import (
-    TaskMetricRecord,  # noqa: TC001
-    WindowMetrics,  # noqa: TC001
+    TaskMetricRecord,
+    WindowMetrics,
 )
 
 if TYPE_CHECKING:

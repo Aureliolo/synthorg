@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from synthorg.client.models import SimulationMetrics  # noqa: TC001
+from synthorg.client.models import SimulationMetrics
 
 
 class SummaryReport:

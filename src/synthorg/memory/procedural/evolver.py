@@ -15,7 +15,7 @@ from uuid import uuid4
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.memory.procedural.evolver_config import EvolverConfig  # noqa: TC001
+from synthorg.memory.procedural.evolver_config import EvolverConfig
 from synthorg.memory.procedural.evolver_report import EvolverReport
 from synthorg.memory.procedural.models import (
     ProceduralMemoryProposal,
@@ -27,11 +27,11 @@ from synthorg.memory.procedural.supersession import (
     evaluate_supersession,
 )
 from synthorg.memory.procedural.trajectory_aggregator import (
-    AggregatedTrajectory,  # noqa: TC001
-    TrajectoryAggregator,  # noqa: TC001
-    TrajectoryPattern,  # noqa: TC001
+    AggregatedTrajectory,
+    TrajectoryAggregator,
+    TrajectoryPattern,
 )
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.skill_evolver import (
     SKILL_EVOLVER_CONFLICT_DETECTED,

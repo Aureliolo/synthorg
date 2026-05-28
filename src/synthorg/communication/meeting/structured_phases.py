@@ -7,7 +7,7 @@ meetings.
 """
 
 import asyncio
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from synthorg.communication.meeting._parsing import (
@@ -20,7 +20,7 @@ from synthorg.communication.meeting._prompts import (
 )
 from synthorg.communication.meeting._token_tracker import TokenTracker
 from synthorg.communication.meeting.config import (
-    StructuredPhasesConfig,  # noqa: TC001
+    StructuredPhasesConfig,
 )
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
@@ -36,8 +36,8 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
 )
 from synthorg.communication.meeting.protocol import (
-    AgentCaller,  # noqa: TC001
-    ConflictDetector,  # noqa: TC001
+    AgentCaller,
+    ConflictDetector,
 )
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,

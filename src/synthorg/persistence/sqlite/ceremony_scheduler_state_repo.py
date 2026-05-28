@@ -24,7 +24,7 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
     CeremonySchedulerStateRecord,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

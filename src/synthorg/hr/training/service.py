@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.training._storage import store_guarded_items
 from synthorg.hr.training.models import (
     ContentType,

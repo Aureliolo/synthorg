@@ -24,7 +24,7 @@ already routes through a service for the same reason; centralising
 this one closes the remaining gap.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock

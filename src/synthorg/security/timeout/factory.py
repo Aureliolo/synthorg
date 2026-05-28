@@ -17,7 +17,7 @@ from synthorg.security.timeout.policies import (
     TieredTimeoutPolicy,
     WaitForeverPolicy,
 )
-from synthorg.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
+from synthorg.security.timeout.protocol import TimeoutPolicy
 from synthorg.security.timeout.risk_classifier_config import RiskClassifierDeps
 from synthorg.security.timeout.risk_classifier_factory import (
     build_risk_tier_classifier,

@@ -7,7 +7,7 @@ managed paths and commits them, returning ``False`` when there is
 nothing to commit (idempotent re-provision).
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
 from synthorg.engine.errors import EnvironmentProvisionError

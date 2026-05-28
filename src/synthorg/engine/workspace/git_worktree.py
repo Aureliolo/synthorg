@@ -23,7 +23,7 @@ from synthorg.engine.errors import (
     WorkspaceSetupError,
 )
 from synthorg.engine.workspace._git_subprocess import run_git_subprocess
-from synthorg.engine.workspace.config import PlannerWorktreesConfig  # noqa: TC001
+from synthorg.engine.workspace.config import PlannerWorktreesConfig
 from synthorg.engine.workspace.models import (
     MergeConflict,
     MergeResult,

@@ -11,7 +11,9 @@ import argon2
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
+from typeguard import suppress_type_checks
 
+import synthorg.api.app as _app_mod
 import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
@@ -61,6 +63,15 @@ from tests.unit.api.fakes import (
 )
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
+
+# Test-side ``@suppress_type_checks`` wrap on ``create_app``: the
+# signature touches types behind source-side import cycles whose
+# annotations typeguard's eager ``inspect.signature`` cannot resolve at
+# runtime. Wrapping here (rather than at the source) keeps ``typeguard``
+# a pure test dependency and confines the suppression to the call site
+# that needs it.
+create_app = suppress_type_checks(create_app)
+_app_mod.create_app = create_app
 
 # ── Test auth constants ───────────────────────────────────────
 
@@ -475,6 +486,9 @@ def _shared_app(  # noqa: PLR0913
         registry=get_registry(),
     )
 
+    # ``create_app`` is wrapped with ``@suppress_type_checks`` at conftest
+    # import time -- see the module-top wrapping. Wrapping here (rather
+    # than at the source) keeps ``typeguard`` a pure test dependency.
     return create_app(
         config=root_config,
         persistence=fake_persistence,

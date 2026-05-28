@@ -17,7 +17,7 @@ from synthorg.observability.events.mcp import (
     MCP_CACHE_MISS,
 )
 from synthorg.observability.metrics_hub import record_cache_operation
-from synthorg.tools.base import ToolExecutionResult  # noqa: TC001
+from synthorg.tools.base import ToolExecutionResult
 
 _CACHE_NAME = "mcp_result"
 

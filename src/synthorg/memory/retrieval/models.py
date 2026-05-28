@@ -6,9 +6,9 @@ pipelines.  All models are frozen Pydantic with ``allow_inf_nan=False``.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry
 
 
 class RetrievalQuery(BaseModel):

@@ -6,7 +6,7 @@ producing rich contextual dialogue at the cost of quadratic token
 growth.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from synthorg.communication.meeting._parsing import (
@@ -18,7 +18,7 @@ from synthorg.communication.meeting._prompts import (
     inject_lens_perspective,
 )
 from synthorg.communication.meeting._token_tracker import TokenTracker
-from synthorg.communication.meeting.config import RoundRobinConfig  # noqa: TC001
+from synthorg.communication.meeting.config import RoundRobinConfig
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
@@ -32,7 +32,7 @@ from synthorg.communication.meeting.models import (
     MeetingContribution,
     MeetingMinutes,
 )
-from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.communication.meeting.protocol import AgentCaller
 from synthorg.engine.prompt_safety import (
     TAG_PEER_CONTRIBUTION,
     wrap_untrusted,

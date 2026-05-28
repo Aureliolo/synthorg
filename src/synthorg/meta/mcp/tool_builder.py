@@ -7,7 +7,7 @@ type, enforcing the ``synthorg_{domain}_{action}`` naming convention.
 
 from typing import Any
 
-from pydantic import BaseModel  # noqa: TC002 -- Pydantic field type at runtime
+from pydantic import BaseModel
 
 from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.observability import get_logger

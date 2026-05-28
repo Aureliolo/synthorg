@@ -17,7 +17,7 @@ red-team symbol in the ghost-wiring manifest.
 
 from typing import TYPE_CHECKING, NamedTuple
 
-from synthorg.core.clock import Clock  # noqa: TC001
+from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
 from synthorg.security.redteam.agent import build_red_team_agent_identity
@@ -27,7 +27,7 @@ from synthorg.security.redteam.grounding.factory import build_grounding_checker
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.redteam.runner import AgentEngineRunner
 from synthorg.security.redteam.tools.submit_report import SubmitRedTeamReportTool
-from synthorg.tools.base import BaseTool  # noqa: TC001
+from synthorg.tools.base import BaseTool
 
 if TYPE_CHECKING:
     from synthorg.core.agent import ModelConfig

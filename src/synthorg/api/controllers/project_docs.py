@@ -8,7 +8,7 @@ controller exposes list / get / history / search for the wiki UI.
 from typing import TYPE_CHECKING, Annotated, Final
 
 from litestar import Controller, Response, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse

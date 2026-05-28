@@ -27,12 +27,12 @@ reports the deleted subset via ``removed_ids``.
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.models import (
-    ArchivalModeAssignment,  # noqa: TC001
+    ArchivalModeAssignment,
 )
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,9 +2,9 @@
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.quality.verification import AtomicProbe  # noqa: TC001
+from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.quality.verification import AtomicProbe
 
 
 @runtime_checkable

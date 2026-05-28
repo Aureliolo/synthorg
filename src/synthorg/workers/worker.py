@@ -49,7 +49,7 @@ from synthorg.workers.claim import (
     TaskClaim,
     TaskClaimStatus,
 )
-from synthorg.workers.config import QueueConfig  # noqa: TC001
+from synthorg.workers.config import QueueConfig
 from synthorg.workers.heartbeat_models import (
     HEARTBEAT_SUBJECT_PREFIX,
     WorkerHeartbeat,

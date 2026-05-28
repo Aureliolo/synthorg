@@ -7,7 +7,7 @@ new roles, department restructuring, workflow modifications.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from pydantic import JsonValue  # noqa: TC002
+from pydantic import JsonValue
 
 from synthorg.meta.models import (
     ArchitectureChange,

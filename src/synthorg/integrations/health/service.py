@@ -8,7 +8,7 @@ endpoint on ``ConnectionsController`` and the aggregate endpoint on
 from datetime import UTC, datetime
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.prober import get_health_checker

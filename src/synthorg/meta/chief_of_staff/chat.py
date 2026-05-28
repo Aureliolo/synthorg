@@ -12,7 +12,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 # (constructor + ``explain_proposal`` / ``explain_alert`` / ``ask``)
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -20,7 +20,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     wrap_untrusted,
 )
-from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig  # noqa: TC001
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Alert,
     ChatQuery,
@@ -31,8 +31,8 @@ from synthorg.meta.chief_of_staff.prompts import (
     CHAT_QUERY_PROMPT,
     PROPOSAL_EXPLANATION_PROMPT,
 )
-from synthorg.meta.chief_of_staff.protocol import OutcomeStore  # noqa: TC001
-from synthorg.meta.models import (  # noqa: TC001
+from synthorg.meta.chief_of_staff.protocol import OutcomeStore
+from synthorg.meta.models import (
     ImprovementProposal,
     OrgSignalSnapshot,
 )
@@ -45,7 +45,7 @@ from synthorg.observability.events.chief_of_staff import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

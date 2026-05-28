@@ -5,13 +5,13 @@ intake engine, and review pipeline in a single object so the API
 layer has a stable attachment point on ``AppState``.
 """
 
-import asyncio  # noqa: TC003 -- runtime: Pydantic introspects this dataclass field
+import asyncio
 from dataclasses import dataclass, field
 
 from synthorg.client.pool import ClientPool
 from synthorg.client.store import FeedbackStore, RequestStore, SimulationStore
-from synthorg.engine.intake.engine import IntakeEngine  # noqa: TC001
-from synthorg.engine.review.pipeline import ReviewPipeline  # noqa: TC001
+from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.review.pipeline import ReviewPipeline
 
 
 @dataclass(frozen=True)

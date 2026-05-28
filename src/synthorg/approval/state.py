@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.approval.protocol import ApprovalStoreProtocol  # noqa: TC001
-from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
-from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
+from synthorg.approval.protocol import ApprovalStoreProtocol
+from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.security.timeout.scheduler import (
-    ApprovalTimeoutScheduler,  # noqa: TC001
+    ApprovalTimeoutScheduler,
 )
 
 if TYPE_CHECKING:

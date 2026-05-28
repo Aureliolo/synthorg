@@ -14,7 +14,7 @@ from synthorg.communication.enums import (
     MessageBusBackend,
 )
 from synthorg.communication.meeting.config import MeetingProtocolConfig
-from synthorg.communication.meeting.frequency import MeetingFrequency  # noqa: TC001
+from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,

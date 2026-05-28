@@ -32,8 +32,8 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.auth_protocol import SessionFilterSpec  # noqa: TC001
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.auth_protocol import SessionFilterSpec
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

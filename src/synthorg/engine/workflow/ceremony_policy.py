@@ -5,7 +5,7 @@ and ceremony levels) and the ``resolve_ceremony_policy()`` function that
 performs field-by-field 3-level resolution.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- Pydantic runtime
+from collections.abc import Mapping
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, ClassVar, Self

@@ -11,12 +11,12 @@ creation, so the engine's ``TaskGroup`` tool fan-out inherits it.
 """
 
 import contextvars
-from collections.abc import Iterator, Mapping  # noqa: TC003 -- runtime annotation
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class ActiveSandboxEnvironment(BaseModel):

@@ -4,7 +4,7 @@ Frozen Pydantic models for scaling signals, context, decisions,
 and action records.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import Any, Self
 from uuid import uuid4
 

@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker  # noqa: TC001 -- runtime DI seam
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
-from synthorg.meta.charter.config import CharterConfig  # noqa: TC001 -- runtime DI seam
+from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.models import InterviewDecision
 from synthorg.meta.charter.prompts import CHARTER_INTERVIEW_PROMPT
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
@@ -32,7 +32,7 @@ from synthorg.observability.events.charter import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001 -- DI seam
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.models import ConversationTurn

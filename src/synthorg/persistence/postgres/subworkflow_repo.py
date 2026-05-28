@@ -5,7 +5,7 @@ Uses JSONB for node/edge/IO columns and TIMESTAMPTZ for timestamps.
 """
 
 import hashlib
-from collections.abc import Iterable  # noqa: TC003
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal
 
 import psycopg
@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,

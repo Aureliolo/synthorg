@@ -16,7 +16,7 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
 from synthorg.memory.models import MemoryQuery
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_CONTEXT_BUILT,

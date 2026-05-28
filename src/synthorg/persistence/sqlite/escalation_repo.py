@@ -9,7 +9,7 @@ optional decision payload as JSON TEXT columns for schema simplicity.
 import asyncio
 import json
 import sqlite3
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -35,7 +35,7 @@ from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_STATUS_TRANSITIONED,
 )
 from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

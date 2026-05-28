@@ -8,8 +8,8 @@ from synthorg.client.models import (
     ReviewContext,
 )
 from synthorg.client.protocols import (
-    ClientInterface,  # noqa: TC001
-    ClientPoolStrategy,  # noqa: TC001
+    ClientInterface,
+    ClientPoolStrategy,
 )
 from synthorg.engine.review.models import ReviewStageResult, ReviewVerdict
 from synthorg.observability import get_logger

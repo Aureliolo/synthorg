@@ -8,15 +8,15 @@ against local providers (e.g. inference servers on private IPs).
 The design mirrors :class:`~synthorg.tools.git_url_validator.GitCloneNetworkPolicy`.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.config.schema import ProviderConfig  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.config.schema import ProviderConfig
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_URL_ALLOWED,

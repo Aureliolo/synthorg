@@ -4,10 +4,10 @@ import asyncio
 import random
 
 from synthorg.client.models import (
-    ClientProfile,  # noqa: TC001
-    PoolConstraints,  # noqa: TC001
+    ClientProfile,
+    PoolConstraints,
 )
-from synthorg.client.protocols import ClientInterface  # noqa: TC001
+from synthorg.client.protocols import ClientInterface
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_NOT_FOUND
 

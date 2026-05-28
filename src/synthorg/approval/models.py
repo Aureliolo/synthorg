@@ -9,8 +9,8 @@ on the types without forming an import cycle.
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import ApprovalRiskLevel
+from synthorg.core.types import NotBlankStr
 
 
 class EscalationInfo(BaseModel):

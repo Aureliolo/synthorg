@@ -8,7 +8,7 @@ structured verdicts (pass/fail/refer) over handoff artifacts.
 import copy
 import math
 from collections.abc import Mapping
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal, Self
 
@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class VerificationVerdict(StrEnum):

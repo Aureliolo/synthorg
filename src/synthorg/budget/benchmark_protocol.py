@@ -12,13 +12,13 @@ surfaces the :attr:`BenchmarkScore.source` field so operators can
 see whether they are reading stub or measured data.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- required at runtime by Pydantic
-from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
+from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class BenchmarkScore(BaseModel):

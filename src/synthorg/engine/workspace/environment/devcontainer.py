@@ -22,7 +22,7 @@ import asyncio
 import hashlib
 import json
 import re
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock

@@ -14,7 +14,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # ``CostTracker`` is part of ``SeparateAnalyzerProposer.__init__``'s
 # public annotation, so it must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
@@ -41,7 +41,7 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import EvolutionContext

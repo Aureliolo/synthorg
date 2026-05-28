@@ -14,7 +14,7 @@ import base64
 from typing import Any, Final, NoReturn
 from urllib.parse import urlparse
 
-from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.errors import (
     ChannelNotFoundError,
     MessageBusNotRunningError,

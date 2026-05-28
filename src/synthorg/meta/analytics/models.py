@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.signal_models import TrendDirection  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.meta.signal_models import TrendDirection
 
 
 class AnalyticsOverview(BaseModel):

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import DESKTOP_ARGS_VALIDATION_FAILED
 from synthorg.tools.desktop._constants import DESKTOP_IMAGE_PIN_DEFAULT

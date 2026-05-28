@@ -21,7 +21,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_COST_AGG_CURRENCY_PIN_MISSING,
@@ -32,7 +32,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_COST_AGG_INCREMENTED,
 )
 from synthorg.persistence._shared import parse_iso_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

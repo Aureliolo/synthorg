@@ -10,15 +10,18 @@ app_states).  All budget tools are reads; none are destructive.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.budget.state import cost_tracker_of
 from synthorg.budget.version_service import BudgetConfigVersionsService
+from synthorg.core.agent import (
+    AgentIdentity,
+)
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
@@ -40,9 +43,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import config_resolver_of
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

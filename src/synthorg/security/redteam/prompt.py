@@ -9,7 +9,7 @@ untrusted deliverable content via ``wrap_untrusted``.
 
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     TAG_UNTRUSTED_ARTIFACT,

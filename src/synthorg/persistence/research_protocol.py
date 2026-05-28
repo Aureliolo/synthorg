@@ -17,7 +17,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import (
     ResearchRunStatus,
 )
 from synthorg.core.types import NotBlankStr

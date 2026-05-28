@@ -6,7 +6,7 @@ Browse and install MCP servers from the bundled catalog.
 from typing import Annotated, Final, Literal
 
 from litestar import Controller, delete, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,15 +19,15 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.path_params import PathId
+from synthorg.api.state import AppState
 from synthorg.core.domain_errors import ValidationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.models import CatalogEntry
 from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
 )
-from synthorg.integrations.mcp_catalog.installations import (  # noqa: TC001
+from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
 )
 from synthorg.integrations.state import IntegrationsStateSlice

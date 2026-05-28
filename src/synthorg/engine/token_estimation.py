@@ -8,7 +8,7 @@ counting and a ``DefaultTokenEstimator`` using the common
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.providers.models import ChatMessage  # noqa: TC001
+from synthorg.providers.models import ChatMessage
 
 
 @runtime_checkable

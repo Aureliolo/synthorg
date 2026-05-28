@@ -4,7 +4,7 @@ Defines CRUD interfaces for connections, encrypted secret blobs, OAuth
 authorization states, and webhook receipts.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime annotation
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field

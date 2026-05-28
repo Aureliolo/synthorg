@@ -3,7 +3,7 @@
 from types import MappingProxyType
 
 from synthorg.communication.errors import HierarchyResolutionError
-from synthorg.core.company import Company  # noqa: TC001
+from synthorg.core.company import Company
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_HIERARCHY_BUILT,

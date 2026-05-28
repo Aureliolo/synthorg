@@ -3,19 +3,19 @@
 from typing import Final, Self
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ForbiddenError, NotFoundError
-from synthorg.core.enums import AutonomyLevel  # noqa: TC001
+from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger

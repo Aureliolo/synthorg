@@ -21,7 +21,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     parse_iso_utc,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.tracked_container_protocol import TrackedContainerRecord
 
 if TYPE_CHECKING:

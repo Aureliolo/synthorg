@@ -15,14 +15,14 @@ devcontainer strategy builds a sealed image instead, returning its
 reference in :attr:`ProvisionedEnvironment.image_ref`.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime annotation (PEP 649)
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import EnvironmentType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class CommandOutcome(BaseModel):

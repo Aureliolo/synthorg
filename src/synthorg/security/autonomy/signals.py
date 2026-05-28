@@ -8,7 +8,7 @@ so the security/autonomy layer stays decoupled from hr/ and budget/.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable

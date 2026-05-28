@@ -8,19 +8,19 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.memory.filter import NON_INFERABLE_TAG
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.memory.procedural.models import ProceduralMemoryConfig  # noqa: TC001
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.procedural.success_proposer import (
-    SuccessMemoryProposer,  # noqa: TC001
+    SuccessMemoryProposer,
 )
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_CAPTURE_QUALITY_BELOW_THRESHOLD,

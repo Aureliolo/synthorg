@@ -31,7 +31,7 @@ from synthorg.observability.events.provider import (
 from synthorg.observability.metrics_hub import record_provider_error
 from synthorg.observability.tracing.instrumentation import get_tracer
 
-from .capabilities import ModelCapabilities  # noqa: TC001
+from .capabilities import ModelCapabilities
 from .cost_recording import current_cost_context, emit_cost_record_from_context
 from .errors import InvalidRequestError, RateLimitError, classify_provider_error
 from .models import (
@@ -43,8 +43,8 @@ from .models import (
     ToolDefinition,
 )
 from .resilience.errors import RetryExhaustedError
-from .resilience.rate_limiter import RateLimiter  # noqa: TC001
-from .resilience.retry import RetryHandler  # noqa: TC001
+from .resilience.rate_limiter import RateLimiter
+from .resilience.retry import RetryHandler
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
@@ -150,7 +150,7 @@ class BaseCompletionProvider(ABC):
                 config=config,
             )
 
-        from .resilience.retry import RetryResult  # noqa: PLC0415, TC001
+        from .resilience.retry import RetryResult  # noqa: PLC0415
 
         # Per-call child span under whatever parent span the caller
         # owns (typically ``agent.execution`` from AgentEngine).

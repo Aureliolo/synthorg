@@ -25,7 +25,7 @@ from datetime import timedelta
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _CONTENT_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 

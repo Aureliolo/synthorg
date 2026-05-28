@@ -4,23 +4,23 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
-from contextlib import AbstractAsyncContextManager  # noqa: TC003
+from contextlib import AbstractAsyncContextManager
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from synthorg.budget.config import BudgetConfig  # noqa: TC001
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
-from synthorg.core.auth.config import AuthConfig  # noqa: TC001
-from synthorg.core.company import Company  # noqa: TC001
-from synthorg.core.role import Role  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.config import BudgetConfig
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.auth.config import AuthConfig
+from synthorg.core.company import Company
+from synthorg.core.role import Role
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,  # noqa: TC001
+    WorkflowDefinition,
 )
-from synthorg.hr.evaluation.config import EvaluationConfig  # noqa: TC001
+from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.persistence_protocol import (
-    CollaborationMetricRepository,  # noqa: TC001
-    LifecycleEventRepository,  # noqa: TC001
-    TaskMetricRepository,  # noqa: TC001
+    CollaborationMetricRepository,
+    LifecycleEventRepository,
+    TaskMetricRepository,
 )
 
 # ``VersioningService[EntityDefinition]`` appears in the
@@ -29,140 +29,140 @@ from synthorg.hr.persistence_protocol import (
 # caller that introspects the ``PersistenceBackend`` protocol via
 # ``typing.get_type_hints`` resolves the type without ``NameError``.
 from synthorg.ontology.models import (
-    EntityDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+    EntityDefinition,
 )
 from synthorg.persistence.agent_state_protocol import (
-    AgentStateRepository,  # noqa: TC001
+    AgentStateRepository,
 )
-from synthorg.persistence.artifact_protocol import ArtifactRepository  # noqa: TC001
-from synthorg.persistence.audit_protocol import AuditRepository  # noqa: TC001
+from synthorg.persistence.artifact_protocol import ArtifactRepository
+from synthorg.persistence.audit_protocol import AuditRepository
 from synthorg.persistence.auth_protocol import (
-    LockoutRepository,  # noqa: TC001
-    RefreshTokenRepository,  # noqa: TC001
-    SessionRepository,  # noqa: TC001
+    LockoutRepository,
+    RefreshTokenRepository,
+    SessionRepository,
 )
 from synthorg.persistence.ceremony_scheduler_state_protocol import (
-    CeremonySchedulerStateRepository,  # noqa: TC001
+    CeremonySchedulerStateRepository,
 )
 from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,  # noqa: TC001
-    HeartbeatRepository,  # noqa: TC001
+    CheckpointRepository,
+    HeartbeatRepository,
 )
 from synthorg.persistence.circuit_breaker_protocol import (
-    CircuitBreakerStateRepository,  # noqa: TC001
+    CircuitBreakerStateRepository,
 )
-from synthorg.persistence.codebase_structure_map_protocol import (  # noqa: TC001
+from synthorg.persistence.codebase_structure_map_protocol import (
     CodebaseStructureMapRepository,
 )
 from synthorg.persistence.connection_protocol import (
-    ConnectionRepository,  # noqa: TC001
-    ConnectionSecretRepository,  # noqa: TC001
-    OAuthStateRepository,  # noqa: TC001
-    WebhookReceiptRepository,  # noqa: TC001
+    ConnectionRepository,
+    ConnectionSecretRepository,
+    OAuthStateRepository,
+    WebhookReceiptRepository,
 )
 from synthorg.persistence.cost_record_protocol import (
-    CostRecordRepository,  # noqa: TC001
+    CostRecordRepository,
 )
 from synthorg.persistence.custom_rule_protocol import (
-    CustomRuleRepository,  # noqa: TC001
+    CustomRuleRepository,
 )
-from synthorg.persistence.decision_protocol import DecisionRepository  # noqa: TC001
-from synthorg.persistence.docs_protocol import DocsRepository  # noqa: TC001
+from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.docs_protocol import DocsRepository
 from synthorg.persistence.escalation_protocol import (
-    EscalationQueueRepository,  # noqa: TC001
+    EscalationQueueRepository,
 )
 from synthorg.persistence.fine_tune_protocol import (
-    FineTuneCheckpointRepository,  # noqa: TC001
-    FineTuneRunRepository,  # noqa: TC001
+    FineTuneCheckpointRepository,
+    FineTuneRunRepository,
 )
 from synthorg.persistence.flight_recorder_protocol import (
-    FlightRecorderFrameRepository,  # noqa: TC001
+    FlightRecorderFrameRepository,
 )
 from synthorg.persistence.idempotency_protocol import (
-    IdempotencyRepository,  # noqa: TC001
+    IdempotencyRepository,
 )
 from synthorg.persistence.knowledge_protocol import (
-    ChunkProvenanceRepository,  # noqa: TC001
-    KnowledgeSourceRepository,  # noqa: TC001
+    ChunkProvenanceRepository,
+    KnowledgeSourceRepository,
 )
 from synthorg.persistence.mcp_protocol import (
-    McpInstallationRepository,  # noqa: TC001
+    McpInstallationRepository,
 )
 from synthorg.persistence.meeting_cooldown_protocol import (
-    MeetingCooldownRepository,  # noqa: TC001
+    MeetingCooldownRepository,
 )
 from synthorg.persistence.memory_protocol import (
-    OrgFactRepository,  # noqa: TC001
+    OrgFactRepository,
 )
-from synthorg.persistence.message_protocol import MessageRepository  # noqa: TC001
+from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.ontology_protocol import (
-    OntologyDriftReportRepository,  # noqa: TC001
-    OntologyEntityRepository,  # noqa: TC001
+    OntologyDriftReportRepository,
+    OntologyEntityRepository,
 )
 from synthorg.persistence.parked_context_protocol import (
-    ParkedContextRepository,  # noqa: TC001
+    ParkedContextRepository,
 )
-from synthorg.persistence.preset_override_protocol import (  # noqa: TC001
+from synthorg.persistence.preset_override_protocol import (
     PresetOverrideRepo,
 )
 from synthorg.persistence.preset_protocol import (
-    PersonalityPresetRepository,  # noqa: TC001
+    PersonalityPresetRepository,
 )
 from synthorg.persistence.principle_override_protocol import (
-    PrincipleOverrideRepository,  # noqa: TC001
+    PrincipleOverrideRepository,
 )
 from synthorg.persistence.project_cost_aggregate_protocol import (
-    ProjectCostAggregateRepository,  # noqa: TC001
+    ProjectCostAggregateRepository,
 )
-from synthorg.persistence.project_environment_protocol import (  # noqa: TC001
+from synthorg.persistence.project_environment_protocol import (
     ProjectEnvironmentRepository,
 )
-from synthorg.persistence.project_protocol import ProjectRepository  # noqa: TC001
-from synthorg.persistence.project_workspace_protocol import (  # noqa: TC001
+from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
-from synthorg.persistence.provider_audit_protocol import (  # noqa: TC001
+from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
 )
 from synthorg.persistence.research_protocol import (
-    ResearchRunRepository,  # noqa: TC001
+    ResearchRunRepository,
 )
 from synthorg.persistence.risk_override_protocol import (
-    RiskOverrideRepository,  # noqa: TC001
+    RiskOverrideRepository,
 )
 from synthorg.persistence.seen_claims_protocol import (
-    SeenClaimsRepository,  # noqa: TC001
+    SeenClaimsRepository,
 )
-from synthorg.persistence.settings_protocol import SettingsRepository  # noqa: TC001
+from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import (
-    SsrfViolationRepository,  # noqa: TC001
+    SsrfViolationRepository,
 )
 from synthorg.persistence.subworkflow_protocol import (
-    SubworkflowRepository,  # noqa: TC001
+    SubworkflowRepository,
 )
-from synthorg.persistence.task_protocol import TaskRepository  # noqa: TC001
+from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.persistence.tracked_container_protocol import (
-    TrackedContainerRepository,  # noqa: TC001
+    TrackedContainerRepository,
 )
 from synthorg.persistence.training_protocol import (
-    TrainingPlanRepository,  # noqa: TC001
-    TrainingResultRepository,  # noqa: TC001
+    TrainingPlanRepository,
+    TrainingResultRepository,
 )
 from synthorg.persistence.user_protocol import (
-    ApiKeyRepository,  # noqa: TC001
-    UserRepository,  # noqa: TC001
+    ApiKeyRepository,
+    UserRepository,
 )
 from synthorg.persistence.version_protocol import (
-    VersionRepository,  # noqa: TC001
+    VersionRepository,
 )
 from synthorg.persistence.workflow_definition_protocol import (
-    WorkflowDefinitionRepository,  # noqa: TC001
+    WorkflowDefinitionRepository,
 )
 from synthorg.persistence.workflow_execution_protocol import (
-    WorkflowExecutionRepository,  # noqa: TC001
+    WorkflowExecutionRepository,
 )
 from synthorg.versioning.service import (
-    VersioningService,  # noqa: TC001 -- runtime-resolvable annotation
+    VersioningService,
 )
 
 

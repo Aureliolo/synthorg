@@ -20,7 +20,7 @@ from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_ANALYZE,
     EVOLUTION_PROPOSER_INIT,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.engine.evolution.protocols import EvolutionContext

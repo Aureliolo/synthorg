@@ -34,7 +34,7 @@ from synthorg.engine.quality.verification import (
     VerificationRubric,
     VerificationVerdict,
 )
-from synthorg.engine.workflow.handoff import HandoffArtifact  # noqa: TC001
+from synthorg.engine.workflow.handoff import HandoffArtifact
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_CONFIG_INVALID,
@@ -52,7 +52,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:

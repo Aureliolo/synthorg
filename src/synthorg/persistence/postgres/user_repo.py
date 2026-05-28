@@ -27,7 +27,7 @@ from synthorg.api.auth.system_user import is_system_user
 from synthorg.core.auth.models import ApiKey, OrgRole, User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_COUNT_FAILED,
@@ -58,7 +58,7 @@ from synthorg.persistence.constraint_tokens import (
     LAST_OWNER_TRIGGER,
     USERS_USERNAME_UNIQUE,
 )
-from synthorg.persistence.user_protocol import (  # noqa: TC001
+from synthorg.persistence.user_protocol import (
     ApiKeyFilterSpec,
     UserFilterSpec,
 )

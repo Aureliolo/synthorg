@@ -10,10 +10,10 @@ claim of the same ``(scope, key)``.
 import contextlib
 import secrets
 import sqlite3
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 
 import aiosqlite
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -28,7 +28,7 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyOutcome,
     IdempotencyRecord,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

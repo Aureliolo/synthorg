@@ -19,7 +19,7 @@ WebSocket scopes use ticket-based authentication
 """
 
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003 -- runtime use in @asynccontextmanager signature
+    AsyncIterator,
 )
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -27,7 +27,7 @@ from typing import Any, ClassVar
 
 from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
-from litestar.types import ASGIApp, Receive, Scope, Send  # noqa: TC002
+from litestar.types import ASGIApp, Receive, Scope, Send
 
 from synthorg.core.actor_context import (
     ActorIdentity,

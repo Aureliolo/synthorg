@@ -8,8 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.retrieval.models import RetrievalQuery  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.retrieval.models import RetrievalQuery
 
 
 class WorkerRoutingDecision(BaseModel):

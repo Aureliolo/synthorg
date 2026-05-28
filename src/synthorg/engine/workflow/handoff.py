@@ -13,10 +13,10 @@ from typing import Self
 from pydantic import Field, field_validator, model_validator
 
 from synthorg.core.structured_artifact import StructuredArtifact
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import (
-    AtomicProbe,  # noqa: TC001
-    VerificationRubric,  # noqa: TC001
+    AtomicProbe,
+    VerificationRubric,
 )
 from synthorg.observability import safe_error_description
 

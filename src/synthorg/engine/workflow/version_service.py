@@ -11,7 +11,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_NOT_FOUND,

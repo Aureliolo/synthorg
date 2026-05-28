@@ -26,8 +26,8 @@ from pydantic import (
 )
 
 from synthorg.core.enums import ClaimType, ResearchRunStatus, ResearchSourceType
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
-from synthorg.knowledge.models import (  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.models import (
     Citation,
     Sha256Hex,
     TitleText,

@@ -3,7 +3,7 @@
 from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, Response, delete, get, post, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, QueryParameter
 

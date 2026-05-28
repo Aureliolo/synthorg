@@ -19,8 +19,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
-from synthorg.providers.models import (  # noqa: TC001 -- Pydantic field types
+from synthorg.core.types import NotBlankStr
+from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     ToolDefinition,

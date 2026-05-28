@@ -42,7 +42,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import (
-    Task,  # noqa: TC001 -- runtime Protocol/return-type annotation
+    Task,
 )
 from synthorg.observability import (
     get_logger,

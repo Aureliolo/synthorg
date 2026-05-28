@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Final
 
 from litestar import Controller, delete, get, post, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter, QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
@@ -35,9 +35,9 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -61,7 +61,7 @@ from synthorg.ontology.models import (
     EntitySource,
     EntityTier,
 )
-from synthorg.ontology.service import OntologyService  # noqa: TC001
+from synthorg.ontology.service import OntologyService
 from synthorg.ontology.state import OntologyStateSlice
 
 logger = get_logger(__name__)

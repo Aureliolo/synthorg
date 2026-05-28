@@ -8,14 +8,14 @@ stamping a content hash over the structural facts (independent of
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.codebase_structure_map import (
     CodebaseStructureMap,
     Ecosystem,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.scanner.protocol import (
     EcosystemScan,
     StructureMapScanner,

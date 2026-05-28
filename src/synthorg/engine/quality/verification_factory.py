@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.validation import require_non_blank
 from synthorg.engine.quality.decomposer_protocol import (
-    CriteriaDecomposer,  # noqa: TC001
+    CriteriaDecomposer,
 )
 from synthorg.engine.quality.decomposers.identity import (
     IdentityCriteriaDecomposer,
 )
 from synthorg.engine.quality.decomposers.llm import LLMCriteriaDecomposer
-from synthorg.engine.quality.grader_protocol import RubricGrader  # noqa: TC001
+from synthorg.engine.quality.grader_protocol import RubricGrader
 from synthorg.engine.quality.graders.heuristic import (
     HeuristicGraderConfig,
     HeuristicRubricGrader,

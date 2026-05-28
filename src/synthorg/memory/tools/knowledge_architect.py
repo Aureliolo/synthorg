@@ -12,7 +12,7 @@ allowed (upstream approval / plan-review gate expected).
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (

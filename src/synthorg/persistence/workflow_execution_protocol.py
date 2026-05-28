@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import (
-    WorkflowExecutionStatus,  # noqa: TC001 -- runtime in FilterSpec
+    WorkflowExecutionStatus,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.execution_models import (

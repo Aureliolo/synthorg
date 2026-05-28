@@ -7,7 +7,7 @@ weight redistribution when pillars or metrics are disabled.
 """
 
 from collections.abc import (
-    Sequence,  # noqa: TC003 - needed at runtime for PEP 649 VALUE format
+    Sequence,
 )
 from typing import Self
 from uuid import uuid4
@@ -21,9 +21,9 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.evaluation.config import EvaluationConfig  # noqa: TC001
-from synthorg.hr.evaluation.enums import EvaluationPillar  # noqa: TC001
-from synthorg.hr.performance.models import (  # noqa: TC001
+from synthorg.hr.evaluation.config import EvaluationConfig
+from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     LlmCalibrationRecord,
     TaskMetricRecord,

@@ -11,7 +11,7 @@ Callers depend on the :class:`ApprovalRepository` Protocol from
 structurally.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime param type
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -36,7 +36,7 @@ from synthorg.persistence._shared import (
     normalize_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.approval_protocol import ApprovalFilterSpec  # noqa: TC001
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

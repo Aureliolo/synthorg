@@ -12,7 +12,7 @@ from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     ConnectionStatus,
     ConnectionType,
@@ -24,7 +24,7 @@ from synthorg.integrations.health.checks.generic_http import (
 from synthorg.integrations.health.checks.github import GitHubHealthCheck
 from synthorg.integrations.health.checks.slack import SlackHealthCheck
 from synthorg.integrations.health.checks.smtp import SmtpHealthCheck
-from synthorg.integrations.health.protocol import ConnectionHealthCheck  # noqa: TC001
+from synthorg.integrations.health.protocol import ConnectionHealthCheck
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     HEALTH_CHECK_FAILED,

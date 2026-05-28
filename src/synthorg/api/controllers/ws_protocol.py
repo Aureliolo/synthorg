@@ -27,7 +27,7 @@ from synthorg.api.ws_control_models import (
     WsSubscribeMessage,
     WsUnsubscribeMessage,
 )
-from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

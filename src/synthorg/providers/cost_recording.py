@@ -17,7 +17,7 @@ The scope is async-safe: Python :mod:`contextvars` propagate per
 import asyncio
 import math
 from collections.abc import (
-    AsyncIterator,  # noqa: TC003 -- runtime use in @asynccontextmanager signature
+    AsyncIterator,
 )
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.budget.call_category import LLMCallCategory  # noqa: TC001
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 
@@ -34,7 +34,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 # annotations on ``cost_recording_scope`` / ``resolve_currency`` /
 # ``emit_cost_record_from_context``, so they must resolve at runtime
 # when downstream tooling evaluates type hints.
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -43,7 +43,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_COST_RECORDED,
     PROVIDER_COST_SKIPPED,
 )
-from synthorg.providers.models import (  # noqa: TC001
+from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )

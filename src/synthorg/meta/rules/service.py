@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (

@@ -21,7 +21,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 # ── A2A Metadata Keys ──────────────────────────────────────────
 

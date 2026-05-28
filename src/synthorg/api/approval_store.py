@@ -34,11 +34,11 @@ first's in-flight marker.
 """
 
 import asyncio
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError

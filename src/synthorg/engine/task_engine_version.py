@@ -7,7 +7,7 @@ lifecycle and queue management.
 """
 
 from datetime import (
-    datetime,  # noqa: TC003 -- runtime import: see record_creation tzinfo handling
+    datetime,
 )
 
 from synthorg.engine.errors import TaskVersionConflictError

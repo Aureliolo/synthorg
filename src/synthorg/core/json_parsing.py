@@ -22,7 +22,7 @@ import re
 # Runtime import (not TYPE_CHECKING) so ``typing.get_type_hints()``
 # can resolve ``Callable`` in the public function annotations under
 # Python 3.14's PEP 649 lazy-evaluation regime.
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import Any
 
 from synthorg.core.critical_errors import reraise_critical

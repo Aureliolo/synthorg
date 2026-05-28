@@ -20,7 +20,7 @@ from synthorg.persistence._shared.audit import (
     classify_audit_save_error,
     row_to_audit_entry,
 )
-from synthorg.security.models import AuditVerdictStr  # noqa: TC001
+from synthorg.security.models import AuditVerdictStr
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool

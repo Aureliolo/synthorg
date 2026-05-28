@@ -13,11 +13,11 @@ from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (  # noqa: TC001 -- Pydantic field types
+from synthorg.core.enums import (
     InterventionKind,
     TaskStatus,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
 
 __all__ = [

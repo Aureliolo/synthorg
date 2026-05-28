@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel, SkillPattern
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.templates.model_requirements import ModelTier
 
 
 def _normalize_and_validate_preset(

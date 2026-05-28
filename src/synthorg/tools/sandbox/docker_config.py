@@ -6,7 +6,7 @@ from typing import Any, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
     CONFIG_VALIDATION_FAILED,
@@ -18,7 +18,7 @@ from synthorg.tools.sandbox._image_resolution import (
 from synthorg.tools.sandbox.config import DEFAULT_ENV_DENYLIST_PATTERNS
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
-from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
+from synthorg.tools.sandbox.policy import SandboxPolicy
 
 logger = get_logger(__name__)
 

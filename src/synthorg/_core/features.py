@@ -24,13 +24,13 @@ optional extras); a malformed or unimportable ``feature.py`` fails loudly.
 import heapq
 import importlib
 from collections.abc import (
-    Iterable,  # noqa: TC003 -- runtime use in resolve_feature_order signature (typeguard-ready)
+    Iterable,
 )
 from pathlib import Path
 from typing import ClassVar, Protocol, runtime_checkable
 
 from litestar import (
-    Controller,  # noqa: TC002 -- Pydantic resolves the type[Controller] field at runtime
+    Controller,
 )
 from pydantic import BaseModel, ConfigDict
 
@@ -38,12 +38,12 @@ import synthorg
 from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- Pydantic resolves this field type at runtime
+    NotBlankStr,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.settings.enums import (
-    SettingNamespace,  # noqa: TC001 -- Pydantic resolves this field type at runtime
+    SettingNamespace,
 )
 
 __all__ = [

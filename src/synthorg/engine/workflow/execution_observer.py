@@ -12,20 +12,20 @@ the parent workflow execution accordingly.
 # module globals so introspectors (``typing.get_type_hints`` /
 # ``inspect.get_annotations``) can resolve the names at runtime.
 from synthorg.engine.task_engine import (
-    TaskEngine,  # noqa: TC001 -- runtime-resolvable annotation
+    TaskEngine,
 )
 from synthorg.engine.task_engine_models import (
-    TaskStateChanged,  # noqa: TC001 -- runtime-resolvable annotation
+    TaskStateChanged,
 )
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.observability import get_logger
 from synthorg.persistence.workflow_definition_protocol import (
-    WorkflowDefinitionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+    WorkflowDefinitionRepository,
 )
 from synthorg.persistence.workflow_execution_protocol import (
-    WorkflowExecutionRepository,  # noqa: TC001 -- runtime-resolvable annotation
+    WorkflowExecutionRepository,
 )
 
 logger = get_logger(__name__)

@@ -22,11 +22,11 @@ from synthorg.budget.call_category import LLMCallCategory
 # ``CostTracker`` is part of ``LLMCriteriaDecomposer.__init__``'s public
 # annotation, so it must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CRITERIA_JSON,
     untrusted_content_directive,
@@ -47,7 +47,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_PROBES_PER_CRITERION: Final[int] = 5

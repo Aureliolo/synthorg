@@ -23,7 +23,7 @@ import contextlib
 import os
 import re
 from abc import ABC
-from pathlib import Path  # noqa: TC003 -- used at runtime
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 

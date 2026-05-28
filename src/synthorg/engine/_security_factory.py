@@ -12,8 +12,8 @@ from synthorg.observability.events.security import (
     SECURITY_CONFIG_LOADED,
     SECURITY_DISABLED,
 )
-from synthorg.security.audit import AuditLog  # noqa: TC001
-from synthorg.security.config import SecurityConfig  # noqa: TC001
+from synthorg.security.audit import AuditLog
+from synthorg.security.config import SecurityConfig
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.rules.credential_detector import CredentialDetector
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule

@@ -9,9 +9,9 @@ Used by ``AgentEngine`` to keep resume orchestration concise.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import FailureCategory  # noqa: TC001
+from synthorg.core.enums import FailureCategory
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
-from synthorg.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
+from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop

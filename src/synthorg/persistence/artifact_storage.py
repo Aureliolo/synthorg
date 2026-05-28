@@ -11,7 +11,7 @@ Listing artifacts is a metadata concern handled by
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable

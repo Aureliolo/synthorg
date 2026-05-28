@@ -6,7 +6,7 @@ and the test framework; classifies the ecosystem as TypeScript when a
 """
 
 import json
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Any, Final
 
 from synthorg.core.codebase_structure_map import (

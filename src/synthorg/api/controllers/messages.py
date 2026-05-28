@@ -3,7 +3,7 @@
 from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, delete, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
@@ -15,11 +15,11 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.communication.channel import Channel
-from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.communication.message import Message
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr

@@ -14,8 +14,8 @@ from synthorg.budget.call_category import LLMCallCategory
 # ``LlmDecompositionStrategy`` (constructor + ``decompose``), so they
 # must resolve at runtime when downstream tooling evaluates type hints
 # (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
-from synthorg.core.task import Task  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.llm_prompt import (
     build_decomposition_tool,
@@ -25,7 +25,7 @@ from synthorg.engine.decomposition.llm_prompt import (
     parse_content_response,
     parse_tool_call_response,
 )
-from synthorg.engine.decomposition.models import (  # noqa: TC001
+from synthorg.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
 )
@@ -50,7 +50,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

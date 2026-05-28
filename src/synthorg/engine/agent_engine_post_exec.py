@@ -15,7 +15,7 @@ from synthorg.engine.cost_recording import (
     resolve_tracker_currency,
 )
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
-from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import (

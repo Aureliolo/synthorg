@@ -3,7 +3,7 @@
 import asyncio
 import json
 import sqlite3
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal

@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.security.audit import AuditLog  # noqa: TC001
+from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.protocol import (
-    AutonomyChangeStrategy,  # noqa: TC001
+    AutonomyChangeStrategy,
 )
-from synthorg.security.trust.service import TrustService  # noqa: TC001
+from synthorg.security.trust.service import TrustService
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

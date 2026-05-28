@@ -8,7 +8,7 @@ design artifacts.
 import copy
 from typing import Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -24,7 +24,7 @@ from synthorg.observability.events.design import (
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import AssetManagerArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
-from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+from synthorg.tools.design.config import DesignToolsConfig
 
 logger = get_logger(__name__)
 

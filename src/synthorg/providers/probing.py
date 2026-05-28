@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_PROBE_COMPLETED,

@@ -17,7 +17,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import ToolAccessLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.sub_constraint import SUB_CONSTRAINT_RESOLVED
 

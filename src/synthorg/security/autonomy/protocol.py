@@ -2,8 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.enums import AutonomyLevel, DowngradeReason  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import AutonomyLevel, DowngradeReason
+from synthorg.core.types import NotBlankStr
 
 
 # HumanOnlyPromotionStrategy impl in autonomy/change_strategy.py;

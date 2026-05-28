@@ -7,7 +7,7 @@ vision verifier reads the saved PNGs by the relative path the tool
 reports.
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime use in workspace resolution
+from pathlib import Path
 from typing import Final
 
 from synthorg.tools.desktop._constants import PNG_EXTENSION, SCREENSHOTS_SUBDIR

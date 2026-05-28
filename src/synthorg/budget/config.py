@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.risk_config import RiskBudgetConfig
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
     MirrorField,

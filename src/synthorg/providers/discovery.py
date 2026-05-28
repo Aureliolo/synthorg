@@ -24,7 +24,7 @@ import httpx
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
+from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (

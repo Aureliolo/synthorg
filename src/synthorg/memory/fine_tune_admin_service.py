@@ -43,7 +43,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_STARTED,
 )
 from synthorg.persistence.fine_tune_protocol import (
-    FineTuneRunRepository,  # noqa: TC001 -- runtime arg type
+    FineTuneRunRepository,
 )
 
 if TYPE_CHECKING:

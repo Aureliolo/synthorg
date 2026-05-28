@@ -15,12 +15,12 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.client.models import (
-    ClientFeedback,  # noqa: TC001
-    GenerationContext,  # noqa: TC001
-    ReviewContext,  # noqa: TC001
-    TaskRequirement,  # noqa: TC001
+    ClientFeedback,
+    GenerationContext,
+    ReviewContext,
+    TaskRequirement,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

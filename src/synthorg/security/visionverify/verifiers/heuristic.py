@@ -11,7 +11,7 @@ expected colour. A violation becomes a HIGH-severity
 measured-vs-expected colours as evidence.
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime use in screenshot resolution
+from pathlib import Path
 from typing import Final
 
 from synthorg.observability import get_logger

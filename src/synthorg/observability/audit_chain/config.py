@@ -1,13 +1,13 @@
 """AuditChainConfig -- opt-in configuration for the audit chain sink."""
 
 from enum import StrEnum
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.audit_chain import AUDIT_CHAIN_CONFIG_INVALID_PRESET
 

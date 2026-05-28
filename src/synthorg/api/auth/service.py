@@ -16,7 +16,7 @@ from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.system_user import USER_AUDIENCE, USER_ISSUER
 from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.api.boundary import parse_typed
-from synthorg.core.auth.models import User  # noqa: TC001
+from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     RefreshTokenInvalidError,

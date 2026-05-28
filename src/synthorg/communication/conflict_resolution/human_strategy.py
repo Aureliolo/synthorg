@@ -33,8 +33,8 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
 )
 from synthorg.communication.conflict_resolution.escalation.protocol import (
-    DecisionProcessor,  # noqa: TC001
-    EscalationQueueStore,  # noqa: TC001
+    DecisionProcessor,
+    EscalationQueueStore,
 )
 from synthorg.communication.conflict_resolution.escalation.registry import (
     PendingFuturesRegistry,
@@ -46,7 +46,7 @@ from synthorg.communication.conflict_resolution.models import (
     DissentRecord,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.models import (
     Notification,
     NotificationCategory,

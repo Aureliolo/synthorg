@@ -6,13 +6,13 @@ partially overlaps the existing one.
 """
 
 import re
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.procedural.models import ProceduralMemoryProposal  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.procedural.models import ProceduralMemoryProposal
 from synthorg.observability import get_logger
 from synthorg.observability.events.skill_evolver import (
     SUPERSESSION_CONFLICT,

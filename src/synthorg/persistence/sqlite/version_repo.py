@@ -27,7 +27,7 @@ from pydantic import BaseModel, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.versioning import (
     VERSION_COUNT_FAILED,
@@ -41,7 +41,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     coerce_row_timestamp,
     format_iso_utc,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.version_protocol import _DEFAULT_LIST_LIMIT_50
 from synthorg.versioning.models import VersionSnapshot
 

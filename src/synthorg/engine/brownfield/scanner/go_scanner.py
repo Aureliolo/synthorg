@@ -6,7 +6,7 @@ and ``*_test.go`` locations (test suites).
 """
 
 import re
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Final
 
 from synthorg.core.codebase_structure_map import (

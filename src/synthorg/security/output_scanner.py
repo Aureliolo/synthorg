@@ -5,7 +5,7 @@ patterns from ``data_leak_detector`` to scan tool output for
 sensitive data.  Always logs findings at WARNING.
 """
 
-import re  # noqa: TC003
+import re
 from typing import Final
 
 from synthorg.observability import get_logger

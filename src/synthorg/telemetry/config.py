@@ -6,7 +6,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- Pydantic needs it at runtime
+    NotBlankStr,
 )
 
 MAX_STRING_LENGTH: Final[int] = 64

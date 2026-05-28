@@ -18,7 +18,7 @@ from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_FILL_UPDATED,
     CONTEXT_BUDGET_INDICATOR_INJECTED,
 )
-from synthorg.providers.models import ChatMessage  # noqa: TC001
+from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext

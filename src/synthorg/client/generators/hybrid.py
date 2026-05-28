@@ -3,10 +3,10 @@
 import random
 
 from synthorg.client.models import (
-    GenerationContext,  # noqa: TC001
-    TaskRequirement,  # noqa: TC001
+    GenerationContext,
+    TaskRequirement,
 )
-from synthorg.client.protocols import RequirementGenerator  # noqa: TC001
+from synthorg.client.protocols import RequirementGenerator
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REQUIREMENT_GENERATED
 

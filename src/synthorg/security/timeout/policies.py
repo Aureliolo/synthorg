@@ -11,11 +11,11 @@ from synthorg.observability.events.timeout import (
     TIMEOUT_WAITING,
 )
 from synthorg.security.timeout.config import (
-    EscalationStep,  # noqa: TC001
-    TierConfig,  # noqa: TC001
+    EscalationStep,
+    TierConfig,
 )
 from synthorg.security.timeout.models import TimeoutAction
-from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
+from synthorg.security.timeout.protocol import RiskTierClassifier
 
 if TYPE_CHECKING:
     # Runtime-deferred: importing ``ApprovalItem`` at module level would

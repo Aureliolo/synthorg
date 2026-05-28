@@ -29,7 +29,7 @@ from typing import ClassVar, Final
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.auth.token_size import get_auth_token_bytes
-from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import PerOperationRateLimitError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode

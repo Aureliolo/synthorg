@@ -20,9 +20,9 @@ from synthorg.budget.currency import (
     CurrencyCode,
     assert_currencies_match,
 )
-from synthorg.budget.spending_summary import SpendingSummary  # noqa: TC001
+from synthorg.budget.spending_summary import SpendingSummary
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.cfo import (
     CFO_REPORT_GENERATED,

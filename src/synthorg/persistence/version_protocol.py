@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from synthorg.versioning.models import VersionSnapshot

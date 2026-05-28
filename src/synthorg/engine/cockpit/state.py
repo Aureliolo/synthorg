@@ -9,11 +9,11 @@ handlers raise 503 on a ``None`` field.
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
-from synthorg.engine.cockpit import CockpitService  # noqa: TC001
+from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.flight_recording import (
-    FlightRecorderService,  # noqa: TC001
+    FlightRecorderService,
 )
-from synthorg.engine.intervention import SteeringDirective  # noqa: TC001
+from synthorg.engine.intervention import SteeringDirective
 
 
 class CockpitStateSlice(BaseFeatureStateSlice):

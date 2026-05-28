@@ -12,8 +12,8 @@ from typing import Any, ClassVar, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ConsolidationInterval, MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.models import RetentionRule  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.models import RetentionRule
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.settings.enums import SettingNamespace

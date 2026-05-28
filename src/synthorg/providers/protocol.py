@@ -4,16 +4,16 @@ The engine and tests type-hint against ``CompletionProvider`` for loose
 coupling.  Concrete adapters and test doubles satisfy it structurally.
 """
 
-from collections.abc import AsyncIterator, Mapping  # noqa: TC003
+from collections.abc import AsyncIterator, Mapping
 from typing import Protocol, runtime_checkable
 
-from .capabilities import ModelCapabilities  # noqa: TC001
+from .capabilities import ModelCapabilities
 from .models import (
-    ChatMessage,  # noqa: TC001
-    CompletionConfig,  # noqa: TC001
-    CompletionResponse,  # noqa: TC001
-    StreamChunk,  # noqa: TC001
-    ToolDefinition,  # noqa: TC001
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    StreamChunk,
+    ToolDefinition,
 )
 
 

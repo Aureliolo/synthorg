@@ -16,13 +16,13 @@ so both halves of the flow respect the persistence-layer boundary;
 a bare repository.
 """
 
-from datetime import datetime  # noqa: TC003 -- runtime annotation
+from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
-    OAuthState,  # noqa: TC001 -- runtime annotation
+    OAuthState,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (

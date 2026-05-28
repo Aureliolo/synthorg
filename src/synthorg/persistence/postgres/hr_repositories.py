@@ -15,7 +15,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.hr.enums import LifecycleEventType  # noqa: TC001
+from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
     CollaborationMetricRecord,

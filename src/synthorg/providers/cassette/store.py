@@ -28,7 +28,7 @@ from typing import Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_EXHAUSTED,
@@ -36,10 +36,10 @@ from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_MISS,
     PROVIDER_CASSETTE_SESSION_FLUSHED,
 )
-from synthorg.providers.capabilities import (  # noqa: TC001 -- Pydantic field type
+from synthorg.providers.capabilities import (
     ModelCapabilities,
 )
-from synthorg.providers.models import (  # noqa: TC001 -- Pydantic field types
+from synthorg.providers.models import (
     CompletionResponse,
     StreamChunk,
 )
@@ -49,9 +49,9 @@ from .errors import (
     CassetteReplayExhaustedError,
     CassetteReplayMissError,
 )
-from .keying import CassetteMethod  # noqa: TC001 -- Pydantic field type
+from .keying import CassetteMethod
 from .mode import CassetteMode
-from .redaction import CassetteRedactor  # noqa: TC001 -- ctor param annotation
+from .redaction import CassetteRedactor
 
 logger = get_logger(__name__)
 

@@ -7,13 +7,13 @@ procedural memories from task failures (when recovery_result is not None).
 import asyncio
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
-from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
-from synthorg.memory.procedural.models import ProceduralMemoryConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.recovery import RecoveryResult
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.procedural.pipeline import propose_procedural_memory
-from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa: TC001
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_CAPTURE_STORE_FAILED,

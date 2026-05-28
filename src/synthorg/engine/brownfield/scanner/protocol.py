@@ -1,11 +1,11 @@
 """Structure-map scanner protocol and partial-contribution model."""
 
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.codebase_structure_map import (  # noqa: TC001 -- Pydantic fields
+from synthorg.core.codebase_structure_map import (
     BuildFile,
     Dependency,
     Ecosystem,

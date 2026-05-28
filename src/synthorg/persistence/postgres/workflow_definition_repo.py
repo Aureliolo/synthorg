@@ -18,7 +18,7 @@ from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     QueryError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,

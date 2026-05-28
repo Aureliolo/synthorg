@@ -17,10 +17,10 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
-from synthorg.core.enums import Complexity, TaskType  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
+from synthorg.core.enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.hr.enums import TrendDirection  # noqa: TC001
+from synthorg.hr.enums import TrendDirection
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_PERFORMANCE_CURRENCY_INVARIANT_VIOLATED
 

@@ -19,7 +19,7 @@ from synthorg.api.api_core_state import (
     auth_service_of,
     session_store_of,
 )
-from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
+from synthorg.api.auth.claims import JwtClaims
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.api.auth.system_user import (
     SYSTEM_AUDIENCE,

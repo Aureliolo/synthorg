@@ -8,7 +8,7 @@ import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -21,7 +21,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import validate_pagination_args
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

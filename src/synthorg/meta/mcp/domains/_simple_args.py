@@ -23,7 +23,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     IsoDatetimeStr,

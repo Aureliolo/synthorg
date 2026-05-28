@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from litestar import Controller, delete, get, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,7 +21,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.persistence_errors import ConstraintViolationError

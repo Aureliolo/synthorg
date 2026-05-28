@@ -8,7 +8,7 @@ boundary is filesystem-only; no sqlite / psycopg involvement.
 import hashlib
 import json
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003 -- runtime use in workspace resolution
+from pathlib import Path
 from typing import Final
 
 from synthorg.observability import get_logger, safe_error_description

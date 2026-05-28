@@ -6,7 +6,7 @@ fields (personality, seniority, authority, model config, memory,
 tool permissions, budget, autonomy, strategic mode, hiring date).
 """
 
-from collections.abc import Sequence  # noqa: TC003 -- runtime for type annotation
+from collections.abc import Sequence
 from typing import Literal
 
 from synthorg.a2a.models import (
@@ -16,7 +16,7 @@ from synthorg.a2a.models import (
     A2AAuthSchemeInfo,
 )
 from synthorg.core.agent import (
-    AgentIdentity,  # noqa: TC001 -- runtime for type annotation
+    AgentIdentity,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (

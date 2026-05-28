@@ -23,13 +23,13 @@ from pydantic import (
 
 from synthorg.core.enums import FailureCategory, TaskStatus
 from synthorg.core.types import NotBlankStr, validate_unique_strings
-from synthorg.engine.context import AgentContext, AgentContextSnapshot  # noqa: TC001
+from synthorg.engine.context import AgentContext, AgentContextSnapshot
 from synthorg.engine.immutable import deep_copy_mapping
 from synthorg.engine.stagnation.models import (
     StagnationResult,
     StagnationVerdict,
 )
-from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
+from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_COMPLETE,

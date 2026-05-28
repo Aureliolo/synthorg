@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
 
 
 class ResolvedModel(BaseModel):

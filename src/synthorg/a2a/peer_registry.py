@@ -11,7 +11,7 @@ import copy
 from types import MappingProxyType
 
 from synthorg.a2a.models import (
-    A2AAgentCard,  # noqa: TC001 -- runtime for type annotation
+    A2AAgentCard,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.a2a import (

@@ -12,7 +12,7 @@ paths in lockstep.
 import ipaddress
 from typing import Any, Final, Literal
 
-from litestar.connection import ASGIConnection  # noqa: TC002
+from litestar.connection import ASGIConnection
 
 from synthorg.core.normalization import parse_comma_list_stripped
 from synthorg.observability import get_logger

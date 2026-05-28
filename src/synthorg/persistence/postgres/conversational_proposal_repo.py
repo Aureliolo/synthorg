@@ -24,7 +24,7 @@ from synthorg.persistence._shared import (
     coerce_row_timestamp,
     validate_pagination_args,
 )
-from synthorg.persistence.conversational_proposal_protocol import (  # noqa: TC001
+from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
 

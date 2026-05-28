@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import ModelTier  # noqa: TC001
+from synthorg.core.types import ModelTier
 
 
 class DecomposerVariant(StrEnum):

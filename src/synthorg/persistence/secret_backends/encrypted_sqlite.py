@@ -12,7 +12,7 @@ import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.config import EncryptedSqliteConfig
 from synthorg.integrations.errors import (
     MasterKeyError,
