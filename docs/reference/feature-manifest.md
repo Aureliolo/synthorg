@@ -146,8 +146,9 @@ at boot. For example, `build_coordinator` is defined in
 `synthorg._core.features.discover_features()` walks the filesystem for
 `feature.py` modules, imports each, and returns them in dependency
 order (independents sorted by name; cycles + duplicates raise
-`FeatureDependencyError`). The result is memoised; the index
-generator and the freshness gate pass `force=True` to rebuild.
+`FeatureDependencyError`). The result is cached at module level;
+the index generator and the freshness gate pass `force=True` to
+rebuild.
 
 `feature_directories()` maps feature name -> repo-relative directory
 (e.g. `charter -> src/synthorg/meta/charter`). The navigation-index

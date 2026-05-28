@@ -55,7 +55,8 @@ files.
   `count_loc`, and assigns an `owning_feature` by longest-directory-
   prefix match against the manifests' declared directories.
 
-Both writes are atomic (tempfile + rename). The generator warms the
+Both writes are atomic (write a temporary file, then rename it into
+place). The generator warms the
 import graph by importing `synthorg.api.app` first so the per-feature
 walk imports against a resolved boot order (otherwise the latent
 `core.agent` import cycle trips).
@@ -119,11 +120,11 @@ Tool-count assertions bump from 231 to 232 in both
 
 ## Alternatives considered
 
-### Single JSON file aggregating both feature_index + codebase_map
+### Single JSON file aggregating both artefacts
 
 Rejected. Different consumers: agents query `feature_index.json` for
 feature surfaces; module-size audits query `codebase_map.json` for
-per-module tier data. Different cardinalities (32 vs ~1000), different
+per-module tier data. Different cardinality (32 vs ~1000), different
 update cadences, different read patterns. Two files keep the per-
 consumer payload small.
 
@@ -142,7 +143,7 @@ on every query.
 ## Related
 
 - ADR-0006: tiered module-size policy + the `# module-kind:` tier the
-  codebase_map records.
+  `codebase_map.json` records.
 - ADR-0007: feature-manifest substrate this index reads.
 - #2046: the umbrella EPIC.
 - #2149: the implementation issue.

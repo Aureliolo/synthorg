@@ -50,7 +50,8 @@ features it depends on. The seam had to satisfy four constraints:
 - `LifecycleHook`, `McpHandlerModule`: read-only Protocols a feature
   satisfies structurally.
 - `discover_features()`: filesystem walk + import + dependency-order
-  resolution. Memoised; tests pass `force=True` to rebuild.
+  resolution. Memo-cached at module level; tests pass `force=True` to
+  rebuild.
 - `feature_directories()`: maps feature name -> repo-relative directory.
   Consumed by the navigation-index generator.
 - `resolve_feature_order()`: pure topological sort with deterministic
@@ -133,9 +134,10 @@ own the symbol-level inventory.
 ### Neutral
 
 - `AppState` still owns 21 cross-cutting mutable primitives (request
-  locks, bridge configs, WS timeouts, background-task sets,
-  shutdown event, clock, config, startup_time). These do not fit any
-  one feature; the gate's approved set codifies the boundary.
+  locks, bridge configs, WS timeouts, background-task sets, the
+  shutdown event, plus `clock`, `config`, and `startup_time`). These
+  do not fit any one feature; the gate's approved set codifies the
+  boundary.
 - Boot still warms `synthorg.api.app` before walking `feature.py`
   modules (the latent `core.agent` import cycle resolves through that
   order). The generator + freshness gate include the warmup; the
