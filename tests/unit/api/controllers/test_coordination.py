@@ -1,14 +1,12 @@
 """Tests for coordination controller."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from datetime import date
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
@@ -30,7 +28,7 @@ from synthorg.engine.coordination.models import (
 from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -113,13 +111,13 @@ def local_agent_registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-def coordination_ctx(
+async def coordination_ctx(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     auth_service: AuthService,
     mock_coordinator: AsyncMock,
     local_agent_registry: AgentRegistryService,
-) -> Generator[SimpleNamespace]:
+) -> AsyncGenerator[SimpleNamespace]:
     """Test client + the bound task engine for coordinator tests.
 
     Returns a ``SimpleNamespace(client, task_engine)``: the client is
@@ -179,7 +177,7 @@ def coordination_ctx(
             {"test-provider": ProviderConfig(driver="scripted")},
         ),
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
         yield SimpleNamespace(client=client, task_engine=task_engine)
 
@@ -198,7 +196,7 @@ class TestCoordinationControllerHappyPath:
         task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.return_value = _make_coordination_result(task_id)
 
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -223,7 +221,7 @@ class TestCoordinationControllerHappyPath:
         task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.return_value = _make_coordination_result(task_id)
 
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={"agent_names": ["alice"]},
         )
@@ -251,7 +249,7 @@ class TestCoordinationControllerHappyPath:
             task_id, is_success=False
         )
 
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -263,11 +261,11 @@ class TestCoordinationControllerHappyPath:
 
 @pytest.mark.unit
 class TestCoordinationControllerErrors:
-    def test_task_not_found(
+    async def test_task_not_found(
         self,
         coordination_ctx: SimpleNamespace,
     ) -> None:
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             "/api/v1/tasks/nonexistent/coordinate",
             json={},
         )
@@ -279,7 +277,7 @@ class TestCoordinationControllerErrors:
         coordination_ctx: SimpleNamespace,
     ) -> None:
         task_id = _insert_task(coordination_ctx.task_engine)
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={"agent_names": ["nonexistent-agent"]},
         )
@@ -291,7 +289,7 @@ class TestCoordinationControllerErrors:
         coordination_ctx: SimpleNamespace,
     ) -> None:
         task_id = _insert_task(coordination_ctx.task_engine)
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -313,7 +311,7 @@ class TestCoordinationControllerErrors:
             phase="decompose",
         )
 
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -323,12 +321,12 @@ class TestCoordinationControllerErrors:
 
 @pytest.mark.unit
 class TestCoordinationPathParamValidation:
-    def test_oversized_task_id_rejected(
+    async def test_oversized_task_id_rejected(
         self,
         coordination_ctx: SimpleNamespace,
     ) -> None:
         long_id = "x" * 129
-        resp = coordination_ctx.client.post(
+        resp = await coordination_ctx.client.post(
             f"/api/v1/tasks/{long_id}/coordinate",
             json={},
         )
@@ -337,9 +335,9 @@ class TestCoordinationPathParamValidation:
 
 @pytest.mark.unit
 class TestCoordinationControllerNoCoordinator:
-    def test_503_when_coordinator_not_configured(
+    async def test_503_when_coordinator_not_configured(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         """503 when coordinator is not configured (uses shared client)."""
@@ -348,7 +346,7 @@ class TestCoordinationControllerNoCoordinator:
         task = make_task()
         fake_persistence.tasks._tasks[task.id] = task
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/tasks/{task.id}/coordinate",
             json={},
         )

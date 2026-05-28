@@ -2,10 +2,8 @@
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -15,6 +13,7 @@ from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -71,8 +70,10 @@ def _make_task_metric(
 
 @pytest.mark.unit
 class TestAnalyticsController:
-    def test_overview_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
+    async def test_overview_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -83,8 +84,10 @@ class TestAnalyticsController:
         assert data["total_agents"] == 0
         assert data["total_cost"] == 0.0
 
-    def test_overview_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_overview_requires_read_access(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/overview",
             headers={"Authorization": "Bearer invalid-token"},
         )
@@ -98,8 +101,12 @@ class TestAnalyticsController:
 class TestOverviewExtended:
     """Verify new budget and agent fields in overview."""
 
-    def test_overview_has_budget_fields(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
+    async def test_overview_has_budget_fields(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert "budget_remaining" in data
@@ -107,8 +114,12 @@ class TestOverviewExtended:
         assert data["budget_remaining"] >= 0.0
         assert data["budget_used_percent"] >= 0.0
 
-    def test_overview_has_cost_7d_trend(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
+    async def test_overview_has_cost_7d_trend(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert "cost_7d_trend" in data
@@ -120,8 +131,12 @@ class TestOverviewExtended:
             assert "timestamp" in point
             assert "value" in point
 
-    def test_overview_has_agent_counts(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
+    async def test_overview_has_agent_counts(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["active_agents_count"] == 0
@@ -130,13 +145,15 @@ class TestOverviewExtended:
     async def test_overview_with_cost_data(
         self,
         cost_tracker: CostTracker,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
             _make_cost_record(timestamp=now - timedelta(hours=1), cost=5.0),
         )
-        resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
+        resp = await async_test_client.get(
+            "/api/v1/analytics/overview", headers=_HEADERS
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["total_cost"] == 5.0
@@ -153,8 +170,10 @@ class TestOverviewExtended:
 class TestTrendsEndpoint:
     """GET /analytics/trends."""
 
-    def test_trends_default_params(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/trends", headers=_HEADERS)
+    async def test_trends_default_params(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/analytics/trends", headers=_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["period"] == "7d"
@@ -162,8 +181,8 @@ class TestTrendsEndpoint:
         assert data["bucket_size"] == "hour"
         assert isinstance(data["data_points"], list)
 
-    def test_trends_30d_daily(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_trends_30d_daily(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"period": "30d", "metric": "spend"},
             headers=_HEADERS,
@@ -178,7 +197,7 @@ class TestTrendsEndpoint:
     async def test_trends_with_cost_data(
         self,
         cost_tracker: CostTracker,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
@@ -187,7 +206,7 @@ class TestTrendsEndpoint:
         await cost_tracker.record(
             _make_cost_record(timestamp=now - timedelta(hours=1), cost=7.0),
         )
-        resp = test_client.get("/api/v1/analytics/trends", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/analytics/trends", headers=_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
         values = [p["value"] for p in data["data_points"]]
@@ -196,7 +215,7 @@ class TestTrendsEndpoint:
     async def test_trends_tasks_completed(
         self,
         performance_tracker: PerformanceTracker,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         now = datetime.now(UTC)
         await performance_tracker.record_task_metric(
@@ -205,7 +224,7 @@ class TestTrendsEndpoint:
         await performance_tracker.record_task_metric(
             _make_task_metric(completed_at=now - timedelta(hours=2)),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"metric": "tasks_completed"},
             headers=_HEADERS,
@@ -219,7 +238,7 @@ class TestTrendsEndpoint:
     async def test_trends_success_rate(
         self,
         performance_tracker: PerformanceTracker,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         now = datetime.now(UTC)
         await performance_tracker.record_task_metric(
@@ -228,7 +247,7 @@ class TestTrendsEndpoint:
         await performance_tracker.record_task_metric(
             _make_task_metric(completed_at=now - timedelta(hours=1), is_success=False),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"metric": "success_rate"},
             headers=_HEADERS,
@@ -241,8 +260,10 @@ class TestTrendsEndpoint:
         assert len(values) >= 1
         assert values[0] == pytest.approx(0.5)
 
-    def test_trends_active_agents(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_trends_active_agents(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"metric": "active_agents"},
             headers=_HEADERS,
@@ -252,24 +273,30 @@ class TestTrendsEndpoint:
         assert data["metric"] == "active_agents"
         assert isinstance(data["data_points"], list)
 
-    def test_trends_invalid_period(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_trends_invalid_period(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"period": "99d"},
             headers=_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_trends_invalid_metric(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_trends_invalid_metric(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             params={"metric": "invalid_metric"},
             headers=_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_trends_requires_auth(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_trends_requires_auth(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/trends",
             headers={"Authorization": "Bearer invalid-token"},
         )
@@ -283,8 +310,10 @@ class TestTrendsEndpoint:
 class TestForecastEndpoint:
     """GET /analytics/forecast."""
 
-    def test_forecast_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/analytics/forecast", headers=_HEADERS)
+    async def test_forecast_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/analytics/forecast", headers=_HEADERS
+        )
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["horizon_days"] == 14
@@ -297,7 +326,7 @@ class TestForecastEndpoint:
     async def test_forecast_with_data(
         self,
         cost_tracker: CostTracker,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         now = datetime.now(UTC)
         await cost_tracker.record(
@@ -306,7 +335,7 @@ class TestForecastEndpoint:
         await cost_tracker.record(
             _make_cost_record(timestamp=now - timedelta(days=1), cost=10.0),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/analytics/forecast",
             params={"horizon_days": 7},
             headers=_HEADERS,
@@ -319,8 +348,10 @@ class TestForecastEndpoint:
         assert data["confidence"] > 0
         assert len(data["daily_projections"]) == 7
 
-    def test_forecast_custom_horizon(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_forecast_custom_horizon(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/forecast",
             params={"horizon_days": 30},
             headers=_HEADERS,
@@ -330,30 +361,32 @@ class TestForecastEndpoint:
         assert data["horizon_days"] == 30
         assert len(data["daily_projections"]) == 30
 
-    def test_forecast_invalid_horizon_too_high(
+    async def test_forecast_invalid_horizon_too_high(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/analytics/forecast",
             params={"horizon_days": 100},
             headers=_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_forecast_invalid_horizon_zero(
+    async def test_forecast_invalid_horizon_zero(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/analytics/forecast",
             params={"horizon_days": 0},
             headers=_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_forecast_requires_auth(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_forecast_requires_auth(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/analytics/forecast",
             headers={"Authorization": "Bearer invalid-token"},
         )
@@ -367,7 +400,7 @@ class TestForecastEndpoint:
 class TestAnalyticsGracefulDegradation:
     """Verify fallback behavior when optional services are unavailable."""
 
-    def test_trends_zero_when_no_data_in_auto_wired_tracker(
+    async def test_trends_zero_when_no_data_in_auto_wired_tracker(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
@@ -392,8 +425,8 @@ class TestAnalyticsGracefulDegradation:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/api/v1/analytics/trends",
                 params={"metric": "tasks_completed"},
                 headers=_HEADERS,
@@ -443,9 +476,9 @@ class TestAnalyticsControllerDbOverride:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.get("/api/v1/analytics/overview")
+            resp = await client.get("/api/v1/analytics/overview")
             assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True

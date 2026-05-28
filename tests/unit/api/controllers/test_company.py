@@ -1,17 +1,16 @@
 """Tests for company controller."""
 
 import json
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from litestar import Litestar
-from litestar.testing import TestClient
 
 from synthorg.config.schema import RootConfig
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -52,22 +51,26 @@ async def db_override_app(
 
 @pytest.mark.unit
 class TestCompanyController:
-    def test_get_company(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/company", headers=_HEADERS)
+    async def test_get_company(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/company", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["company_name"] == "test-company"
 
-    def test_list_departments(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/company/departments", headers=_HEADERS)
+    async def test_list_departments(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/company/departments", headers=_HEADERS
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"] == []
 
-    def test_company_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_company_requires_read_access(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/company",
             headers={"Authorization": "Bearer invalid-token"},
         )
@@ -86,9 +89,9 @@ class TestCompanyControllerDbOverride:
         db_depts = [{"name": "db-sales", "head": "bob"}]
         await settings_service.set("company", "departments", json.dumps(db_depts))
 
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.get("/api/v1/company/departments")
+            resp = await client.get("/api/v1/company/departments")
             assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
@@ -101,7 +104,7 @@ class TestCompanyControllerDbOverride:
     ) -> None:
         """Verify TaskGroup exception unwraps to a clean API error."""
         app, _settings_service = db_override_app
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             from synthorg.settings.state import SettingsStateSlice
 
@@ -111,7 +114,7 @@ class TestCompanyControllerDbOverride:
                 spec=original_get_str,
                 side_effect=SettingNotFoundError("company/company_name"),
             )
-            resp = client.get("/api/v1/company")
+            resp = await client.get("/api/v1/company")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
@@ -125,9 +128,9 @@ class TestCompanyControllerDbOverride:
         db_agents = [{"name": "db-agent", "role": "dev", "department": "eng"}]
         await settings_service.set("company", "agents", json.dumps(db_agents))
 
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.get("/api/v1/company")
+            resp = await client.get("/api/v1/company")
             assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True

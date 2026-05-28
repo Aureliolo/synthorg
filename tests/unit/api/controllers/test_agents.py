@@ -2,11 +2,9 @@
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 import pytest
-from litestar.testing import TestClient
 from pydantic import ValidationError
 
 from synthorg.config.schema import AgentConfig, RootConfig
@@ -19,6 +17,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -28,13 +27,13 @@ from tests.unit.api.conftest import (
 
 @pytest.mark.unit
 class TestAgentController:
-    def test_list_agents_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/agents")
+    async def test_list_agents_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/agents")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_list_agents_with_data(
+    async def test_list_agents_with_data(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
@@ -68,20 +67,24 @@ class TestAgentController:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/agents")
+            resp = await client.get("/api/v1/agents")
             body = resp.json()
             assert body["data"][0]["name"] == "alice"
 
-    def test_get_agent_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/agents/nonexistent")
+    async def test_get_agent_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/agents/nonexistent")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    def test_oversized_agent_name_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_agent_name_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_name = "x" * 129
-        resp = test_client.get(f"/api/v1/agents/{long_name}")
+        resp = await async_test_client.get(f"/api/v1/agents/{long_name}")
         assert resp.status_code == 400
 
 
@@ -124,15 +127,15 @@ class TestAgentControllerDbOverride:
             auth_service=auth_service,
             settings_service=settings_service,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
-            resp = client.get("/api/v1/agents")
+            resp = await client.get("/api/v1/agents")
             assert resp.status_code == 200
             body = resp.json()
             names = {a["name"] for a in body["data"]}
             assert names == {"db-agent-1", "db-agent-2"}
 
-            detail_resp = client.get("/api/v1/agents/db-agent-1")
+            detail_resp = await client.get("/api/v1/agents/db-agent-1")
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["name"] == "db-agent-1"
@@ -214,7 +217,7 @@ def _make_lifecycle_event(  # noqa: PLR0913
 class TestAgentPerformance:
     async def test_performance_returns_summary(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         performance_tracker: PerformanceTracker,
         agent_registry: AgentRegistryService,
     ) -> None:
@@ -228,7 +231,7 @@ class TestAgentPerformance:
                 ),
             )
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -240,12 +243,12 @@ class TestAgentPerformance:
 
     async def test_performance_empty_metrics(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -256,11 +259,11 @@ class TestAgentPerformance:
         assert data["quality_score"] is None
         assert data["collaboration_score"] is None
 
-    def test_performance_agent_not_found(
+    async def test_performance_agent_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/agents/nonexistent/performance")
+        resp = await async_test_client.get("/api/v1/agents/nonexistent/performance")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
@@ -285,7 +288,7 @@ class TestAgentPerformance:
 class TestAgentActivity:
     async def test_activity_returns_merged_timeline(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         performance_tracker: PerformanceTracker,
         agent_registry: AgentRegistryService,
         fake_persistence: FakePersistenceBackend,
@@ -310,7 +313,7 @@ class TestAgentActivity:
             ),
         )
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -324,7 +327,7 @@ class TestAgentActivity:
 
     async def test_activity_pagination(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         performance_tracker: PerformanceTracker,
         agent_registry: AgentRegistryService,
     ) -> None:
@@ -338,7 +341,7 @@ class TestAgentActivity:
             )
 
         # Walk the first page (no cursor) -> collect next_cursor -> walk page 2.
-        resp1 = test_client.get(
+        resp1 = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/activity",
             params={"limit": 2},
         )
@@ -349,7 +352,7 @@ class TestAgentActivity:
         assert body1["pagination"]["next_cursor"] is not None
         assert len(body1["data"]) == 2
 
-        resp2 = test_client.get(
+        resp2 = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/activity",
             params={"limit": 2, "cursor": body1["pagination"]["next_cursor"]},
         )
@@ -371,7 +374,7 @@ class TestAgentActivity:
         # Walk to the terminal page (limit=2 across 5 items -> page 3
         # has 1 item and clears has_more + next_cursor per the
         # PaginationMeta consistency validator).
-        resp3 = test_client.get(
+        resp3 = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/activity",
             params={"limit": 2, "cursor": body2["pagination"]["next_cursor"]},
         )
@@ -383,22 +386,22 @@ class TestAgentActivity:
 
     async def test_activity_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_activity_agent_not_found(
+    async def test_activity_agent_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/agents/nonexistent/activity")
+        resp = await async_test_client.get("/api/v1/agents/nonexistent/activity")
         assert resp.status_code == 404
 
 
@@ -409,7 +412,7 @@ class TestAgentActivity:
 class TestAgentHistory:
     async def test_history_returns_career_events(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
@@ -437,7 +440,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -448,7 +451,7 @@ class TestAgentHistory:
 
     async def test_history_chronological_order(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
@@ -467,7 +470,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -477,22 +480,22 @@ class TestAgentHistory:
 
     async def test_history_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data == []
 
-    def test_history_agent_not_found(
+    async def test_history_agent_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/agents/nonexistent/history")
+        resp = await async_test_client.get("/api/v1/agents/nonexistent/history")
         assert resp.status_code == 404
 
 
@@ -503,11 +506,11 @@ class TestAgentHistory:
 class TestAgentHealth:
     async def test_health_returns_composite_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         await agent_registry.register(_make_identity())
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/health",
         )
         assert resp.status_code == 200
@@ -521,33 +524,33 @@ class TestAgentHealth:
 
     async def test_health_trust_none_when_not_tracked(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         """Trust is None when TrustService has no state for agent."""
         await agent_registry.register(_make_identity())
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/health",
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["trust"] is None
 
-    def test_health_agent_not_found(
+    async def test_health_agent_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/agents/nonexistent/health")
+        resp = await async_test_client.get("/api/v1/agents/nonexistent/health")
         assert resp.status_code == 404
 
     async def test_health_performance_fields(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         """Verify performance sub-object has correct field types."""
         await agent_registry.register(_make_identity())
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{_AGENT_NAME}/health",
         )
         assert resp.status_code == 200
