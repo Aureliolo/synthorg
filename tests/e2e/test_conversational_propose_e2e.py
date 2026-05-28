@@ -28,7 +28,6 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
-from synthorg.api.state import AppState
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
@@ -82,7 +81,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -331,8 +330,12 @@ async def _build_pipeline(
         config=root_config,
     )
     intake = IntakeEngine(strategy=_TaskCreatingIntakeStrategy(task_engine))
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    # The legacy ``has_*`` flags are derived from slice contents now; we
+    # only wire the actual service references. A ``ClientSimulationState``
+    # autospec carries both ``intake_engine`` and ``review_pipeline`` as
+    # MagicMock attributes, so ``has_simulation_runtime`` reads truthy
+    # without us spelling out a stub review pipeline.
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -340,23 +343,13 @@ async def _build_pipeline(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=mock_of[ClientSimulationState](
             intake_engine=intake,
         ),
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=True,
         coordination_metrics_store=CoordinationMetricsStore(),
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
     pipeline = runtime.work_pipeline
@@ -433,13 +426,10 @@ async def test_vague_request_clarifies_then_executes_on_approval(
             }
         )
     )
-    dispatch_state = mock_of[AppState](
+    dispatch_state = make_app_state(
         approval_store=approval_store,
-        has_conversational_proposal_repo=True,
         conversational_proposal_repo=proposal_repo,
-        has_work_pipeline=True,
         work_pipeline=pipeline,
-        review_gate_service=None,
     )
     await signal_resume_intent(
         dispatch_state,
@@ -506,13 +496,10 @@ async def test_rejected_proposal_never_touches_pipeline(
             }
         )
     )
-    dispatch_state = mock_of[AppState](
+    dispatch_state = make_app_state(
         approval_store=approval_store,
-        has_conversational_proposal_repo=True,
         conversational_proposal_repo=proposal_repo,
-        has_work_pipeline=True,
         work_pipeline=pipeline,
-        review_gate_service=None,
     )
     await signal_resume_intent(
         dispatch_state,

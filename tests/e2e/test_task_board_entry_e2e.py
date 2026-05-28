@@ -44,6 +44,7 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardFiling,
 )
 from synthorg.engine.pipeline.models import WorkSource
+from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.state import EngineStateSlice, task_board_entry_adapter_of
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -135,6 +136,11 @@ def _sim_state(task_engine: TaskEngine) -> ClientSimulationState:
         intake_engine=IntakeEngine(
             strategy=DirectIntake(task_engine=task_engine, project=_INTAKE_PROJECT),
         ),
+        # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
+        # truthy without exercising review logic the board-entry path
+        # does not touch; without this, the work-pipeline build short-
+        # circuits to ``None`` and every board-entry assertion fails.
+        review_pipeline=ReviewPipeline(stages=()),
         intake_default_project=_INTAKE_PROJECT,
     )
 

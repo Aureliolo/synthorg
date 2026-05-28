@@ -22,6 +22,7 @@ from uuid import uuid4
 
 import pytest
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.services.project_service import ProjectService
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_store import CoordinationMetricsStore
@@ -332,6 +333,7 @@ async def _build_pipeline(
         config_resolver=config_resolver,
         task_engine=task_engine,
         agent_registry=agent_registry,
+        approval_store=ApprovalStore(),
         clock=FakeClock(),
         agent_workspace_root=tmp_path,
         persistence=persistence,

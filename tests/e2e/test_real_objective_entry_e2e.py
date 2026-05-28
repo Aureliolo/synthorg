@@ -192,10 +192,17 @@ async def _build_objective_adapter(
         settings_service=settings_service,
         config=root_config,
     )
+    from synthorg.engine.review.pipeline import ReviewPipeline
+
     sim_state = ClientSimulationState(
         intake_engine=IntakeEngine(
             strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
         ),
+        # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
+        # truthy without exercising review logic the objective-entry path
+        # does not touch; without this, the work-pipeline build short-
+        # circuits to ``None`` and every objective-entry assertion fails.
+        review_pipeline=ReviewPipeline(stages=()),
         intake_default_project=_PROJECT,
     )
     harness_state = make_app_state(

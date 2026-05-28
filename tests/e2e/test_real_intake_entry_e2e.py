@@ -177,10 +177,17 @@ async def _build_app_state(
 
 
 def _sim_state(task_engine: TaskEngine) -> ClientSimulationState:
+    from synthorg.engine.review.pipeline import ReviewPipeline
+
     return ClientSimulationState(
         intake_engine=IntakeEngine(
             strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
         ),
+        # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
+        # truthy without exercising review logic the intake-entry path
+        # does not touch; without this, the work-pipeline build short-
+        # circuits to ``None`` and every intake-entry assertion fails.
+        review_pipeline=ReviewPipeline(stages=()),
         intake_default_project=_PROJECT,
     )
 

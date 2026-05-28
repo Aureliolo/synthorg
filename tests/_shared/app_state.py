@@ -129,6 +129,12 @@ def make_app_state(
         "workflow_execution_service": (EngineStateSlice, "workflow_execution_service"),
         "subworkflow_service": (EngineStateSlice, "subworkflow_service"),
         "self_improvement_service": (MetaStateSlice, "self_improvement_service"),
+        "conversational_proposal_repo": (
+            MetaStateSlice,
+            "conversational_proposal_repo",
+        ),
+        "chief_of_staff_proposer": (MetaStateSlice, "chief_of_staff_proposer"),
+        "review_gate_service": (ApprovalStateSlice, "review_gate"),
         "settings_service": (SettingsStateSlice, "settings_service"),
         "config_resolver": (SettingsStateSlice, "config_resolver"),
         "provider_registry": (ProvidersStateSlice, "registry"),
