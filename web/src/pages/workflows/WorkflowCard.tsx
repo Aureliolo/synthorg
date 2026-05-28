@@ -27,106 +27,31 @@ export function WorkflowCard({
 }: WorkflowCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
-
   const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(workflow.id)}`
+  const cardClasses = `relative rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)] ${
+    selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'
+  }`
 
   return (
     <>
-      <div
-        className={`relative rounded-lg border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)] ${selected ? 'border-accent ring-2 ring-accent/30' : 'border-border'}`}
-      >
+      <div className={cardClasses}>
         {onToggleSelect && (
-          <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="size-4 rounded border-border accent-accent"
-              checked={selected}
-              onChange={() => onToggleSelect(workflow.id)}
-              onClick={(e) => e.stopPropagation()}
-              aria-label={`Select workflow ${workflow.name}`}
-            />
-          </label>
-        )}
-        <Link
-          to={editorUrl}
-          className={`block ${onToggleSelect ? 'pl-7' : ''}`}
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="truncate text-sm font-semibold text-foreground">
-              {workflow.name}
-            </span>
-            {/* Workflow type rendered through StatPill (consistent with
-                the StatPill instances below for Nodes/Edges and with
-                ArtifactCard's type label) instead of a hand-rolled
-                inline pill that drifts from the design tokens. */}
-            <StatPill value={formatLabel(workflow.workflow_type ?? 'unknown')} />
-          </div>
-
-          {workflow.description && (
-            <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
-              {workflow.description}
-            </p>
-          )}
-
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <StatPill label="Nodes" value={workflow.nodes.length} />
-            <StatPill label="Edges" value={workflow.edges.length} />
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>v{workflow.version}</span>
-            <span>Updated {formatRelativeTime(workflow.updated_at)}</span>
-          </div>
-          {workflow.is_subworkflow && (
-            <div className="text-xs text-accent">Subworkflow</div>
-          )}
-        </Link>
-
-        <Menu.Root>
-          <Menu.Trigger
-            render={
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }}
-                className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
-                aria-label="Workflow actions"
-              >
-                <MoreHorizontal className="size-4" />
-              </button>
-            }
+          <SelectCheckbox
+            workflowId={workflow.id}
+            workflowName={workflow.name}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
           />
-
-          <Menu.Portal>
-            <Menu.Positioner align="end" sideOffset={4}>
-              <Menu.Popup className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-duration-default)] ease-[var(--so-ease-default)] data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
-                <Menu.Item
-                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
-                  onClick={() => { void navigate(editorUrl) }}
-                >
-                  <Pencil className="size-3.5" />
-                  Edit
-                </Menu.Item>
-                <Menu.Item
-                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
-                  onClick={() => { onDuplicate(workflow.id) }}
-                >
-                  <Copy className="size-3.5" />
-                  Duplicate
-                </Menu.Item>
-                <Menu.Item
-                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-danger outline-none data-[highlighted]:bg-surface"
-                  onClick={() => { setConfirmDelete(true) }}
-                >
-                  <Trash2 className="size-3.5" />
-                  Delete
-                </Menu.Item>
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
+        )}
+        <Link to={editorUrl} className={`block ${onToggleSelect ? 'pl-7' : ''}`}>
+          <WorkflowCardBody workflow={workflow} />
+        </Link>
+        <WorkflowCardMenu
+          editorUrl={editorUrl}
+          onNavigate={navigate}
+          onDuplicate={() => onDuplicate(workflow.id)}
+          onRequestDelete={() => setConfirmDelete(true)}
+        />
       </div>
 
       <ConfirmDialog
@@ -139,5 +64,138 @@ export function WorkflowCard({
         confirmLabel="Delete"
       />
     </>
+  )
+}
+
+interface SelectCheckboxProps {
+  workflowId: string
+  workflowName: string
+  selected: boolean
+  onToggleSelect: (id: string) => void
+}
+
+function SelectCheckbox({
+  workflowId,
+  workflowName,
+  selected,
+  onToggleSelect,
+}: SelectCheckboxProps) {
+  return (
+    <label className="absolute left-3 top-3 z-10 flex cursor-pointer items-center">
+      <input
+        type="checkbox"
+        className="size-4 rounded border-border accent-accent"
+        checked={selected}
+        onChange={() => onToggleSelect(workflowId)}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Select workflow ${workflowName}`}
+      />
+    </label>
+  )
+}
+
+interface WorkflowCardBodyProps {
+  workflow: WorkflowDefinition
+}
+
+function WorkflowCardBody({ workflow }: WorkflowCardBodyProps) {
+  return (
+    <>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="truncate text-sm font-semibold text-foreground">
+          {workflow.name}
+        </span>
+        {/* Workflow type rendered through StatPill (consistent with the StatPill
+            instances below for Nodes/Edges and with ArtifactCard's type label)
+            instead of a hand-rolled inline pill that drifts from the design
+            tokens. */}
+        <StatPill value={formatLabel(workflow.workflow_type ?? 'unknown')} />
+      </div>
+      {workflow.description && (
+        <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
+          {workflow.description}
+        </p>
+      )}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <StatPill label="Nodes" value={workflow.nodes.length} />
+        <StatPill label="Edges" value={workflow.edges.length} />
+      </div>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>v{workflow.version}</span>
+        <span>Updated {formatRelativeTime(workflow.updated_at)}</span>
+      </div>
+      {workflow.is_subworkflow && (
+        <div className="text-xs text-accent">Subworkflow</div>
+      )}
+    </>
+  )
+}
+
+const MENU_POPUP_CLASSES =
+  'z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-duration-default)] ease-[var(--so-ease-default)] data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
+
+const MENU_ITEM_CLASSES =
+  'flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-[highlighted]:bg-surface'
+
+interface WorkflowCardMenuProps {
+  editorUrl: string
+  onNavigate: (url: string) => unknown
+  onDuplicate: () => void
+  onRequestDelete: () => void
+}
+
+function WorkflowCardMenu({
+  editorUrl,
+  onNavigate,
+  onDuplicate,
+  onRequestDelete,
+}: WorkflowCardMenuProps) {
+  return (
+    <Menu.Root>
+      <Menu.Trigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
+            aria-label="Workflow actions"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        }
+      />
+      <Menu.Portal>
+        <Menu.Positioner align="end" sideOffset={4}>
+          <Menu.Popup className={MENU_POPUP_CLASSES}>
+            <Menu.Item
+              className={`${MENU_ITEM_CLASSES} text-foreground`}
+              onClick={() => {
+                void onNavigate(editorUrl)
+              }}
+            >
+              <Pencil className="size-3.5" />
+              Edit
+            </Menu.Item>
+            <Menu.Item
+              className={`${MENU_ITEM_CLASSES} text-foreground`}
+              onClick={onDuplicate}
+            >
+              <Copy className="size-3.5" />
+              Duplicate
+            </Menu.Item>
+            <Menu.Item
+              className={`${MENU_ITEM_CLASSES} text-danger`}
+              onClick={onRequestDelete}
+            >
+              <Trash2 className="size-3.5" />
+              Delete
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   )
 }

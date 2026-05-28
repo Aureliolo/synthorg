@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useNavigate } from 'react-router'
-import type { Node } from '@xyflow/react'
+import type { Edge, Node } from '@xyflow/react'
 import { createLogger } from '@/lib/logger'
 import { ROUTES } from '@/router/routes'
 import { useToastStore } from '@/stores/toast'
@@ -62,188 +62,213 @@ interface UseWorkflowEditorCallbacksArgs {
 export function useWorkflowEditorCallbacks(
   args: UseWorkflowEditorCallbacksArgs,
 ): WorkflowEditorCallbacks {
-  const {
-    selectedNodeId,
-    addNode,
-    selectNode,
-    updateNodeConfig,
-    exportYaml,
-    saveDefinition,
-    validate,
-    saveViewport,
-  } = args
-
   const addToast = useToastStore((s) => s.add)
   const navigate = useNavigate()
-
-  const handleAddNode = useCallback(
-    (type: WorkflowNodeType) => {
-      addNode(type, { x: 250 + Math.random() * 100, y: 150 + Math.random() * 200 })
-    },
-    [addNode],
-  )
-
-  const handleNodeClick = useCallback(
-    (_event: ReactMouseEvent, node: Node) => {
-      selectNode(node.id)
-    },
-    [selectNode],
-  )
-
-  const handlePaneClick = useCallback(() => {
-    selectNode(null)
-  }, [selectNode])
-
-  const handleExport = useCallback(async () => {
-    try {
-      const yamlStr = await exportYaml()
-      const blob = new Blob([yamlStr], { type: 'text/yaml' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${useWorkflowEditorStore.getState().definition?.name ?? 'workflow'}.yaml`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-      addToast({ variant: 'success', title: 'YAML exported' })
-    } catch (err) {
-      log.error('YAML export failed', sanitizeForLog(err))
-      addToast({ variant: 'error', title: 'Export failed', description: getErrorMessage(err) })
-    }
-  }, [exportYaml, addToast])
-
-  const handleSave = useCallback(async () => {
-    await saveDefinition()
-  }, [saveDefinition])
-
-  const handleValidate = useCallback(async () => {
-    await validate()
-    const result = useWorkflowEditorStore.getState().validationResult
-    if (result) {
-      const errorCount = result.errors.length
-      const errorWord = errorCount === 1 ? 'error' : 'errors'
-      addToast({
-        variant: result.valid ? 'success' : 'warning',
-        title: result.valid
-          ? 'Workflow is valid'
-          : `Validation found ${errorCount} ${errorWord}`,
-        description: result.valid
-          ? undefined
-          : 'Review the marked fields below.',
-      })
-    }
-  }, [validate, addToast])
-
-  const handleDrawerClose = useCallback(() => selectNode(null), [selectNode])
-
-  const handleConfigChange = useCallback(
-    (config: Record<string, unknown>) => {
-      if (selectedNodeId) updateNodeConfig(selectedNodeId, config)
-    },
-    [selectedNodeId, updateNodeConfig],
-  )
-
+  const nodeOps = useNodeOpsCallbacks(args)
+  const saveOps = useSaveOpsCallbacks(args, addToast)
   const handleSwitchWorkflow = useCallback(
     (id: string) => {
       void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(id)}`)
     },
     [navigate],
   )
-
-  const handleSaveAsNew = useCallback(async () => {
-    const state = useWorkflowEditorStore.getState()
-    if (!state.definition) return
-    // Per-field guards for n.data / e.data: ReactFlow types ``data`` as
-    // ``Record<string, unknown> | undefined`` so each property is
-    // ``unknown`` until validated. Without these the previous double
-    // ``as`` casts ("as Record<string, unknown>" then "as string")
-    // silently widened typos and missing fields into runtime crashes.
-    const nodeData = state.nodes.map((n) => {
-      const dataType = readString(n.data, 'nodeType')
-      const reactFlowType = n.type
-      const nodeType: WorkflowNodeType = isWorkflowNodeType(dataType)
-        ? dataType
-        : isWorkflowNodeType(reactFlowType)
-          ? reactFlowType
-          : 'task'
-      return {
-        id: n.id,
-        type: nodeType,
-        label: readString(n.data, 'label') ?? n.id,
-        position_x: n.position.x,
-        position_y: n.position.y,
-        config: readRecord(n.data, 'config') ?? {},
-      }
-    })
-    const edgeData = state.edges.map((e) => {
-      const dataType = readString(e.data, 'edgeType')
-      const edgeType: WorkflowEdgeType = isWorkflowEdgeType(dataType)
-        ? dataType
-        : 'sequential'
-      // ReactFlow edges may store the label on ``data.label`` (our
-      // own write path) OR directly on ``e.label`` (older edges
-      // hydrated from the wire format). Fall back to ``e.label`` so
-      // duplicating a workflow preserves edge labels regardless of
-      // where they currently live.
-      const label =
-        readString(e.data, 'label')
-        ?? (typeof e.label === 'string' ? e.label : null)
-      return {
-        id: e.id,
-        source_node_id: e.source,
-        target_node_id: e.target,
-        type: edgeType,
-        label,
-      }
-    })
-    // ``WorkflowIODeclarationRequest`` requires ``default`` (no ``?``)
-    // while ``WorkflowIODeclaration`` (source shape on the loaded
-    // definition) marks it optional. Normalise missing defaults to
-    // ``null`` so the duplicated workflow preserves the source's I/O
-    // shape instead of dropping it as the old ``inputs: []`` did.
-    const toIORequest = (
-      decl: WorkflowIODeclaration,
-    ): WorkflowIODeclarationRequest => ({
-      default: decl.default ?? null,
-      description: decl.description,
-      name: decl.name,
-      required: decl.required,
-      type: decl.type,
-    })
-    const created = await useWorkflowsStore.getState().createWorkflow({
-      name: `${state.definition.name} (Copy)`,
-      description: state.definition.description ?? '',
-      version: '1.0.0',
-      workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
-      inputs: (state.definition.inputs ?? []).map(toIORequest),
-      outputs: (state.definition.outputs ?? []).map(toIORequest),
-      is_subworkflow: false,
-      nodes: nodeData as readonly Record<string, unknown>[],
-      edges: edgeData as readonly Record<string, unknown>[],
-    })
-    if (!created) return
-    void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
-  }, [navigate])
-
+  const handleSaveAsNew = useCallback(() => duplicateWorkflow(navigate), [navigate])
   const handleMoveEnd = useCallback(
     (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
-      saveViewport(viewport)
+      args.saveViewport(viewport)
     },
-    [saveViewport],
+    [args],
   )
+  return {
+    ...nodeOps,
+    ...saveOps,
+    handleSwitchWorkflow,
+    handleSaveAsNew,
+    handleMoveEnd,
+  }
+}
 
+interface NodeOps {
+  handleAddNode: WorkflowEditorCallbacks['handleAddNode']
+  handleNodeClick: WorkflowEditorCallbacks['handleNodeClick']
+  handlePaneClick: WorkflowEditorCallbacks['handlePaneClick']
+  handleDrawerClose: WorkflowEditorCallbacks['handleDrawerClose']
+  handleConfigChange: WorkflowEditorCallbacks['handleConfigChange']
+}
+
+function useNodeOpsCallbacks(args: UseWorkflowEditorCallbacksArgs): NodeOps {
+  const { selectedNodeId, addNode, selectNode, updateNodeConfig } = args
+  const handleAddNode = useCallback(
+    (type: WorkflowNodeType) =>
+      addNode(type, { x: 250 + Math.random() * 100, y: 150 + Math.random() * 200 }),
+    [addNode],
+  )
+  const handleNodeClick = useCallback(
+    (_event: ReactMouseEvent, node: Node) => selectNode(node.id),
+    [selectNode],
+  )
+  const handlePaneClick = useCallback(() => selectNode(null), [selectNode])
+  const handleDrawerClose = useCallback(() => selectNode(null), [selectNode])
+  const handleConfigChange = useCallback(
+    (config: Record<string, unknown>) => {
+      if (selectedNodeId) updateNodeConfig(selectedNodeId, config)
+    },
+    [selectedNodeId, updateNodeConfig],
+  )
   return {
     handleAddNode,
     handleNodeClick,
     handlePaneClick,
-    handleExport,
-    handleSave,
-    handleValidate,
     handleDrawerClose,
     handleConfigChange,
-    handleSwitchWorkflow,
-    handleSaveAsNew,
-    handleMoveEnd,
+  }
+}
+
+interface SaveOps {
+  handleExport: WorkflowEditorCallbacks['handleExport']
+  handleSave: WorkflowEditorCallbacks['handleSave']
+  handleValidate: WorkflowEditorCallbacks['handleValidate']
+}
+
+function useSaveOpsCallbacks(
+  args: UseWorkflowEditorCallbacksArgs,
+  addToast: ReturnType<typeof useToastStore.getState>['add'],
+): SaveOps {
+  const { exportYaml, saveDefinition, validate } = args
+  const handleExport = useCallback(async () => {
+    try {
+      const yamlStr = await exportYaml()
+      downloadYaml(yamlStr)
+      addToast({ variant: 'success', title: 'YAML exported' })
+    } catch (err) {
+      log.error('YAML export failed', sanitizeForLog(err))
+      addToast({
+        variant: 'error',
+        title: 'Export failed',
+        description: getErrorMessage(err),
+      })
+    }
+  }, [exportYaml, addToast])
+  const handleSave = useCallback(async () => {
+    await saveDefinition()
+  }, [saveDefinition])
+  const handleValidate = useCallback(async () => {
+    await validate()
+    emitValidationToast(addToast)
+  }, [validate, addToast])
+  return { handleExport, handleSave, handleValidate }
+}
+
+function downloadYaml(yamlStr: string): void {
+  const blob = new Blob([yamlStr], { type: 'text/yaml' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${useWorkflowEditorStore.getState().definition?.name ?? 'workflow'}.yaml`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function emitValidationToast(
+  addToast: ReturnType<typeof useToastStore.getState>['add'],
+): void {
+  const result = useWorkflowEditorStore.getState().validationResult
+  if (!result) return
+  const errorCount = result.errors.length
+  const errorWord = errorCount === 1 ? 'error' : 'errors'
+  addToast({
+    variant: result.valid ? 'success' : 'warning',
+    title: result.valid
+      ? 'Workflow is valid'
+      : `Validation found ${errorCount} ${errorWord}`,
+    description: result.valid ? undefined : 'Review the marked fields below.',
+  })
+}
+
+async function duplicateWorkflow(navigate: ReturnType<typeof useNavigate>): Promise<void> {
+  const state = useWorkflowEditorStore.getState()
+  if (!state.definition) return
+  const nodeData = state.nodes.map(extractNodePayload)
+  const edgeData = state.edges.map(extractEdgePayload)
+  const created = await useWorkflowsStore.getState().createWorkflow({
+    name: `${state.definition.name} (Copy)`,
+    description: state.definition.description ?? '',
+    version: '1.0.0',
+    workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
+    inputs: (state.definition.inputs ?? []).map(toIORequest),
+    outputs: (state.definition.outputs ?? []).map(toIORequest),
+    is_subworkflow: false,
+    nodes: nodeData as readonly Record<string, unknown>[],
+    edges: edgeData as readonly Record<string, unknown>[],
+  })
+  if (!created) return
+  void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
+}
+
+function extractNodePayload(n: Node): {
+  id: string
+  type: WorkflowNodeType
+  label: string
+  position_x: number
+  position_y: number
+  config: Record<string, unknown>
+} {
+  // Per-field guards for n.data: ReactFlow types ``data`` as
+  // ``Record<string, unknown> | undefined`` so each property is ``unknown``
+  // until validated. Without these the previous double-cast silently widened
+  // typos and missing fields into runtime crashes.
+  const dataType = readString(n.data, 'nodeType')
+  const reactFlowType = n.type
+  const nodeType: WorkflowNodeType = isWorkflowNodeType(dataType)
+    ? dataType
+    : isWorkflowNodeType(reactFlowType)
+      ? reactFlowType
+      : 'task'
+  return {
+    id: n.id,
+    type: nodeType,
+    label: readString(n.data, 'label') ?? n.id,
+    position_x: n.position.x,
+    position_y: n.position.y,
+    config: readRecord(n.data, 'config') ?? {},
+  }
+}
+
+function extractEdgePayload(e: Edge): {
+  id: string
+  source_node_id: string
+  target_node_id: string
+  type: WorkflowEdgeType
+  label: string | null
+} {
+  const dataType = readString(e.data, 'edgeType')
+  const edgeType: WorkflowEdgeType = isWorkflowEdgeType(dataType) ? dataType : 'sequential'
+  // ReactFlow edges may store the label on ``data.label`` (our write path) OR
+  // directly on ``e.label`` (older edges hydrated from the wire format). Fall
+  // back to ``e.label`` so duplicating a workflow preserves edge labels.
+  const label =
+    readString(e.data, 'label') ?? (typeof e.label === 'string' ? e.label : null)
+  return {
+    id: e.id,
+    source_node_id: e.source,
+    target_node_id: e.target,
+    type: edgeType,
+    label,
+  }
+}
+
+// ``WorkflowIODeclarationRequest`` requires ``default`` (no ``?``) while
+// ``WorkflowIODeclaration`` (source shape on the loaded definition) marks it
+// optional. Normalise missing defaults to ``null`` so the duplicated workflow
+// preserves the source's I/O shape.
+function toIORequest(decl: WorkflowIODeclaration): WorkflowIODeclarationRequest {
+  return {
+    default: decl.default ?? null,
+    description: decl.description,
+    name: decl.name,
+    required: decl.required,
+    type: decl.type,
   }
 }

@@ -27,17 +27,13 @@ function VersionCard({ v, currentVersion, saving, onCompare, onRestore }: Versio
           </span>
           <span className="text-sm text-foreground">{v.snapshot.name}</span>
         </div>
-        {isCurrent && (
-          <span className="text-xs text-success">Current</span>
-        )}
+        {isCurrent && <span className="text-xs text-success">Current</span>}
       </div>
-
       <div className="flex items-center gap-2 text-xs text-muted">
         <Clock className="size-3" aria-hidden="true" />
         <time dateTime={v.saved_at}>{formatRelativeTime(v.saved_at)}</time>
         <span>by {v.saved_by}</span>
       </div>
-
       <div className="flex gap-1 pt-1">
         <Button
           variant="ghost"
@@ -72,6 +68,44 @@ interface VersionHistoryPanelProps {
 }
 
 export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps) {
+  const state = useVersionHistoryState()
+
+  return (
+    <>
+      <Drawer open={open} onClose={onClose} title="Version History" side="right">
+        <div className="flex flex-col gap-section-gap">
+          <VersionListBody state={state} />
+        </div>
+      </Drawer>
+      <ConfirmDialog
+        open={state.restoreTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) state.setRestoreTarget(null)
+        }}
+        onConfirm={state.confirmRestore}
+        title="Restore Version"
+        description={`Restore to version ${state.restoreTarget}? This creates a new version with the old content. No history is lost.`}
+        confirmLabel="Restore"
+        loading={state.saving}
+      />
+    </>
+  )
+}
+
+interface VersionHistoryState {
+  versions: ReturnType<typeof useWorkflowEditorStore.getState>['versions']
+  versionsLoading: boolean
+  versionsHasMore: boolean
+  saving: boolean
+  currentVersion: number | null
+  restoreTarget: number | null
+  loadMoreVersions: ReturnType<typeof useWorkflowEditorStore.getState>['loadMoreVersions']
+  setRestoreTarget: (value: number | null) => void
+  handleCompare: (version: WorkflowDefinitionVersionSummary) => void
+  confirmRestore: () => Promise<void>
+}
+
+function useVersionHistoryState(): VersionHistoryState {
   const versions = useWorkflowEditorStore((s) => s.versions)
   const versionsLoading = useWorkflowEditorStore((s) => s.versionsLoading)
   const versionsHasMore = useWorkflowEditorStore((s) => s.versionsHasMore)
@@ -79,23 +113,15 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
   const rollback = useWorkflowEditorStore((s) => s.rollback)
   const loadMoreVersions = useWorkflowEditorStore((s) => s.loadMoreVersions)
   const saving = useWorkflowEditorStore((s) => s.saving)
-
   const [restoreTarget, setRestoreTarget] = useState<number | null>(null)
-
-  // Derive current version from loaded summaries (sorted newest-first)
-  // instead of comparing against definition.revision (optimistic counter).
   const currentVersion = versions[0]?.version ?? null
 
-  function handleCompare(version: WorkflowDefinitionVersionSummary) {
+  const handleCompare = (version: WorkflowDefinitionVersionSummary) => {
     if (currentVersion === null) return
     void loadDiff(version.version, currentVersion)
   }
 
-  function handleRestore(version: number) {
-    setRestoreTarget(version)
-  }
-
-  async function confirmRestore() {
+  const confirmRestore = async () => {
     if (restoreTarget === null) return
     try {
       await rollback(restoreTarget)
@@ -104,63 +130,58 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
     }
   }
 
+  return {
+    versions,
+    versionsLoading,
+    versionsHasMore,
+    saving,
+    currentVersion,
+    restoreTarget,
+    loadMoreVersions,
+    setRestoreTarget,
+    handleCompare,
+    confirmRestore,
+  }
+}
+
+interface VersionListBodyProps {
+  state: VersionHistoryState
+}
+
+function VersionListBody({ state }: VersionListBodyProps) {
   return (
     <>
-      <Drawer
-        open={open}
-        onClose={onClose}
-        title="Version History"
-        side="right"
-      >
-        <div className="flex flex-col gap-section-gap">
-          {versionsLoading && versions.length === 0 && (
-            <div className="flex flex-col gap-grid-gap">
-              {Array.from({ length: 3 }, (_, i) => (
-                <Skeleton key={i} className="h-16 rounded-lg" />
-              ))}
-            </div>
-          )}
-
-          {!versionsLoading && versions.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted">
-              No version history yet
-            </p>
-          )}
-
-          {versions.map((v) => (
-            <VersionCard
-              key={v.version}
-              v={v}
-              currentVersion={currentVersion}
-              saving={saving}
-              onCompare={handleCompare}
-              onRestore={handleRestore}
-            />
+      {state.versionsLoading && state.versions.length === 0 && (
+        <div className="flex flex-col gap-grid-gap">
+          {Array.from({ length: 3 }, (_, i) => (
+            <Skeleton key={i} className="h-16 rounded-lg" />
           ))}
-
-          {versionsHasMore && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={loadMoreVersions}
-              disabled={versionsLoading}
-              className="self-center"
-            >
-              {versionsLoading ? 'Loading...' : 'Load more'}
-            </Button>
-          )}
         </div>
-      </Drawer>
-
-      <ConfirmDialog
-        open={restoreTarget !== null}
-        onOpenChange={(open) => { if (!open) setRestoreTarget(null) }}
-        onConfirm={confirmRestore}
-        title="Restore Version"
-        description={`Restore to version ${restoreTarget}? This creates a new version with the old content. No history is lost.`}
-        confirmLabel="Restore"
-        loading={saving}
-      />
+      )}
+      {!state.versionsLoading && state.versions.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted">No version history yet</p>
+      )}
+      {state.versions.map((v) => (
+        <VersionCard
+          key={v.version}
+          v={v}
+          currentVersion={state.currentVersion}
+          saving={state.saving}
+          onCompare={state.handleCompare}
+          onRestore={state.setRestoreTarget}
+        />
+      ))}
+      {state.versionsHasMore && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={state.loadMoreVersions}
+          disabled={state.versionsLoading}
+          className="self-center"
+        >
+          {state.versionsLoading ? 'Loading...' : 'Load more'}
+        </Button>
+      )}
     </>
   )
 }

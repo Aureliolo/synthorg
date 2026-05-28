@@ -1,31 +1,16 @@
-import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Button } from '@/components/ui/button'
-import { useWorkflowsStore } from '@/stores/workflows'
 import { WORKFLOW_TYPES } from '@/utils/constants'
 import { formatLabel } from '@/utils/format'
 import { BlueprintPicker } from './BlueprintPicker'
+import { useWorkflowCreateForm } from './useWorkflowCreateForm'
 
 interface WorkflowCreateDrawerProps {
   open: boolean
   onClose: () => void
-}
-
-type CreateMode = 'blank' | 'blueprint'
-
-interface FormState {
-  name: string
-  description: string
-  workflowType: string
-}
-
-const INITIAL_FORM: FormState = {
-  name: '',
-  description: '',
-  workflowType: 'sequential_pipeline',
 }
 
 const MODE_OPTIONS = [
@@ -38,150 +23,68 @@ const WORKFLOW_TYPE_OPTIONS = WORKFLOW_TYPES.map((t) => ({
   label: formatLabel(t),
 }))
 
-type WorkflowType = (typeof WORKFLOW_TYPES)[number]
-
-function isWorkflowType(value: string): value is WorkflowType {
-  return (WORKFLOW_TYPES as readonly string[]).includes(value)
-}
-
 export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProps) {
-  const [mode, setMode] = useState<CreateMode>('blank')
-  const [selectedBlueprint, setSelectedBlueprint] = useState<string | null>(null)
-  const [form, setForm] = useState<FormState>(INITIAL_FORM)
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
-  const [blueprintError, setBlueprintError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const blueprints = useWorkflowsStore((s) => s.blueprints)
-
-  function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }))
-    setErrors((prev) => ({ ...prev, [key]: undefined }))
-  }
-
-  function handleBlueprintSelect(name: string | null) {
-    setSelectedBlueprint(name)
-    setBlueprintError(null)
-    if (name) {
-      const bp = blueprints.find((b) => b.name === name)
-      if (bp) {
-        setForm((prev) => ({
-          ...prev,
-          name: bp.display_name,
-          description: bp.description,
-          workflowType: bp.workflow_type,
-        }))
-      }
-    }
-  }
-
-  async function handleSubmit() {
-    if (mode === 'blueprint' && !selectedBlueprint) {
-      setBlueprintError('Select a template or switch to Blank mode')
-      return
-    }
-
-    const next: Partial<Record<keyof FormState, string>> = {}
-    if (!form.name.trim()) next.name = 'Name is required'
-    if (!isWorkflowType(form.workflowType)) {
-      next.workflowType = 'Select a valid workflow type'
-    }
-    setErrors(next)
-    if (Object.keys(next).length > 0) return
-
-    setSubmitting(true)
-    // ``isWorkflowType`` above narrowed ``form.workflowType``; re-check
-    // here so the type assertion is at least once-validated rather than
-    // a blind cast on user input.
-    if (!isWorkflowType(form.workflowType)) return
-    const created = mode === 'blueprint'
-      ? await useWorkflowsStore.getState().createFromBlueprint({
-          blueprint_name: selectedBlueprint!,
-          name: form.name.trim(),
-          description: form.description.trim() || undefined,
-        })
-      : await useWorkflowsStore.getState().createWorkflow({
-          name: form.name.trim(),
-          description: form.description.trim() ?? '',
-          version: '1.0.0',
-          workflow_type: form.workflowType,
-          inputs: [],
-          outputs: [],
-          is_subworkflow: false,
-          nodes: [],
-          edges: [],
-        })
-    setSubmitting(false)
-    if (created) handleClose()
-  }
-
-  function handleClose() {
-    setMode('blank')
-    setSelectedBlueprint(null)
-    setForm(INITIAL_FORM)
-    setErrors({})
-    setBlueprintError(null)
-    onClose()
-  }
+  const ctrl = useWorkflowCreateForm(onClose)
 
   return (
-    <Drawer open={open} onClose={handleClose} title="Create Workflow">
+    <Drawer open={open} onClose={ctrl.handleClose} title="Create Workflow">
       <div className="flex flex-col gap-section-gap">
         <SegmentedControl
           label="Creation mode"
-          value={mode}
-          onChange={(next) => {
-            setMode(next)
-            if (next !== 'blueprint') setBlueprintError(null)
-          }}
+          value={ctrl.mode}
+          onChange={ctrl.handleModeChange}
           options={MODE_OPTIONS}
           size="sm"
         />
 
-        {mode === 'blueprint' && (
+        {ctrl.mode === 'blueprint' && (
           <BlueprintPicker
-            selectedBlueprint={selectedBlueprint}
-            onSelect={handleBlueprintSelect}
+            selectedBlueprint={ctrl.selectedBlueprint}
+            onSelect={ctrl.handleBlueprintSelect}
           />
         )}
 
         <InputField
           label="Name"
-          value={form.name}
-          onChange={(e) => updateField('name', e.target.value)}
-          error={errors.name}
+          value={ctrl.form.name}
+          onChange={(e) => ctrl.updateField('name', e.target.value)}
+          error={ctrl.errors.name}
           placeholder="Workflow name"
         />
 
         <InputField
           label="Description"
-          value={form.description}
-          onChange={(e) => updateField('description', e.target.value)}
+          value={ctrl.form.description}
+          onChange={(e) => ctrl.updateField('description', e.target.value)}
           multiline
           placeholder="Optional description"
         />
 
-        {mode === 'blank' && (
+        {ctrl.mode === 'blank' && (
           <SelectField
             label="Workflow Type"
-            value={form.workflowType}
-            onChange={(val) => updateField('workflowType', val)}
+            value={ctrl.form.workflowType}
+            onChange={(val) => ctrl.updateField('workflowType', val)}
             options={WORKFLOW_TYPE_OPTIONS}
           />
         )}
 
-        {mode === 'blueprint' && blueprintError && (
-          <div role="alert" aria-live="assertive" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            {blueprintError}
+        {ctrl.mode === 'blueprint' && ctrl.blueprintError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+          >
+            {ctrl.blueprintError}
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>
+          <Button variant="outline" onClick={ctrl.handleClose} disabled={ctrl.submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Creating...' : 'Create Workflow'}
+          <Button onClick={ctrl.handleSubmit} disabled={ctrl.submitting}>
+            {ctrl.submitting ? 'Creating...' : 'Create Workflow'}
           </Button>
         </div>
       </div>

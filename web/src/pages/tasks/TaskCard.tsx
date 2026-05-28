@@ -18,10 +18,17 @@ export interface TaskCardProps {
   ref?: Ref<HTMLDivElement>
 }
 
-export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref, ...props }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onSelect,
+  isDragging,
+  isOverlay,
+  className,
+  ref,
+  ...props
+}: TaskCardProps) {
   const { triggerFlash, flashStyle } = useFlash()
   const prevUpdatedRef = useRef(task.updated_at)
-
   useEffect(() => {
     if (task.updated_at && task.updated_at !== prevUpdatedRef.current) {
       triggerFlash()
@@ -29,6 +36,14 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
     prevUpdatedRef.current = task.updated_at
   }, [task.updated_at, triggerFlash])
 
+  const cardClasses = cn(
+    'cursor-pointer rounded-lg border border-border bg-card p-card transition-colors',
+    'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
+    FOCUS_RING,
+    isDragging && 'scale-[1.02] opacity-50 shadow-[var(--so-shadow-card-hover)]',
+    isOverlay && 'scale-[1.02] shadow-[var(--so-shadow-card-hover)] border-accent/50',
+    className,
+  )
   return (
     <div
       ref={ref}
@@ -45,62 +60,66 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
         }
       }}
       style={flashStyle}
-      className={cn(
-        'cursor-pointer rounded-lg border border-border bg-card p-card transition-colors',
-        'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
-        FOCUS_RING,
-        // Elevated shadow while drag/overlay is active -- same token the
-        // hover state uses, keeps shadow weight consistent across states.
-        isDragging && 'scale-[1.02] opacity-50 shadow-[var(--so-shadow-card-hover)]',
-        isOverlay && 'scale-[1.02] shadow-[var(--so-shadow-card-hover)] border-accent/50',
-        className,
-      )}
+      className={cardClasses}
       {...props}
     >
-      {/* Header: title + status */}
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="line-clamp-2 text-[13px] font-semibold text-foreground">
-          {task.title}
-        </h3>
-        <TaskStatusIndicator status={task.status} className="mt-0.5" />
-      </div>
-
-      {/* Description preview */}
+      <TaskCardHeader title={task.title} status={task.status} />
       {task.description && (
-        <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
-          {task.description}
-        </p>
+        <p className="mt-1 line-clamp-2 text-xs text-text-secondary">{task.description}</p>
       )}
+      <TaskCardFooter task={task} />
+    </div>
+  )
+}
 
-      {/* Footer: priority, assignee, metadata */}
-      <div className="mt-2 flex items-center gap-2">
-        <PriorityBadge priority={task.priority} />
+interface TaskCardHeaderProps {
+  title: string
+  status: DashboardTask['status']
+}
 
-        {task.assigned_to && (
-          <Avatar name={task.assigned_to} size="sm" />
+function TaskCardHeader({ title, status }: TaskCardHeaderProps) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <h3 className="line-clamp-2 text-[13px] font-semibold text-foreground">{title}</h3>
+      <TaskStatusIndicator status={status} className="mt-0.5" />
+    </div>
+  )
+}
+
+interface TaskCardFooterProps {
+  task: DashboardTask
+}
+
+function TaskCardFooter({ task }: TaskCardFooterProps) {
+  const showCost = task.cost != null && task.cost > 0
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <PriorityBadge priority={task.priority} />
+      {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
+      <div className="ml-auto flex items-center gap-2 text-text-muted">
+        {task.dependencies.length > 0 && (
+          <span
+            className="flex items-center gap-0.5 text-[10px] font-mono"
+            title={`${task.dependencies.length} dependencies`}
+          >
+            <GitBranch className="size-3" aria-hidden="true" />
+            {task.dependencies.length}
+          </span>
         )}
-
-        <div className="ml-auto flex items-center gap-2 text-text-muted">
-          {task.dependencies.length > 0 && (
-            <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`${task.dependencies.length} dependencies`}>
-              <GitBranch className="size-3" aria-hidden="true" />
-              {task.dependencies.length}
-            </span>
-          )}
-
-          {task.cost != null && task.cost > 0 && (
-            <span className="text-[10px] font-mono">
-              {formatCurrency(task.cost, DEFAULT_CURRENCY)}
-            </span>
-          )}
-
-          {task.deadline && (
-            <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`Deadline: ${task.deadline}`}>
-              <Clock className="size-3" aria-hidden="true" />
-              {formatRelativeTime(task.deadline)}
-            </span>
-          )}
-        </div>
+        {showCost && (
+          <span className="text-[10px] font-mono">
+            {formatCurrency(task.cost!, DEFAULT_CURRENCY)}
+          </span>
+        )}
+        {task.deadline && (
+          <span
+            className="flex items-center gap-0.5 text-[10px] font-mono"
+            title={`Deadline: ${task.deadline}`}
+          >
+            <Clock className="size-3" aria-hidden="true" />
+            {formatRelativeTime(task.deadline)}
+          </span>
+        )}
       </div>
     </div>
   )

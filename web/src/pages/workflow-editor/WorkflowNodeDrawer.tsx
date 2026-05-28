@@ -6,6 +6,39 @@ import { NODE_CONFIG_SCHEMAS, type ConfigField } from './node-config-schemas'
 import { ConditionExpressionBuilder } from './ConditionExpressionBuilder'
 import type { WorkflowNodeType } from '@/api/types/workflows'
 
+const SKIP_WRITE = Symbol('skip-write')
+
+type ParsedFieldValue = string | number | object
+
+function parseFieldValue(
+  key: string,
+  value: string,
+  fieldType: string | undefined,
+): ParsedFieldValue | typeof SKIP_WRITE {
+  if (key === 'input_bindings' || key === 'output_bindings') {
+    return parseJsonObjectField(value)
+  }
+  if (fieldType === 'number' && value !== '') {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : SKIP_WRITE
+  }
+  return value
+}
+
+function parseJsonObjectField(value: string): object | typeof SKIP_WRITE {
+  try {
+    const obj = JSON.parse(value) as unknown
+    if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+      return obj
+    }
+  } catch {
+    // Keep raw string so the user can continue editing.
+  }
+  // Don't write raw strings or arrays back into config; only successfully
+  // parsed plain objects are accepted.
+  return SKIP_WRITE
+}
+
 interface FieldRendererProps {
   field: ConfigField
   value: string
@@ -76,33 +109,9 @@ export function WorkflowNodeDrawer({
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {
-      // JSON object fields: try parsing, keep raw string on failure.
-      if (key === 'input_bindings' || key === 'output_bindings') {
-        try {
-          const obj = JSON.parse(value) as unknown
-          if (
-            typeof obj === 'object' &&
-            obj !== null &&
-            !Array.isArray(obj)
-          ) {
-            onConfigChange({ ...config, [key]: obj })
-            return
-          }
-        } catch {
-          // Keep raw string so the user can continue editing.
-        }
-        // Don't write raw strings or arrays back into config;
-        // only successfully parsed plain objects are accepted.
-        return
-      }
-
-      let parsed: string | number = value
-      if (fieldType === 'number' && value !== '') {
-        const num = Number(value)
-        if (Number.isFinite(num)) parsed = num
-        else return
-      }
-      onConfigChange({ ...config, [key]: parsed })
+      const next = parseFieldValue(key, value, fieldType)
+      if (next === SKIP_WRITE) return
+      onConfigChange({ ...config, [key]: next })
     },
     [config, onConfigChange],
   )

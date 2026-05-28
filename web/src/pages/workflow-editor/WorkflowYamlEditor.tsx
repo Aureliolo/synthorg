@@ -1,11 +1,9 @@
 /**
  * YAML editor for workflow definitions.
  *
- * Allows editing YAML directly and applying changes back to the
- * visual canvas via an explicit Apply action. Shows inline
- * parse/validation errors.
+ * Allows editing YAML directly and applying changes back to the visual canvas
+ * via an explicit Apply action. Shows inline parse/validation errors.
  */
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check } from 'lucide-react'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
@@ -14,11 +12,57 @@ import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { parseYamlToNodesEdges } from './yaml-to-nodes'
 import type { Node } from '@xyflow/react'
 
+const APPLIED_FLASH_MS = 2000
+
 interface WorkflowYamlEditorProps {
   initialYaml: string
 }
 
 export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
+  const state = useYamlEditorState(initialYaml)
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1">
+        <LazyCodeMirrorEditor
+          value={state.yamlText}
+          onChange={state.setYamlText}
+          language="yaml"
+        />
+      </div>
+      {state.parseErrors.length > 0 && <ParseErrorsBanner errors={state.parseErrors} />}
+      {state.parseWarnings.length > 0 && state.parseErrors.length === 0 && (
+        <ParseWarningsBanner warnings={state.parseWarnings} />
+      )}
+      <div className="flex items-center justify-end gap-2 border-t border-border p-2">
+        {state.applied && (
+          <span className="flex items-center gap-1 text-xs text-success">
+            <Check className="size-3" />
+            Applied
+          </span>
+        )}
+        <Button variant="outline" size="sm" onClick={state.handleRevert}>
+          Revert
+        </Button>
+        <Button size="sm" onClick={state.handleApply}>
+          Apply to Canvas
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface YamlEditorState {
+  yamlText: string
+  parseErrors: string[]
+  parseWarnings: string[]
+  applied: boolean
+  setYamlText: (value: string) => void
+  handleApply: () => void
+  handleRevert: () => void
+}
+
+function useYamlEditorState(initialYaml: string): YamlEditorState {
   const [yamlText, setYamlText] = useState(initialYaml)
   const [parseErrors, setParseErrors] = useState<string[]>([])
   const [parseWarnings, setParseWarnings] = useState<string[]>([])
@@ -31,8 +75,6 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
     }
   }, [])
 
-  // Sync local YAML text when the store's YAML preview changes
-  // (e.g., undo/redo, workflow switch)
   /* eslint-disable @eslint-react/set-state-in-effect -- intentional prop-to-state sync on external change */
   useEffect(() => {
     setYamlText(initialYaml)
@@ -46,54 +88,10 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
   }, [initialYaml])
   /* eslint-enable @eslint-react/set-state-in-effect */
 
-  const handleApply = useCallback(() => {
-    // Build position map from current nodes
-    const currentNodes = useWorkflowEditorStore.getState().nodes
-    const positionMap = new Map<string, { x: number; y: number }>()
-    for (const node of currentNodes) {
-      positionMap.set(node.id, node.position)
-    }
-
-    const result = parseYamlToNodesEdges(yamlText, positionMap)
-
-    setParseErrors(result.errors)
-    setParseWarnings(result.warnings)
-
-    if (result.errors.length > 0) return
-
-    // Apply to store
-    const store = useWorkflowEditorStore.getState()
-    const definition = store.definition
-    if (!definition) return
-
-    // Map nodes to ReactFlow format with proper data structure
-    const mappedNodes: Node[] = result.nodes.map((n) => ({
-      ...n,
-      data: {
-        ...((n.data ?? {}) as Record<string, unknown>),
-        label: ((n.data as Record<string, unknown>)?.label as string) ?? n.id,
-      },
-    }))
-
-    // Push undo snapshot and replace nodes/edges directly
-    const snapshot = { nodes: structuredClone(store.nodes), edges: structuredClone(store.edges) }
-    useWorkflowEditorStore.setState((s) => ({
-      nodes: mappedNodes,
-      edges: result.edges,
-      selectedNodeId: null,
-      dirty: true,
-      yamlPreview: yamlText,
-      undoStack: [...s.undoStack.slice(-49), snapshot],
-      redoStack: [],
-    }))
-
-    setApplied(true)
-    if (appliedTimerRef.current !== null) clearTimeout(appliedTimerRef.current)
-    appliedTimerRef.current = setTimeout(() => {
-      setApplied(false)
-      appliedTimerRef.current = null
-    }, 2000)
-  }, [yamlText])
+  const handleApply = useCallback(
+    () => applyYamlToCanvas({ yamlText, setParseErrors, setParseWarnings, setApplied, appliedTimerRef }),
+    [yamlText],
+  )
 
   const handleRevert = useCallback(() => {
     setYamlText(initialYaml)
@@ -101,54 +99,117 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
     setParseWarnings([])
   }, [initialYaml])
 
+  return {
+    yamlText,
+    parseErrors,
+    parseWarnings,
+    applied,
+    setYamlText,
+    handleApply,
+    handleRevert,
+  }
+}
+
+interface ApplyYamlArgs {
+  yamlText: string
+  setParseErrors: (v: string[]) => void
+  setParseWarnings: (v: string[]) => void
+  setApplied: (v: boolean) => void
+  appliedTimerRef: { current: ReturnType<typeof setTimeout> | null }
+}
+
+function applyYamlToCanvas(args: ApplyYamlArgs): void {
+  const positionMap = buildPositionMap()
+  const result = parseYamlToNodesEdges(args.yamlText, positionMap)
+  args.setParseErrors(result.errors)
+  args.setParseWarnings(result.warnings)
+  if (result.errors.length > 0) return
+  const store = useWorkflowEditorStore.getState()
+  if (!store.definition) return
+  applyParsedResultToStore(args.yamlText, result.nodes, result.edges)
+  args.setApplied(true)
+  scheduleAppliedReset(args.appliedTimerRef, () => args.setApplied(false))
+}
+
+function buildPositionMap(): Map<string, { x: number; y: number }> {
+  const positionMap = new Map<string, { x: number; y: number }>()
+  for (const node of useWorkflowEditorStore.getState().nodes) {
+    positionMap.set(node.id, node.position)
+  }
+  return positionMap
+}
+
+function applyParsedResultToStore(
+  yamlText: string,
+  parsedNodes: ReturnType<typeof parseYamlToNodesEdges>['nodes'],
+  edges: ReturnType<typeof parseYamlToNodesEdges>['edges'],
+): void {
+  const store = useWorkflowEditorStore.getState()
+  const mappedNodes: Node[] = parsedNodes.map((n) => ({
+    ...n,
+    data: {
+      ...((n.data ?? {}) as Record<string, unknown>),
+      label: ((n.data as Record<string, unknown>)?.label as string) ?? n.id,
+    },
+  }))
+  const snapshot = {
+    nodes: structuredClone(store.nodes),
+    edges: structuredClone(store.edges),
+  }
+  useWorkflowEditorStore.setState((s) => ({
+    nodes: mappedNodes,
+    edges,
+    selectedNodeId: null,
+    dirty: true,
+    yamlPreview: yamlText,
+    undoStack: [...s.undoStack.slice(-49), snapshot],
+    redoStack: [],
+  }))
+}
+
+function scheduleAppliedReset(
+  timerRef: { current: ReturnType<typeof setTimeout> | null },
+  reset: () => void,
+): void {
+  if (timerRef.current !== null) clearTimeout(timerRef.current)
+  timerRef.current = setTimeout(() => {
+    reset()
+    timerRef.current = null
+  }, APPLIED_FLASH_MS)
+}
+
+interface ParseErrorsBannerProps {
+  errors: readonly string[]
+}
+
+function ParseErrorsBanner({ errors }: ParseErrorsBannerProps) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1">
-        <LazyCodeMirrorEditor
-          value={yamlText}
-          onChange={setYamlText}
-          language="yaml"
-        />
+    <div className="border-t border-danger/30 bg-danger/5 p-card">
+      <div className="flex items-center gap-1.5 text-sm font-medium text-danger">
+        <AlertTriangle className="size-4" />
+        {errors.length} error{errors.length !== 1 ? 's' : ''}
       </div>
+      <ul className="mt-1 space-y-0.5 text-xs text-danger">
+        {errors.map((err) => (
+          <li key={err}>{err}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
-      {parseErrors.length > 0 && (
-        <div className="border-t border-danger/30 bg-danger/5 p-card">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-danger">
-            <AlertTriangle className="size-4" />
-            {parseErrors.length} error{parseErrors.length !== 1 ? 's' : ''}
-          </div>
-          <ul className="mt-1 space-y-0.5 text-xs text-danger">
-            {parseErrors.map((err) => (
-              <li key={err}>{err}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+interface ParseWarningsBannerProps {
+  warnings: readonly string[]
+}
 
-      {parseWarnings.length > 0 && parseErrors.length === 0 && (
-        <div className="border-t border-warning/30 bg-warning/5 p-card">
-          <ul className="space-y-0.5 text-xs text-warning">
-            {parseWarnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="flex items-center justify-end gap-2 border-t border-border p-2">
-        {applied && (
-          <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="size-3" />
-            Applied
-          </span>
-        )}
-        <Button variant="outline" size="sm" onClick={handleRevert}>
-          Revert
-        </Button>
-        <Button size="sm" onClick={handleApply}>
-          Apply to Canvas
-        </Button>
-      </div>
+function ParseWarningsBanner({ warnings }: ParseWarningsBannerProps) {
+  return (
+    <div className="border-t border-warning/30 bg-warning/5 p-card">
+      <ul className="space-y-0.5 text-xs text-warning">
+        {warnings.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
     </div>
   )
 }

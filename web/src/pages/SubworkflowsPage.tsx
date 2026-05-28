@@ -40,28 +40,12 @@ export default function SubworkflowsPage() {
     resetPage()
   }, [searchQuery, resetPage])
 
-  const handleSearch = useCallback(
-    (value: string) => {
-      setSearchQuery(value)
-    },
-    [setSearchQuery],
-  )
-
   const handleCardClick = useCallback((sub: SubworkflowSummary) => {
     setSelected(sub)
   }, [])
 
   if (loading && filteredSubworkflows.length === 0) {
-    return (
-      <div className="space-y-section-gap">
-        <Skeleton className="h-8 w-48 rounded" />
-        <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
-          ))}
-        </div>
-      </div>
-    )
+    return <SubworkflowsLoadingSkeleton />
   }
 
   return (
@@ -83,42 +67,24 @@ export default function SubworkflowsPage() {
       <div className="max-w-sm">
         <SearchInput
           value={searchQuery}
-          onChange={handleSearch}
+          onChange={setSearchQuery}
           placeholder="Search by name, description, or ID..."
           ariaLabel="Search subworkflows"
           focusShortcut
         />
       </div>
 
-      {filteredSubworkflows.length === 0 ? (
-        <EmptyState
-          title="No subworkflows"
-          description={
-            searchQuery
-              ? 'No subworkflows match your search.'
-              : 'Publish a workflow as a subworkflow to see it here.'
-          }
-        />
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-            {pagedSubworkflows.map((sub) => (
-              <SubworkflowCard
-                key={sub.subworkflow_id}
-                subworkflow={sub}
-                onClick={handleCardClick}
-              />
-            ))}
-          </div>
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={totalItems}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-          />
-        </>
-      )}
+      <SubworkflowsListOrEmpty
+        searchQuery={searchQuery}
+        filteredCount={filteredSubworkflows.length}
+        pagedSubworkflows={pagedSubworkflows}
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onCardClick={handleCardClick}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
 
       <SubworkflowDetailDrawer
         open={selected !== null}
@@ -126,5 +92,75 @@ export default function SubworkflowsPage() {
         subworkflow={selected}
       />
     </div>
+  )
+}
+
+function SubworkflowsLoadingSkeleton() {
+  return (
+    <div className="space-y-section-gap">
+      <Skeleton className="h-8 w-48 rounded" />
+      <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }, (_, i) => (
+          <Skeleton key={i} className="h-28 rounded-lg" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface SubworkflowsListOrEmptyProps {
+  searchQuery: string
+  filteredCount: number
+  pagedSubworkflows: readonly SubworkflowSummary[]
+  page: number
+  pageSize: number
+  totalItems: number
+  onCardClick: (sub: SubworkflowSummary) => void
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+}
+
+function SubworkflowsListOrEmpty({
+  searchQuery,
+  filteredCount,
+  pagedSubworkflows,
+  page,
+  pageSize,
+  totalItems,
+  onCardClick,
+  onPageChange,
+  onPageSizeChange,
+}: SubworkflowsListOrEmptyProps) {
+  if (filteredCount === 0) {
+    return (
+      <EmptyState
+        title="No subworkflows"
+        description={
+          searchQuery
+            ? 'No subworkflows match your search.'
+            : 'Publish a workflow as a subworkflow to see it here.'
+        }
+      />
+    )
+  }
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+        {pagedSubworkflows.map((sub) => (
+          <SubworkflowCard
+            key={sub.subworkflow_id}
+            subworkflow={sub}
+            onClick={onCardClick}
+          />
+        ))}
+      </div>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={totalItems}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
+    </>
   )
 }
