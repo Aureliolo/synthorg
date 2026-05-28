@@ -87,7 +87,7 @@ artifacts = ["src/synthorg/**/*.sql", "src/synthorg/**/*.yaml"]
 [dependency-groups]
 test = [
     "pytest==9.0.3",
-    "pytest-asyncio==1.3.0",
+    "pytest-asyncio==1.4.0",
     "pytest-codspeed==5.0.3",
     "pytest-cov==7.1.0",
     "pytest-mock==3.15.1",
@@ -713,7 +713,6 @@ disable_error_code = ["explicit-override", "unused-awaitable"]
 # docs/decisions/0006-tiered-module-size-policy.md Section F.1.
 #
 # * ``unused-awaitable`` (~23 sites): #2116
-# * ``deprecated`` (1 site, blocked on pytest-asyncio upstream): #2120
 # * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
 #   #2121
 # * ``unused-ignore`` is a holding pen for pre-existing per-line
@@ -724,7 +723,6 @@ module = "tests.*"
 disallow_any_explicit = false  # #2121
 disable_error_code = [
     "unused-awaitable",      # #2116
-    "deprecated",            # #2120
     "unused-ignore",         # holding pen; closes alongside the above
 ]
 
@@ -854,6 +852,14 @@ tag_format = "v$version"
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
+# Explicit per pytest-asyncio 1.4: an unset loop scope emits a
+# deprecation warning, and our ``filterwarnings = ["error", ...]``
+# promotes it to error. ``"function"`` matches the stated future
+# default (see pytest-asyncio's 1.4 release notes); this line silences
+# the warning and locks the behaviour in regardless of the upstream
+# default-change cadence.
+asyncio_default_test_loop_scope = "function"
+asyncio_default_fixture_loop_scope = "function"
 timeout = 30
 # Linux default for ``pytest-timeout`` is ``signal`` (SIGALRM). That mode
 # only interrupts CPython code between bytecodes, so a test blocked in

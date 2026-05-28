@@ -65,7 +65,8 @@ class TestProviderResponseSecurity:
         assert response.has_api_key is True
         # The response should not have api_key attribute at all
         assert (
-            not hasattr(response, "api_key") or "api_key" not in response.model_fields
+            not hasattr(response, "api_key")
+            or "api_key" not in type(response).model_fields
         )
 
     def test_response_has_credential_indicators(self) -> None:

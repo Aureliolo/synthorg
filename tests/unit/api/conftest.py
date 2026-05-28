@@ -88,13 +88,12 @@ _auth_mod._hasher = argon2.PasswordHasher(
 )
 
 
-# The TestClient anyio portal that these sync controller tests run the
-# app lifespan on inherits the process-wide event-loop policy, which
-# ``tests/unit/conftest.py`` pins to ``WindowsSelectorEventLoopPolicy``
-# on Windows. That avoids the Python 3.14 ProactorEventLoop IOCP
-# teardown race that otherwise segfaults the xdist worker ("node down")
-# whenever an ``api/app.py`` edit widens the affected-tests pre-push
-# selection to the whole api tree.
+# pytest-asyncio loops in the unit tier run under ``SelectorEventLoop``
+# via the ``pytest_asyncio_loop_factories`` hook in
+# ``tests/unit/conftest.py`` (Windows-only), avoiding the Python 3.14
+# ``ProactorEventLoop`` IOCP teardown race that otherwise segfaults
+# the xdist worker ("node down") whenever an ``api/app.py`` edit
+# widens the affected-tests pre-push selection to the whole api tree.
 
 
 @pytest.fixture(scope="session", autouse=True)

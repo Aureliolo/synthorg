@@ -1,21 +1,21 @@
 """Integration-test fixtures for the project workspace acceptance suite."""
 
 import asyncio
-import warnings
-from typing import Any
+import sys
+from collections.abc import Callable, Mapping
 
 import pytest
 
+# The acceptance suite drives ``git`` via ``asyncio.create_subprocess_exec``
+# (through ``EmbeddedGitBackend``) and direct ``subprocess.run`` for worktree
+# setup. ``SelectorEventLoop`` on Windows cannot drive ``create_subprocess_exec``;
+# restore ``ProactorEventLoop`` here so the subprocess calls work.
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Restore ``ProactorEventLoopPolicy`` for subprocess-driving tests.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 
-    The acceptance suite drives ``git`` via ``asyncio.create_subprocess_exec``
-    (through ``EmbeddedGitBackend``) and direct ``subprocess.run`` for
-    worktree setup. SelectorEventLoop on Windows cannot drive
-    ``create_subprocess_exec``; restore the default Proactor policy here.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``ProactorEventLoop`` for subprocess-driving workspace tests."""
+        return {"proactor": asyncio.ProactorEventLoop}

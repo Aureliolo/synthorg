@@ -30,8 +30,7 @@ import json
 import os
 import sys
 import uuid
-import warnings
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, Final
 
@@ -53,25 +52,19 @@ from tests._shared.postgres_proxy import from_env as _proxy_from_env
 logger = get_logger(__name__)
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Use SelectorEventLoop on Windows so psycopg async mode works.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 
-    psycopg 3 refuses to run under ``ProactorEventLoop`` (the default
-    Windows asyncio loop since 3.8).  This fixture overrides the
-    pytest-asyncio default policy for tests in this directory only,
-    leaving other test suites on the default policy.
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``SelectorEventLoop`` on Windows so psycopg async mode works.
 
-    The stdlib policy API is deprecated in Python 3.14 (scheduled for
-    removal in 3.16) but pytest-asyncio 1.3 still consumes it; we
-    silence the DeprecationWarning locally until pytest-asyncio
-    exposes a ``loop_factory`` hook.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        if sys.platform == "win32":
-            return asyncio.WindowsSelectorEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore,unreachable]
+        psycopg 3 refuses to run under ``ProactorEventLoop`` (the
+        default Windows asyncio loop since 3.8). Scoped to this
+        directory so other test suites keep their default factory.
+        """
+        return {"selector": asyncio.SelectorEventLoop}
 
 
 def _docker_available() -> bool:

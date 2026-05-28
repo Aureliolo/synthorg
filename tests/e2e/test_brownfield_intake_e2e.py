@@ -20,8 +20,8 @@ is a local git repo; knowledge ingestion is mocked).
 
 import asyncio
 import os
-import warnings
-from collections.abc import AsyncGenerator
+import sys
+from collections.abc import AsyncGenerator, Callable, Mapping
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -87,17 +87,19 @@ pytestmark = pytest.mark.e2e
 _PROJECT = "acquired-co"
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Restore ``ProactorEventLoopPolicy`` so the real git seed can spawn.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 
-    The unit/e2e root pins ``SelectorEventLoopPolicy`` on Windows, which
-    cannot drive ``asyncio.create_subprocess_exec`` (the embedded git
-    backend's seed). Mirrors the git-backend unit conftest.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``ProactorEventLoop`` so the real git seed can spawn.
+
+        The unit-tier root pins ``SelectorEventLoop`` on Windows, which
+        cannot drive ``asyncio.create_subprocess_exec`` (the embedded
+        git backend's seed). Mirrors the git-backend unit conftest.
+        """
+        return {"proactor": asyncio.ProactorEventLoop}
 
 
 class _StopStrategy:

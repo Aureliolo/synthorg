@@ -4,10 +4,16 @@ import asyncio
 import shutil
 import sys
 import uuid
-import warnings
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    Mapping,
+)
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
@@ -26,18 +32,18 @@ if TYPE_CHECKING:
     from testcontainers.postgres import PostgresContainer
 
 
-@pytest.fixture(scope="session")
-def event_loop_policy() -> Any:
-    """Use SelectorEventLoop on Windows so psycopg async mode works.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
 
-    Scoped to the integration directory so other test suites keep
-    their default ProactorEventLoop.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        if sys.platform == "win32":
-            return asyncio.WindowsSelectorEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore]
-        return asyncio.DefaultEventLoopPolicy()  # type: ignore[attr-defined,unused-ignore,unreachable]
+    def pytest_asyncio_loop_factories(
+        config: pytest.Config,
+        item: pytest.Item,
+    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
+        """Use ``SelectorEventLoop`` on Windows so psycopg async mode works.
+
+        Scoped to the integration directory so other test suites keep
+        their default ``ProactorEventLoop``.
+        """
+        return {"selector": asyncio.SelectorEventLoop}
 
 
 @pytest.fixture
