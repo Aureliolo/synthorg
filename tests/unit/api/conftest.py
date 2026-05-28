@@ -911,21 +911,6 @@ def ws_test_client(
         yield client
 
 
-@pytest.fixture
-def test_client(
-    _shared_app: Litestar,  # noqa: PT019
-    _reset_services: _ResetServices,  # noqa: PT019
-) -> Iterator[TestClient[Any]]:
-    """Yield a sync ``TestClient`` wrapping the shared app (legacy).
-
-    Retained while the suite migrates to ``async_test_client``; removed
-    once every consumer is migrated. New and migrated tests must use
-    ``async_test_client`` instead.
-    """
-    with _sync_shared_client(_shared_app, _reset_services) as client:
-        yield client
-
-
 def _promote_first_owner(backend: FakePersistenceBackend) -> None:
     """Promote the first seeded user to OWNER.
 
