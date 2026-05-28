@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Final, NamedTuple
 
 from litestar import Controller, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,7 +14,7 @@ from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.state import BudgetStateSlice

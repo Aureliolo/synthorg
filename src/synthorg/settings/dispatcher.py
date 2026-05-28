@@ -7,7 +7,7 @@ Follows the same polling-loop pattern as
 import asyncio
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import (
@@ -35,7 +35,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
 )
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.subscriber import SettingsSubscriber  # noqa: TC001
+from synthorg.settings.subscriber import SettingsSubscriber
 
 if TYPE_CHECKING:
     from synthorg.communication.message import Message

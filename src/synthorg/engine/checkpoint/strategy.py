@@ -10,20 +10,20 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import (
-    Checkpoint,  # noqa: TC001
-    CheckpointConfig,  # noqa: TC001
+    Checkpoint,
+    CheckpointConfig,
 )
 from synthorg.engine.checkpoint.resume import cleanup_checkpoint_artifacts
-from synthorg.engine.context import AgentContext  # noqa: TC001
+from synthorg.engine.context import AgentContext
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
     infer_failure_category_without_evidence,
 )
-from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
+from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_LOAD_FAILED,
@@ -34,8 +34,8 @@ from synthorg.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_START,
 )
 from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,  # noqa: TC001
-    HeartbeatRepository,  # noqa: TC001
+    CheckpointRepository,
+    HeartbeatRepository,
 )
 
 logger = get_logger(__name__)

@@ -22,7 +22,7 @@ import json
 from typing import Any, ClassVar, Final
 
 from litestar import Controller, Request, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.response import Response
 from pydantic import ValidationError
 

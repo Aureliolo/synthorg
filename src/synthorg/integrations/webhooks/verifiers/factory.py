@@ -10,7 +10,7 @@ from synthorg.integrations.webhooks.verifiers.github_hmac import (
     GitHubHmacVerifier,
 )
 from synthorg.integrations.webhooks.verifiers.protocol import (
-    SignatureVerifier,  # noqa: TC001
+    SignatureVerifier,
 )
 from synthorg.integrations.webhooks.verifiers.slack_signing import (
     SlackSigningVerifier,

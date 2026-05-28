@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (

@@ -5,16 +5,16 @@ default implementation is :class:`InMemoryMessageBus` in
 ``synthorg.communication.bus.memory``.
 """
 
-from collections.abc import Sequence  # noqa: TC003
+from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from synthorg.communication.channel import Channel  # noqa: TC001
-from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.communication.channel import Channel
+from synthorg.communication.message import Message
 from synthorg.communication.subscription import (
-    DeliveryEnvelope,  # noqa: TC001
-    Subscription,  # noqa: TC001
+    DeliveryEnvelope,
+    Subscription,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable

@@ -21,7 +21,7 @@ from synthorg.tools.discovery import (
     METADATA_SHOULD_LOAD_TOOL,
 )
 
-from .models import AgentMiddlewareContext, ToolCallResult  # noqa: TC001
+from .models import AgentMiddlewareContext, ToolCallResult
 from .protocol import BaseAgentMiddleware, ToolCallable
 
 logger = get_logger(__name__)

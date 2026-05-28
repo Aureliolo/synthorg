@@ -21,14 +21,14 @@ surface in a report.
 """
 
 import math
-from collections.abc import Iterable  # noqa: TC003 -- runtime type
+from collections.abc import Iterable
 from types import MappingProxyType
 from typing import Annotated, Final
 
 from pydantic import AfterValidator, StringConstraints
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import BUDGET_MIXED_CURRENCY_REJECTED
 

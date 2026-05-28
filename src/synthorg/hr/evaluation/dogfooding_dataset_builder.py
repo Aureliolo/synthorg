@@ -15,7 +15,7 @@ from synthorg.hr.evaluation.external_benchmark_models import (
     EvalDataset,
     EvalTestCase,
 )
-from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

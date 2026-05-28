@@ -8,7 +8,7 @@ forwards). Cross-project authority is checked by callers via the
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (

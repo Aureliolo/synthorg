@@ -10,13 +10,13 @@ by the settings subscribers under their per-config locks). Mixed into
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.inflight_config import (
-    PerOpConcurrencyConfig,  # noqa: TC001
+    PerOpConcurrencyConfig,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
-from synthorg.settings.bridge_configs import (  # noqa: TC001
+from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
     MemoryBridgeConfig,
     WorkersBridgeConfig,

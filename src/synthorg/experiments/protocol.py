@@ -2,12 +2,12 @@
 
 from typing import Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002 -- runtime Protocol annotation
+from pydantic import AwareDatetime
 
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- runtime Protocol annotation
+    NotBlankStr,
 )
-from synthorg.experiments.models import (  # noqa: TC001 -- runtime Protocol annotation
+from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
 )

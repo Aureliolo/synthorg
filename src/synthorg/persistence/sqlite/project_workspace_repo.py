@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import GitBackendType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project_workspace import ProjectWorkspace
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_PROJECT_WORKSPACE_DELETE_FAILED,

@@ -1,10 +1,10 @@
 """Per-pair delegation rate limiter."""
 
 import time
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import Final
 
-from synthorg.communication.config import RateLimitConfig  # noqa: TC001
+from synthorg.communication.config import RateLimitConfig
 from synthorg.communication.loop_prevention._pair_key import pair_key
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
 from synthorg.observability import get_logger

@@ -5,7 +5,7 @@ Frozen Pydantic models for organizational memory behaviour settings.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.access_control import WriteAccessConfig
 
 

@@ -14,7 +14,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 
 

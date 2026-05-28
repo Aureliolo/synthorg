@@ -7,7 +7,7 @@ repo.  No external dependency; pushes/fetches are pure-local.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType

@@ -4,7 +4,7 @@ import asyncio
 from typing import Annotated, Final
 
 from litestar import Controller, Response, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter
 
 from synthorg.api.cursor import decode_cursor

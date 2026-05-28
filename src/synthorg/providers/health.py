@@ -24,7 +24,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_AUTO_PRUNED,

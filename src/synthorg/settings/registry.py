@@ -6,7 +6,7 @@ from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_REGISTRY_DUPLICATE
 from synthorg.settings.errors import SettingsRegistryError
-from synthorg.settings.models import SettingDefinition  # noqa: TC001
+from synthorg.settings.models import SettingDefinition
 
 logger = get_logger(__name__)
 

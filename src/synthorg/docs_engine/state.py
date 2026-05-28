@@ -12,10 +12,10 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.docs_engine.retrieval_facade import (
-    ProjectAwareMemoryFacade,  # noqa: TC001
+    ProjectAwareMemoryFacade,
 )
-from synthorg.docs_engine.service import DocsService  # noqa: TC001
-from synthorg.docs_engine.tool_factory import DocsToolFactory  # noqa: TC001
+from synthorg.docs_engine.service import DocsService
+from synthorg.docs_engine.tool_factory import DocsToolFactory
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

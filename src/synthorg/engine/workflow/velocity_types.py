@@ -4,12 +4,12 @@ Defines the ``VelocityCalcType`` enum for selecting velocity calculators
 and the ``VelocityMetrics`` model for strategy-computed velocity output.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- Pydantic runtime
+from collections.abc import Mapping
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class VelocityCalcType(StrEnum):

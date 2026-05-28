@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

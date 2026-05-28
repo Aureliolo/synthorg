@@ -9,7 +9,7 @@ connects. Interventions are audit-logged via ``cockpit.intervention.*``.
 from typing import Annotated, Final
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,15 +23,15 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     encode_countless_seek_meta,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.path_params import PathId
+from synthorg.api.state import AppState
 from synthorg.core.enums import InterventionKind, TaskStatus
-from synthorg.core.task import Task  # noqa: TC001 -- response field type
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.cockpit import LiveActivitySnapshot  # noqa: TC001
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.cockpit import LiveActivitySnapshot
 from synthorg.engine.cockpit.state import CockpitStateSlice
-from synthorg.engine.flight_recording import ReplaySeekView  # noqa: TC001
-from synthorg.engine.intervention import SteeringOutcome  # noqa: TC001
+from synthorg.engine.flight_recording import ReplaySeekView
+from synthorg.engine.intervention import SteeringOutcome
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger

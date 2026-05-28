@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.config.schema import ProviderConfig  # noqa: TC001
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (

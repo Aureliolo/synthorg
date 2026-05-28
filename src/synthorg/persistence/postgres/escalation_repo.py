@@ -10,7 +10,7 @@ all timestamps -- mirrors the Postgres sibling pattern from
 import contextlib
 import json
 import re
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal

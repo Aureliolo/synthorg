@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Final, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001 -- used in type annotation
+from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,

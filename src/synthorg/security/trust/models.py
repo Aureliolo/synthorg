@@ -16,7 +16,7 @@ from pydantic import (
 
 from synthorg.core.enums import ToolAccessLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.security.trust.enums import TrustChangeReason  # noqa: TC001
+from synthorg.security.trust.enums import TrustChangeReason
 
 
 class TrustState(BaseModel):

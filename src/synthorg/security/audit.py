@@ -3,9 +3,9 @@
 from collections import deque
 from typing import Final
 
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime
 
-from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
+from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_CLEARED,
@@ -14,7 +14,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUDIT_RECORDED,
 )
 from synthorg.observability.metrics_hub import record_security_audit_fill_ratio
-from synthorg.security.models import AuditEntry  # noqa: TC001
+from synthorg.security.models import AuditEntry
 
 logger = get_logger(__name__)
 _DEFAULT_MAX_ENTRIES: Final[int] = 100000

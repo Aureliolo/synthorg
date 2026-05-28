@@ -26,7 +26,7 @@ from synthorg.hr.evaluation.models import (
     ResilienceMetrics,
     redistribute_weights,
 )
-from synthorg.hr.performance.models import (  # noqa: TC001
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     LlmCalibrationRecord,
     TaskMetricRecord,

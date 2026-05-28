@@ -5,15 +5,15 @@ period.  Supports per-agent overrides that take priority over
 company-level defaults.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.config import RetentionConfig  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.config import RetentionConfig
 from synthorg.memory.models import MemoryQuery
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     RETENTION_AGENT_OVERRIDE_APPLIED,

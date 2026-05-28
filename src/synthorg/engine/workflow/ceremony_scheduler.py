@@ -11,7 +11,7 @@ See ``docs/design/ceremony-scheduling.md`` for the full design.
 
 import asyncio
 import json
-from collections.abc import Callable  # noqa: TC003 -- runtime annotation on __init__
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 

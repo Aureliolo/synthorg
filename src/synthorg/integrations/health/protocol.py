@@ -3,8 +3,8 @@
 from typing import Protocol, runtime_checkable
 
 from synthorg.integrations.connections.models import (
-    Connection,  # noqa: TC001
-    HealthReport,  # noqa: TC001
+    Connection,
+    HealthReport,
 )
 
 

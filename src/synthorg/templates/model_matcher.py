@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_FAILED,
@@ -19,7 +19,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_SKIPPED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
-from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
+from synthorg.templates.model_requirements import ModelTier
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

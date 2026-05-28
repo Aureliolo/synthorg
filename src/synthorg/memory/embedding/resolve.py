@@ -12,10 +12,10 @@ Callers use ``resolve_embedder_config()`` instead of constructing
 
 from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
 from synthorg.memory.config import (
-    CompanyMemoryConfig,  # noqa: TC001
-    EmbedderOverrideConfig,  # noqa: TC001
+    CompanyMemoryConfig,
+    EmbedderOverrideConfig,
 )
-from synthorg.memory.embedding.rankings import DeploymentTier  # noqa: TC001
+from synthorg.memory.embedding.rankings import DeploymentTier
 from synthorg.memory.embedding.selector import (
     infer_deployment_tier,
     select_embedding_model,

@@ -3,7 +3,7 @@
 import asyncio
 import json as _json
 from collections.abc import (
-    Mapping,  # noqa: TC003  # Litestar inspects runtime return-type annotation
+    Mapping,  # Litestar inspects runtime return-type annotation
 )
 from typing import TYPE_CHECKING, Annotated
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 from litestar import Controller, delete, get, patch, post, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter, QueryParameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
@@ -31,15 +31,15 @@ from synthorg.api.dto_discovery import (
     RemoveAllowlistEntryRequest,
 )
 from synthorg.api.dto_provider_capabilities import (
-    AddModelRequest,  # noqa: TC001 -- runtime litestar request body
-    CredentialsRotateRequest,  # noqa: TC001 -- runtime litestar request body
-    PresetOverride,  # noqa: TC001 -- runtime litestar response model
-    PresetOverrideUpdateRequest,  # noqa: TC001 -- runtime litestar request body
-    ProviderAuditEvent,  # noqa: TC001 -- runtime litestar response model
-    RateLimitsResponse,  # noqa: TC001 -- runtime litestar response model
-    RateLimitsUpdateRequest,  # noqa: TC001 -- runtime litestar request body
-    SyncModelsRequest,  # noqa: TC001 -- runtime litestar request body
-    SyncModelsResponse,  # noqa: TC001 -- runtime litestar response model
+    AddModelRequest,
+    CredentialsRotateRequest,
+    PresetOverride,
+    PresetOverrideUpdateRequest,
+    ProviderAuditEvent,
+    RateLimitsResponse,
+    RateLimitsUpdateRequest,
+    SyncModelsRequest,
+    SyncModelsResponse,
 )
 from synthorg.api.dto_providers import (
     CreateFromPresetRequest,
@@ -67,13 +67,13 @@ from synthorg.api.pagination import (
     encode_keyset_meta,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import (
     per_op_concurrency_from_policy,
     per_op_rate_limit_from_policy,
 )
 from synthorg.api.responses import require_resource_or_404
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -96,7 +96,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_PROBE_LOCAL_BATCH_STARTED,
     PROVIDER_PROBE_LOCAL_PRESET_FAILED,
 )
-from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderModelNotFoundError,
@@ -104,7 +104,7 @@ from synthorg.providers.errors import (
     ProviderValidationError,
     RateLimitError,
 )
-from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
+from synthorg.providers.health import ProviderHealthSummary
 from synthorg.providers.presets import (
     LocalPreset,
     ProviderPreset,

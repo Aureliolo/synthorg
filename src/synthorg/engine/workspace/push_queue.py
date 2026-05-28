@@ -11,12 +11,12 @@ seam, so a future virtual-branch strategy supplies its own
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkspaceError,
     WorkspaceMergeError,

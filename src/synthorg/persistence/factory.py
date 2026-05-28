@@ -14,8 +14,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_UNKNOWN,
 )
 from synthorg.observability.redaction import safe_error_description
-from synthorg.persistence.config import PersistenceConfig  # noqa: TC001
-from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.persistence.config import PersistenceConfig
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.registry import PersistenceBackendRegistry
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 

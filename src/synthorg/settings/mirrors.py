@@ -21,7 +21,7 @@ that pass ``MyConfig(field=X)`` keep getting ``X``.
 """
 
 import json
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 

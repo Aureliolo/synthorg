@@ -21,7 +21,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.state import EngineStateSlice, workflow_execution_service_of
 from synthorg.engine.workflow.execution_service import (
-    WorkflowExecutionService,  # noqa: TC001 -- runtime annotation in helper
+    WorkflowExecutionService,
 )
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,

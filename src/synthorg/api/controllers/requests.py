@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,12 +18,12 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
-from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
+from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -31,7 +31,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.state import EngineStateSlice, intake_entry_adapter_of
 from synthorg.observability import (

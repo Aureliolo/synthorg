@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.state_machine import StateMachine
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_TRANSITION,

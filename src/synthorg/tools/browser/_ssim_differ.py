@@ -10,7 +10,7 @@ event loop responsive when multiple specs run concurrently.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime use in image open
+from pathlib import Path
 from typing import Any, cast
 
 from synthorg.core.critical_errors import reraise_critical

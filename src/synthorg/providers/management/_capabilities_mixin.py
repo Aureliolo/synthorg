@@ -7,10 +7,10 @@ provided by the host service; ``TYPE_CHECKING`` annotations narrow
 the contract for mypy strict.
 """
 
-import asyncio  # noqa: TC003 -- used in TYPE_CHECKING attribute hints
+import asyncio
 from typing import TYPE_CHECKING, Protocol
 
-from synthorg.config.schema import (  # noqa: TC001 -- runtime use in return types
+from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
 )

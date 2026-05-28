@@ -38,7 +38,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_RECEIVED,
 )
 from synthorg.security.redteam.errors import RedTeamDispatchError
-from synthorg.security.redteam.grounding.protocol import GroundingChecker  # noqa: TC001
+from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
     RedTeamFinding,
@@ -49,8 +49,8 @@ from synthorg.security.redteam.models import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.protocol import (
-    AgentRunner,  # noqa: TC001
-    RedTeamReportRepository,  # noqa: TC001
+    AgentRunner,
+    RedTeamReportRepository,
 )
 from synthorg.security.redteam.routing import (
     HEURISTIC_GROUNDING_MAX_SEVERITY,

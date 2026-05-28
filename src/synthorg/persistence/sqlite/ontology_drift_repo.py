@@ -15,7 +15,7 @@ from synthorg.observability.events.ontology import (
 from synthorg.ontology.models import AgentDrift, DriftAction, DriftReport
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

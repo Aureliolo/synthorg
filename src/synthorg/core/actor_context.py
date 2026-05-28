@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Iterator

@@ -6,8 +6,8 @@ determine how learned procedural memories are shared between agents.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry
 
 if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService

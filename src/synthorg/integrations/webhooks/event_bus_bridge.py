@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
 
-from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message

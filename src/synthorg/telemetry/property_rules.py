@@ -20,7 +20,7 @@ log.
 """
 
 import re
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from types import MappingProxyType
 
 from synthorg.observability.events.telemetry import (

@@ -6,7 +6,7 @@ adaptation.
 """
 
 import asyncio
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 

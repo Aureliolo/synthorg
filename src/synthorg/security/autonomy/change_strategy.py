@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,

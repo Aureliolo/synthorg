@@ -26,7 +26,7 @@ import hashlib
 import threading
 from typing import Final
 
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.integrations.webhooks.activity_service import WebhookActivityService

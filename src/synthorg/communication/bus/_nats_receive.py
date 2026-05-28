@@ -12,7 +12,7 @@ from typing import Any
 from synthorg.communication.bus._nats_channels import resolve_channel_or_raise
 from synthorg.communication.bus._nats_consumers import create_pull_consumer
 from synthorg.communication.bus._nats_publish import deserialize_message
-from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.bus._nats_utils import (
     MAX_BUS_PAYLOAD_BYTES,
     RECEIVE_POLL_WINDOW_SECONDS,

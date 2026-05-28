@@ -11,7 +11,7 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.tools.invocation_tracker import (
-    ToolInvocationTracker,  # noqa: TC001
+    ToolInvocationTracker,
 )
 
 if TYPE_CHECKING:

@@ -8,7 +8,7 @@ best-effort: a failing sink logs and never propagates into the engine.
 
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002 -- runtime annotation
+from pydantic import AwareDatetime
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

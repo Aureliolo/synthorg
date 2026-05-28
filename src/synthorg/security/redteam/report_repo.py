@@ -10,7 +10,7 @@ scoped to a single host process. The repo is single-shot per
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.errors import (
     RedTeamReportAlreadyExistsError,
     RedTeamReportNotFoundError,

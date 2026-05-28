@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_similarity import cosine_word_similarity
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ModelCallable
 from synthorg.observability import get_logger
 from synthorg.observability.events.middleware import (

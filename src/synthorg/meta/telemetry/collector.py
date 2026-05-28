@@ -8,7 +8,7 @@ import asyncio
 from typing import Final
 
 from synthorg.meta.telemetry.aggregator import aggregate_patterns
-from synthorg.meta.telemetry.models import (  # noqa: TC001
+from synthorg.meta.telemetry.models import (
     AggregatedPattern,
     AnonymizedOutcomeEvent,
 )

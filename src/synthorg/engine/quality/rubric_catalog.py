@@ -2,7 +2,7 @@
 
 from types import MappingProxyType
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.verification import (
     FRONTEND_DESIGN_RUBRIC,
     GradeType,

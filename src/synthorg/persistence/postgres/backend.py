@@ -14,7 +14,7 @@ backend: callers get Pydantic models back either way.
 """
 
 import asyncio
-from collections.abc import AsyncIterator  # noqa: TC003
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
@@ -35,10 +35,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
 from synthorg.persistence._shared import format_iso_utc
-from synthorg.persistence.config import PostgresConfig  # noqa: TC001
+from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.fine_tune_protocol import (
-    FineTuneCheckpointRepository,  # noqa: TC001
-    FineTuneRunRepository,  # noqa: TC001
+    FineTuneCheckpointRepository,
+    FineTuneRunRepository,
 )
 from synthorg.persistence.postgres.agent_state_repo import (
     PostgresAgentStateRepository,

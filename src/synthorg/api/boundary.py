@@ -32,7 +32,7 @@ Usage::
 """
 
 from collections.abc import (
-    Mapping,  # noqa: TC003 -- runtime-needed via annotation introspection
+    Mapping,
 )
 from typing import Final, LiteralString, overload
 

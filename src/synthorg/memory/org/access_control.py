@@ -4,7 +4,7 @@ Provides seniority-based and human-based write restriction
 models, configuration, and enforcement functions.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime Pydantic field annotation
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Self
 
@@ -16,7 +16,7 @@ from synthorg.core.enums import (
     compare_seniority,
 )
 from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
-from synthorg.memory.org.models import OrgFactAuthor  # noqa: TC001
+from synthorg.memory.org.models import OrgFactAuthor
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import ORG_MEMORY_WRITE_DENIED
 

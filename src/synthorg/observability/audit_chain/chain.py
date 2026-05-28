@@ -1,7 +1,7 @@
 """Hash chain for append-only tamper-evident audit trail."""
 
 import hashlib
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 

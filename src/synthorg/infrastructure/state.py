@@ -15,31 +15,31 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.docs_engine.retrieval_facade import (
-    ProjectAwareMemoryFacade,  # noqa: TC001
+    ProjectAwareMemoryFacade,
 )
 from synthorg.engine.quality.mcp_services import (
-    QualityFacadeService,  # noqa: TC001
-    ReviewFacadeService,  # noqa: TC001
+    QualityFacadeService,
+    ReviewFacadeService,
 )
 from synthorg.infrastructure.services import (
-    AuditReadService,  # noqa: TC001
-    BackupFacadeService,  # noqa: TC001
-    EventsReadService,  # noqa: TC001
-    IntegrationHealthFacadeService,  # noqa: TC001
-    ProjectFacadeService,  # noqa: TC001
-    ProviderReadService,  # noqa: TC001
-    RequestsFacadeService,  # noqa: TC001
-    SetupFacadeService,  # noqa: TC001
-    SimulationFacadeService,  # noqa: TC001
-    TemplatePackFacadeService,  # noqa: TC001
-    UserFacadeService,  # noqa: TC001
+    AuditReadService,
+    BackupFacadeService,
+    EventsReadService,
+    IntegrationHealthFacadeService,
+    ProjectFacadeService,
+    ProviderReadService,
+    RequestsFacadeService,
+    SetupFacadeService,
+    SimulationFacadeService,
+    TemplatePackFacadeService,
+    UserFacadeService,
 )
 from synthorg.integrations.mcp_services import (
-    ArtifactFacadeService,  # noqa: TC001
-    ClientFacadeService,  # noqa: TC001
-    MCPCatalogFacadeService,  # noqa: TC001
-    OAuthFacadeService,  # noqa: TC001
-    OntologyFacadeService,  # noqa: TC001
+    ArtifactFacadeService,
+    ClientFacadeService,
+    MCPCatalogFacadeService,
+    OAuthFacadeService,
+    OntologyFacadeService,
 )
 
 if TYPE_CHECKING:

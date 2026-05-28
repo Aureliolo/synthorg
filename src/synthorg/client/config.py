@@ -9,7 +9,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 # Acceptance band for the AI/human/hybrid pool-ratio sum: floating
 # point makes an exact == 1.0 check brittle, so a +/-1% tolerance is

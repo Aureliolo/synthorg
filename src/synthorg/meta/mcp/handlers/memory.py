@@ -27,7 +27,7 @@ boundary and emit :data:`MCP_ADMIN_OP_EXECUTED` on success.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -53,7 +53,7 @@ from synthorg.meta.mcp.errors import (
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,

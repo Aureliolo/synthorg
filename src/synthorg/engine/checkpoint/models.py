@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
 
 

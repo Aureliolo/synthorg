@@ -7,8 +7,8 @@ retrieval candidates using query-specific scoring.
 from typing import Protocol, runtime_checkable
 
 from synthorg.memory.retrieval.models import (
-    RetrievalCandidate,  # noqa: TC001
-    RetrievalQuery,  # noqa: TC001
+    RetrievalCandidate,
+    RetrievalQuery,
 )
 
 

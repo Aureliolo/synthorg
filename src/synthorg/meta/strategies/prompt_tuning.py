@@ -8,7 +8,7 @@ org-wide (default), override, and advisory.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from pydantic import JsonValue  # noqa: TC002
+from pydantic import JsonValue
 
 from synthorg.meta.models import (
     EvolutionMode,

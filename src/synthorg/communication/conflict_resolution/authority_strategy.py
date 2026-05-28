@@ -19,7 +19,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
     DissentRecord,
 )
-from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy

@@ -5,7 +5,7 @@ health judge and consumed by the triage filter.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- runtime Pydantic field annotation
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
@@ -13,8 +13,8 @@ from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.quality.models import StepQualitySignal  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.quality.models import StepQualitySignal
 
 
 class EscalationSeverity(StrEnum):

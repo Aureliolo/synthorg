@@ -2,9 +2,9 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.agent import ModelConfig  # noqa: TC001
-from synthorg.core.enums import Stakes  # noqa: TC001 -- runtime field type (Pydantic)
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.agent import ModelConfig
+from synthorg.core.enums import Stakes
+from synthorg.core.types import NotBlankStr
 
 
 class StakesRoutingDecision(BaseModel):

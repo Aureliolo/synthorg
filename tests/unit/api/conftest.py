@@ -64,12 +64,12 @@ from tests.unit.api.fakes import (
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 
-# Test-side ``@suppress_type_checks`` wrap on ``create_app``: the signature
-# touches types behind pre-existing source-side import cycles, so typeguard's
-# eager ``inspect.signature`` fails to resolve their annotations until the
-# import-layering refactor breaks the cycles. Keeping the decorator here
-# (rather than at the source) keeps ``typeguard`` a pure test dependency.
-# See ADR-0006 Section F for the deferred work.
+# Test-side ``@suppress_type_checks`` wrap on ``create_app``: the
+# signature touches types behind source-side import cycles whose
+# annotations typeguard's eager ``inspect.signature`` cannot resolve at
+# runtime. Wrapping here (rather than at the source) keeps ``typeguard``
+# a pure test dependency and confines the suppression to the call site
+# that needs it.
 create_app = suppress_type_checks(create_app)
 _app_mod.create_app = create_app
 

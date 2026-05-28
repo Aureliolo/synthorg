@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_ACTIVITY_REDACTION_MISMATCH

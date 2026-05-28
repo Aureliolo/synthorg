@@ -37,13 +37,13 @@ _RERANK_COMPLETION_CONFIG = CompletionConfig(temperature=0.0)
 # ``LLMQuerySpecificReranker.__init__`` and ``rerank``'s public
 # annotation, so they must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001, E402
-from synthorg.memory.retrieval.models import (  # noqa: TC001, E402
+from synthorg.budget.tracker import CostTracker  # noqa: E402
+from synthorg.memory.retrieval.models import (  # noqa: E402
     RetrievalCandidate,
     RetrievalQuery,
 )
-from synthorg.memory.retrieval.reranking.cache import RerankerCache  # noqa: TC001, E402
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001, E402
+from synthorg.memory.retrieval.reranking.cache import RerankerCache  # noqa: E402
+from synthorg.providers.protocol import CompletionProvider  # noqa: E402
 
 logger = get_logger(__name__)
 

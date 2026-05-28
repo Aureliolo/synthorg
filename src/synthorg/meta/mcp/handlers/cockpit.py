@@ -16,7 +16,7 @@ from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.state import task_engine_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     dump_many,

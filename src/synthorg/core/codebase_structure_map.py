@@ -22,7 +22,7 @@ from pydantic import (
     StringConstraints,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 """A 64-character lowercase hex SHA-256 digest."""

@@ -10,7 +10,7 @@ entry point will use LLM analysis to author the proposal bodies.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from pydantic import JsonValue  # noqa: TC002
+from pydantic import JsonValue
 
 from synthorg.meta.models import (
     ConfigChange,

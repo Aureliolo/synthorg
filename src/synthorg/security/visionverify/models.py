@@ -14,8 +14,8 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import AutonomyLevel  # noqa: TC001 -- Pydantic field type
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.enums import AutonomyLevel
+from synthorg.core.types import NotBlankStr
 
 _RGB_MIN: Final[int] = 0
 _RGB_MAX: Final[int] = 255

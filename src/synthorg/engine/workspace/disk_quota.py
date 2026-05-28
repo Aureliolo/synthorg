@@ -6,7 +6,7 @@ to the workspace manager -- this module only signals.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,7 +20,7 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_DISK_WARNING,
 )
 
-from .config import PlannerWorktreesConfig  # noqa: TC001
+from .config import PlannerWorktreesConfig
 
 logger = get_logger(__name__)
 

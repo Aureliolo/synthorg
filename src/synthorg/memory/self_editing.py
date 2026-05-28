@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (
     DefaultTokenEstimator,

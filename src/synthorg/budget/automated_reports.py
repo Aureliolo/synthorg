@@ -24,7 +24,7 @@ from synthorg.budget.report_templates import (
     TaskCompletionReport,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
+from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.reporting import (
     REPORTING_GENERATION_COMPLETED,

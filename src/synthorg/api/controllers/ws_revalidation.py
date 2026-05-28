@@ -16,12 +16,12 @@ Public surface (re-exported from ``ws.py``):
 import asyncio
 from typing import Any
 
-from litestar import WebSocket  # noqa: TC002
+from litestar import WebSocket
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
-from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.engine.classification.sinks import _SlidingWindowRateLimiter
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

@@ -8,7 +8,7 @@ import math
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Final, Self
-from uuid import UUID  # noqa: TC003 -- Pydantic needs at runtime
+from uuid import UUID
 
 from pydantic import (
     AwareDatetime,
@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic needs at runtime
+from synthorg.core.types import NotBlankStr
 
 
 class ABTestGroup(StrEnum):

@@ -3,8 +3,8 @@
 from collections.abc import Callable
 from typing import Final, Literal
 
-from synthorg.client.ai_client import AIClient  # noqa: TC001
-from synthorg.client.human_client import HumanClient  # noqa: TC001
+from synthorg.client.ai_client import AIClient
+from synthorg.client.human_client import HumanClient
 from synthorg.client.models import (
     ClientFeedback,
     ClientProfile,

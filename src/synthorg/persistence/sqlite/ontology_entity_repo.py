@@ -3,7 +3,7 @@
 import contextlib
 import json
 import sqlite3
-from collections.abc import Iterable  # noqa: TC003
+from collections.abc import Iterable
 
 import aiosqlite
 
@@ -32,7 +32,7 @@ from synthorg.persistence._shared import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

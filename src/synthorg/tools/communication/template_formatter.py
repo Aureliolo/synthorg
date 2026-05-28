@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Final
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -25,7 +25,7 @@ from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
 from synthorg.tools.communication.config import (
-    CommunicationToolsConfig,  # noqa: TC001
+    CommunicationToolsConfig,
 )
 
 logger = get_logger(__name__)

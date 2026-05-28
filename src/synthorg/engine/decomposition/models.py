@@ -16,8 +16,8 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskStructure,
 )
-from synthorg.core.task import Task  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 
 
 class SubtaskDefinition(BaseModel):

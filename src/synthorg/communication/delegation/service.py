@@ -1,18 +1,18 @@
 """Delegation service orchestrating hierarchy, authority, and loop prevention."""
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime for type annotation
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from pydantic import ValidationError
 
-from synthorg.communication.delegation.authority import (  # noqa: TC001
+from synthorg.communication.delegation.authority import (
     AuthorityValidator,
 )
-from synthorg.communication.delegation.entity_guard import (  # noqa: TC001
+from synthorg.communication.delegation.entity_guard import (
     EntityAlignmentGuard,
 )
-from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
 from synthorg.communication.delegation.models import (
@@ -21,13 +21,13 @@ from synthorg.communication.delegation.models import (
     DelegationResult,
 )
 from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,  # noqa: TC001
+    DelegationRecordStore,
 )
 from synthorg.communication.errors import DelegationError
-from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
+from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task

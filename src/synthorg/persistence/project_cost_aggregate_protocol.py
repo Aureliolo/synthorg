@@ -17,11 +17,11 @@ incoming currency and raise on mismatch.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
 from synthorg.budget.project_cost_aggregate import (
-    ProjectCostAggregate,  # noqa: TC001
+    ProjectCostAggregate,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable

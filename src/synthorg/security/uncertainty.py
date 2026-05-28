@@ -29,7 +29,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # part of ``UncertaintyChecker.__init__``'s public annotation, so
 # they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -48,9 +48,9 @@ from synthorg.observability.events.security import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
-from synthorg.providers.routing.resolver import ModelResolver  # noqa: TC001
-from synthorg.security.config import UncertaintyCheckConfig  # noqa: TC001
+from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.security.config import UncertaintyCheckConfig
 
 if TYPE_CHECKING:
     from synthorg.providers.base import BaseCompletionProvider

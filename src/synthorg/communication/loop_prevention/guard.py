@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.communication.config import LoopPreventionConfig  # noqa: TC001
+from synthorg.communication.config import LoopPreventionConfig
 from synthorg.communication.loop_prevention.ancestry import check_ancestry
 from synthorg.communication.loop_prevention.circuit_breaker import (
     DelegationCircuitBreaker,

@@ -18,7 +18,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # ``CompletionProvider`` are part of ``LLMExperienceCompressor.__init__``'s
 # public annotation, so they must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -27,7 +27,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.memory.consolidation.config import (  # noqa: TC001
+from synthorg.memory.consolidation.config import (
     ExperienceCompressorConfig,
 )
 from synthorg.memory.consolidation.models import (
@@ -42,7 +42,7 @@ from synthorg.observability.events.consolidation import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

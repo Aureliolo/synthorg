@@ -7,8 +7,8 @@ to maintain a manageable and high-quality memory store.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.models import MemoryEntry
 
 
 # Pluggable pruning seam: pruning/factory.py dispatches across 3 impls

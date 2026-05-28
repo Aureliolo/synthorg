@@ -58,6 +58,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - Comments WHY only; no reviewer citations / issue back-refs / migration framing. Enforced by `check_no_review_origin_in_code.py` + `check_no_migration_framing.py`.
 - No `from __future__ import annotations` (3.14 has PEP 649). PEP 758 except: `except A, B:` no parens unless binding.
+- Type-only imports go at module level (ruff TC001/2/3 disabled) so typeguard can resolve annotations at runtime; `if TYPE_CHECKING:` is reserved for genuine import-cycle breakers.
 - Type hints on public functions; mypy strict. Google-style docstrings. Line length 88; functions <50 lines. File-size: see the MANDATORY Module-Size Budget paragraph above (tiered per `# module-kind:` header).
 - Errors: `<Domain><Condition>Error` from `DomainError`; never inherit `Exception`/`RuntimeError`/etc directly. Enforced by `check_domain_error_hierarchy.py`.
 - Pydantic v2 frozen + `extra="forbid"` on every frozen model project-wide (`src/synthorg/` AND `tests/`; gate `check_frozen_model_extra_forbid.py`; `@computed_field` auto-exempt, per-line `# lint-allow: frozen-extra-forbid -- <reason>` for `extra="allow"`/`"ignore"` boundaries); `@computed_field` for derived; `NotBlankStr` for identifiers.
@@ -99,6 +100,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Windows: unit tests pin pytest-asyncio loops to `SelectorEventLoop` via the per-conftest `pytest_asyncio_loop_factories` hook in `tests/unit/conftest.py` (avoids the 3.14 IOCP teardown race). Subprocess-driving tiers (`tests/unit/tools/`, `tests/unit/engine/workspace/git_backend/`) shadow the hook with `ProactorEventLoop`; pluggy's reverse-order invocation under `firstresult=True` lets the deeper conftest's hook win.
 - Test doubles: ladder in [conventions.md](docs/reference/conventions.md) section 12.1. `FakeClock` for the Clock seam, `mock_of[T](**overrides)` for typed-boundary substitutions, `SimpleNamespace` for attribute-bags. Bare `MagicMock` at a typed boundary (constructor / fn arg / annotated local / typed fixture return) is blocked by `scripts/check_mock_spec.py` (zero-tolerance, no baseline).
 - FakeClock and `mock_of` import from `tests._shared`; inject via `clock=` and the helper's spec subscript.
+- Boundary `@suppress_type_checks` lives at `tests/unit/api/conftest.py` on `api.app.create_app`: source-side import cycles defeat typeguard's eager signature inspection on this entry point; wrapping at the test side keeps `typeguard` a pure test dep.
 - Vendor-agnostic: NEVER use real vendor names in project code/tests. Use `example-provider`, `test-provider`, `example-{large,medium,small}-001`. Allowed in `.claude/`, third-party imports, `providers/presets.py`, `web/public/provider-logos/`.
 - Hypothesis: 10 deterministic CI examples; failures are real bugs (fix + add `@example(...)`).
 - Flaky: NEVER skip/xfail; fix fundamentally. Use `asyncio.Event().wait()` not `sleep(large)`.

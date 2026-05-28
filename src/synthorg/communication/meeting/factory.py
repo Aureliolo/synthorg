@@ -6,7 +6,7 @@ detector classes live in
 :mod:`synthorg.communication.meeting.conflict_detection`.
 """
 
-from synthorg.communication.meeting.config import StructuredPhasesConfig  # noqa: TC001
+from synthorg.communication.meeting.config import StructuredPhasesConfig
 from synthorg.communication.meeting.conflict_detection import (
     AutoDetector,
     EmbeddingSimilarityDetector,
@@ -16,7 +16,7 @@ from synthorg.communication.meeting.conflict_detection import (
     StructuredComparisonDetector,
 )
 from synthorg.communication.meeting.enums import ConflictDetectorType
-from synthorg.communication.meeting.protocol import ConflictDetector  # noqa: TC001
+from synthorg.communication.meeting.protocol import ConflictDetector
 from synthorg.core.registry.strategy import StrategyRegistry
 
 _CONFLICT_DETECTOR_REGISTRY: StrategyRegistry[ConflictDetector] = StrategyRegistry(

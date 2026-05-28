@@ -26,7 +26,7 @@ from synthorg.communication.enums import (
 )
 from synthorg.core.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.core.types import (
-    NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
+    NotBlankStr,
 )
 from synthorg.ontology.decorator import ontology_entity
 

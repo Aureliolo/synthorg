@@ -5,10 +5,10 @@ identifier extractors the rate-limit tiers use.
 """
 
 import ipaddress
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from litestar import Request  # noqa: TC002
+from litestar import Request
 from litestar.middleware.rate_limit import (
     RateLimitConfig as LitestarRateLimitConfig,
 )

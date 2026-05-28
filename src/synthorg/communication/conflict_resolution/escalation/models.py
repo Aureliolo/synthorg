@@ -11,8 +11,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.communication.conflict_resolution.models import Conflict  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.communication.conflict_resolution.models import Conflict
+from synthorg.core.types import NotBlankStr
 
 
 class EscalationStatus(StrEnum):

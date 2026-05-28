@@ -3,10 +3,10 @@
 from typing import TYPE_CHECKING
 
 from synthorg.client.models import (
-    ClientRequest,  # noqa: TC001
-    TaskRequirement,  # noqa: TC001
+    ClientRequest,
+    TaskRequirement,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.observability import get_logger

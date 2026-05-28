@@ -1,7 +1,7 @@
 """SQLite implementation of the SettingsRepository protocol."""
 
 import sqlite3
-from collections.abc import Mapping, Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence
 
 import aiosqlite
 from pydantic import ValidationError
@@ -21,7 +21,7 @@ from synthorg.persistence.settings_protocol import (
     SettingRow,
     SettingRowKey,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

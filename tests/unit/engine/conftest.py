@@ -343,8 +343,6 @@ def make_workspace(  # noqa: PLR0913
     created_at: datetime | None = None,
 ) -> Workspace:
     """Build a ``Workspace`` with sensible defaults."""
-    from synthorg.engine.workspace.models import Workspace
-
     return Workspace(
         workspace_id=workspace_id,
         task_id=task_id,
@@ -368,8 +366,6 @@ def make_merge_result(  # noqa: PLR0913
     semantic_conflicts: tuple[MergeConflict, ...] = (),
 ) -> MergeResult:
     """Build a ``MergeResult`` with sensible defaults."""
-    from synthorg.engine.workspace.models import MergeResult
-
     if merged_commit_sha is None and success:
         merged_commit_sha = "abc123"
 

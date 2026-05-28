@@ -21,13 +21,13 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.benchmark_protocol import (  # noqa: TC001 -- runtime by Pydantic
+from synthorg.budget.benchmark_protocol import (
     BenchmarkScoreProvider,
 )
-from synthorg.budget.config import (  # noqa: TC001 -- runtime attr access
+from synthorg.budget.config import (
     BudgetConfig,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

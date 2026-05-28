@@ -8,11 +8,11 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
-from synthorg.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.archival import ArchivalStore
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 
 
 class ArchivalResult(BaseModel):

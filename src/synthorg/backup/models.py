@@ -11,7 +11,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _BACKUP_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 _CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")

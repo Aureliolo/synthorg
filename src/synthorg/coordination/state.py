@@ -12,12 +12,12 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.budget.coordination_store import (
-    CoordinationMetricsStore,  # noqa: TC001
+    CoordinationMetricsStore,
 )
 from synthorg.coordination.ceremony_policy.service import (
-    CeremonyPolicyService,  # noqa: TC001
+    CeremonyPolicyService,
 )
-from synthorg.coordination.service import CoordinationService  # noqa: TC001
+from synthorg.coordination.service import CoordinationService
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

@@ -8,15 +8,15 @@ safe error rather than propagating into the pipeline.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (  # noqa: TC001 -- Pydantic field annotations
+from synthorg.core.enums import (
     ClaimType,
     ResearchSourceType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
-from synthorg.knowledge.models import (  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.models import (
     TitleText,
 )
-from synthorg.research.models import (  # noqa: TC001 -- Pydantic field annotations
+from synthorg.research.models import (
     AngleText,
     AuthorityLevel,
     ClaimText,

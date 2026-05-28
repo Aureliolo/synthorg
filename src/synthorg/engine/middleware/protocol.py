@@ -9,7 +9,7 @@ linear for before_*/after_* hooks).
 from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.models import (
     AgentMiddlewareContext,
     ModelCallResult,

@@ -1,12 +1,12 @@
 """Decision records repository protocol."""
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import DecisionOutcome  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import DecisionOutcome
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     AppendOnlyRepository,

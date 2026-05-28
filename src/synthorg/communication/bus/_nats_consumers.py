@@ -13,14 +13,14 @@ from synthorg.communication.bus._nats_channels import (
     subject_for_channel,
 )
 from synthorg.communication.bus._nats_kv import write_channel_to_kv
-from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.bus._nats_utils import (
     CONSUMER_ACK_WAIT_MULTIPLIER,
     raise_not_subscribed,
     require_running,
 )
 from synthorg.communication.bus.errors import BusStreamError
-from synthorg.communication.channel import Channel  # noqa: TC001
+from synthorg.communication.channel import Channel
 from synthorg.communication.subscription import Subscription
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description

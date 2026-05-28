@@ -14,7 +14,7 @@ a DEBUG event and returns instead, so the app still boots.
 import asyncio
 import signal
 import sys
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger

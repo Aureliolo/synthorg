@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from pydantic import TypeAdapter

@@ -19,7 +19,7 @@ from synthorg.persistence._shared.datetime_marshaller import (
     parse_iso_utc,
 )
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.capability_dtos import PresetOverride
 

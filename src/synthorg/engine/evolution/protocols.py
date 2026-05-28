@@ -9,18 +9,18 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
-    AdaptationAxis,  # noqa: TC001
-    AdaptationDecision,  # noqa: TC001
-    AdaptationProposal,  # noqa: TC001
+    AdaptationAxis,
+    AdaptationDecision,
+    AdaptationProposal,
 )
-from synthorg.hr.performance.models import (  # noqa: TC001
+from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
     TaskMetricRecord,
 )
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 
 
 def _default_triggered_at() -> AwareDatetime:

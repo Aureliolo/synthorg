@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import TrendDirection
-from synthorg.hr.performance.models import TrendResult, WindowMetrics  # noqa: TC001
+from synthorg.hr.performance.models import TrendResult, WindowMetrics
 
 if TYPE_CHECKING:
     from synthorg.hr.performance.models import AgentPerformanceSnapshot

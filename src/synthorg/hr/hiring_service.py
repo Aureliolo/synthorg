@@ -30,7 +30,7 @@ from synthorg.hr.errors import (
     OnboardingError,
 )
 from synthorg.hr.models import CandidateCard, HiringRequest
-from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,

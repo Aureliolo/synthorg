@@ -6,9 +6,9 @@ compress and summarize older memories.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.memory.consolidation.models import ConsolidationResult  # noqa: TC001
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.memory.consolidation.models import ConsolidationResult
+from synthorg.memory.models import MemoryEntry
 
 
 @runtime_checkable

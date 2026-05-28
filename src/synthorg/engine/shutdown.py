@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 import signal
 import sys
-import types  # noqa: TC003 -- used in runtime-visible annotation
+import types
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any, Final, Protocol, runtime_checkable
 
@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_SHUTDOWN_CLEANUP,

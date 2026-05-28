@@ -3,12 +3,12 @@
 from typing import Any, Final
 
 from litestar import Controller, Request, Response, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 
 from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_workflow import (
-    ActivateWorkflowRequest,  # noqa: TC001 -- Litestar resolves request-body annotations at runtime
+    ActivateWorkflowRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
@@ -17,7 +17,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import NotFoundError, VersionConflictError

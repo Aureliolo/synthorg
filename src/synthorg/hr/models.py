@@ -16,8 +16,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
-from synthorg.core.role import Skill  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import (
     FiringReason,

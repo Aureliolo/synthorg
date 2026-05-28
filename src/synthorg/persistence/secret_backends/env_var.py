@@ -8,7 +8,7 @@ are managed externally (e.g. Docker secrets, systemd credentials).
 
 import os
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.config import EnvVarConfig
 from synthorg.integrations.errors import SecretStorageError
 from synthorg.observability import get_logger

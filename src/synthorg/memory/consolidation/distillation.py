@@ -16,14 +16,14 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
     TurnRecord,
 )
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import (
     RECALL_MEMORY_TOOL_NAME,
     SEARCH_MEMORY_TOOL_NAME,

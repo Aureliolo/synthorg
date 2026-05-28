@@ -16,8 +16,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import ApprovalRiskLevel, ToolCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
+from synthorg.core.types import NotBlankStr
 
 
 class ScanOutcome(StrEnum):

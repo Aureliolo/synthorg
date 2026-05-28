@@ -22,15 +22,15 @@ aliased to the stored value.
 
 import copy
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
-    Connection,  # noqa: TC001
-    OAuthState,  # noqa: TC001
-    WebhookReceipt,  # noqa: TC001
+    Connection,
+    OAuthState,
+    WebhookReceipt,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence.connection_protocol import ConnectionFilterSpec  # noqa: TC001
+from synthorg.persistence.connection_protocol import ConnectionFilterSpec
 
 
 class InMemoryConnectionRepository:

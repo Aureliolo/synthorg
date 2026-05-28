@@ -40,7 +40,7 @@ from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_TRANSITIONED,
 )
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim
-from synthorg.workers.config import QueueConfig  # noqa: TC001
+from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository

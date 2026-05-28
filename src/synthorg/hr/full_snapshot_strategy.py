@@ -16,12 +16,12 @@ from synthorg.core.enums import (
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult
 from synthorg.hr.errors import MemoryArchivalError
-from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
+from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
-from synthorg.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
+from synthorg.memory.org.protocol import OrgMemoryBackend
+from synthorg.memory.protocol import MemoryBackend
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

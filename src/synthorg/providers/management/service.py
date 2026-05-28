@@ -72,7 +72,7 @@ from synthorg.providers.management._helpers import (
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.management.capability_dtos import (
-    ProviderAuditActor,  # noqa: TC001 -- runtime use in default values
+    ProviderAuditActor,
 )
 from synthorg.providers.management.dtos import (
     CreateFromPresetRequest,

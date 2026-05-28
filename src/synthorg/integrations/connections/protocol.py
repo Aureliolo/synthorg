@@ -2,8 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.integrations.connections.models import ConnectionType  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections.models import ConnectionType
 
 
 # Central ConnectionType-to-impl registry in connections/types/__init__.py

@@ -11,7 +11,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.hr.enums import LifecycleEventType  # noqa: TC001
+from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
@@ -36,7 +36,7 @@ from synthorg.persistence._shared.pagination import (
     DEFAULT_LIST_LIMIT,
     validate_pagination_args,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime

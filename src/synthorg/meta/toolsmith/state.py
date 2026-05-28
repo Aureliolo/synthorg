@@ -7,7 +7,7 @@ boot (gated on ``tools.tool_creation_enabled`` plus a provider).
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
-from synthorg.meta.toolsmith.service import ToolsmithService  # noqa: TC001
+from synthorg.meta.toolsmith.service import ToolsmithService
 
 
 class ToolsmithStateSlice(BaseFeatureStateSlice):

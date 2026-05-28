@@ -17,7 +17,7 @@ from synthorg.observability.events.routing import (
 
 from .errors import NoAvailableModelError
 from .models import ResolvedModel, RoutingDecision, RoutingRequest
-from .resolver import ModelResolver  # noqa: TC001
+from .resolver import ModelResolver
 
 if TYPE_CHECKING:
     from synthorg.config.schema import RoutingConfig, RoutingRuleConfig

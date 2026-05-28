@@ -3,7 +3,7 @@
 import math
 
 from synthorg.client.models import ClientFeedback, ReviewContext
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.client import CLIENT_REVIEW_COMPLETED
 

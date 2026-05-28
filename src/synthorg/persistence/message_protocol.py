@@ -1,12 +1,12 @@
 """Message repository protocol."""
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.communication.message import Message
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 

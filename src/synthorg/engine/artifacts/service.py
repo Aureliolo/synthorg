@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.artifact import Artifact
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
-from synthorg.core.enums import ArtifactType  # noqa: TC001
+from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (

@@ -25,7 +25,7 @@ from typing import Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.domain_errors import DomainError
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneExecutionConfig,
     FineTuneRequest,

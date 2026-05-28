@@ -13,7 +13,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.normalization import normalize_ascii_lowercase
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import (
     STRATEGY_LENS_DEFINITION_INCOMPLETE,

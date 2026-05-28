@@ -7,8 +7,8 @@ domain).
 
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.security.redteam.models import RedTeamFinding  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.security.redteam.models import RedTeamFinding
 
 
 class SubmitRedTeamReportArgs(BaseModel):

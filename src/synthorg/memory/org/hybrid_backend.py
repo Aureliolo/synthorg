@@ -34,7 +34,7 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_WRITE_FAILED,
     ORG_MEMORY_WRITE_START,
 )
-from synthorg.persistence.memory_protocol import (  # noqa: TC001
+from synthorg.persistence.memory_protocol import (
     OrgFactRepository,
 )
 

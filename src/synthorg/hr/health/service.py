@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.hr import (
     HR_AGENT_HEALTH_COMPUTED,

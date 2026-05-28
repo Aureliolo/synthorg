@@ -16,16 +16,16 @@ from typing import NoReturn
 from uuid import UUID
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.path_params import PathId
+from synthorg.api.state import AppState
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal
-from synthorg.budget.pareto import (  # noqa: TC001 -- runtime return annotation
+from synthorg.budget.pareto import (
     ParetoFrontier,
 )
 from synthorg.budget.state import BudgetStateSlice
@@ -34,7 +34,7 @@ from synthorg.core.domain_errors import (
     ResourceNotFoundError,
     ServiceUnavailableError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVED,
@@ -43,7 +43,7 @@ from synthorg.observability.events.budget import (
     BUDGET_FORECAST_UNAVAILABLE,
     BUDGET_HARD_CEILING_RAISED,
 )
-from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
+from synthorg.persistence.cost_forecast_protocol import (
     CostForecastRepository,
 )
 

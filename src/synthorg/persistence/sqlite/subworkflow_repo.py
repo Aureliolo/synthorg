@@ -8,7 +8,7 @@ in their own table keyed by ``(subworkflow_id, semver)``.  See
 
 import json
 import sqlite3
-from collections.abc import Iterable  # noqa: TC003
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -47,7 +47,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

@@ -17,8 +17,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.budget.coordination_config import ErrorCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.core.types import NotBlankStr
 
 
 class ErrorSeverity(StrEnum):

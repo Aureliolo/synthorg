@@ -2,10 +2,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import DocType
+from synthorg.core.types import NotBlankStr
 from synthorg.tools.docs._args import (
-    WriteLivingDocBlockArg,  # noqa: TC001 -- Pydantic field annotation
+    WriteLivingDocBlockArg,
 )
 
 

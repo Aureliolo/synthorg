@@ -11,7 +11,7 @@ to log 16+ such errors in 57h of runtime.
 from typing import TYPE_CHECKING
 
 from litestar import Controller, get
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.a2a.state import A2aStateSlice

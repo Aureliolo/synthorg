@@ -9,9 +9,9 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.observability.prometheus_collector import (
-    PrometheusCollector,  # noqa: TC001
+    PrometheusCollector,
 )
-from synthorg.observability.tracing.protocol import TraceHandler  # noqa: TC001
+from synthorg.observability.tracing.protocol import TraceHandler
 
 
 class ObservabilityStateSlice(BaseFeatureStateSlice):

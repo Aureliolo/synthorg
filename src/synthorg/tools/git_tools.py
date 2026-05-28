@@ -7,10 +7,10 @@ the subprocess execution model, environment hardening, and path
 validation shared by all tools.
 """
 
-from pathlib import Path  # noqa: TC003 -- used at runtime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger

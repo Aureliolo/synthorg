@@ -9,12 +9,12 @@ verbatim by the dashboard so operators can see at a glance that the
 quality axis is illustrative when real benchmark scores are absent.
 """
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime by return annotations
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 
 # Per-tier calibrated stub scores. The values mirror the rough public
 # benchmark spread observed between the SynthOrg-aligned tiers and are

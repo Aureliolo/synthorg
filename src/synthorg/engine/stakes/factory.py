@@ -9,7 +9,7 @@ the deterministic heuristic as the only built-in; additional assessors
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.stakes.config import StakesAssessmentConfig
 from synthorg.engine.stakes.heuristic import DefaultStakesAssessor
-from synthorg.engine.stakes.protocol import (  # noqa: TC001 -- registry generic + annotations
+from synthorg.engine.stakes.protocol import (
     StakesAssessor,
 )
 

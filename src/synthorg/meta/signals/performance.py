@@ -6,7 +6,7 @@ per-window metric summaries across all configured rolling windows.
 """
 
 import re
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical

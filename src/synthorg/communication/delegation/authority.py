@@ -4,11 +4,11 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.communication.config import HierarchyConfig  # noqa: TC001
-from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
+from synthorg.communication.config import HierarchyConfig
+from synthorg.communication.delegation.hierarchy import (
     HierarchyResolver,
 )
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.agent import AgentIdentity
 from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_AUTHORITY_DENIED,

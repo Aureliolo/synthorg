@@ -67,8 +67,8 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
 )
 from synthorg.persistence.fine_tune_protocol import (
-    FineTuneCheckpointRepository,  # noqa: TC001
-    FineTuneRunRepository,  # noqa: TC001
+    FineTuneCheckpointRepository,
+    FineTuneRunRepository,
 )
 
 if TYPE_CHECKING:

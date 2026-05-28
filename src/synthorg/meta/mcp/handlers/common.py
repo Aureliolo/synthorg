@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- runtime annotation on placeholder factories
+    ToolHandler,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (

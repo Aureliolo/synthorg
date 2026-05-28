@@ -8,7 +8,7 @@ tie-breaker, then returns the top K.
 import hashlib
 from typing import TYPE_CHECKING, Final
 
-from synthorg.hr.training.models import ContentType, TrainingItem  # noqa: TC001
+from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_COMPLETE,

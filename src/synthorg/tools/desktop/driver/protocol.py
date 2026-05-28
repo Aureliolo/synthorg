@@ -9,8 +9,8 @@ safe for concurrent reuse across tasks.
 from typing import Protocol, runtime_checkable
 
 from synthorg.tools.desktop.driver.config import (
-    DesktopDriverKind,  # noqa: TC001 -- Protocol return annotation
-    DesktopSessionConfig,  # noqa: TC001 -- Protocol return annotation
+    DesktopDriverKind,
+    DesktopSessionConfig,
 )
 
 

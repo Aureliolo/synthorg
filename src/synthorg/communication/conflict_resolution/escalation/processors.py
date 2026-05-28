@@ -37,7 +37,7 @@ from synthorg.core.clock import Clock, SystemClock
 # ``decided_by: NotBlankStr`` when frameworks / ``typing.get_type_hints``
 # introspect the public ``process()`` signature; ruff TC001's
 # "move into type-checking block" hint is incorrect for this symbol.
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
     CONFLICT_ESCALATION_DECISION_FAILED,

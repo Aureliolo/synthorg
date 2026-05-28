@@ -5,7 +5,7 @@ Covers messages, meetings, connections, webhooks, tunnel.
 
 from pydantic import Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._common_args import (
     AdminGuardrailFields,
     PaginationFields,

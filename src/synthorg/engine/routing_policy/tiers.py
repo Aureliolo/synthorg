@@ -10,7 +10,7 @@ clears a quality floor.
 
 from typing import Final
 
-from synthorg.core.types import ModelTier  # noqa: TC001 -- runtime annotations
+from synthorg.core.types import ModelTier
 
 # Cheapest-first ladder. Index doubles as the tier rank.
 TIER_LADDER: Final[tuple[ModelTier, ...]] = ("small", "medium", "large")

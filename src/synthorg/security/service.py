@@ -33,8 +33,8 @@ from synthorg.observability.events.security import (
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
 )
-from synthorg.security.audit import AuditLog  # noqa: TC001
-from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
+from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     SecurityConfig,
@@ -50,15 +50,15 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 from synthorg.security.output_scan_policy import (
-    OutputScanResponsePolicy,  # noqa: TC001
+    OutputScanResponsePolicy,
 )
 from synthorg.security.output_scan_policy_factory import (
     build_output_scan_policy,
 )
-from synthorg.security.output_scanner import OutputScanner  # noqa: TC001
-from synthorg.security.rules.engine import RuleEngine  # noqa: TC001
+from synthorg.security.output_scanner import OutputScanner
+from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.service_safety import SecOpsServiceSafetyMixin
-from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
+from synthorg.security.timeout.protocol import RiskTierClassifier
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol

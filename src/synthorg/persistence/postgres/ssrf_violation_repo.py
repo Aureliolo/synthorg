@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED,

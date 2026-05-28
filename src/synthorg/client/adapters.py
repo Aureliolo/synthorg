@@ -5,8 +5,8 @@ before they enter the intake pipeline. Each implements the
 :class:`EntryPointStrategy` protocol: ``route(request) -> ClientRequest``.
 """
 
-from synthorg.client.models import ClientRequest  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.client.models import ClientRequest
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

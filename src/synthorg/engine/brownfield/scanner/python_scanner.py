@@ -7,7 +7,7 @@ the test framework; discovers importable packages (dirs with
 
 import re
 import tomllib
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Any, Final
 
 from synthorg.core.codebase_structure_map import (

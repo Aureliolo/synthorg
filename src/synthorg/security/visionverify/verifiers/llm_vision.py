@@ -6,7 +6,7 @@ single tool call. Gated on ``ModelCapabilities.supports_vision`` so a
 text-only model never silently drops the images.
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime use in screenshot resolution
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -29,7 +29,7 @@ from synthorg.providers.models import (
     ImagePart,
     ToolDefinition,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.visionverify.config import VisionVerifierKind
 from synthorg.security.visionverify.errors import VisionModelUnsupportedError
 from synthorg.security.visionverify.models import (

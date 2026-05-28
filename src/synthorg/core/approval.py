@@ -20,8 +20,8 @@ from synthorg.core.enums import (
     ApprovalSource,
     ApprovalStatus,
 )
-from synthorg.core.evidence import EvidencePackage  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.evidence import EvidencePackage
+from synthorg.core.types import NotBlankStr
 from synthorg.ontology.decorator import ontology_entity
 
 

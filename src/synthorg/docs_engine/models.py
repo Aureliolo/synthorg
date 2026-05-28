@@ -28,7 +28,7 @@ from pydantic import (
     field_validator,
 )
 
-from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 
 # ── Block payload constraints ────────────────────────────────────────

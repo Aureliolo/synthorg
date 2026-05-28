@@ -5,7 +5,7 @@ Supports Python, JavaScript, and Bash via configurable sandbox backends.
 
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description

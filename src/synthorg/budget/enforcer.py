@@ -35,7 +35,7 @@ from synthorg.budget.quota import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

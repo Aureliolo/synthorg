@@ -26,8 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.notifications.models import (
-    NotificationCategory,  # noqa: TC001
-    NotificationSeverity,  # noqa: TC001
+    NotificationCategory,
+    NotificationSeverity,
 )
 
 _ARGS_CONFIG = ConfigDict(

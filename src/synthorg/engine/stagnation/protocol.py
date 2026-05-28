@@ -6,9 +6,9 @@ execution loops call to check for repetitive tool-call patterns.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
+from synthorg.engine.loop_protocol import TurnRecord
 
-from .models import StagnationResult  # noqa: TC001
+from .models import StagnationResult
 
 
 @runtime_checkable

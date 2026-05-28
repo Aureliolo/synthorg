@@ -11,7 +11,7 @@ See ``docs/design/distributed-runtime.md`` for the overall design.
 from synthorg.communication.bus._nats_utils import redact_url
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.config import MessageBusConfig  # noqa: TC001
+from synthorg.communication.config import MessageBusConfig
 from synthorg.communication.enums import MessageBusBackend
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED

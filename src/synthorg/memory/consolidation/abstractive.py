@@ -15,7 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # evaluates type hints (DI containers, doc generators).  Importing at
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -23,7 +23,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     DUAL_MODE_ABSTRACTIVE_FALLBACK,
@@ -33,7 +33,7 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
 

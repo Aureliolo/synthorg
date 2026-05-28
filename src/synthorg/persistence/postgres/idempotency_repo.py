@@ -14,7 +14,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from psycopg import Error as PsycopgError
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr

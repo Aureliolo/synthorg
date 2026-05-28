@@ -15,7 +15,7 @@ behind the same :class:`GroundingChecker` protocol.
 import re
 from typing import Final
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.security.redteam.grounding.models import (
     HEURISTIC_CONFIDENCE_CEILING,
     UngroundedClaim,

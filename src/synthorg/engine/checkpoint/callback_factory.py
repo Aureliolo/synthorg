@@ -8,14 +8,14 @@ each completed turn.  Errors are logged but never propagated
 from datetime import UTC, datetime
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.engine.checkpoint.callback import CheckpointCallback  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.checkpoint.models import (
     Checkpoint,
     CheckpointConfig,
     Heartbeat,
 )
-from synthorg.engine.context import AgentContext  # noqa: TC001
+from synthorg.engine.context import AgentContext
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_SAVE_FAILED,
@@ -25,8 +25,8 @@ from synthorg.observability.events.checkpoint import (
     HEARTBEAT_UPDATED,
 )
 from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,  # noqa: TC001
-    HeartbeatRepository,  # noqa: TC001
+    CheckpointRepository,
+    HeartbeatRepository,
 )
 
 logger = get_logger(__name__)

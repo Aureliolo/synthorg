@@ -8,7 +8,7 @@ users inject a sink at construction time.
 import math
 from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -19,7 +19,7 @@ from synthorg.observability.events.analytics import (
 )
 from synthorg.tools.analytics._args import MetricCollectorArgs
 from synthorg.tools.analytics.base_analytics_tool import BaseAnalyticsTool
-from synthorg.tools.analytics.config import AnalyticsToolsConfig  # noqa: TC001
+from synthorg.tools.analytics.config import AnalyticsToolsConfig
 from synthorg.tools.base import ToolExecutionResult
 
 logger = get_logger(__name__)

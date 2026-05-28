@@ -8,7 +8,7 @@ import json
 from typing import Annotated
 
 from litestar import Controller, get, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import PathParameter
 from litestar.status_codes import HTTP_200_OK
 
@@ -38,7 +38,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_PERSONALITY_UPDATED,

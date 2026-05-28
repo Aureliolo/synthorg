@@ -6,7 +6,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.enums import WorkflowEdgeType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _MIN_SPLIT_BRANCHES: Final[int] = 2
 

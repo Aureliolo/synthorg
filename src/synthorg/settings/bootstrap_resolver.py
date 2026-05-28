@@ -11,7 +11,7 @@ For post-init reads, use ``ConfigResolver.get_*()`` instead.
 """
 
 import os
-from collections.abc import Callable, Mapping  # noqa: TC003
+from collections.abc import Callable, Mapping
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict

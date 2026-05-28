@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import AnyHttpUrl, AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class Citation(BaseModel):

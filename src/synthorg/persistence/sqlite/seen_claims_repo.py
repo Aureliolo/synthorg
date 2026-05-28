@@ -13,10 +13,10 @@ import sqlite3
 from datetime import datetime, timedelta
 
 import aiosqlite
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SEEN_CLAIMS_LOOKUP_FAILED,
@@ -25,7 +25,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SEEN_CLAIMS_PRUNED,
 )
 from synthorg.persistence._shared import format_iso_utc, normalize_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

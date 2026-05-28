@@ -15,7 +15,7 @@ container by value).  ``env_vars`` is therefore empty.
 
 import asyncio
 import hashlib
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock

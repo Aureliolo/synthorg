@@ -13,13 +13,13 @@ import asyncio
 import contextlib
 import threading
 from collections import deque
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
 from uuid import uuid4
 
-from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message

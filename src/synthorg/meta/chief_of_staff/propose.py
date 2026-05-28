@@ -14,10 +14,14 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from synthorg.approval.protocol import (
+    ApprovalStoreProtocol,
+)
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     ApprovalSource,
     ApprovalStatus,
@@ -29,7 +33,7 @@ from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
-from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig  # noqa: TC001
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,
@@ -65,18 +69,13 @@ from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
-from synthorg.persistence.conversational_proposal_protocol import (  # noqa: TC001
+from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
-
-from synthorg.approval.protocol import (  # noqa: TC001  isort: skip
-    ApprovalStoreProtocol,
-)
-from synthorg.core.critical_errors import reraise_critical
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from datetime import datetime

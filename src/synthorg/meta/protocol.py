@@ -7,30 +7,30 @@ strategies, and regression detection.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 from synthorg.meta.models import (
-    ApplyResult,  # noqa: TC001
-    CIValidationResult,  # noqa: TC001
-    CodeChange,  # noqa: TC001
-    GuardResult,  # noqa: TC001
-    ImprovementProposal,  # noqa: TC001
-    OrgBudgetSummary,  # noqa: TC001
-    OrgCoordinationSummary,  # noqa: TC001
-    OrgErrorSummary,  # noqa: TC001
-    OrgEvolutionSummary,  # noqa: TC001
-    OrgPerformanceSummary,  # noqa: TC001
-    OrgScalingSummary,  # noqa: TC001
-    OrgSignalSnapshot,  # noqa: TC001
-    OrgTelemetrySummary,  # noqa: TC001
-    ProposalAltitude,  # noqa: TC001
-    RegressionResult,  # noqa: TC001
-    RegressionThresholds,  # noqa: TC001
-    RolloutResult,  # noqa: TC001
-    RuleMatch,  # noqa: TC001
+    ApplyResult,
+    CIValidationResult,
+    CodeChange,
+    GuardResult,
+    ImprovementProposal,
+    OrgBudgetSummary,
+    OrgCoordinationSummary,
+    OrgErrorSummary,
+    OrgEvolutionSummary,
+    OrgPerformanceSummary,
+    OrgScalingSummary,
+    OrgSignalSnapshot,
+    OrgTelemetrySummary,
+    ProposalAltitude,
+    RegressionResult,
+    RegressionThresholds,
+    RolloutResult,
+    RuleMatch,
 )
 
 

@@ -8,7 +8,7 @@ worse than a clear restart.
 """
 
 from enum import StrEnum
-from pathlib import Path  # noqa: TC003 -- Pydantic field type
+from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator

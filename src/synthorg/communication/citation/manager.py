@@ -4,7 +4,7 @@ Orchestrator-managed citation consolidation. Immutable: each operation
 returns a new ``CitationManager``, never mutates in place.
 """
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Literal

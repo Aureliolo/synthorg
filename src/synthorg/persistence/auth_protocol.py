@@ -6,7 +6,7 @@ synchronous checks from the request-handling fast path; the repository
 interface exposes durable read/write operations plus the cache.
 """
 
-from datetime import datetime  # noqa: TC003 -- referenced by Protocol signatures
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field

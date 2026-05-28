@@ -17,9 +17,9 @@ from synthorg.budget.call_category import LLMCallCategory
 # (constructor + ``score()``), so they must resolve at runtime when
 # downstream tooling evaluates type hints (DI containers, doc
 # generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
+from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CRITERIA_JSON,
@@ -36,7 +36,7 @@ from synthorg.observability.events.performance import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
 logger = get_logger(__name__)

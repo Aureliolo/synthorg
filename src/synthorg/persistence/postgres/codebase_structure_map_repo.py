@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CODEBASE_STRUCTURE_MAP_DELETE_FAILED,

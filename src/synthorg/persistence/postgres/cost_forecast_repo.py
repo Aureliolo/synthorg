@@ -36,7 +36,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
+from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
 )
 

@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.security.timeout.risk_classifier_config import (
     RiskClassifierConfig,
 )

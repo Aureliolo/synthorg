@@ -19,7 +19,7 @@ from synthorg.meta.charter.models import InterviewTurnArgs
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import err, ok, require_admin_guardrails
 from synthorg.meta.mcp.handlers.common_args import require_arg

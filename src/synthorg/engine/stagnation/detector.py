@@ -7,7 +7,7 @@ window of recent tool-bearing turns.
 
 from collections import Counter
 
-from synthorg.engine.loop_protocol import TurnRecord  # noqa: TC001
+from synthorg.engine.loop_protocol import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.stagnation import (
     STAGNATION_CHECK_PERFORMED,

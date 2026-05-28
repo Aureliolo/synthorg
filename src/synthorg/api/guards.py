@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from litestar.connection import ASGIConnection  # noqa: TC002
+from litestar.connection import ASGIConnection
 from litestar.exceptions import PermissionDeniedException
 
 from synthorg.core.auth.roles import HumanRole

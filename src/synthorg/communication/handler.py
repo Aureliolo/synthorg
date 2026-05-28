@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import COMM_HANDLER_INVALID
 

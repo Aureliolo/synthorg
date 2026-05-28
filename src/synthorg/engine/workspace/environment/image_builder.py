@@ -10,12 +10,12 @@ stays small enough to mock in unit tests.
 
 import asyncio
 import contextlib
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Final, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import ENVIRONMENT_IMAGE_BUILD_FAILED
 

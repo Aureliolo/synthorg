@@ -1,11 +1,11 @@
 """Sandbox backend protocol definition."""
 
 from pathlib import (
-    Path,  # noqa: TC003 -- needed at runtime for @runtime_checkable Protocol
+    Path,
 )
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

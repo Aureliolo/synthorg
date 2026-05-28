@@ -7,7 +7,7 @@ task execution outcomes.
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 if TYPE_CHECKING:
     from synthorg.engine.loop_protocol import ExecutionResult

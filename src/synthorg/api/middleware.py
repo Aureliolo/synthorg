@@ -13,7 +13,7 @@ for matched routes -- 404 and 405 responses from the router bypass it.
 """
 
 import time
-from collections.abc import Sequence  # noqa: TC003 -- used by runtime helpers below
+from collections.abc import Sequence
 from contextlib import suppress
 from types import MappingProxyType
 from typing import Any, Final
@@ -21,7 +21,7 @@ from typing import Any, Final
 from litestar import Request
 from litestar.datastructures import MutableScopeHeaders
 from litestar.enums import ScopeType
-from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
+from litestar.types import ASGIApp, Message, Receive, Scope, Send
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 

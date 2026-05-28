@@ -12,7 +12,7 @@ import ssl
 from email.message import EmailMessage
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -29,7 +29,7 @@ from synthorg.tools.communication.base_communication_tool import (
     BaseCommunicationTool,
 )
 from synthorg.tools.communication.config import (
-    CommunicationToolsConfig,  # noqa: TC001
+    CommunicationToolsConfig,
 )
 
 if TYPE_CHECKING:

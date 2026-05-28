@@ -6,7 +6,7 @@ from synthorg.communication.meeting.enums import (
     ConflictDetectorType,
     MeetingProtocolType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class RoundRobinConfig(BaseModel):

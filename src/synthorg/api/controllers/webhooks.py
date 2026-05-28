@@ -10,7 +10,7 @@ import json
 from typing import TYPE_CHECKING, Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.params import QueryParameter
 
 from synthorg._core.features import require_service
@@ -26,7 +26,7 @@ from synthorg.api.controllers._webhooks_wiring import (
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+from synthorg.api.path_params import (
     PathEventType,
     PathId,
     PathName,
@@ -40,7 +40,7 @@ from synthorg.core.domain_errors import (
     UnauthorizedError,
     ValidationError,
 )
-from synthorg.integrations.connections.models import WebhookReceipt  # noqa: TC001
+from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.webhooks.event_bus_bridge import (
     publish_webhook_event,

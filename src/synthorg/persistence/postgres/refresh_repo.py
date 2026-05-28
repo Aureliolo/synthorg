@@ -5,7 +5,7 @@ Each token is single-use: consuming it atomically marks it as used
 and returns the associated session/user info for re-issuance.
 """
 
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 

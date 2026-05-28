@@ -7,7 +7,7 @@ budget.
 
 import asyncio
 import os
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -19,7 +19,7 @@ from typing import Any, Final
 # would raise ``NameError`` for any caller that introspects the
 # annotation surface (Litestar's plugin loader, test harnesses, etc.).
 from litestar.channels import (
-    ChannelsPlugin,  # noqa: TC002 -- runtime-resolvable annotation for PEP 649
+    ChannelsPlugin,
 )
 
 from synthorg.api.channels import (
@@ -28,9 +28,9 @@ from synthorg.api.channels import (
     CHANNEL_MEETINGS,
 )
 from synthorg.api.ws_models import WsEvent, WsEventType
-from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.agent_engine import (  # noqa: TC001
+from synthorg.engine.agent_engine import (
     PersonalityTrimNotifier,
     PersonalityTrimPayload,
 )

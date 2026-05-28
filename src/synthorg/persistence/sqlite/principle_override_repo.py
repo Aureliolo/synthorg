@@ -21,7 +21,7 @@ from synthorg.persistence._shared import (
     validate_pagination_args,
 )
 from synthorg.persistence.principle_override_protocol import PrincipleOverride
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

@@ -27,7 +27,7 @@ from synthorg.meta.charter.models import (
     InterviewTurnResult,
     ProjectCharter,
 )
-from synthorg.meta.charter.strategy import CharterInterviewStrategy  # noqa: TC001
+from synthorg.meta.charter.strategy import CharterInterviewStrategy
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.errors import (
     CharterNotEditableError,

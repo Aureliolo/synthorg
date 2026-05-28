@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from litestar import WebSocket  # noqa: TC002
+from litestar import WebSocket
 from litestar.channels import ChannelsPlugin
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
@@ -43,7 +43,7 @@ from synthorg.api.controllers.ws_revalidation import (
     _periodic_revalidate,
 )
 from synthorg.api.guards import _READ_ROLES
-from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
+from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical

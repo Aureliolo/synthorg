@@ -13,7 +13,7 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import BehaviorTag
-from synthorg.engine.middleware.models import AgentMiddlewareContext  # noqa: TC001
+from synthorg.engine.middleware.models import AgentMiddlewareContext
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.behavior_tagging import (

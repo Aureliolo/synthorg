@@ -4,7 +4,7 @@ import asyncio
 import math
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
+from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_RATE_LIMITER_CANCELLED,

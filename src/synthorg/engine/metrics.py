@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.quality.models import AccuracyEffortRatio
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_METRICS_UNEXPECTED_TYPE

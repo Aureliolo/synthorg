@@ -11,7 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.quota import DegradationConfig, SubscriptionConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import (
     CONFIG_DEPRECATION_NOTICE,

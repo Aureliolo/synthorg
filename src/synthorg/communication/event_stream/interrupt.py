@@ -23,7 +23,7 @@ from pydantic import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.event_stream import (
     EVENT_STREAM_INTERRUPT_CREATED,

@@ -29,7 +29,7 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

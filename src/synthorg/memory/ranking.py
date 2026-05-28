@@ -10,14 +10,14 @@ pre-ranked lists via Reciprocal Rank Fusion (multi-source).
 """
 
 import math
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import Callable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.text_similarity import split_words
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_DIVERSITY_RERANK_FAILED,

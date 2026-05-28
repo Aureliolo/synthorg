@@ -15,7 +15,7 @@ from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
-from synthorg.core.task import Task  # noqa: TC001
+from synthorg.core.task import Task
 from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.pipeline.errors import (

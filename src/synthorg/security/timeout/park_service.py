@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 
 if TYPE_CHECKING:

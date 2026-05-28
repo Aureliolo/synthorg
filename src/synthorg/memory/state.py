@@ -13,10 +13,10 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.memory.embedding.fine_tune_orchestrator import (
-    FineTuneOrchestrator,  # noqa: TC001
+    FineTuneOrchestrator,
 )
-from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.memory.service import MemoryService  # noqa: TC001
+from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.service import MemoryService
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin

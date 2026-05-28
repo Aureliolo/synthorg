@@ -278,7 +278,11 @@ def log_exception_redacted(
 
     Args:
         logger: A structlog (or compatible) logger with an ``error()``
-            method.
+            method. Typed as ``Any`` because structlog's
+            ``BoundLoggerLazyProxy`` (returned by ``get_logger``)
+            forwards attribute access through ``__getattr__`` until the
+            proxy is bound, so a nominal ``Protocol`` annotation cannot
+            describe its surface without false negatives at call sites.
         event: The event-name constant (from
             ``synthorg.observability.events.<domain>``).
         exc: The exception instance being logged.

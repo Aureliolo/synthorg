@@ -7,7 +7,7 @@ controllers raise 503 on a ``None`` service.
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
-from synthorg.backup.service import BackupService  # noqa: TC001
+from synthorg.backup.service import BackupService
 
 
 class BackupStateSlice(BaseFeatureStateSlice):

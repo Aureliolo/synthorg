@@ -10,7 +10,7 @@ either yields a permit or raises on denial.  Adapters can be added
 without touching middleware logic.
 """
 
-from contextlib import AbstractAsyncContextManager  # noqa: TC003
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol, runtime_checkable
 
 

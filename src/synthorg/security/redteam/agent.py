@@ -14,10 +14,10 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.clock import Clock  # noqa: TC001
+from synthorg.core.clock import Clock
 from synthorg.core.role import Skill
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
 from synthorg.security.redteam.errors import RedTeamRoleMissingError

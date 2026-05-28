@@ -1,7 +1,7 @@
 """Postgres-backed ontology entity repository."""
 
 import json
-from collections.abc import Iterable  # noqa: TC003
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr

@@ -18,7 +18,7 @@ single audit chain operators rely on.
 import asyncio
 import os
 import re
-from collections.abc import Mapping, Sequence  # noqa: TC003
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 

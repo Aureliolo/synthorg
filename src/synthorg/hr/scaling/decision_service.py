@@ -15,7 +15,7 @@ history.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import (
     HR_SCALING_CONTROLLER_INVALID_REQUEST,

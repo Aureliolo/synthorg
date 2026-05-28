@@ -12,7 +12,7 @@ from synthorg.observability.events.security import (
     SECURITY_RULE_MATCHED,
     SECURITY_VERDICT_ALLOW,
 )
-from synthorg.security.config import RuleEngineConfig  # noqa: TC001
+from synthorg.security.config import RuleEngineConfig
 from synthorg.security.models import (
     EvaluationConfidence,
     SecurityContext,
@@ -22,8 +22,8 @@ from synthorg.security.models import (
 from synthorg.security.rules.policy_validator import (
     _RULE_NAME as _POLICY_VALIDATOR_RULE_NAME,
 )
-from synthorg.security.rules.protocol import SecurityRule  # noqa: TC001
-from synthorg.security.rules.risk_classifier import RiskClassifier  # noqa: TC001
+from synthorg.security.rules.protocol import SecurityRule
+from synthorg.security.rules.risk_classifier import RiskClassifier
 
 logger = get_logger(__name__)
 

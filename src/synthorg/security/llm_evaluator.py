@@ -27,14 +27,14 @@ import re
 # ``ProviderRegistry`` are part of ``LlmSecurityEvaluator.__init__``'s
 # public annotation, so they must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
-from synthorg.config.schema import ProviderConfig  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import ProviderConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
@@ -58,7 +58,7 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.family import get_family, providers_excluding_family
 from synthorg.providers.models import ChatMessage, CompletionConfig, ToolDefinition
-from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.config import (
     ArgumentTruncationStrategy,
     LlmFallbackConfig,

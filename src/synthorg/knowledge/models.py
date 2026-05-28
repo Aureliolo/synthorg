@@ -28,7 +28,7 @@ from synthorg.core.enums import (
     SourceStatus,
     SourceType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.types import NotBlankStr
 
 # ── Field constraints ────────────────────────────────────────────────
 

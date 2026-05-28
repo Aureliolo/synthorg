@@ -24,7 +24,7 @@ from typing import Final
 
 from packaging.version import InvalidVersion, Version
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
     SubworkflowNotFoundError,
@@ -36,9 +36,9 @@ from synthorg.engine.errors import (
 # ``SubworkflowRegistry.find_parents()`` when introspectors call
 # ``typing.get_type_hints()`` against module globals.
 from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,  # noqa: TC001 -- runtime-resolvable annotation
+    WorkflowDefinition,
 )
-from synthorg.engine.workflow.subworkflow_models import (  # noqa: TC001 -- runtime-resolvable annotation
+from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
@@ -50,7 +50,7 @@ from synthorg.observability.events.workflow_definition import (
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from synthorg.persistence.subworkflow_protocol import (
-    SubworkflowRepository,  # noqa: TC001 -- runtime-resolvable annotation
+    SubworkflowRepository,
 )
 
 logger = get_logger(__name__)

@@ -7,9 +7,9 @@ at startup so installed catalog entries become active servers
 without touching the user-owned YAML config file.
 """
 
-from synthorg.integrations.connections.models import CatalogEntry  # noqa: TC001
+from synthorg.integrations.connections.models import CatalogEntry
 from synthorg.integrations.mcp_catalog.installations import (
-    McpInstallation,  # noqa: TC001
+    McpInstallation,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (

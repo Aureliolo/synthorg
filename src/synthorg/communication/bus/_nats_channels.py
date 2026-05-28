@@ -10,7 +10,7 @@ from synthorg.communication.bus._nats_kv import (
     load_channel_from_kv,
     scan_kv_channels,
 )
-from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
+from synthorg.communication.bus._nats_state import _NatsState
 from synthorg.communication.bus._nats_utils import (
     SUBJECT_CHANNEL_TOKEN,
     SUBJECT_DIRECT_TOKEN,

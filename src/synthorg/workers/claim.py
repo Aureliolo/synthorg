@@ -24,7 +24,7 @@ from synthorg.communication.bus.errors import (
     BusStreamError,
     BusUnrestartableError,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_QUEUE_NOT_RUNNING,
@@ -35,7 +35,7 @@ from synthorg.observability.events.workers import (
     WORKERS_TASK_QUEUE_DRAIN_FAILED,
     WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
 )
-from synthorg.workers.config import QueueConfig  # noqa: TC001
+from synthorg.workers.config import QueueConfig
 
 if TYPE_CHECKING:
     from synthorg.communication.config import NatsConfig

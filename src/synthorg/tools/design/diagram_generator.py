@@ -7,7 +7,7 @@ required -- the tool outputs DSL text directly.
 
 from typing import Any, ClassVar, Final
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -20,7 +20,7 @@ from synthorg.observability.events.design import (
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.design._args import DiagramGeneratorArgs
 from synthorg.tools.design.base_design_tool import BaseDesignTool
-from synthorg.tools.design.config import DesignToolsConfig  # noqa: TC001
+from synthorg.tools.design.config import DesignToolsConfig
 
 logger = get_logger(__name__)
 

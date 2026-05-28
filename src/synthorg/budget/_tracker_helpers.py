@@ -9,15 +9,15 @@ module that the tracker composes.
 The tracker owns all state; this module is intentionally stateless.
 """
 
-from collections.abc import Sequence  # noqa: TC003 -- runtime type
-from datetime import datetime  # noqa: TC003 -- runtime type
+from collections.abc import Sequence
+from datetime import datetime
 from typing import NamedTuple
 
 from synthorg.budget._aggregation import group_by_agent, sum_cost
-from synthorg.budget.cost_record import CostRecord  # noqa: TC001 -- runtime use
+from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.budget.spending_summary import AgentSpending
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime use in filter
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import BUDGET_TIME_RANGE_INVALID
 

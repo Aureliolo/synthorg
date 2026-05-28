@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
+from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import (
     DocMetadata,

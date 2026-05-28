@@ -19,7 +19,7 @@ from synthorg.observability.events.web import (
     WEB_SEARCH_SUCCESS,
 )
 from synthorg.tools.base import ToolExecutionResult
-from synthorg.tools.network_validator import NetworkPolicy  # noqa: TC001
+from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.web._args import WebSearchArgs
 from synthorg.tools.web.base_web_tool import BaseWebTool
 

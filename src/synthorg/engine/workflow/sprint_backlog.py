@@ -6,7 +6,7 @@ mutating the input.
 
 from typing import NoReturn
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (

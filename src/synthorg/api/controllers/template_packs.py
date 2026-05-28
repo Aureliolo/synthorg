@@ -5,7 +5,7 @@ import json
 from typing import TYPE_CHECKING, Any, Literal
 
 from litestar import Controller, get, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,10 +14,10 @@ from synthorg.api.controllers.setup.agent_helpers import AGENT_LOCK as _AGENT_LO
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.budget.rebalance import RebalanceMode, compute_rebalance
 from synthorg.core.domain_errors import ConflictError, DomainError, NotFoundError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_APPLY_DEPT_SKIPPED,

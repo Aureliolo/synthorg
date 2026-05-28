@@ -9,7 +9,7 @@ the same write-context and row-to-model helpers.
 
 import json
 import sqlite3
-from datetime import datetime  # noqa: TC003 -- runtime param type
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -40,8 +40,8 @@ from synthorg.persistence._shared import (
     format_iso_utc,
     validate_pagination_args,
 )
-from synthorg.persistence.approval_protocol import ApprovalFilterSpec  # noqa: TC001
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.approval_protocol import ApprovalFilterSpec
+from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
 

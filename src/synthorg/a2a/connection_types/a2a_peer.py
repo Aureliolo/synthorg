@@ -9,7 +9,7 @@ from typing import Final
 from synthorg.a2a.push_verifier import A2APushVerifier
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.webhooks.verifiers.protocol import (
-    SignatureVerifier,  # noqa: TC001
+    SignatureVerifier,
 )
 
 _DEFAULT_CLOCK_SKEW_SECONDS: Final[int] = 300

@@ -16,8 +16,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import MemoryCategory  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.enums import MemoryCategory
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.utils import deduplicate_tags
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_MODEL_INVALID

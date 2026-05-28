@@ -6,11 +6,11 @@ that evaluate task completion quality (see Agents design page, D2).
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.task import AcceptanceCriterion
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
-    QualityScoreResult,  # noqa: TC001
-    TaskMetricRecord,  # noqa: TC001
+    QualityScoreResult,
+    TaskMetricRecord,
 )
 
 

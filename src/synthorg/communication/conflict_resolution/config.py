@@ -6,7 +6,7 @@ from synthorg.communication.conflict_resolution.escalation.config import (
     EscalationQueueConfig,
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class DebateConfig(BaseModel):

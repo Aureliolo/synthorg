@@ -14,9 +14,9 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.company import Team  # noqa: TC001
+from synthorg.core.company import Team
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
 
 

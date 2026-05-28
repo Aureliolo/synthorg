@@ -8,7 +8,7 @@ during a meeting without coupling to the engine layer.
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol, runtime_checkable
 
-from synthorg.communication.meeting.enums import MeetingProtocolType  # noqa: TC001
+from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.models import (
     AgentResponse,
     MeetingAgenda,

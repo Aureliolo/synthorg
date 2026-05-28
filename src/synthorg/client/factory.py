@@ -49,24 +49,24 @@ logger = get_logger(__name__)
 # annotations -- e.g. ``typing.get_type_hints(...)`` from API docs
 # generators or DI containers.  Keep them out of the ``TYPE_CHECKING``
 # block so the names are present in module globals.
-from synthorg.budget.tracker import CostTracker  # noqa: E402, TC001
-from synthorg.client.config import (  # noqa: E402, TC001
+from synthorg.budget.tracker import CostTracker  # noqa: E402
+from synthorg.client.config import (  # noqa: E402
     ClientPoolConfig,
     FeedbackConfig,
     IntakeConfig,
     ReportConfig,
     RequirementGeneratorConfig,
 )
-from synthorg.client.protocols import (  # noqa: E402, TC001
+from synthorg.client.protocols import (  # noqa: E402
     ClientPoolStrategy,
     EntryPointStrategy,
     FeedbackStrategy,
     ReportStrategy,
     RequirementGenerator,
 )
-from synthorg.engine.intake.protocol import IntakeStrategy  # noqa: E402, TC001
-from synthorg.engine.task_engine import TaskEngine  # noqa: E402, TC001
-from synthorg.providers.protocol import CompletionProvider  # noqa: E402, TC001
+from synthorg.engine.intake.protocol import IntakeStrategy  # noqa: E402
+from synthorg.engine.task_engine import TaskEngine  # noqa: E402
+from synthorg.providers.protocol import CompletionProvider  # noqa: E402
 
 _GENERATOR_STRATEGIES: frozenset[str] = frozenset(
     {"template", "llm", "dataset", "hybrid", "procedural"},

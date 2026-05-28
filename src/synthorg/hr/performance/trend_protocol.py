@@ -6,8 +6,8 @@ that analyze metric time series (see Agents design page, D12).
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.performance.models import TrendResult  # noqa: TC001
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.models import TrendResult
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime

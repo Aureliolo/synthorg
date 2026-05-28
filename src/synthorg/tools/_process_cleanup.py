@@ -4,7 +4,7 @@ Provides a safe helper for closing asyncio subprocess transports
 to prevent ``ResourceWarning`` on Windows with ``ProactorEventLoop``.
 """
 
-import asyncio  # noqa: TC003 -- used in runtime-visible annotation
+import asyncio
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger

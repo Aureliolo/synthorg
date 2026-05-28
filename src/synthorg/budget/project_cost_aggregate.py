@@ -13,8 +13,8 @@ Protocol and expose it via ``PersistenceBackend.project_cost_aggregates``.
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
+from synthorg.core.types import NotBlankStr
 
 
 class ProjectCostAggregate(BaseModel):

@@ -6,7 +6,7 @@ binary entry point and ``src/lib.rs`` as a library module.
 """
 
 import tomllib
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
+from pathlib import Path
 from typing import Any, Final
 
 from synthorg.core.codebase_structure_map import (

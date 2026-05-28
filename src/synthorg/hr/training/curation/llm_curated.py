@@ -14,7 +14,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # ``LLMCurated.__init__``'s public annotation, so they must resolve
 # at runtime when downstream tooling evaluates type hints (DI
 # containers, doc generators).
-from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -24,7 +24,7 @@ from synthorg.engine.prompt_safety import (
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )
-from synthorg.hr.training.models import ContentType, TrainingItem  # noqa: TC001
+from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.training import (
     HR_TRAINING_CURATION_COMPLETE,
@@ -37,7 +37,7 @@ from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
 )
-from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
+from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from synthorg.core.enums import SeniorityLevel

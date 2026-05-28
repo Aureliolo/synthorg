@@ -9,7 +9,7 @@ compaction at the turn boundary.
 
 from typing import Any, ClassVar
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.sanitization import sanitize_message

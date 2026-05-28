@@ -97,11 +97,11 @@ test = [
     # Runtime type checking during pytest. ``--typeguard-packages=synthorg``
     # in [tool.pytest.ini_options].addopts instruments every function under
     # ``synthorg.*`` so argument and return types are checked against their
-    # annotations at call time. Deferred from PR #2047 because a
-    # pre-restructure surface scan flagged 200-500 ``TYPE_CHECKING``-guarded
-    # names that could not resolve at runtime; PR #2048's feature-manifest
-    # substrate paid down most of those by re-organising imports through
-    # runtime ``feature.py`` modules. See ADR-0006 Section F and issue #2068.
+    # annotations at call time. Activation is staged: the wiring lives
+    # here and the activation flags are present-but-commented because the
+    # source tree still carries import cycles whose annotations cannot
+    # resolve at runtime. ADR-0006 Section F documents the re-activation
+    # checklist.
     "typeguard==4.5.2",
     # CI matrix sharding of unit + integration test arms. Partitions tests by
     # recorded durations in `.test_durations.{unit,integration}` so each shard

@@ -5,15 +5,15 @@ wiring proposers and backends as needed.
 """
 
 from synthorg.core.registry import StrategyRegistry
-from synthorg.memory.procedural.capture.config import CaptureConfig  # noqa: TC001
+from synthorg.memory.procedural.capture.config import CaptureConfig
 from synthorg.memory.procedural.capture.failure_capture import FailureCaptureStrategy
 from synthorg.memory.procedural.capture.hybrid_capture import HybridCaptureStrategy
-from synthorg.memory.procedural.capture.protocol import CaptureStrategy  # noqa: TC001
+from synthorg.memory.procedural.capture.protocol import CaptureStrategy
 from synthorg.memory.procedural.capture.success_capture import SuccessCaptureStrategy
-from synthorg.memory.procedural.models import ProceduralMemoryConfig  # noqa: TC001
-from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa: TC001
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 from synthorg.memory.procedural.success_proposer import (
-    SuccessMemoryProposer,  # noqa: TC001
+    SuccessMemoryProposer,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.capture import CAPTURE_STRATEGY_BUILT

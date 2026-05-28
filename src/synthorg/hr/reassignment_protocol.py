@@ -6,8 +6,8 @@ task reassignment when an agent is being terminated (D9).
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.task import Task  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 
 
 # QueueReturnStrategy impl in hr/queue_return_strategy.py; OffboardingService

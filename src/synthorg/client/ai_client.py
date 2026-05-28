@@ -1,15 +1,15 @@
 """AI-backed client implementation."""
 
 from synthorg.client.models import (
-    ClientFeedback,  # noqa: TC001
-    ClientProfile,  # noqa: TC001
-    GenerationContext,  # noqa: TC001
-    ReviewContext,  # noqa: TC001
-    TaskRequirement,  # noqa: TC001
+    ClientFeedback,
+    ClientProfile,
+    GenerationContext,
+    ReviewContext,
+    TaskRequirement,
 )
 from synthorg.client.protocols import (
-    FeedbackStrategy,  # noqa: TC001
-    RequirementGenerator,  # noqa: TC001
+    FeedbackStrategy,
+    RequirementGenerator,
 )
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.client import (

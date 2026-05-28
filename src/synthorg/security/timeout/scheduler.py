@@ -9,13 +9,13 @@ for downstream resume/review-gate logic.
 
 import asyncio
 import contextlib
-from collections.abc import Awaitable, Callable  # noqa: TC003
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.core.actor_context import ActorIdentity, actor_scope
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
-from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
+from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.notification import NOTIFICATION_ESCALATION_SEND

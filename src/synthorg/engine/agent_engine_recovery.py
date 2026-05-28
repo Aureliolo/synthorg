@@ -8,7 +8,7 @@ from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
 )
-from synthorg.engine.context import AgentContext  # noqa: TC001
+from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
@@ -19,7 +19,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     make_budget_checker,
 )
-from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
+from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (

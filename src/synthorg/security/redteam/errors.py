@@ -8,7 +8,7 @@ All red-team errors descend from :class:`RedTeamError`, which is an
 from typing import ClassVar
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EngineError
 
 

@@ -21,7 +21,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONNECTION_SECRET_STORE_FAILED,
 )
 from synthorg.persistence._shared import format_iso_utc
-from synthorg.persistence.sqlite._shared import WriteContext  # noqa: TC001
+from synthorg.persistence.sqlite._shared import WriteContext
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

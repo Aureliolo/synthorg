@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.resilience_config import RateLimiterConfig  # noqa: TC001
+from synthorg.core.resilience_config import RateLimiterConfig
 from synthorg.core.types import NotBlankStr
 
 # Per-connection webhook-receipt retention window in days. Tri-state:

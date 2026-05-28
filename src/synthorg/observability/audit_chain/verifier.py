@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
-from synthorg.observability.audit_chain.protocol import AuditChainSigner  # noqa: TC001
+from synthorg.observability.audit_chain.protocol import AuditChainSigner
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
     SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,

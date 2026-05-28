@@ -21,7 +21,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskType,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class WorkSource(StrEnum):

@@ -13,7 +13,7 @@ from operator import attrgetter
 from typing import Final
 
 from synthorg.memory.consolidation.axis import SelectionGroup
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 
 _MIN_GROUP_THRESHOLD: Final[int] = 2
 _DEFAULT_GROUP_THRESHOLD: Final[int] = 3

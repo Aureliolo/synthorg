@@ -9,7 +9,7 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.auth.models import ApiKey, User
-from synthorg.core.auth.roles import HumanRole  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,

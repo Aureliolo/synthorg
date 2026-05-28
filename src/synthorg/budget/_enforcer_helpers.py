@@ -7,7 +7,7 @@ pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, get_args
-from uuid import UUID  # noqa: TC003 -- runtime annotation
+from uuid import UUID
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel

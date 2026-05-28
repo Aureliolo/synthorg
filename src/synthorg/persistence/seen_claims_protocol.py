@@ -10,9 +10,9 @@ previously recorded a terminal outcome for the same idempotency key.
 
 from typing import Protocol, runtime_checkable
 
-from pydantic import AwareDatetime  # noqa: TC002
+from pydantic import AwareDatetime
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 @runtime_checkable

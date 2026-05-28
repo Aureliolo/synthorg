@@ -25,7 +25,7 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.meta.toolsmith.config import ToolsmithConfig  # noqa: TC001
+from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.meta.toolsmith.errors import (
     ToolAuthoringError,
     ToolCapabilityNotAllowedError,

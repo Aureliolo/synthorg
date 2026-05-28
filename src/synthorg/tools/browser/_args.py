@@ -10,7 +10,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.core.types import NotBlankStr
 from synthorg.tools.browser._constants import (
     A11Y_IMPACT_LEVELS,
     A11Y_MIN_IMPACT_DEFAULT,

@@ -14,7 +14,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
-    CompositeBackendConfig,  # noqa: TC001
+    CompositeBackendConfig,
 )
 from synthorg.memory.errors import (
     MemoryConfigError,
@@ -22,9 +22,9 @@ from synthorg.memory.errors import (
     MemoryRetrievalError,
 )
 from synthorg.memory.models import (
-    MemoryEntry,  # noqa: TC001
-    MemoryQuery,  # noqa: TC001
-    MemoryStoreRequest,  # noqa: TC001
+    MemoryEntry,
+    MemoryQuery,
+    MemoryStoreRequest,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (

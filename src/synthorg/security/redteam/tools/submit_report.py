@@ -30,7 +30,7 @@ from synthorg.security.redteam.errors import (
     RedTeamReportValidationError,
 )
 from synthorg.security.redteam.models import RedTeamReport
-from synthorg.security.redteam.protocol import RedTeamReportRepository  # noqa: TC001
+from synthorg.security.redteam.protocol import RedTeamReportRepository
 from synthorg.security.redteam.runtime_context import (
     get_red_team_runtime_context,
 )

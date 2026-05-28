@@ -15,7 +15,7 @@ from typing import Final, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 _DEFAULT_LIMIT: Final[int] = 100
 

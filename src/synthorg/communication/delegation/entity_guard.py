@@ -6,14 +6,14 @@ enforcement level, from no-op to strict rejection.
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- runtime for Pydantic
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_GUARD_BLOCKED,

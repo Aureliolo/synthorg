@@ -42,7 +42,7 @@ import os
 # TC003 since the only reference is in a function signature, but a
 # ``NameError`` at annotation-evaluation time (tests, docs, introspection
 # tooling) is strictly worse than the cheap stdlib import.
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import Final, Literal, NotRequired, TypedDict
 
 from synthorg.observability import get_logger

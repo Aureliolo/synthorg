@@ -9,7 +9,7 @@ import re
 from typing import Any, ClassVar, Final
 
 import aiosqlite
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
@@ -21,7 +21,7 @@ from synthorg.observability.events.database import (
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.database._args import SchemaInspectArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool
-from synthorg.tools.database.config import DatabaseConnectionConfig  # noqa: TC001
+from synthorg.tools.database.config import DatabaseConnectionConfig
 
 logger = get_logger(__name__)
 

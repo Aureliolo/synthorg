@@ -7,7 +7,7 @@ API.
 """
 
 from collections.abc import (
-    Mapping,  # noqa: TC003  # runtime annotation on driver method
+    Mapping,  # runtime annotation on driver method
 )
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final

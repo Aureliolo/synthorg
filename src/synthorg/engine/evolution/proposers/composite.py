@@ -7,7 +7,7 @@ otherwise. Returns proposals from the selected path without merging.
 from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.evolution.protocols import (
-    AdaptationProposer,  # noqa: TC001
+    AdaptationProposer,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.evolution import (

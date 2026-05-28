@@ -4,8 +4,8 @@ from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.auth.roles import HumanRole  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.auth.roles import HumanRole
+from synthorg.core.types import NotBlankStr
 
 
 class AuthMethod(StrEnum):

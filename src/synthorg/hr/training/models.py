@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import SeniorityLevel  # noqa: TC001
+from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 

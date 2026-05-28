@@ -4,7 +4,7 @@ import json
 from typing import Any, Final, Self
 
 from litestar import Controller, Request, Response, delete, get, patch, post
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -13,7 +13,7 @@ from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_AGENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.dto_org import (  # noqa: TC001
+from synthorg.api.dto_org import (
     CreateAgentOrgRequest,
     UpdateAgentOrgRequest,
 )
@@ -27,25 +27,25 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
-from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.config.schema import AgentConfig  # noqa: TC001
-from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.config.schema import AgentConfig
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.enums import AgentStatus, ToolAccessLevel  # noqa: TC001
+from synthorg.core.enums import AgentStatus, ToolAccessLevel
 from synthorg.core.normalization import find_by_name_ci
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.activity import (
     ActivityEvent,
     CareerEvent,
     filter_career_events,
     merge_activity_timeline,
 )
-from synthorg.hr.enums import TrendDirection  # noqa: TC001
+from synthorg.hr.enums import TrendDirection
 from synthorg.hr.performance.summary import (
     AgentPerformanceSummary,
     extract_performance_summary,

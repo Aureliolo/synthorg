@@ -9,7 +9,7 @@ import re
 from enum import StrEnum
 from typing import Final
 
-from synthorg.memory.models import MemoryEntry  # noqa: TC001
+from synthorg.memory.models import MemoryEntry
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     DENSITY_CLASSIFICATION_COMPLETE,

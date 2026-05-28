@@ -15,7 +15,7 @@ import os
 # in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
 # lazy annotations ``inspect.get_annotations`` resolves these in module globals,
 # so a TYPE_CHECKING-only import would raise ``NameError`` at introspection time.
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from synthorg.observability import get_logger

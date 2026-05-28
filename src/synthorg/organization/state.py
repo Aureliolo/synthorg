@@ -12,10 +12,10 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.organization.services import (
-    CompanyReadService,  # noqa: TC001
-    DepartmentService,  # noqa: TC001
-    RoleVersionService,  # noqa: TC001
-    TeamService,  # noqa: TC001
+    CompanyReadService,
+    DepartmentService,
+    RoleVersionService,
+    TeamService,
 )
 
 if TYPE_CHECKING:

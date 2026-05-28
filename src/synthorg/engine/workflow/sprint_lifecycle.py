@@ -14,7 +14,7 @@ from typing import Any, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.state_machine import StateMachine
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_LIFECYCLE_TRANSITION,

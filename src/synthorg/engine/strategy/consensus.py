@@ -11,7 +11,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.engine.strategy.models import (  # noqa: TC001
+from synthorg.engine.strategy.models import (
     ConsensusAction,
     ConsensusVelocityConfig,
 )

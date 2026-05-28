@@ -8,14 +8,14 @@ aggregated by agent, department, and time period.
 """
 
 from collections import Counter
-from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
+from datetime import datetime
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.budget.currency import CurrencyCode  # noqa: TC001
+from synthorg.budget.currency import CurrencyCode
 from synthorg.budget.enums import BudgetAlertLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class _SpendingTotals(BaseModel):

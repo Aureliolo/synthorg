@@ -11,10 +11,10 @@ persist anything across process restarts.
 import asyncio
 from dataclasses import dataclass
 
-from pydantic import AwareDatetime  # noqa: TC002 -- runtime annotation
+from pydantic import AwareDatetime
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
-from synthorg.experiments.models import (  # noqa: TC001 -- runtime annotation
+from synthorg.core.types import NotBlankStr
+from synthorg.experiments.models import (
     ExperimentAssignment,
     ExperimentVariant,
 )

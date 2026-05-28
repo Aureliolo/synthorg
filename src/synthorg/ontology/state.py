@@ -10,12 +10,12 @@ from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.ontology.drift.service import (
-    DriftDetectionService,  # noqa: TC001
+    DriftDetectionService,
 )
-from synthorg.ontology.service import OntologyService  # noqa: TC001
-from synthorg.ontology.sync import OntologyOrgMemorySync  # noqa: TC001
+from synthorg.ontology.service import OntologyService
+from synthorg.ontology.sync import OntologyOrgMemorySync
 from synthorg.persistence.ontology_protocol import (
-    OntologyDriftReportRepository,  # noqa: TC001
+    OntologyDriftReportRepository,
 )
 
 

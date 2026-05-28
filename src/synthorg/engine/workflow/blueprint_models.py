@@ -7,13 +7,13 @@ can instantiate as a ``WorkflowDefinition``.  Lighter than
 """
 
 from collections import Counter
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class BlueprintNodeData(BaseModel):

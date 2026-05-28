@@ -3,7 +3,7 @@
 from typing import Any, Final
 
 from litestar import Controller, delete, get, post, put
-from litestar.datastructures import State  # noqa: TC002
+from litestar.datastructures import State
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.dto_personalities import (
@@ -20,7 +20,7 @@ from synthorg.api.pagination import (
     cursor_secret_of,
     paginate_cursor,
 )
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathName
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.observability import get_logger
 from synthorg.persistence.state import persistence_of

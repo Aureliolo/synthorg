@@ -9,9 +9,9 @@ is the source of truth in production.
 import asyncio
 from typing import Final
 
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import (
-    McpInstallation,  # noqa: TC001
+    McpInstallation,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (

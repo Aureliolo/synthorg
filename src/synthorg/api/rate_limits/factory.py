@@ -1,8 +1,8 @@
 """Factory for sliding-window store strategies."""
 
-from synthorg.api.rate_limits.config import PerOpRateLimitConfig  # noqa: TC001
+from synthorg.api.rate_limits.config import PerOpRateLimitConfig
 from synthorg.api.rate_limits.in_memory import InMemorySlidingWindowStore
-from synthorg.api.rate_limits.protocol import SlidingWindowStore  # noqa: TC001
+from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.core.registry import (
     StrategyFactoryNotFoundError,
     StrategyRegistry,

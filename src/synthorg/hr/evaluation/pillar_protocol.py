@@ -6,10 +6,10 @@ that evaluate agent performance on a single evaluation pillar.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.hr.evaluation.enums import EvaluationPillar  # noqa: TC001
+from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
-    EvaluationContext,  # noqa: TC001
-    PillarScore,  # noqa: TC001
+    EvaluationContext,
+    PillarScore,
 )
 
 

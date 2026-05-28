@@ -9,7 +9,7 @@ from synthorg.engine.review.models import (
     ReviewStageResult,
     ReviewVerdict,
 )
-from synthorg.engine.review.protocol import ReviewStage  # noqa: TC001
+from synthorg.engine.review.protocol import ReviewStage
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.review_pipeline import (
     REVIEW_PIPELINE_COMPLETED,

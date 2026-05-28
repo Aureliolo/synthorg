@@ -2,7 +2,7 @@
 
 import math
 
-from synthorg.client.human_queue import HumanInputQueue  # noqa: TC001
+from synthorg.client.human_queue import HumanInputQueue
 from synthorg.client.models import (
     ClientFeedback,
     ClientProfile,

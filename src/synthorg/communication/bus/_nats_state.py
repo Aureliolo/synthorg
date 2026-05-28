@@ -9,8 +9,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from synthorg.communication.channel import Channel  # noqa: TC001
-from synthorg.communication.config import (  # noqa: TC001
+from synthorg.communication.channel import Channel
+from synthorg.communication.config import (
     MessageBusConfig,
     NatsConfig,
 )

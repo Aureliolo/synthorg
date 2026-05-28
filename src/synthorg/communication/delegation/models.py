@@ -1,12 +1,12 @@
 """Delegation request, result, and audit trail models."""
 
-from collections.abc import Mapping  # noqa: TC003 -- runtime for Pydantic
+from collections.abc import Mapping
 from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.task import Task  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 
 
 class DelegationRequest(BaseModel):

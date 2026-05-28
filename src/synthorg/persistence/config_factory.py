@@ -12,7 +12,7 @@ The CLI compose template emits exactly one of
 per init choice; the helpers below cover both shapes.
 """
 
-from pathlib import Path  # noqa: TC003 -- runtime-resolvable annotation for PEP 649
+from pathlib import Path
 from typing import Any, NoReturn, get_args
 from urllib.parse import unquote, urlparse
 
@@ -21,7 +21,7 @@ from pydantic import SecretStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.artifact_storage import (
-    ArtifactStorageBackend,  # noqa: TC001 -- documented return type
+    ArtifactStorageBackend,
 )
 from synthorg.persistence.config import (
     PersistenceConfig,

@@ -17,7 +17,7 @@ no LLM calls, so the runtime comes online for an empty company.
 """
 
 import os
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.budget.state import BudgetStateSlice

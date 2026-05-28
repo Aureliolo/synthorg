@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.domain_errors import NotFoundError, ServiceUnavailableError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Final
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
-from synthorg.core.enums import DecisionOutcome  # noqa: TC001
+from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
@@ -29,7 +29,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
-from synthorg.persistence.decision_protocol import (  # noqa: TC001
+from synthorg.persistence.decision_protocol import (
     DecisionFilterSpec,
     DecisionRole,
 )

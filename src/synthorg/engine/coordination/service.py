@@ -8,7 +8,7 @@ update parent. Rollup + parent lifecycle walk live in
 
 import asyncio
 from collections.abc import (
-    Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
+    Callable,
 )
 from pathlib import Path
 from typing import TYPE_CHECKING, Final

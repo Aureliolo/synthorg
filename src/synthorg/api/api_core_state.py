@@ -21,25 +21,25 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
-from synthorg.api.auth.presence import UserPresence  # noqa: TC001
-from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auth.ticket_store import WsTicketStore  # noqa: TC001
-from synthorg.api.cursor import CursorSecret  # noqa: TC001
+from synthorg.api.auth.presence import UserPresence
+from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.ticket_store import WsTicketStore
+from synthorg.api.cursor import CursorSecret
 from synthorg.api.services.idempotency_service import (
     IdempotencyService,
 )
-from synthorg.api.services.org_mutations import OrgMutationService  # noqa: TC001
+from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.api.services.workflow_rollback_service import (
-    WorkflowRollbackService,  # noqa: TC001
+    WorkflowRollbackService,
 )
 from synthorg.persistence.auth_protocol import (
-    LockoutRepository as LockoutStore,  # noqa: TC001
+    LockoutRepository as LockoutStore,
 )
 from synthorg.persistence.auth_protocol import (
-    RefreshTokenRepository as RefreshStore,  # noqa: TC001
+    RefreshTokenRepository as RefreshStore,
 )
 from synthorg.persistence.auth_protocol import (
-    SessionRepository as SessionStore,  # noqa: TC001
+    SessionRepository as SessionStore,
 )
 
 if TYPE_CHECKING:

@@ -6,7 +6,7 @@ performance, task completion, risk trends, and comprehensive.
 All models are frozen Pydantic models (immutable, append-only pattern).
 """
 
-import datetime as _dt  # noqa: TC003
+import datetime as _dt
 from typing import Self
 
 from pydantic import (
@@ -18,9 +18,9 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.budget.report_config import ReportPeriod  # noqa: TC001
-from synthorg.budget.reports import SpendingReport  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.budget.report_config import ReportPeriod
+from synthorg.budget.reports import SpendingReport
+from synthorg.core.types import NotBlankStr
 
 # ── Performance ──────────────────────────────────────────────────
 

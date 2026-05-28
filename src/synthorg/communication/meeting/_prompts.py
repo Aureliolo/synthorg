@@ -1,6 +1,6 @@
 """Shared prompt builders for meeting protocol implementations."""
 
-from collections.abc import Mapping  # noqa: TC003
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted

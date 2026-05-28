@@ -67,7 +67,7 @@ from synthorg.observability.events.persistence import (
 )
 from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.providers.state import has_active_provider
-from synthorg.settings.dispatcher import SettingsChangeDispatcher  # noqa: TC001
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
 from synthorg.workers.state import RuntimeStateSlice
