@@ -1,6 +1,7 @@
 ---
 name: design-token-audit
 description: Audits web dashboard files for design token violations in animation (Motion transitions) and density/spacing (card padding, section gaps, grid gaps, banner padding)
+model: haiku
 tools:
   - Read
   - Grep

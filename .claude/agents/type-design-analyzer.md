@@ -1,7 +1,7 @@
 ---
 name: type-design-analyzer
 description: Analyses type design for invariant strength and encapsulation. Rates Encapsulation / Invariant Expression / Invariant Usefulness / Invariant Enforcement on a 1-10 scale. Flags anti-patterns (anemic models, exposed mutable internals, doc-only invariants, missing constructor validation). Suggests pragmatic improvements that don't overcomplicate.
-model: inherit
+model: sonnet
 color: pink
 ---
 

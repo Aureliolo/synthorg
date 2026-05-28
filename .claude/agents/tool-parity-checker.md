@@ -1,6 +1,7 @@
 ---
 name: tool-parity-checker
 description: Verifies Claude Code and OpenCode configuration parity; checks that changes to .claude/ or .opencode/ files maintain dual-tool compatibility
+model: haiku
 tools:
   - Read
   - Grep

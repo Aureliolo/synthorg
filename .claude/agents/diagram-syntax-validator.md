@@ -1,6 +1,7 @@
 ---
 name: diagram-syntax-validator
 description: Validates Mermaid and D2 diagram syntax in documentation files, checking for syntax errors, consistent styling, and correct fence types
+model: haiku
 tools:
   - Read
   - Grep

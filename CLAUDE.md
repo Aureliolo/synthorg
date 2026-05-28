@@ -120,3 +120,4 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - After every squash merge → `/post-merge-cleanup`.
 - CLI is Docker-only (init/start/stop/status); features go in dashboard + REST API.
+- **Subagent models (cost safety)**: every agent definition in `.claude/agents/` MUST pin an explicit `model:` (never omit, never `model: inherit`). An unpinned/`inherit` agent resolves to the caller's session model (potentially the most expensive tier), so a fan-out of unpinned agents silently runs all of them on it. Likewise pass an explicit `model` to every `Agent` spawn and Workflow `agent()` call / `meta.phases[].model`: `haiku` for mechanical checks, `sonnet` for review/analysis, `opus` only for the heaviest reasoning.
