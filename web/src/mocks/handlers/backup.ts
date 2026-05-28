@@ -6,7 +6,8 @@ import type {
   restoreBackup,
 } from '@/api/endpoints/backup'
 import type { BackupManifest } from '@/api/types/backup'
-import { successFor, voidSuccess } from './helpers'
+import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
+import type { BackupInfo } from '@/api/types/backup'
 
 function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {
   return {
@@ -26,7 +27,7 @@ export const backupHandlers = [
     HttpResponse.json(successFor<typeof createBackup>(buildManifest())),
   ),
   http.get('/api/v1/admin/backups', () =>
-    HttpResponse.json(successFor<typeof listBackups>([])),
+    HttpResponse.json(paginatedFor<typeof listBackups>(emptyPage<BackupInfo>())),
   ),
   http.get('/api/v1/admin/backups/:id', ({ params }) =>
     HttpResponse.json(

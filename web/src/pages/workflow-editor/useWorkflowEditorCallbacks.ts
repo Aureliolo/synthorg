@@ -16,6 +16,7 @@ import type {
 } from '@/api/types/workflows'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { downloadTextFile } from '@/utils/download'
 import { isObject, isString } from '@/utils/type-guards'
 
 const log = createLogger('WorkflowEditor')
@@ -139,7 +140,8 @@ function useSaveOpsCallbacks(
   const handleExport = useCallback(async () => {
     try {
       const yamlStr = await exportYaml()
-      downloadYaml(yamlStr)
+      const name = useWorkflowEditorStore.getState().definition?.name ?? 'workflow'
+      downloadTextFile(yamlStr, `${name}.yaml`, 'text/yaml')
       addToast({ variant: 'success', title: 'YAML exported' })
     } catch (err) {
       log.error('YAML export failed', sanitizeForLog(err))
@@ -158,18 +160,6 @@ function useSaveOpsCallbacks(
     emitValidationToast(addToast)
   }, [validate, addToast])
   return { handleExport, handleSave, handleValidate }
-}
-
-function downloadYaml(yamlStr: string): void {
-  const blob = new Blob([yamlStr], { type: 'text/yaml' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${useWorkflowEditorStore.getState().definition?.name ?? 'workflow'}.yaml`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
 }
 
 function emitValidationToast(

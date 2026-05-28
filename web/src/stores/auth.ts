@@ -9,10 +9,11 @@
 import { create } from 'zustand'
 import * as authApi from '@/api/endpoints/auth'
 import { setUnauthorizedHandler } from '@/api/unauthorized-handler'
-import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { useToastStore } from '@/stores/toast'
+import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { createLogger } from '@/lib/logger'
-import type { UserInfoResponse } from '@/api/types/auth'
+import type { SessionInfo, UserInfoResponse } from '@/api/types/auth'
 import type { HumanRole } from '@/api/types/enums'
 
 const log = createLogger('auth')
@@ -32,11 +33,18 @@ interface AuthState {
   user: UserInfoResponse | null
   loading: boolean
 
+  // ── Active sessions ──
+  sessions: SessionInfo[]
+  sessionsLoading: boolean
+  sessionsError: string | null
+
   login: (username: string, password: string) => Promise<void>
   setup: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   fetchUser: () => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<UserInfoResponse>
+  fetchSessions: (scope?: 'own' | 'all') => Promise<void>
+  revokeSession: (sessionId: string) => Promise<boolean>
   handleUnauthorized: () => void
   checkSession: () => Promise<void>
 }
@@ -51,10 +59,10 @@ const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
 //
 // On reload with no session cookie, multiple inflight requests can
 // land 401 in the same tick. Each invokes ``handleUnauthorized`` via
-// the response interceptor, which previously meant N concurrent
-// ``window.location.href = '/login'`` assignments and N concurrent
-// websocket disconnects -- a flicker that the audit's "auth-on-reload
-// glitch" report calls out. The guard ensures the redirect path runs
+// the response interceptor, which without this guard would mean N
+// concurrent ``window.location.href = '/login'`` assignments and N
+// concurrent websocket disconnects, a visible login-redirect flicker.
+// The guard ensures the redirect path runs
 // at most once per page load; ``login()`` resets it on success so a
 // later session expiry still works.
 let unauthorizedRedirectInFlight = false
@@ -162,10 +170,56 @@ async function checkSessionImpl(
   }
 }
 
+async function fetchSessionsImpl(
+  set: (partial: Partial<AuthState>) => void,
+  scope: 'own' | 'all',
+): Promise<void> {
+  set({ sessionsLoading: true, sessionsError: null })
+  try {
+    const sessions = await authApi.listSessions(scope)
+    set({ sessions, sessionsLoading: false })
+  } catch (err) {
+    log.error('Failed to fetch sessions:', getErrorMessage(err))
+    set({ sessionsError: getErrorMessage(err), sessionsLoading: false })
+  }
+}
+
+async function revokeSessionImpl(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+  sessionId: string,
+): Promise<boolean> {
+  // Capture only the row we optimistically remove so a failure rollback
+  // cannot clobber a concurrent refresh of the session list.
+  const before = get().sessions
+  const removed = before.find((s) => s.session_id === sessionId) ?? null
+  set({ sessions: before.filter((s) => s.session_id !== sessionId) })
+  try {
+    await authApi.revokeSession(sessionId)
+    useToastStore.getState().add({ variant: 'success', title: 'Session revoked' })
+    return true
+  } catch (err) {
+    const current = get().sessions
+    const alreadyBack = current.some((s) => s.session_id === sessionId)
+    if (!alreadyBack && removed) set({ sessions: [removed, ...current] })
+    log.error('Revoke session failed:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to revoke session'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
 export const useAuthStore = create<AuthState>()((set, get) => ({
   authStatus: IS_DEV_AUTH_BYPASS ? 'authenticated' : 'unknown',
   user: DEV_USER,
   loading: false,
+
+  sessions: [],
+  sessionsLoading: false,
+  sessionsError: null,
 
   login: (username, password) =>
     performAuthFlow(
@@ -190,6 +244,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     get().handleUnauthorized()
   },
   fetchUser: () => fetchUserImpl(set, get),
+  fetchSessions: (scope = 'own') => fetchSessionsImpl(set, scope),
+  revokeSession: (sessionId) => revokeSessionImpl(set, get, sessionId),
   async changePassword(currentPassword, newPassword) {
     set({ loading: true })
     try {

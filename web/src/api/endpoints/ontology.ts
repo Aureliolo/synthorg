@@ -1,7 +1,7 @@
 /**
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -109,6 +109,13 @@ export async function updateEntity(
   return unwrap(response)
 }
 
+export async function deleteEntity(name: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/ontology/entities/${encodeURIComponent(name)}`,
+  )
+  unwrapVoid(response)
+}
+
 export async function listEntityVersions(
   name: string,
   params?: { cursor?: string | null; limit?: number },
@@ -135,7 +142,9 @@ export async function listDriftReports(params?: {
   return unwrapPaginated<DriftReportResponse>(response)
 }
 
-export async function triggerDriftCheck(): Promise<string> {
-  const response = await apiClient.post<ApiResponse<string>>('/ontology/drift/check')
+export async function triggerDriftCheck(): Promise<Record<string, string>> {
+  const response = await apiClient.post<ApiResponse<Record<string, string>>>(
+    '/ontology/drift/check',
+  )
   return unwrap(response)
 }

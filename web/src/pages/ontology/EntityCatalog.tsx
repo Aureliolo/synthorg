@@ -2,7 +2,7 @@
  * Entity catalog section: card grid with filter tabs.
  */
 import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useOntologyStore } from '@/stores/ontology'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -48,13 +48,18 @@ function sortEntities(
 }
 
 // `attribute_count` is the canonical scalar on summary list payloads; the
-// `attributes` array is only present on detail responses. Read both so the
-// comparator works against either shape.
+// `attributes` array is only present on detail responses. Both are optional
+// extensions of the base entity shape, so read them through one intersection
+// cast rather than two `as unknown` escapes.
+interface EntitySummaryExtras {
+  readonly attribute_count?: number
+  readonly attributes?: readonly unknown[]
+}
+
 function readAttributeCount(entity: EntityResponse): number {
-  const summary = (entity as unknown as { attribute_count?: number }).attribute_count
-  if (typeof summary === 'number') return summary
-  const detail = (entity as unknown as { attributes?: readonly unknown[] }).attributes
-  return detail?.length ?? 0
+  const extras = entity as EntityResponse & EntitySummaryExtras
+  if (typeof extras.attribute_count === 'number') return extras.attribute_count
+  return extras.attributes?.length ?? 0
 }
 
 interface EntityCatalogControlsProps {
@@ -147,14 +152,19 @@ function EntityCatalogEmpty({ hasActiveFilters, onClearFilters }: EntityCatalogE
 interface EntityCatalogGridProps {
   entities: readonly EntityResponse[]
   onSelect: (entity: EntityResponse) => void
+  onDelete: (name: string) => boolean | void | Promise<boolean | void>
 }
 
-function EntityCatalogGrid({ entities, onSelect }: EntityCatalogGridProps) {
+function EntityCatalogGrid({ entities, onSelect, onDelete }: EntityCatalogGridProps) {
   return (
     <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
       {entities.map((entity) => (
         <StaggerItem key={entity.name}>
-          <EntityCard entity={entity} onClick={() => onSelect(entity)} />
+          <EntityCard
+            entity={entity}
+            onClick={() => onSelect(entity)}
+            onDelete={onDelete}
+          />
         </StaggerItem>
       ))}
     </StaggerGroup>
@@ -170,6 +180,7 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
   const setSearchQuery = useOntologyStore((s) => s.setSearchQuery)
   const setEntitySort = useOntologyStore((s) => s.setEntitySort)
   const setSelectedEntity = useOntologyStore((s) => s.setSelectedEntity)
+  const deleteEntity = useOntologyStore((s) => s.deleteEntity)
 
   const hasActiveFilters = searchQuery.trim().length > 0 || tierFilter !== 'all'
 
@@ -178,10 +189,10 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
     [entities, sortBy, sortDirection],
   )
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setSearchQuery('')
     setTierFilter('all')
-  }
+  }, [setSearchQuery, setTierFilter])
 
   return (
     <SectionCard title="Entity Catalog" icon={Shapes}>
@@ -198,7 +209,11 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
       {sortedEntities.length === 0 ? (
         <EntityCatalogEmpty hasActiveFilters={hasActiveFilters} onClearFilters={handleClearFilters} />
       ) : (
-        <EntityCatalogGrid entities={sortedEntities} onSelect={setSelectedEntity} />
+        <EntityCatalogGrid
+          entities={sortedEntities}
+          onSelect={setSelectedEntity}
+          onDelete={deleteEntity}
+        />
       )}
     </SectionCard>
   )

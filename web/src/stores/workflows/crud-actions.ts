@@ -2,9 +2,11 @@ import {
   createFromBlueprint as createFromBlueprintApi,
   createWorkflow as createWorkflowApi,
   deleteWorkflow as deleteWorkflowApi,
+  exportWorkflowYaml as exportWorkflowYamlApi,
 } from '@/api/endpoints/workflows'
 import { useToastStore } from '@/stores/toast'
-import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
+import { downloadTextFile } from '@/utils/download'
+import { formatBatchErrors, getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -53,7 +55,7 @@ async function createWorkflowImpl(
     log.error('Create workflow failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create workflow',
+      ...getCrudErrorTitle(err, 'Failed to create workflow'),
       description: getErrorMessage(err),
     })
     return null
@@ -76,7 +78,7 @@ async function createFromBlueprintImpl(
     log.error('Create workflow from blueprint failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create workflow from blueprint',
+      ...getCrudErrorTitle(err, 'Failed to create workflow from blueprint'),
       description: getErrorMessage(err),
     })
     return null
@@ -120,7 +122,31 @@ async function deleteWorkflowImpl(
     }
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete workflow',
+      ...getCrudErrorTitle(err, 'Failed to delete workflow'),
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
+async function exportWorkflowImpl(
+  get: WorkflowsGet,
+  id: string,
+): Promise<boolean> {
+  const name = get().workflows.find((w) => w.id === id)?.name ?? 'workflow'
+  try {
+    const yaml = await exportWorkflowYamlApi(id)
+    downloadTextFile(yaml, `${name}.yaml`, 'text/yaml')
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Workflow YAML exported',
+    })
+    return true
+  } catch (err) {
+    log.error('Export workflow YAML failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to export workflow'),
       description: getErrorMessage(err),
     })
     return false
@@ -265,9 +291,12 @@ async function batchDeleteWorkflowsImpl(
     const distinctCount = new Set(ids).size
     useToastStore.getState().add({
       variant: 'error',
-      title: distinctCount === 1
-        ? 'Failed to delete workflow'
-        : `Failed to delete ${distinctCount} workflows`,
+      ...getCrudErrorTitle(
+        err,
+        distinctCount === 1
+          ? 'Failed to delete workflow'
+          : `Failed to delete ${distinctCount} workflows`,
+      ),
       description: getErrorMessage(err),
     })
     return false
@@ -281,6 +310,7 @@ export function createCrudActions(set: WorkflowsSet, get: WorkflowsGet) {
     createFromBlueprint: (data: CreateFromBlueprintRequest) =>
       createFromBlueprintImpl(set, data),
     deleteWorkflow: (id: string) => deleteWorkflowImpl(set, get, id),
+    exportWorkflow: (id: string) => exportWorkflowImpl(get, id),
     batchDeleteWorkflows: (ids: readonly string[]) =>
       batchDeleteWorkflowsImpl(set, ids),
   }

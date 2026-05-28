@@ -9,6 +9,8 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const SetupPage = lazy(() => import('@/pages/SetupPage'))
 const OrgChartPage = lazy(() => import('@/pages/OrgChartPage'))
 const OrgEditPage = lazy(() => import('@/pages/OrgEditPage'))
+const RolesPage = lazy(() => import('@/pages/RolesPage'))
+const RoleVersionsPage = lazy(() => import('@/pages/RoleVersionsPage'))
 const TaskBoardPage = lazy(() => import('@/pages/TaskBoardPage'))
 const TaskDetailPage = lazy(() => import('@/pages/TaskDetailPage'))
 const BudgetPage = lazy(() => import('@/pages/BudgetPage'))
@@ -46,6 +48,7 @@ const MissionControlPage = lazy(() => import('@/pages/MissionControlPage'))
 const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
 const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
+const AdminBackupsPage = lazy(() => import('@/pages/AdminBackupsPage'))
 const BudgetVersionsPage = lazy(() => import('@/pages/BudgetVersionsPage'))
 const CompanyVersionsPage = lazy(() => import('@/pages/CompanyVersionsPage'))
 const EvaluationVersionsPage = lazy(() => import('@/pages/EvaluationVersionsPage'))
@@ -63,6 +66,7 @@ const McpCatalogPage = lazy(() => import('@/pages/McpCatalogPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
+const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
 const CeremonyPolicyPage = lazy(() => import('@/pages/settings/ceremony-policy/CeremonyPolicyPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
@@ -133,6 +137,8 @@ export const router = createBrowserRouter([
               { index: true, element: <DashboardPage /> },
               { path: 'org', element: <OrgChartPage /> },
               { path: 'org/edit', element: <OrgEditPage /> },
+              { path: ROUTES.ROLES.slice(1), element: <RolesPage /> },
+              { path: ROUTES.ROLE_VERSIONS.slice(1), element: <RoleVersionsPage /> },
               { path: 'tasks', element: <TaskBoardPage /> },
               { path: 'tasks/:taskId', element: <TaskDetailPage /> },
               { path: 'budget', element: <BudgetPage /> },
@@ -177,6 +183,7 @@ export const router = createBrowserRouter([
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
               { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
+              { path: ROUTES.ADMIN_BACKUPS.slice(1), element: <AdminBackupsPage /> },
               { path: 'budget/versions', element: <BudgetVersionsPage /> },
               { path: 'org/versions', element: <CompanyVersionsPage /> },
               { path: 'evaluation/versions', element: <EvaluationVersionsPage /> },
@@ -187,6 +194,7 @@ export const router = createBrowserRouter([
               { path: 'clients/:clientId', element: <ClientDetailPage /> },
               { path: ROUTES.SETTINGS_FINE_TUNING.slice(1), element: <FineTuningPage /> },
               { path: 'settings', element: <SettingsPage /> },
+              { path: ROUTES.SETTINGS_SECURITY_SESSIONS.slice(1), element: <SessionsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
               { path: ROUTES.SETTINGS_CEREMONY_POLICY.slice(1), element: <CeremonyPolicyPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },

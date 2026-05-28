@@ -24,10 +24,15 @@ import {
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface VersionSnapshot<T> {
-  readonly id: string
+  /** Primary key of the versioned entity (stable across all its versions). */
+  readonly entity_id: string
+  /** Monotonic per-entity version counter (1-indexed); unique per entity. */
   readonly version: number
-  readonly created_at: string
   readonly content_hash: string
+  /** ISO-8601 timestamp the snapshot was saved. */
+  readonly saved_at: string
+  /** Actor that triggered the snapshot. */
+  readonly saved_by: string
   readonly snapshot: T
 }
 
@@ -157,3 +162,23 @@ export const evaluationConfigVersionsClient = createReadOnlyVersionHistoryClient
 export const companyVersionsClient = createReadOnlyVersionHistoryClient<
   Record<string, unknown>
 >('/company')
+
+/**
+ * Build the read-only role-versions client for ``roleName``.
+ *
+ * Per-role (like the per-workflow case) rather than a singleton, so it
+ * is a factory. The role backend exposes list + get ONLY (no diff and
+ * no rollback), so consumers MUST gate the diff affordance off via
+ * ``VersionHistorySection``'s ``diffSupported={false}``.
+ *
+ * ``createReadOnlyVersionHistoryClient`` stays module-private: its only
+ * callers are in this file, so exporting it would reintroduce the
+ * dead-export Knip flagged. This factory is the public entry point.
+ */
+export function createRoleVersionsClient(
+  roleName: string,
+): ReadOnlyVersionHistoryClient<Record<string, unknown>> {
+  return createReadOnlyVersionHistoryClient<Record<string, unknown>>(
+    `/roles/${encodeURIComponent(roleName)}`,
+  )
+}

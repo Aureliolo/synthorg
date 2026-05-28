@@ -114,7 +114,8 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 
 | Component | Import | Use for |
 |-----------|--------|---------|
-| `VersionTimeline` | `@/components/version-rollback/VersionTimeline` | Generic read-only timeline of `{ id, version, created_at }` snapshots. Domain-agnostic; reused across agent identity, role, budget config, evaluation config, and company version-rollback surfaces. Skeleton + empty + load-more states built in. |
+| `VersionHistorySection` | `@/components/version-rollback/VersionHistorySection` | Drop-in section composing `VersionTimeline` + `VersionDiffDrawer` + `RollbackConfirmDialog` over a `VersionHistoryClient` (rollback) or `ReadOnlyVersionHistoryClient` (read-only). Props discriminate on `rollbackSupported`; `diffSupported` (default `true`) gates the two-click compare + diff drawer off for list+get-only domains such as role versions. |
+| `VersionTimeline` | `@/components/version-rollback/VersionTimeline` | Generic read-only timeline of `{ id, version, created_at }` display items. Domain-agnostic; reused across agent identity, role, budget config, evaluation config, and company version-rollback surfaces. Skeleton + empty + load-more states built in. `selectable` (default `true`) renders rows as static text when neither diff nor rollback applies. |
 | `VersionDiffDrawer` | `@/components/version-rollback/VersionDiffDrawer` | Side-by-side JSON diff of two versions in a Drawer (`width="wide"`). Pairs with `VersionTimeline` selection state. |
 | `RollbackConfirmDialog` | `@/components/version-rollback/RollbackConfirmDialog` | Destructive `ConfirmDialog` wrapper with rollback-specific copy + a final preview of "what will change". |
 

@@ -220,7 +220,7 @@ export function useVersionHistory<T>(
     diffPair: s.diffPair, rollbackOpen: s.rollbackOpen,
     diffFrom: s.diffPair?.from ?? null,
     diffTo: s.diffPair?.to ?? null,
-    findById: (id) => s.items.find((i) => i.id === id),
+    findById: (id) => s.items.find((i) => String(i.version) === id),
     loadMore,
     refresh,
     select: (item) => _selectVersion(s, item),

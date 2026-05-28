@@ -27,6 +27,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.SETUP]: 'Setup',
   [ROUTES.ORG]: 'Org Chart',
   [ROUTES.ORG_EDIT]: 'Edit Organization',
+  [ROUTES.ROLES]: 'Roles',
   [ROUTES.TASKS]: 'Tasks',
   [ROUTES.BUDGET]: 'Budget',
   [ROUTES.BUDGET_FORECAST]: 'Budget Forecast',
@@ -50,6 +51,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.COORDINATION_METRICS]: 'Coordination Metrics',
   [ROUTES.META_ANALYTICS]: 'Meta Analytics',
   [ROUTES.PERSONALITIES_ADMIN]: 'Personalities',
+  [ROUTES.ADMIN_BACKUPS]: 'Backups',
   [ROUTES.BUDGET_VERSIONS]: 'Budget Versions',
   [ROUTES.COMPANY_VERSIONS]: 'Org Versions',
   [ROUTES.EVALUATION_VERSIONS]: 'Evaluation Versions',
@@ -61,6 +63,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.OAUTH_APPS]: 'OAuth Apps',
   [ROUTES.MCP_CATALOG]: 'MCP Catalog',
   [ROUTES.SETTINGS]: 'Settings',
+  [ROUTES.SETTINGS_SECURITY_SESSIONS]: 'Active Sessions',
   [ROUTES.SETTINGS_SINKS]: 'Log Sinks',
   [ROUTES.SETTINGS_CEREMONY_POLICY]: 'Ceremony Policy',
   [ROUTES.SETTINGS_FINE_TUNING]: 'Fine-Tuning',
@@ -77,6 +80,7 @@ const EXACT_TITLES: Record<string, string> = {
  */
 const SECTION_TITLES: Record<string, string> = {
   agents: 'Agent',
+  roles: 'Role',
   tasks: 'Task',
   meetings: 'Meeting',
   providers: 'Provider',

@@ -54,6 +54,24 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
 }
 
 function getFooterAction(ns: SettingNamespace): React.ReactNode {
+  if (ns === 'security') {
+    return (
+      <SettingsActionCard
+        to={ROUTES.SETTINGS_SECURITY_SESSIONS}
+        title="Active Sessions"
+        description="Review and revoke active sessions for your account"
+      />
+    )
+  }
+  if (ns === 'backup') {
+    return (
+      <SettingsActionCard
+        to={ROUTES.ADMIN_BACKUPS}
+        title="Backups"
+        description="Create, restore, and delete system backups"
+      />
+    )
+  }
   if (ns === 'observability') {
     return (
       <SettingsActionCard
@@ -81,7 +99,7 @@ function SettingsHeader({ ctrl }: { ctrl: SettingsPageController }) {
     ? [...filters.filteredByNamespace.values()].reduce((sum, arr) => sum + arr.length, 0)
     : undefined
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-section-gap">
       <div className="flex items-baseline gap-2">
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         {data.isRefetching && (

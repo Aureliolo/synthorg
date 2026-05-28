@@ -70,6 +70,8 @@ export const ontologyHandlers = [
     HttpResponse.json(paginatedFor<typeof listDriftReports>(emptyPage())),
   ),
   http.post('/api/v1/ontology/drift/check', () =>
-    HttpResponse.json(successFor<typeof triggerDriftCheck>('check-triggered')),
+    HttpResponse.json(
+      successFor<typeof triggerDriftCheck>({ status: 'drift_check_completed' }),
+    ),
   ),
 ]

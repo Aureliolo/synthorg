@@ -92,6 +92,15 @@ export async function createFromBlueprint(
   return unwrap(response)
 }
 
+export async function exportWorkflowYaml(id: string): Promise<string> {
+  const response = await apiClient.post<string>(
+    `/workflows/${encodeURIComponent(id)}/export`,
+    undefined,
+    { responseType: 'text' },
+  )
+  return response.data
+}
+
 // ── Version history ────────────────────────────────────────
 
 export async function listWorkflowVersions(

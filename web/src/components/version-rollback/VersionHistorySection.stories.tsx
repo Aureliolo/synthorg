@@ -11,10 +11,11 @@ type Snapshot = VersionSnapshot<Record<string, unknown>>
 
 function buildSnapshot(version: number): Snapshot {
   return {
-    id: `v-${version}`,
+    entity_id: 'example-entity',
     version,
-    created_at: new Date(2026, 3, 28 - version, 9, 0, 0).toISOString(),
     content_hash: `hash-${version}`,
+    saved_at: new Date(2026, 3, 28 - version, 9, 0, 0).toISOString(),
+    saved_by: 'user-1',
     snapshot: { name: `state-v${version}`, capacity: 10 + version },
   }
 }

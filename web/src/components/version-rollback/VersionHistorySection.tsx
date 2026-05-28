@@ -55,6 +55,14 @@ interface VersionHistorySectionBase {
   emptyTitle?: string
   /** Empty-state secondary copy. */
   emptyDescription?: string
+  /**
+   * Whether the backend serves ``/<base>/versions/diff``. Defaults to
+   * true (the budget / company / evaluation / workflow domains). Set
+   * to false for domains that expose list + get only (e.g. role
+   * versions): the two-click compare and the diff drawer are then
+   * suppressed so the UI never fires a request the backend 404s.
+   */
+  diffSupported?: boolean
 }
 
 /**
@@ -63,7 +71,9 @@ interface VersionHistorySectionBase {
  * recover the full payload without re-fetching.
  */
 function toItem<T>(s: VersionSnapshot<T>): TimelineItem {
-  return { id: s.id, version: s.version, created_at: s.created_at }
+  // `version` is the unique per-entity key (entity_id repeats across a
+  // single entity's versions, so it cannot serve as the row identity).
+  return { id: String(s.version), version: s.version, created_at: s.saved_at }
 }
 
 export interface RollbackToolbarProps {
@@ -105,6 +115,10 @@ export interface VersionHistoryBodyProps<T> {
   onAfterRollback: (() => void) | undefined
   emptyTitle: string | undefined
   emptyDescription: string | undefined
+  /** Whether rows can be selected (for rollback or two-click diff). */
+  selectable: boolean
+  /** Whether the diff drawer + diff fetch are wired. */
+  diffEnabled: boolean
 }
 
 function VersionHistoryBody<T>({
@@ -114,9 +128,12 @@ function VersionHistoryBody<T>({
   onAfterRollback,
   emptyTitle,
   emptyDescription,
+  selectable,
+  diffEnabled,
 }: VersionHistoryBodyProps<T>) {
   const refresh = (): void => { void history.refresh() }
   const selectFromTimeline = (item: TimelineItem): void => {
+    if (!selectable) return
     const original = history.findById(item.id)
     if (original) history.select(original)
   }
@@ -136,6 +153,7 @@ function VersionHistoryBody<T>({
         onLoadMore={() => { void history.loadMore() }}
         emptyTitle={emptyTitle}
         emptyDescription={emptyDescription}
+        selectable={selectable}
       />
       {rollbackClient && history.selectedVersion !== null && (
         <RollbackToolbar
@@ -144,13 +162,15 @@ function VersionHistoryBody<T>({
           onConfirm={history.openRollback}
         />
       )}
-      <VersionDiffDrawer<T>
-        client={client}
-        fromVersion={history.diffFrom}
-        toVersion={history.diffTo}
-        open={history.diffOpen}
-        onClose={history.closeDiff}
-      />
+      {diffEnabled && (
+        <VersionDiffDrawer<T>
+          client={client}
+          fromVersion={history.diffFrom}
+          toVersion={history.diffTo}
+          open={history.diffOpen}
+          onClose={history.closeDiff}
+        />
+      )}
       {rollbackClient && (
         <RollbackConfirmDialog<T>
           client={rollbackClient}
@@ -172,6 +192,10 @@ export function VersionHistorySection<T>(
   const onAfterRollback = props.rollbackSupported === true
     ? props.onAfterRollback
     : undefined
+  const diffEnabled = props.diffSupported !== false
+  // Rows are interactive only when there is something to select for:
+  // a rollback target or a two-click diff.
+  const selectable = rollbackClient !== null || diffEnabled
   const history = useVersionHistory(client)
   return (
     <SectionCard title={title}>
@@ -194,6 +218,8 @@ export function VersionHistorySection<T>(
           onAfterRollback={onAfterRollback}
           emptyTitle={emptyTitle}
           emptyDescription={emptyDescription}
+          selectable={selectable}
+          diffEnabled={diffEnabled}
         />
       </div>
     </SectionCard>
