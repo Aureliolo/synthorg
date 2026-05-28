@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.core.enums import WorkflowNodeType
 from synthorg.engine.workflow.definition import (
@@ -13,6 +12,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowNode,
 )
 from synthorg.persistence.state import persistence_of
+from tests._shared import LoopAsyncClient
 
 # ── Seed data ─────────────────────────────────────────────────────
 
@@ -63,12 +63,12 @@ _VALID_DEFINITION = WorkflowDefinition(
 
 
 def _seed_definition(
-    test_client: TestClient[Any],
+    async_test_client: LoopAsyncClient,
     definition: WorkflowDefinition | None = None,
 ) -> None:
     """Seed a workflow definition into the fake persistence."""
     defn = definition or _VALID_DEFINITION
-    app_state = test_client.app.state.app_state
+    app_state = async_test_client.app.state.app_state
     repo = cast(Any, persistence_of(app_state).workflow_definitions)
     repo._definitions[defn.id] = defn
 
@@ -80,12 +80,12 @@ class TestActivateWorkflow:
     """POST /api/v1/workflow-executions/activate/{id}."""
 
     @pytest.mark.unit
-    def test_activate_success(
+    async def test_activate_success(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        _seed_definition(test_client)
-        resp = test_client.post(
+        _seed_definition(async_test_client)
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-test001",
             json={"project": "test-project"},
         )
@@ -96,20 +96,20 @@ class TestActivateWorkflow:
         assert body["data"]["project"] == "test-project"
 
     @pytest.mark.unit
-    def test_activate_not_found(
+    async def test_activate_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/nonexistent",
             json={"project": "proj"},
         )
         assert resp.status_code == 404
 
     @pytest.mark.unit
-    def test_activate_invalid_definition(
+    async def test_activate_invalid_definition(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         orphan_node = WorkflowNode(
             id="orphan",
@@ -126,20 +126,20 @@ class TestActivateWorkflow:
             created_at=_NOW,
             updated_at=_NOW,
         )
-        _seed_definition(test_client, invalid_def)
-        resp = test_client.post(
+        _seed_definition(async_test_client, invalid_def)
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-invalid",
             json={"project": "proj"},
         )
         assert resp.status_code == 422
 
     @pytest.mark.unit
-    def test_activate_creates_node_executions(
+    async def test_activate_creates_node_executions(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        _seed_definition(test_client)
-        resp = test_client.post(
+        _seed_definition(async_test_client)
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-test001",
             json={"project": "proj"},
         )
@@ -160,11 +160,11 @@ class TestListExecutions:
     """GET /api/v1/workflow-executions/by-definition/{id}."""
 
     @pytest.mark.unit
-    def test_list_empty(
+    async def test_list_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/workflow-executions/by-definition/wfdef-test001",
         )
         assert resp.status_code == 200
@@ -172,16 +172,16 @@ class TestListExecutions:
         assert body["data"] == []
 
     @pytest.mark.unit
-    def test_list_after_activate(
+    async def test_list_after_activate(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        _seed_definition(test_client)
-        test_client.post(
+        _seed_definition(async_test_client)
+        await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-test001",
             json={"project": "proj"},
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/workflow-executions/by-definition/wfdef-test001",
         )
         assert resp.status_code == 200
@@ -189,18 +189,18 @@ class TestListExecutions:
         assert len(body["data"]) == 1
 
     @pytest.mark.unit
-    def test_list_has_more_with_overflow(
+    async def test_list_has_more_with_overflow(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        _seed_definition(test_client)
+        _seed_definition(async_test_client)
         for _ in range(4):
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/workflow-executions/activate/wfdef-test001",
                 json={"project": "proj"},
             )
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/workflow-executions/by-definition/wfdef-test001?limit=2",
         )
         assert resp.status_code == 200
@@ -217,27 +217,27 @@ class TestGetExecution:
     """GET /api/v1/workflow-executions/{id}."""
 
     @pytest.mark.unit
-    def test_get_not_found(
+    async def test_get_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/workflow-executions/nonexistent",
         )
         assert resp.status_code == 404
 
     @pytest.mark.unit
-    def test_get_after_activate(
+    async def test_get_after_activate(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        _seed_definition(test_client)
-        activate_resp = test_client.post(
+        _seed_definition(async_test_client)
+        activate_resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-test001",
             json={"project": "proj"},
         )
         exec_id = activate_resp.json()["data"]["id"]
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/workflow-executions/{exec_id}",
         )
         assert resp.status_code == 200
@@ -251,11 +251,11 @@ class TestCancelExecution:
     """POST /api/v1/workflow-executions/{id}/cancel."""
 
     @pytest.mark.unit
-    def test_cancel_not_found(
+    async def test_cancel_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/nonexistent/cancel",
         )
         assert resp.status_code == 404
@@ -316,9 +316,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         ],
         ids=["invalid_definition", "condition_eval"],
     )
-    def test_activate_validation_error_envelope(
+    async def test_activate_validation_error_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         error_factory: Any,
         expected_code: str,
@@ -327,7 +327,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
 
         self._patch_service(monkeypatch, "activate", error_factory())
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/activate/wfdef-any",
             json={"project": "test-project"},
         )
@@ -374,9 +374,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         ],
         ids=["activate", "list", "get", "cancel"],
     )
-    def test_persistence_failure_envelope(
+    async def test_persistence_failure_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         method: str,
         request_spec: dict[str, Any],
@@ -389,9 +389,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         verb = request_spec["verb"]
         path = request_spec["path"]
         resp = (
-            test_client.get(path)
+            await async_test_client.get(path)
             if verb == "GET"
-            else test_client.post(path, json=request_spec.get("json"))
+            else await async_test_client.post(path, json=request_spec.get("json"))
         )
         assert resp.status_code == 500
         body = resp.json()
@@ -421,9 +421,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         ],
         ids=["version_race", "already_terminal"],
     )
-    def test_cancel_conflict_envelope(
+    async def test_cancel_conflict_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
         error_factory: Any,
         expected_code: str,
@@ -439,7 +439,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
 
         self._patch_service(monkeypatch, "cancel_execution", error_factory())
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/wfexec-any/cancel",
         )
         assert resp.status_code == 409
@@ -450,9 +450,9 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.CONFLICT
         assert detail["retryable"] is False
 
-    def test_cancel_version_conflict_does_not_leak_persistence_detail(
+    async def test_cancel_version_conflict_does_not_leak_persistence_detail(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Persistence-layer detail must not reach the public envelope.
@@ -471,7 +471,7 @@ class TestWorkflowExecutionControllerErrorEnvelope:
         )
         self._patch_service(monkeypatch, "cancel_execution", leaky_exc)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflow-executions/wfexec-any/cancel",
         )
         assert resp.status_code == 409

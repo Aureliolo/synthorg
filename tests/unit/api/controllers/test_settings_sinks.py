@@ -1,14 +1,13 @@
 """Unit tests for settings sink API endpoints."""
 
 import json
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.controllers.settings import _sink_identifier
 from synthorg.observability.config import DEFAULT_SINKS
 from synthorg.observability.sink_config_builder import CONSOLE_SINK_ID
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -34,12 +33,12 @@ def manager_headers() -> dict[str, str]:
 class TestListSinks:
     """Tests for GET /settings/observability/sinks."""
 
-    def test_returns_default_sinks(
+    async def test_returns_default_sinks(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -52,12 +51,12 @@ class TestListSinks:
         # Should have at least the default sinks (console + 10 files)
         assert len(sinks) >= len(DEFAULT_SINKS)
 
-    def test_all_defaults_marked_as_default(
+    async def test_all_defaults_marked_as_default(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -73,12 +72,12 @@ class TestListSinks:
             if sink["identifier"] in default_ids:
                 assert sink["is_default"] is True
 
-    def test_console_sink_present(
+    async def test_console_sink_present(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -91,12 +90,12 @@ class TestListSinks:
         assert console_sinks[0]["is_default"] is True
         assert console_sinks[0]["enabled"] is True
 
-    def test_sink_dict_fields(
+    async def test_sink_dict_fields(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -116,12 +115,12 @@ class TestListSinks:
         for sink in sinks:
             assert set(sink.keys()) == expected_keys
 
-    def test_file_sink_has_rotation(
+    async def test_file_sink_has_rotation(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -137,26 +136,28 @@ class TestListSinks:
                 assert "max_bytes" in fs["rotation"]
                 assert "backup_count" in fs["rotation"]
 
-    def test_observer_can_read_sinks(
+    async def test_observer_can_read_sinks(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         observer_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=observer_headers,
         )
         assert resp.status_code == 200
 
-    def test_pagination_round_trip(
+    async def test_pagination_round_trip(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         """Walking pages with limit=1 enumerates every sink exactly once."""
-        full = test_client.get(
-            "/api/v1/settings/observability/sinks",
-            headers=auth_headers,
+        full = (
+            await async_test_client.get(
+                "/api/v1/settings/observability/sinks",
+                headers=auth_headers,
+            )
         ).json()["data"]
         # Fail loudly if the default sink list ever shrinks below the
         # two items this round-trip needs; a runtime ``pytest.skip``
@@ -165,49 +166,53 @@ class TestListSinks:
             "default sink list must expose at least two sinks for the "
             "cursor round-trip; check the fixture and the endpoint"
         )
-        first = test_client.get(
-            "/api/v1/settings/observability/sinks?limit=1",
-            headers=auth_headers,
+        first = (
+            await async_test_client.get(
+                "/api/v1/settings/observability/sinks?limit=1",
+                headers=auth_headers,
+            )
         ).json()
         assert len(first["data"]) == 1
         collected = list(first["data"])
         cursor = first["pagination"]["next_cursor"]
         assert cursor is not None
         while cursor:
-            page = test_client.get(
-                f"/api/v1/settings/observability/sinks?limit=1&cursor={cursor}",
-                headers=auth_headers,
+            page = (
+                await async_test_client.get(
+                    f"/api/v1/settings/observability/sinks?limit=1&cursor={cursor}",
+                    headers=auth_headers,
+                )
             ).json()
             collected.extend(page["data"])
             cursor = page["pagination"]["next_cursor"]
         assert collected == full
 
-    def test_tampered_cursor_rejected(
+    async def test_tampered_cursor_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks?cursor=garbage",
             headers=auth_headers,
         )
         assert resp.status_code == 400
 
-    def test_list_sinks_with_console_level_override(
+    async def test_list_sinks_with_console_level_override(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         """Override the console sink level and verify list_sinks reflects it."""
         overrides = json.dumps({"__console__": {"level": "error"}})
-        put_resp = test_client.put(
+        put_resp = await async_test_client.put(
             "/api/v1/settings/observability/sink_overrides",
             json={"value": overrides},
             headers=auth_headers,
         )
         assert put_resp.status_code == 200
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/settings/observability/sinks",
             headers=auth_headers,
         )
@@ -225,12 +230,12 @@ class TestListSinks:
 class TestTestSinkConfig:
     """Tests for POST /settings/observability/sinks/_test."""
 
-    def test_valid_empty_config(
+    async def test_valid_empty_config(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "{}", "custom_sinks": "[]"},
             headers=auth_headers,
@@ -241,9 +246,9 @@ class TestTestSinkConfig:
         assert body["data"]["valid"] is True
         assert body["data"]["error"] is None
 
-    def test_valid_override(
+    async def test_valid_override(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         overrides = json.dumps(
@@ -251,7 +256,7 @@ class TestTestSinkConfig:
                 "__console__": {"level": "warning"},
             }
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": overrides, "custom_sinks": "[]"},
             headers=auth_headers,
@@ -260,9 +265,9 @@ class TestTestSinkConfig:
         body = resp.json()
         assert body["data"]["valid"] is True
 
-    def test_valid_custom_sink(
+    async def test_valid_custom_sink(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         custom = json.dumps(
@@ -273,7 +278,7 @@ class TestTestSinkConfig:
                 }
             ]
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "{}", "custom_sinks": custom},
             headers=auth_headers,
@@ -282,12 +287,12 @@ class TestTestSinkConfig:
         body = resp.json()
         assert body["data"]["valid"] is True
 
-    def test_invalid_json_returns_error(
+    async def test_invalid_json_returns_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "not-json", "custom_sinks": "[]"},
             headers=auth_headers,
@@ -298,9 +303,9 @@ class TestTestSinkConfig:
         assert body["data"]["error"] is not None
         assert "Invalid JSON" in body["data"]["error"]
 
-    def test_invalid_sink_identifier_returns_error(
+    async def test_invalid_sink_identifier_returns_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         overrides = json.dumps(
@@ -308,7 +313,7 @@ class TestTestSinkConfig:
                 "nonexistent_sink": {"level": "info"},
             }
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": overrides, "custom_sinks": "[]"},
             headers=auth_headers,
@@ -318,9 +323,9 @@ class TestTestSinkConfig:
         assert body["data"]["valid"] is False
         assert "Unknown sink identifier" in body["data"]["error"]
 
-    def test_disable_console_returns_error(
+    async def test_disable_console_returns_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         overrides = json.dumps(
@@ -328,7 +333,7 @@ class TestTestSinkConfig:
                 "__console__": {"enabled": False},
             }
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": overrides, "custom_sinks": "[]"},
             headers=auth_headers,
@@ -338,9 +343,9 @@ class TestTestSinkConfig:
         assert body["data"]["valid"] is False
         assert "console" in body["data"]["error"].lower()
 
-    def test_invalid_level_returns_error(
+    async def test_invalid_level_returns_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         overrides = json.dumps(
@@ -348,7 +353,7 @@ class TestTestSinkConfig:
                 "__console__": {"level": "INVALID_LEVEL"},
             }
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": overrides, "custom_sinks": "[]"},
             headers=auth_headers,
@@ -358,13 +363,13 @@ class TestTestSinkConfig:
         assert body["data"]["valid"] is False
         assert "Invalid level" in body["data"]["error"]
 
-    def test_custom_sink_missing_path_returns_error(
+    async def test_custom_sink_missing_path_returns_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
         custom = json.dumps([{"level": "info"}])
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "{}", "custom_sinks": custom},
             headers=auth_headers,
@@ -374,24 +379,24 @@ class TestTestSinkConfig:
         assert body["data"]["valid"] is False
         assert "file_path" in body["data"]["error"]
 
-    def test_observer_cannot_test_config(
+    async def test_observer_cannot_test_config(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         observer_headers: dict[str, str],
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "{}", "custom_sinks": "[]"},
             headers=observer_headers,
         )
         assert resp.status_code == 403
 
-    def test_manager_can_test_config(
+    async def test_manager_can_test_config(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         manager_headers: dict[str, str],
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={"sink_overrides": "{}", "custom_sinks": "[]"},
             headers=manager_headers,
@@ -400,12 +405,12 @@ class TestTestSinkConfig:
         body = resp.json()
         assert body["data"]["valid"] is True
 
-    def test_defaults_used_when_fields_omitted(
+    async def test_defaults_used_when_fields_omitted(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         auth_headers: dict[str, str],
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/settings/observability/sinks/_test",
             json={},
             headers=auth_headers,
