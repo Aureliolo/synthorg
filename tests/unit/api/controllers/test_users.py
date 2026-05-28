@@ -4,8 +4,8 @@ import uuid
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # Must match the ID pattern in conftest._seed_test_users
@@ -30,8 +30,8 @@ def _create_payload(
 class TestCreateUser:
     """CEO-only user creation with role, password, and uniqueness validation."""
 
-    def test_create_manager(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_manager(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=_CEO_HEADERS,
@@ -53,13 +53,13 @@ class TestCreateUser:
             ("obs-user", "observer"),
         ],
     )
-    def test_create_valid_roles(
+    async def test_create_valid_roles(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         username: str,
         role: str,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username=username, role=role),
             headers=_CEO_HEADERS,
@@ -67,51 +67,51 @@ class TestCreateUser:
         assert resp.status_code == 201
         assert resp.json()["data"]["role"] == role
 
-    def test_create_second_ceo_rejected(
+    async def test_create_second_ceo_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="ceo2", role="ceo"),
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_create_system_role_rejected(
+    async def test_create_system_role_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="sys", role="system"),
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 422
 
-    def test_create_duplicate_username_rejected(
+    async def test_create_duplicate_username_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        first = test_client.post(
+        first = await async_test_client.post(
             _BASE,
             json=_create_payload(username="dup-user"),
             headers=_CEO_HEADERS,
         )
         assert first.status_code == 201
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="dup-user"),
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_create_short_password_rejected(
+    async def test_create_short_password_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(password="short"),
             headers=_CEO_HEADERS,
@@ -122,12 +122,12 @@ class TestCreateUser:
         "role",
         ["manager", "board_member", "pair_programmer", "observer"],
     )
-    def test_non_ceo_blocked(
+    async def test_non_ceo_blocked(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         role: str,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=make_auth_headers(role),
@@ -139,11 +139,11 @@ class TestCreateUser:
 class TestListUsers:
     """List users endpoint returns seeded data and enforces CEO guard."""
 
-    def test_list_returns_seeded_users(
+    async def test_list_returns_seeded_users(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_CEO_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -151,21 +151,21 @@ class TestListUsers:
         assert len(body["data"]) == 5
         assert all("password_hash" not in u for u in body["data"])
 
-    def test_list_blocked_for_observer(
+    async def test_list_blocked_for_observer(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
-    def test_list_pagination_metadata_present(
+    async def test_list_pagination_metadata_present(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_CEO_HEADERS)
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert "pagination" in body
@@ -177,14 +177,14 @@ class TestListUsers:
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 
-    def test_list_limit_page_chain(
+    async def test_list_limit_page_chain(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # 5 seeded users, limit=2: walk all three pages so a backend
         # that drops the fifth user or clears ``has_more`` one page
         # early cannot pass on just the first two pages.
-        first_resp = test_client.get(
+        first_resp = await async_test_client.get(
             _BASE,
             params={"limit": 2},
             headers=_CEO_HEADERS,
@@ -196,7 +196,7 @@ class TestListUsers:
         cursor = first["pagination"]["next_cursor"]
         assert cursor is not None
 
-        second_resp = test_client.get(
+        second_resp = await async_test_client.get(
             _BASE,
             params={"limit": 2, "cursor": cursor},
             headers=_CEO_HEADERS,
@@ -211,7 +211,7 @@ class TestListUsers:
         second_ids = {u["id"] for u in second["data"]}
         assert first_ids.isdisjoint(second_ids)
 
-        third_resp = test_client.get(
+        third_resp = await async_test_client.get(
             _BASE,
             params={"limit": 2, "cursor": third_cursor},
             headers=_CEO_HEADERS,
@@ -225,28 +225,28 @@ class TestListUsers:
         assert first_ids.isdisjoint(third_ids)
         assert second_ids.isdisjoint(third_ids)
 
-    def test_list_invalid_cursor_returns_400(
+    async def test_list_invalid_cursor_returns_400(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}?cursor=not-a-real-cursor",
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_list_stable_ordering(
+    async def test_list_stable_ordering(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        first_resp = test_client.get(
+        first_resp = await async_test_client.get(
             _BASE,
             params={"limit": 5},
             headers=_CEO_HEADERS,
         )
         assert first_resp.status_code == 200, first_resp.text
         first = first_resp.json()["data"]
-        second_resp = test_client.get(
+        second_resp = await async_test_client.get(
             _BASE,
             params={"limit": 5},
             headers=_CEO_HEADERS,
@@ -267,19 +267,19 @@ class TestListUsers:
 class TestGetUser:
     """Get user by ID with not-found handling."""
 
-    def test_get_existing_user(
+    async def test_get_existing_user(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # Create a user first
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="get-test"),
             headers=_CEO_HEADERS,
         )
         user_id = create_resp.json()["data"]["id"]
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/{user_id}",
             headers=_CEO_HEADERS,
         )
@@ -288,11 +288,11 @@ class TestGetUser:
         assert data["username"] == "get-test"
         assert "password_hash" not in data
 
-    def test_get_nonexistent_returns_404(
+    async def test_get_nonexistent_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/nonexistent-id",
             headers=_CEO_HEADERS,
         )
@@ -303,15 +303,15 @@ class TestGetUser:
 class TestUpdateUserRole:
     """Role update with CEO demotion, promotion, and system-user guards."""
 
-    def test_update_role(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_update_role(self, async_test_client: LoopAsyncClient) -> None:
+        create_resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="update-test"),
             headers=_CEO_HEADERS,
         )
         user_id = create_resp.json()["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{user_id}",
             json={"role": "observer"},
             headers=_CEO_HEADERS,
@@ -321,75 +321,75 @@ class TestUpdateUserRole:
         assert data["role"] == "observer"
         assert "password_hash" not in data
 
-    def test_update_to_system_rejected(
+    async def test_update_to_system_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="sys-update"),
             headers=_CEO_HEADERS,
         )
         user_id = create_resp.json()["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{user_id}",
             json={"role": "system"},
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 422
 
-    def test_update_system_user_rejected(
+    async def test_update_system_user_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{_SYSTEM_USER_ID}",
             json={"role": "manager"},
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_update_nonexistent_returns_404(
+    async def test_update_nonexistent_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/nonexistent-id",
             json={"role": "observer"},
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 404
 
-    def test_demote_only_ceo_rejected(
+    async def test_demote_only_ceo_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # The seeded CEO is the only one -- changing role must fail.
-        list_resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        list_resp = await async_test_client.get(_BASE, headers=_CEO_HEADERS)
         ceo_users = [u for u in list_resp.json()["data"] if u["role"] == "ceo"]
         assert len(ceo_users) == 1
         ceo_id = ceo_users[0]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{ceo_id}",
             json={"role": "manager"},
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_promote_to_second_ceo_rejected(
+    async def test_promote_to_second_ceo_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="promote-test"),
             headers=_CEO_HEADERS,
         )
         user_id = create_resp.json()["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{user_id}",
             json={"role": "ceo"},
             headers=_CEO_HEADERS,
@@ -401,59 +401,59 @@ class TestUpdateUserRole:
 class TestDeleteUser:
     """User deletion with self-delete, system-user, and CEO guards."""
 
-    def test_delete_user(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_delete_user(self, async_test_client: LoopAsyncClient) -> None:
+        create_resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="delete-test"),
             headers=_CEO_HEADERS,
         )
         user_id = create_resp.json()["data"]["id"]
 
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/{user_id}",
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 204
 
         # Verify deleted
-        get_resp = test_client.get(
+        get_resp = await async_test_client.get(
             f"{_BASE}/{user_id}",
             headers=_CEO_HEADERS,
         )
         assert get_resp.status_code == 404
 
-    def test_delete_nonexistent_returns_404(
+    async def test_delete_nonexistent_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/nonexistent-id",
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 404
 
-    def test_delete_system_user_rejected(
+    async def test_delete_system_user_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/{_SYSTEM_USER_ID}",
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_delete_ceo_self_rejected(
+    async def test_delete_ceo_self_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # The authenticated CEO attempts to delete themselves;
         # self-deletion check fires before the CEO role check.
-        list_resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        list_resp = await async_test_client.get(_BASE, headers=_CEO_HEADERS)
         ceo_users = [u for u in list_resp.json()["data"] if u["role"] == "ceo"]
         assert len(ceo_users) > 0
         ceo_id = ceo_users[0]["id"]
 
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/{ceo_id}",
             headers=_CEO_HEADERS,
         )

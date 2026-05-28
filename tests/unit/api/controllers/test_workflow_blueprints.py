@@ -1,13 +1,12 @@
 """Tests for workflow blueprint API endpoints."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.engine.workflow import blueprint_loader
 from synthorg.engine.workflow.blueprint_loader import BUILTIN_BLUEPRINTS
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -24,8 +23,10 @@ class TestListWorkflowBlueprints:
     """Tests for the blueprint listing endpoint."""
 
     @pytest.mark.unit
-    def test_returns_200_with_blueprints(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_returns_200_with_blueprints(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/workflows/blueprints",
             headers=make_auth_headers("ceo"),
         )
@@ -35,8 +36,10 @@ class TestListWorkflowBlueprints:
         assert len(body["data"]) == len(BUILTIN_BLUEPRINTS)
 
     @pytest.mark.unit
-    def test_returns_blueprint_info_fields(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_returns_blueprint_info_fields(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/workflows/blueprints",
             headers=make_auth_headers("ceo"),
         )
@@ -53,8 +56,10 @@ class TestListWorkflowBlueprints:
         assert "edge_count" in bp
 
     @pytest.mark.unit
-    def test_all_builtins_present(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_all_builtins_present(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/workflows/blueprints",
             headers=make_auth_headers("ceo"),
         )
@@ -71,10 +76,10 @@ class TestCreateFromBlueprint:
     """Tests for the blueprint instantiation endpoint."""
 
     @pytest.mark.unit
-    def test_creates_workflow_from_valid_blueprint(
-        self, test_client: TestClient[Any]
+    async def test_creates_workflow_from_valid_blueprint(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "feature-pipeline"},
             headers=make_auth_headers("ceo"),
@@ -87,10 +92,10 @@ class TestCreateFromBlueprint:
         assert data["workflow_type"] == "sequential_pipeline"
 
     @pytest.mark.unit
-    def test_created_workflow_has_correct_nodes_and_edges(
-        self, test_client: TestClient[Any]
+    async def test_created_workflow_has_correct_nodes_and_edges(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "feature-pipeline"},
             headers=make_auth_headers("ceo"),
@@ -102,8 +107,10 @@ class TestCreateFromBlueprint:
         assert len(data["edges"]) == 6
 
     @pytest.mark.unit
-    def test_custom_name_overrides(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_custom_name_overrides(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={
                 "blueprint_name": "feature-pipeline",
@@ -115,8 +122,10 @@ class TestCreateFromBlueprint:
         assert resp.json()["data"]["name"] == "My Custom Pipeline"
 
     @pytest.mark.unit
-    def test_custom_description_overrides(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_custom_description_overrides(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={
                 "blueprint_name": "feature-pipeline",
@@ -128,8 +137,10 @@ class TestCreateFromBlueprint:
         assert resp.json()["data"]["description"] == "My custom description"
 
     @pytest.mark.unit
-    def test_unknown_blueprint_returns_404(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_unknown_blueprint_returns_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "nonexistent"},
             headers=make_auth_headers("ceo"),
@@ -137,10 +148,10 @@ class TestCreateFromBlueprint:
         assert resp.status_code == 404
 
     @pytest.mark.unit
-    def test_blank_blueprint_name_returns_400(
-        self, test_client: TestClient[Any]
+    async def test_blank_blueprint_name_returns_400(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": ""},
             headers=make_auth_headers("ceo"),
@@ -148,9 +159,11 @@ class TestCreateFromBlueprint:
         assert resp.status_code == 400
 
     @pytest.mark.unit
-    def test_created_workflow_is_editable(self, test_client: TestClient[Any]) -> None:
+    async def test_created_workflow_is_editable(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """Workflow created from blueprint can be updated like any other."""
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "feature-pipeline"},
             headers=make_auth_headers("ceo"),
@@ -158,7 +171,7 @@ class TestCreateFromBlueprint:
         assert create_resp.status_code == 201
         wf_id = create_resp.json()["data"]["id"]
 
-        patch_resp = test_client.patch(
+        patch_resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={"name": "Renamed Pipeline", "expected_revision": 1},
             headers=make_auth_headers("ceo"),
@@ -175,7 +188,7 @@ class TestCreateFromBlueprint:
         # before the controller runs, so we assert the rejection itself
         # via the RFC 9457 envelope rather than substring-matching the
         # generic "Validation failed" message.
-        stale_resp = test_client.patch(
+        stale_resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={"name": "Renamed Pipeline", "expected_version": 1},
             headers=make_auth_headers("ceo"),
@@ -187,11 +200,11 @@ class TestCreateFromBlueprint:
 
     @pytest.mark.unit
     @pytest.mark.parametrize("blueprint_name", sorted(BUILTIN_BLUEPRINTS))
-    def test_all_builtins_instantiate(
-        self, test_client: TestClient[Any], blueprint_name: str
+    async def test_all_builtins_instantiate(
+        self, async_test_client: LoopAsyncClient, blueprint_name: str
     ) -> None:
         """Every built-in blueprint can be instantiated successfully."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": blueprint_name},
             headers=make_auth_headers("ceo"),
