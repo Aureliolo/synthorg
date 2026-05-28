@@ -2,10 +2,8 @@
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
@@ -17,6 +15,7 @@ from synthorg.hr.performance.collaboration_override_store import (
 )
 from synthorg.hr.performance.models import CollaborationOverride
 from synthorg.hr.performance.tracker import PerformanceTracker
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import _seed_test_users, make_auth_headers
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -56,7 +55,7 @@ async def collab_client(
     _fake_persistence: FakePersistenceBackend,
     _fake_message_bus: FakeMessageBus,
     perf_tracker: PerformanceTracker,
-) -> AsyncGenerator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Test client with performance_tracker wired in."""
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
@@ -75,7 +74,7 @@ async def collab_client(
         task_engine=TaskEngine(persistence=_fake_persistence),
         performance_tracker=perf_tracker,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
@@ -84,21 +83,21 @@ async def collab_client(
 class TestGetScore:
     """GET /agents/{agent_id}/collaboration/score."""
 
-    def test_returns_neutral_score(
+    async def test_returns_neutral_score(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """No collaboration data -> neutral 5.0 score."""
-        resp = collab_client.get("/api/v1/agents/agent-001/collaboration/score")
+        resp = await collab_client.get("/api/v1/agents/agent-001/collaboration/score")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["score"] == 5.0
         assert body["data"]["override_active"] is False
 
-    def test_returns_override_when_active(
+    async def test_returns_override_when_active(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
         override_store: CollaborationOverrideStore,
     ) -> None:
         """Active override is reflected in the score."""
@@ -111,7 +110,7 @@ class TestGetScore:
                 applied_at=NOW,
             ),
         )
-        resp = collab_client.get("/api/v1/agents/agent-001/collaboration/score")
+        resp = await collab_client.get("/api/v1/agents/agent-001/collaboration/score")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["score"] == 9.0
@@ -122,19 +121,19 @@ class TestGetScore:
 class TestGetOverride:
     """GET /agents/{agent_id}/collaboration/override."""
 
-    def test_404_when_no_override(
+    async def test_404_when_no_override(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """No override -> 404."""
-        resp = collab_client.get(
+        resp = await collab_client.get(
             "/api/v1/agents/agent-001/collaboration/override",
         )
         assert resp.status_code == 404
 
-    def test_returns_active_override(
+    async def test_returns_active_override(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
         override_store: CollaborationOverrideStore,
     ) -> None:
         """Active override -> 200 with override data."""
@@ -147,7 +146,7 @@ class TestGetOverride:
                 applied_at=NOW,
             ),
         )
-        resp = collab_client.get(
+        resp = await collab_client.get(
             "/api/v1/agents/agent-001/collaboration/override",
         )
         assert resp.status_code == 200
@@ -160,13 +159,13 @@ class TestGetOverride:
 class TestSetOverride:
     """POST /agents/{agent_id}/collaboration/override."""
 
-    def test_sets_override(
+    async def test_sets_override(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
         override_store: CollaborationOverrideStore,
     ) -> None:
         """POST sets an override and returns it."""
-        resp = collab_client.post(
+        resp = await collab_client.post(
             "/api/v1/agents/agent-001/collaboration/override",
             json={"score": 7.5, "reason": "Grace period"},
         )
@@ -182,12 +181,12 @@ class TestSetOverride:
         assert stored is not None
         assert stored.score == 7.5
 
-    def test_sets_override_with_expiration(
+    async def test_sets_override_with_expiration(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """POST with expires_in_days sets expiration."""
-        resp = collab_client.post(
+        resp = await collab_client.post(
             "/api/v1/agents/agent-001/collaboration/override",
             json={
                 "score": 6.0,
@@ -199,12 +198,12 @@ class TestSetOverride:
         body = resp.json()
         assert body["data"]["expires_at"] is not None
 
-    def test_observer_denied_write(
+    async def test_observer_denied_write(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """Observer role cannot set overrides (write access denied)."""
-        resp = collab_client.post(
+        resp = await collab_client.post(
             "/api/v1/agents/agent-001/collaboration/override",
             json={"score": 5.0, "reason": "Test"},
             headers=make_auth_headers("observer"),
@@ -216,9 +215,9 @@ class TestSetOverride:
 class TestClearOverride:
     """DELETE /agents/{agent_id}/collaboration/override."""
 
-    def test_clears_override(
+    async def test_clears_override(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
         override_store: CollaborationOverrideStore,
     ) -> None:
         """DELETE removes the active override and returns 204 with empty body."""
@@ -231,7 +230,7 @@ class TestClearOverride:
                 applied_at=NOW,
             ),
         )
-        resp = collab_client.delete(
+        resp = await collab_client.delete(
             "/api/v1/agents/agent-001/collaboration/override",
         )
         assert resp.status_code == 204
@@ -243,12 +242,12 @@ class TestClearOverride:
         )
         assert stored is None
 
-    def test_404_when_nothing_to_clear(
+    async def test_404_when_nothing_to_clear(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """DELETE with no override -> 404."""
-        resp = collab_client.delete(
+        resp = await collab_client.delete(
             "/api/v1/agents/agent-001/collaboration/override",
         )
         assert resp.status_code == 404
@@ -258,12 +257,12 @@ class TestClearOverride:
 class TestCollaborationPathParamValidation:
     """Path parameter validation via Litestar Parameter constraints."""
 
-    def test_oversized_agent_id_rejected(
+    async def test_oversized_agent_id_rejected(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         long_id = "x" * 129
-        resp = collab_client.get(
+        resp = await collab_client.get(
             f"/api/v1/agents/{long_id}/collaboration/score",
         )
         assert resp.status_code == 400
@@ -276,7 +275,7 @@ class TestOverrideStoreNotConfigured:
     @pytest.fixture
     async def no_store_client(
         self,
-    ) -> AsyncGenerator[TestClient[Any]]:
+    ) -> AsyncGenerator[LoopAsyncClient]:
         """Test client with performance_tracker but no override store."""
         from synthorg.budget.tracker import CostTracker
         from synthorg.config.schema import RootConfig
@@ -299,7 +298,7 @@ class TestOverrideStoreNotConfigured:
             auth_service=auth_service,
             performance_tracker=tracker,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             yield client
 
@@ -312,14 +311,14 @@ class TestOverrideStoreNotConfigured:
         ],
         ids=["get", "post", "delete"],
     )
-    def test_override_returns_503(
+    async def test_override_returns_503(
         self,
-        no_store_client: TestClient[Any],
+        no_store_client: LoopAsyncClient,
         method: str,
         json_body: dict[str, object] | None,
     ) -> None:
         """Override endpoints return 503 when store is not configured."""
-        resp = no_store_client.request(
+        resp = await no_store_client.request(
             method,
             "/api/v1/agents/agent-001/collaboration/override",
             json=json_body,
@@ -331,12 +330,12 @@ class TestOverrideStoreNotConfigured:
 class TestGetCalibration:
     """GET /agents/{agent_id}/collaboration/calibration."""
 
-    def test_returns_empty_when_no_sampler(
+    async def test_returns_empty_when_no_sampler(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
     ) -> None:
         """No sampler configured -> empty calibration data."""
-        resp = collab_client.get(
+        resp = await collab_client.get(
             "/api/v1/agents/agent-001/collaboration/calibration",
         )
         assert resp.status_code == 200
@@ -344,9 +343,9 @@ class TestGetCalibration:
         assert body["data"]["record_count"] == 0
         assert body["data"]["average_drift"] is None
 
-    def test_returns_calibration_when_sampler_configured(
+    async def test_returns_calibration_when_sampler_configured(
         self,
-        collab_client: TestClient[Any],
+        collab_client: LoopAsyncClient,
         perf_tracker: PerformanceTracker,
     ) -> None:
         """Sampler with records -> returns calibration data."""
@@ -363,7 +362,7 @@ class TestGetCalibration:
         mock_sampler.get_drift_summary.return_value = 2.0
         perf_tracker._sampler = mock_sampler
 
-        resp = collab_client.get(
+        resp = await collab_client.get(
             "/api/v1/agents/agent-001/collaboration/calibration",
         )
         assert resp.status_code == 200

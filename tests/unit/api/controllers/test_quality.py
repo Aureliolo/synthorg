@@ -2,10 +2,8 @@
 
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
@@ -17,6 +15,7 @@ from synthorg.hr.performance.quality_override_store import (
     QualityOverrideStore,
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import _seed_test_users, make_auth_headers
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -41,7 +40,7 @@ def perf_tracker(
 async def quality_client(
     quality_override_store: QualityOverrideStore,
     perf_tracker: PerformanceTracker,
-) -> AsyncGenerator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Test client with quality_override_store wired in."""
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
@@ -65,7 +64,7 @@ async def quality_client(
         task_engine=TaskEngine(persistence=fake_persistence),
         performance_tracker=perf_tracker,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
@@ -74,19 +73,19 @@ async def quality_client(
 class TestGetOverride:
     """GET /agents/{agent_id}/quality/override."""
 
-    def test_404_when_no_override(
+    async def test_404_when_no_override(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
     ) -> None:
         """No override -> 404."""
-        resp = quality_client.get(
+        resp = await quality_client.get(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 404
 
-    def test_returns_active_override(
+    async def test_returns_active_override(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
         quality_override_store: QualityOverrideStore,
     ) -> None:
         """Active override -> 200 with override data."""
@@ -99,7 +98,7 @@ class TestGetOverride:
                 applied_at=NOW,
             ),
         )
-        resp = quality_client.get(
+        resp = await quality_client.get(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 200
@@ -112,13 +111,13 @@ class TestGetOverride:
 class TestSetOverride:
     """POST /agents/{agent_id}/quality/override."""
 
-    def test_sets_override(
+    async def test_sets_override(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
         quality_override_store: QualityOverrideStore,
     ) -> None:
         """POST sets an override and returns it."""
-        resp = quality_client.post(
+        resp = await quality_client.post(
             "/api/v1/agents/agent-001/quality/override",
             json={"score": 7.5, "reason": "Good work on the refactor"},
         )
@@ -134,12 +133,12 @@ class TestSetOverride:
         assert stored is not None
         assert stored.score == 7.5
 
-    def test_sets_override_with_expiration(
+    async def test_sets_override_with_expiration(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
     ) -> None:
         """POST with expires_in_days sets expiration."""
-        resp = quality_client.post(
+        resp = await quality_client.post(
             "/api/v1/agents/agent-001/quality/override",
             json={
                 "score": 6.0,
@@ -155,12 +154,12 @@ class TestSetOverride:
         expected = datetime.now(UTC) + timedelta(days=7)
         assert abs((parsed - expected).total_seconds()) < 10
 
-    def test_observer_denied_write(
+    async def test_observer_denied_write(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
     ) -> None:
         """Observer role cannot set overrides (write access denied)."""
-        resp = quality_client.post(
+        resp = await quality_client.post(
             "/api/v1/agents/agent-001/quality/override",
             json={"score": 5.0, "reason": "Test"},
             headers=make_auth_headers("observer"),
@@ -172,9 +171,9 @@ class TestSetOverride:
 class TestClearOverride:
     """DELETE /agents/{agent_id}/quality/override."""
 
-    def test_clears_override(
+    async def test_clears_override(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
         quality_override_store: QualityOverrideStore,
     ) -> None:
         """DELETE removes the active override and returns 204."""
@@ -187,7 +186,7 @@ class TestClearOverride:
                 applied_at=NOW,
             ),
         )
-        resp = quality_client.delete(
+        resp = await quality_client.delete(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 204
@@ -199,12 +198,12 @@ class TestClearOverride:
         )
         assert stored is None
 
-    def test_404_when_nothing_to_clear(
+    async def test_404_when_nothing_to_clear(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
     ) -> None:
         """DELETE with no override -> 404."""
-        resp = quality_client.delete(
+        resp = await quality_client.delete(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 404
@@ -230,14 +229,14 @@ class TestQualityRequestBodyValidation:
             ),
         ],
     )
-    def test_invalid_payloads_rejected(
+    async def test_invalid_payloads_rejected(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
         payload: dict[str, object],
         reason: str,
     ) -> None:
         """Invalid request bodies are rejected with 400."""
-        resp = quality_client.post(
+        resp = await quality_client.post(
             "/api/v1/agents/agent-001/quality/override",
             json=payload,
         )
@@ -248,12 +247,12 @@ class TestQualityRequestBodyValidation:
 class TestQualityPathParamValidation:
     """Path parameter validation."""
 
-    def test_oversized_agent_id_rejected(
+    async def test_oversized_agent_id_rejected(
         self,
-        quality_client: TestClient[Any],
+        quality_client: LoopAsyncClient,
     ) -> None:
         long_id = "x" * 129
-        resp = quality_client.get(
+        resp = await quality_client.get(
             f"/api/v1/agents/{long_id}/quality/override",
         )
         assert resp.status_code == 400
@@ -266,7 +265,7 @@ class TestQualityOverrideStoreNotConfigured:
     @pytest.fixture
     async def no_store_client(
         self,
-    ) -> AsyncGenerator[TestClient[Any]]:
+    ) -> AsyncGenerator[LoopAsyncClient]:
         """Test client with tracker but no quality override store."""
         from synthorg.budget.tracker import CostTracker
         from synthorg.config.schema import RootConfig
@@ -289,37 +288,37 @@ class TestQualityOverrideStoreNotConfigured:
             auth_service=auth_service,
             performance_tracker=tracker,
         )
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             yield client
 
-    def test_get_override_503(
+    async def test_get_override_503(
         self,
-        no_store_client: TestClient[Any],
+        no_store_client: LoopAsyncClient,
     ) -> None:
         """GET override returns 503 when store not configured."""
-        resp = no_store_client.get(
+        resp = await no_store_client.get(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 503
 
-    def test_post_override_503(
+    async def test_post_override_503(
         self,
-        no_store_client: TestClient[Any],
+        no_store_client: LoopAsyncClient,
     ) -> None:
         """POST override returns 503 when store not configured."""
-        resp = no_store_client.post(
+        resp = await no_store_client.post(
             "/api/v1/agents/agent-001/quality/override",
             json={"score": 5.0, "reason": "Test"},
         )
         assert resp.status_code == 503
 
-    def test_delete_override_503(
+    async def test_delete_override_503(
         self,
-        no_store_client: TestClient[Any],
+        no_store_client: LoopAsyncClient,
     ) -> None:
         """DELETE override returns 503 when store not configured."""
-        resp = no_store_client.delete(
+        resp = await no_store_client.delete(
             "/api/v1/agents/agent-001/quality/override",
         )
         assert resp.status_code == 503
