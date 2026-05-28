@@ -4,7 +4,6 @@ Covers template listing, company creation, setup completion,
 and the template department extraction helpers.
 """
 
-import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -13,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from litestar.testing import TestClient
 
 from synthorg.api.controllers.setup_agents import normalize_description
 from synthorg.hr.state import agent_registry_of
@@ -22,6 +20,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import settings_service_of
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -29,11 +28,11 @@ from tests.unit.api.conftest import make_auth_headers
 class TestSetupTemplates:
     """GET /api/v1/setup/templates -- list available templates."""
 
-    def test_returns_builtin_templates(
+    async def test_returns_builtin_templates(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/templates")
+        resp = await async_test_client.get("/api/v1/setup/templates")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -43,11 +42,11 @@ class TestSetupTemplates:
         assert "solo_founder" in names
         assert "startup" in names
 
-    def test_template_fields(
+    async def test_template_fields(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/templates")
+        resp = await async_test_client.get("/api/v1/setup/templates")
         body = resp.json()
         for template in body["data"]:
             assert "name" in template
@@ -76,29 +75,29 @@ class TestSetupTemplates:
             assert "workflow" in template
             assert isinstance(template["workflow"], str)
 
-    def test_observer_can_read_templates(
+    async def test_observer_can_read_templates(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Observer role has read access to templates."""
-        saved_headers = dict(test_client.headers)
-        test_client.headers.update(make_auth_headers("observer"))
+        saved_headers = dict(async_test_client.headers)
+        async_test_client.headers.update(make_auth_headers("observer"))
         try:
-            resp = test_client.get("/api/v1/setup/templates")
+            resp = await async_test_client.get("/api/v1/setup/templates")
             assert resp.status_code == 200
         finally:
-            test_client.headers.update(saved_headers)
+            async_test_client.headers.update(saved_headers)
 
 
 @pytest.mark.unit
 class TestSetupCompany:
     """POST /api/v1/setup/company -- create company config."""
 
-    def test_blank_company(
+    async def test_blank_company(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={"company_name": "Test Corp"},
         )
@@ -112,7 +111,7 @@ class TestSetupCompany:
         assert data["description"] is None
 
         # Verify description persisted as "" (absent convention).
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
@@ -132,15 +131,15 @@ class TestSetupCompany:
         ],
         ids=["normal", "stripped", "whitespace-only", "empty"],
     )
-    def test_description_normalization(
+    async def test_description_normalization(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         description_input: str,
         expected_response: str | None,
         expected_stored: str,
     ) -> None:
         """Description is stripped and blank values normalized to None."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "Test Corp",
@@ -152,7 +151,7 @@ class TestSetupCompany:
         assert data["description"] == expected_response
 
         # Verify persistence.
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
@@ -176,12 +175,12 @@ class TestSetupCompany:
         else:
             assert result == stripped
 
-    def test_company_description_too_long(
+    async def test_company_description_too_long(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Description exceeding 1000 characters is rejected."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "Test Corp",
@@ -193,12 +192,12 @@ class TestSetupCompany:
         assert body["success"] is False
         assert body["error_detail"]["error_category"] == "validation"
 
-    def test_description_at_max_length_accepted(
+    async def test_description_at_max_length_accepted(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Description of exactly 1000 characters is accepted."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "Test Corp",
@@ -210,19 +209,19 @@ class TestSetupCompany:
         assert data["description"] == "x" * 1000
 
         # Verify persistence.
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == "x" * 1000
 
-    def test_description_overwrite_clears_stale(
+    async def test_description_overwrite_clears_stale(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Re-creating company without description clears previous value."""
         # First create with a description.
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "Test Corp",
@@ -233,7 +232,7 @@ class TestSetupCompany:
         assert resp.json()["data"]["description"] == "Original description"
 
         # Re-create without description -- stale value must be cleared.
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={"company_name": "Test Corp v2"},
         )
@@ -241,17 +240,17 @@ class TestSetupCompany:
         assert resp.json()["data"]["description"] is None
 
         # Verify persistence cleared.
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
         assert stored[0] == ""
 
-    def test_invalid_template(
+    async def test_invalid_template(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "Test Corp",
@@ -260,55 +259,55 @@ class TestSetupCompany:
         )
         assert resp.status_code == 404
 
-    def test_blank_company_name_rejected(
+    async def test_blank_company_name_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={"company_name": "   "},
         )
         # Pydantic NotBlankStr validation returns 400
         assert resp.status_code == 400
 
-    def test_requires_write_access(
+    async def test_requires_write_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        saved_headers = dict(test_client.headers)
-        test_client.headers.update(make_auth_headers("observer"))
+        saved_headers = dict(async_test_client.headers)
+        async_test_client.headers.update(make_auth_headers("observer"))
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={"company_name": "Test Corp"},
             )
             assert resp.status_code == 403
         finally:
-            test_client.headers.update(saved_headers)
+            async_test_client.headers.update(saved_headers)
 
 
 @pytest.mark.unit
 class TestSetupComplete:
     """POST /api/v1/setup/complete -- mark setup as done."""
 
-    def test_requires_write_access(
+    async def test_requires_write_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        saved_headers = dict(test_client.headers)
-        test_client.headers.update(make_auth_headers("observer"))
+        saved_headers = dict(async_test_client.headers)
+        async_test_client.headers.update(make_auth_headers("observer"))
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 403
         finally:
-            test_client.headers.update(saved_headers)
+            async_test_client.headers.update(saved_headers)
 
-    def test_complete_rejects_without_company(
+    async def test_complete_rejects_without_company(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Completion rejects when no company name is set."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_repo = cast(Any, persistence_of(app_state))._settings_repo
 
         # Remove company_name from the settings store so the YAML
@@ -318,35 +317,37 @@ class TestSetupComplete:
         now = datetime.now(UTC).isoformat()
         settings_repo._store[("company", "company_name")] = ("", now)
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "company" in resp.json()["error"].lower()
         finally:
             settings_repo._store.pop(("company", "company_name"), None)
 
-    def test_complete_rejects_without_db_company(
+    async def test_complete_rejects_without_db_company(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Completion rejects when company_name is only in YAML defaults."""
-        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
+        repo = cast(
+            Any, persistence_of(async_test_client.app.state.app_state)
+        )._settings_repo
         key = ("company", "company_name")
         original = repo._store.get(key)
         repo._store.pop(key, None)
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "company" in resp.json()["error"].lower()
         finally:
             if original is not None:
                 repo._store[key] = original
 
-    def test_complete_allows_without_agents(
+    async def test_complete_allows_without_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Completion succeeds without agents (Quick Setup mode)."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -358,7 +359,7 @@ class TestSetupComplete:
             registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 201
             body = resp.json()
             assert body["success"] is True
@@ -369,12 +370,12 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_rejects_without_providers(
+    async def test_complete_rejects_without_providers(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Completion rejects when company and agents exist but no providers."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -383,7 +384,7 @@ class TestSetupComplete:
         original_registry = app_state.slice(ProvidersStateSlice).registry
         app_state.wire(ProvidersStateSlice, registry=ProviderRegistry({}))
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
         finally:
@@ -391,12 +392,12 @@ class TestSetupComplete:
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
 
-    def test_complete_succeeds_with_all_prerequisites(
+    async def test_complete_succeeds_with_all_prerequisites(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Completion succeeds when company, agents, and providers exist."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -409,7 +410,7 @@ class TestSetupComplete:
             registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 201
             body = resp.json()
             assert body["success"] is True
@@ -420,12 +421,12 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_bootstraps_agents_into_registry(
+    async def test_complete_bootstraps_agents_into_registry(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Setup completion registers agents in the runtime registry."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -450,17 +451,11 @@ class TestSetupComplete:
             registry=ProviderRegistry({"test-provider": stub}),
         )
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 201
             assert resp.json()["data"]["setup_complete"] is True
             # Agent should now be in the runtime registry.
-            loop = asyncio.new_event_loop()
-            try:
-                agent_count = loop.run_until_complete(
-                    agent_registry_of(app_state).agent_count(),
-                )
-            finally:
-                loop.close()
+            agent_count = await agent_registry_of(app_state).agent_count()
             assert agent_count >= 1
         finally:
             app_state.wire(ProvidersStateSlice, registry=original_registry)
@@ -468,9 +463,9 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_blocks_when_bootstrap_fails(
+    async def test_complete_blocks_when_bootstrap_fails(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Bootstrap failure leaves ``setup_complete`` unset for retry.
@@ -481,7 +476,7 @@ class TestSetupComplete:
         issue, rather than landing on a half-configured dashboard
         labelled "complete".
         """
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -501,7 +496,7 @@ class TestSetupComplete:
         )
 
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code >= 500
             failing_bootstrap.assert_awaited_once()
             assert ("api", "setup_complete") not in repo._store
@@ -511,13 +506,13 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_reloads_provider_registry(
+    async def test_complete_reloads_provider_registry(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Setup completion reloads the provider registry from config."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -560,7 +555,7 @@ class TestSetupComplete:
         )
 
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 201
             assert resp.json()["data"]["setup_complete"] is True
             # _post_setup_reinit was invoked by complete_setup.
@@ -573,9 +568,9 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
-    def test_complete_keeps_flag_false_when_reinit_raises(
+    async def test_complete_keeps_flag_false_when_reinit_raises(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A reinit failure blocks ``setup_complete=true`` so the operator can retry.
@@ -585,7 +580,7 @@ class TestSetupComplete:
         otherwise the frontend would believe setup succeeded while the
         runtime is half-configured.
         """
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
@@ -620,7 +615,7 @@ class TestSetupComplete:
         )
 
         try:
-            resp = test_client.post("/api/v1/setup/complete")
+            resp = await async_test_client.post("/api/v1/setup/complete")
             assert resp.status_code >= 500
             assert ("api", "setup_complete") not in repo._store
         finally:
@@ -658,7 +653,7 @@ class TestExtractTemplateDepartments:
 
 
 def _setup_mock_providers(
-    test_client: TestClient[Any],
+    async_test_client: LoopAsyncClient,
 ) -> tuple[Any, Any]:
     """Wire up mock providers on the app state. Returns (app_state, original)."""
     mock_model = MagicMock()
@@ -676,7 +671,7 @@ def _setup_mock_providers(
         return_value={"test-provider": mock_provider_config},
     )
 
-    app_state = test_client.app.state.app_state
+    app_state = async_test_client.app.state.app_state
     original = app_state.slice(ProvidersStateSlice).management
     app_state.wire(ProvidersStateSlice, management=mock_mgmt)
     return app_state, original
@@ -686,14 +681,14 @@ def _setup_mock_providers(
 class TestSetupCompanyAutoAgents:
     """POST /api/v1/setup/company -- auto-create agents from template."""
 
-    def test_template_creates_agents(
+    async def test_template_creates_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Company creation with template auto-creates agents."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "My Startup",
@@ -714,12 +709,12 @@ class TestSetupCompanyAutoAgents:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_blank_company_has_no_agents(
+    async def test_blank_company_has_no_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Blank company (no template) creates zero agents."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={"company_name": "Blank Corp"},
         )
@@ -733,32 +728,32 @@ class TestSetupCompanyAutoAgents:
 class TestSetupAgentsList:
     """GET /api/v1/setup/agents -- list agents configured during setup."""
 
-    def test_empty_when_no_agents(
+    async def test_empty_when_no_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/agents")
+        resp = await async_test_client.get("/api/v1/setup/agents")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 
-    def test_tampered_cursor_rejected(
+    async def test_tampered_cursor_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/agents?cursor=garbage")
+        resp = await async_test_client.get("/api/v1/setup/agents?cursor=garbage")
         assert resp.status_code == 400
 
-    def test_returns_agents_after_company_creation(
+    async def test_returns_agents_after_company_creation(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
             # Create company with template.
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Test Startup",
@@ -766,7 +761,7 @@ class TestSetupAgentsList:
                 },
             )
             # Now list agents.
-            resp = test_client.get("/api/v1/setup/agents")
+            resp = await async_test_client.get("/api/v1/setup/agents")
             assert resp.status_code == 200
             body = resp.json()
             agents = body["data"]
@@ -776,21 +771,21 @@ class TestSetupAgentsList:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_pagination_round_trip_with_limit_one(
+    async def test_pagination_round_trip_with_limit_one(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """First page + cursor follow-up reaches the final page."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Test Startup",
                     "template_name": "solo_founder",
                 },
             )
-            first = test_client.get("/api/v1/setup/agents?limit=1").json()
+            first = (await async_test_client.get("/api/v1/setup/agents?limit=1")).json()
             assert len(first["data"]) <= 1
             collected = list(first["data"])
             cursor = first["pagination"]["next_cursor"]
@@ -804,8 +799,10 @@ class TestSetupAgentsList:
                 "seeded template no longer crosses a page boundary"
             )
             while cursor:
-                page = test_client.get(
-                    f"/api/v1/setup/agents?limit=1&cursor={cursor}",
+                page = (
+                    await async_test_client.get(
+                        f"/api/v1/setup/agents?limit=1&cursor={cursor}",
+                    )
                 ).json()
                 collected.extend(page["data"])
                 cursor = page["pagination"]["next_cursor"]
@@ -824,7 +821,7 @@ class TestSetupAgentsList:
                     if full_cursor is None
                     else f"?limit=200&cursor={full_cursor}"
                 )
-                page = test_client.get(f"/api/v1/setup/agents{qs}").json()
+                page = (await async_test_client.get(f"/api/v1/setup/agents{qs}")).json()
                 full.extend(page["data"])
                 full_cursor = page["pagination"]["next_cursor"]
                 if full_cursor is None:
@@ -838,13 +835,13 @@ class TestSetupAgentsList:
 class TestSetupAgentModelUpdate:
     """PUT /api/v1/setup/agents/{index}/model -- reassign agent model."""
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/99/model",
                 json={
                     "model_provider": "test-provider",
@@ -855,14 +852,14 @@ class TestSetupAgentModelUpdate:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_successful_model_update(
+    async def test_successful_model_update(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
             # Create company with template to get agents.
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Update Test",
@@ -870,7 +867,7 @@ class TestSetupAgentModelUpdate:
                 },
             )
             # Update first agent's model.
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "test-provider",
@@ -887,7 +884,7 @@ class TestSetupAgentModelUpdate:
             # Anchor on the updated agent's name so the assertion cannot
             # pass via a different agent that already carries the same
             # provider/model pair.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
             agents = get_resp.json()["data"]
             assert any(
@@ -899,14 +896,14 @@ class TestSetupAgentModelUpdate:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_invalid_provider_rejected(
+    async def test_invalid_provider_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
             # Create agents first -- verify seed succeeded.
-            seed = test_client.post(
+            seed = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Validation Test",
@@ -915,7 +912,7 @@ class TestSetupAgentModelUpdate:
             )
             assert seed.status_code == 201
             assert seed.json()["data"]["agent_count"] >= 1
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "nonexistent-provider",
@@ -931,21 +928,21 @@ class TestSetupAgentModelUpdate:
 class TestUpdateAgentName:
     """PUT /api/v1/setup/agents/{index}/name -- rename an agent."""
 
-    def test_successful_name_update(
+    async def test_successful_name_update(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Renaming an agent persists the new name."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Name Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/name",
                 json={"name": "New Agent Name"},
             )
@@ -954,38 +951,38 @@ class TestUpdateAgentName:
             assert data["name"] == "New Agent Name"
 
             # Verify persistence -- agents are name-sorted so search by value.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Out-of-range index returns 404."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/agents/99/name",
             json={"name": "Some Name"},
         )
         assert resp.status_code == 404
 
-    def test_blank_name_rejected(
+    async def test_blank_name_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Empty or whitespace-only name is rejected by validation."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Blank Name Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/name",
                 json={"name": "   "},
             )
@@ -998,9 +995,9 @@ class TestUpdateAgentName:
 class TestRandomizeAgentName:
     """POST /api/v1/setup/agents/{index}/randomize-name."""
 
-    def test_randomize_generates_new_name(
+    async def test_randomize_generates_new_name(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Randomize endpoint generates a non-empty name."""
@@ -1010,16 +1007,16 @@ class TestRandomizeAgentName:
             "synthorg.templates.presets.generate_auto_name",
             lambda role, *, seed=None, locales=None: "Ada Lovelace",
         )
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Randomize Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/agents/0/randomize-name",
             )
             assert resp.status_code == 200
@@ -1027,18 +1024,18 @@ class TestRandomizeAgentName:
             assert data["name"] == "Ada Lovelace"
 
             # Verify persistence -- agents are name-sorted so search by value.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == "Ada Lovelace" for a in agents)
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Out-of-range index returns 404."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/agents/99/randomize-name",
         )
         assert resp.status_code == 404
@@ -1048,11 +1045,11 @@ class TestRandomizeAgentName:
 class TestGetAvailableLocales:
     """GET /api/v1/setup/name-locales/available -- list available locales."""
 
-    def test_returns_regions_and_display_names(
+    async def test_returns_regions_and_display_names(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/name-locales/available")
+        resp = await async_test_client.get("/api/v1/setup/name-locales/available")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -1070,9 +1067,9 @@ class TestGetAvailableLocales:
 class TestGetNameLocales:
     """GET /api/v1/setup/name-locales -- get current locale configuration."""
 
-    def test_returns_all_sentinel_when_not_configured(
+    async def test_returns_all_sentinel_when_not_configured(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns the ``__all__`` sentinel when no DB preference is stored.
 
@@ -1080,19 +1077,19 @@ class TestGetNameLocales:
         the "All (worldwide)" toggle as ON.  Resolution to concrete
         locale codes happens only in the name-generation path.
         """
-        resp = test_client.get("/api/v1/setup/name-locales")
+        resp = await async_test_client.get("/api/v1/setup/name-locales")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         data = body["data"]
         assert data["locales"] == ["__all__"]
 
-    def test_returns_stored_locales_when_configured(
+    async def test_returns_stored_locales_when_configured(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
@@ -1100,16 +1097,16 @@ class TestGetNameLocales:
             now,
         )
         try:
-            resp = test_client.get("/api/v1/setup/name-locales")
+            resp = await async_test_client.get("/api/v1/setup/name-locales")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["locales"] == ["en_US", "fr_FR"]
         finally:
             repo._store.pop(("company", "name_locales"), None)
 
-    def test_returns_all_sentinel_when_explicitly_stored(
+    async def test_returns_all_sentinel_when_explicitly_stored(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns ``__all__`` sentinel when it is explicitly stored in DB.
 
@@ -1117,7 +1114,7 @@ class TestGetNameLocales:
         back returns the sentinel, not the full expanded list of
         concrete locale codes.
         """
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
@@ -1125,7 +1122,7 @@ class TestGetNameLocales:
             now,
         )
         try:
-            resp = test_client.get("/api/v1/setup/name-locales")
+            resp = await async_test_client.get("/api/v1/setup/name-locales")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["locales"] == ["__all__"]
@@ -1137,11 +1134,11 @@ class TestGetNameLocales:
 class TestSaveNameLocales:
     """PUT /api/v1/setup/name-locales -- save locale preferences."""
 
-    def test_saves_valid_locales(
+    async def test_saves_valid_locales(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["en_US", "de_DE"]},
         )
@@ -1150,11 +1147,11 @@ class TestSaveNameLocales:
         assert body["success"] is True
         assert body["data"]["locales"] == ["en_US", "de_DE"]
 
-    def test_saves_all_sentinel(
+    async def test_saves_all_sentinel(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["__all__"]},
         )
@@ -1162,12 +1159,12 @@ class TestSaveNameLocales:
         data = resp.json()["data"]
         assert data["locales"] == ["__all__"]
 
-    def test_rejects_mixed_sentinel_with_explicit_codes(
+    async def test_rejects_mixed_sentinel_with_explicit_codes(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Mixing __all__ with explicit locale codes returns 422."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["__all__", "en_US"]},
         )
@@ -1175,11 +1172,11 @@ class TestSaveNameLocales:
         body = resp.json()
         assert body["success"] is False
 
-    def test_rejects_invalid_locale_codes(
+    async def test_rejects_invalid_locale_codes(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["en_US", "invalid_XX"]},
         )
@@ -1187,28 +1184,28 @@ class TestSaveNameLocales:
         body = resp.json()
         assert body["success"] is False
 
-    def test_rejects_empty_list(
+    async def test_rejects_empty_list(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Empty list is rejected by Pydantic min_length=1."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": []},
         )
         assert resp.status_code == 400
 
-    def test_rejects_save_after_setup_complete(
+    async def test_rejects_save_after_setup_complete(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Saving locales after setup is complete returns 409."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/name-locales",
                 json={"locales": ["en_US"]},
             )
@@ -1223,14 +1220,14 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_when_not_in_db(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Code default resolves as non-DATABASE source, returns False."""
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
         repo = cast(Any, persistence_of(app_state))._settings_repo
@@ -1241,13 +1238,13 @@ class TestCheckHasNameLocales:
 
     async def test_returns_true_when_db_sourced_and_nonempty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1263,14 +1260,14 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_on_generic_exception(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns False when get_entry raises a generic exception."""
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -1286,7 +1283,7 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_on_setting_not_found_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -1294,7 +1291,7 @@ class TestCheckHasNameLocales:
         )
         from synthorg.settings.errors import SettingNotFoundError
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -1315,7 +1312,7 @@ class TestReadNameLocales:
 
     async def test_returns_all_locales_when_db_absent_and_code_default(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """When DB key is absent, code default ["__all__"] resolves to all."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -1323,7 +1320,7 @@ class TestReadNameLocales:
         )
         from synthorg.templates.locales import ALL_LATIN_LOCALES
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
@@ -1334,7 +1331,7 @@ class TestReadNameLocales:
 
     async def test_returns_none_when_setting_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -1342,7 +1339,7 @@ class TestReadNameLocales:
         )
         from synthorg.settings.errors import SettingNotFoundError
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -1358,13 +1355,13 @@ class TestReadNameLocales:
 
     async def test_returns_resolved_locales_when_valid(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1380,13 +1377,13 @@ class TestReadNameLocales:
 
     async def test_returns_none_on_json_decode_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1402,13 +1399,13 @@ class TestReadNameLocales:
 
     async def test_returns_none_on_non_list_json(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1424,13 +1421,13 @@ class TestReadNameLocales:
 
     async def test_filters_invalid_locales(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1446,14 +1443,14 @@ class TestReadNameLocales:
 
     async def test_resolve_false_returns_sentinel_as_is(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """With resolve=False, the __all__ sentinel passes through raw."""
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1472,14 +1469,14 @@ class TestReadNameLocales:
 
     async def test_resolve_false_skips_validation_filtering(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """With resolve=False, invalid codes are not filtered out."""
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -1501,22 +1498,22 @@ class TestReadNameLocales:
 class TestUpdateAgentPersonality:
     """PUT /api/v1/setup/agents/{index}/personality -- update personality."""
 
-    def test_update_personality_happy_path(
+    async def test_update_personality_happy_path(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Updating an agent's personality persists the new preset."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
             # Create company with template to get agents.
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Personality Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/personality",
                 json={"personality_preset": "visionary_leader"},
             )
@@ -1528,7 +1525,7 @@ class TestUpdateAgentPersonality:
             # Verify persistence: anchor on the updated agent's name so
             # the assertion cannot pass via a different agent that
             # already carries the visionary_leader preset.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(
                 agent["name"] == updated_name
@@ -1538,21 +1535,21 @@ class TestUpdateAgentPersonality:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_update_personality_invalid_preset(
+    async def test_update_personality_invalid_preset(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Invalid personality preset name is rejected with 400."""
-        app_state, original = _setup_mock_providers(test_client)
+        app_state, original = _setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Invalid Preset Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/personality",
                 json={"personality_preset": "nonexistent_preset"},
             )
@@ -1560,28 +1557,28 @@ class TestUpdateAgentPersonality:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_update_personality_out_of_range(
+    async def test_update_personality_out_of_range(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Out-of-range agent index returns 404."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/agents/999/personality",
             json={"personality_preset": "visionary_leader"},
         )
         assert resp.status_code == 404
 
-    def test_update_personality_after_complete(
+    async def test_update_personality_after_complete(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Updating personality after setup is complete returns 409."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/personality",
                 json={"personality_preset": "visionary_leader"},
             )
@@ -1594,12 +1591,12 @@ class TestUpdateAgentPersonality:
 class TestListPersonalityPresets:
     """GET /api/v1/setup/personality-presets -- list personality presets."""
 
-    def test_list_presets_returns_non_empty(
+    async def test_list_presets_returns_non_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Personality presets endpoint returns a non-empty paginated list."""
-        resp = test_client.get("/api/v1/setup/personality-presets")
+        resp = await async_test_client.get("/api/v1/setup/personality-presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -1607,12 +1604,12 @@ class TestListPersonalityPresets:
         assert len(presets) >= 1
         assert "next_cursor" in body["pagination"]
 
-    def test_list_presets_field_shape(
+    async def test_list_presets_field_shape(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Each preset has ``name`` and ``description`` fields."""
-        resp = test_client.get("/api/v1/setup/personality-presets")
+        resp = await async_test_client.get("/api/v1/setup/personality-presets")
         body = resp.json()
         for preset in body["data"]:
             assert "name" in preset
@@ -1621,9 +1618,9 @@ class TestListPersonalityPresets:
             assert isinstance(preset["description"], str)
             assert preset["name"].strip() != ""
 
-    def test_list_presets_round_trip_with_cursor(
+    async def test_list_presets_round_trip_with_cursor(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Walking pages with limit=1 returns every preset exactly once."""
         # Build the full list by walking pagination at a high limit so
@@ -1636,23 +1633,29 @@ class TestListPersonalityPresets:
         cursor: str | None = None
         while True:
             qs = "?limit=200" if cursor is None else f"?limit=200&cursor={cursor}"
-            page = test_client.get(f"/api/v1/setup/personality-presets{qs}").json()
+            page = (
+                await async_test_client.get(f"/api/v1/setup/personality-presets{qs}")
+            ).json()
             full.extend(page["data"])
             cursor = page["pagination"]["next_cursor"]
             if cursor is None:
                 break
         if len(full) < 2:
             pytest.skip("need at least two presets for cursor round-trip")
-        first = test_client.get(
-            "/api/v1/setup/personality-presets?limit=1",
+        first = (
+            await async_test_client.get(
+                "/api/v1/setup/personality-presets?limit=1",
+            )
         ).json()
         assert len(first["data"]) == 1
         collected = list(first["data"])
         cursor = first["pagination"]["next_cursor"]
         assert cursor is not None
         while cursor:
-            page = test_client.get(
-                f"/api/v1/setup/personality-presets?limit=1&cursor={cursor}",
+            page = (
+                await async_test_client.get(
+                    f"/api/v1/setup/personality-presets?limit=1&cursor={cursor}",
+                )
             ).json()
             collected.extend(page["data"])
             cursor = page["pagination"]["next_cursor"]
@@ -1662,11 +1665,11 @@ class TestListPersonalityPresets:
         # the round-trip property in full.
         assert collected == full
 
-    def test_list_presets_tampered_cursor_rejected(
+    async def test_list_presets_tampered_cursor_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/setup/personality-presets?cursor=garbage",
         )
         assert resp.status_code == 400
