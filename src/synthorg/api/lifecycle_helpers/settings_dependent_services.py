@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
@@ -51,6 +52,11 @@ async def safe_compose_settings_dependent_services(
     try:
         compose_settings_dependent_services(app_state, settings_service)
     except Exception as exc:
+        # Propagate ``MemoryError`` / ``RecursionError`` unchanged before
+        # any cleanup so resource-exhaustion failures surface to the
+        # asyncio loop's exception handler rather than getting wrapped
+        # in dispatcher-stop side effects (project convention).
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             API_APP_STARTUP,

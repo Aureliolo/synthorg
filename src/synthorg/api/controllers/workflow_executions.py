@@ -78,13 +78,17 @@ async def _build_service(state: State) -> WorkflowExecutionService:
 
     Resolves ``engine.max_subworkflow_depth`` through the engine bridge
     config so the service inherits the operator's settings (DB > env >
-    YAML > code default) on every request. When ``config_resolver`` is
-    unavailable (test fixtures wiring the controller without the full
-    settings stack), falls back to the bridge config's Pydantic
-    default so the service still receives a valid depth limit.
+    YAML > code default) on every request. The ``config_resolver`` slot
+    is mandatory: an unwired resolver raises a 503 instead of silently
+    falling back to the Pydantic default, so a wiring failure surfaces
+    immediately rather than running executions with code defaults.
 
     Returns:
         ``WorkflowExecutionService`` instance.
+
+    Raises:
+        ServiceUnavailableError: When ``config_resolver`` is not wired
+            (surfaced through ``config_resolver_of``).
     """
     app_state = state.app_state
     # Resolver is mandatory: silently falling back to ``EngineBridgeConfig()``
