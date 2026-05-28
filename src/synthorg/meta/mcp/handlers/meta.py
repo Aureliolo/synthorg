@@ -250,6 +250,56 @@ async def _meta_trigger_cycle(
     return ok(data=result.model_dump(mode="json"))
 
 
+async def _meta_query_feature_map(
+    *,
+    app_state: Any,  # noqa: ARG001
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """Handle the ``synthorg_meta_query_feature_map`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope carrying a :class:`FeatureIndex` dump.
+        When ``arguments["name"]`` is set, the index contains 0 or 1 entry;
+        otherwise it contains every discovered feature.
+    """
+    tool = "synthorg_meta_query_feature_map"
+    try:
+        # Deferred to avoid hauling the index builder into the handler-import
+        # graph before the runtime is ready.
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from synthorg._core.features import (  # noqa: PLC0415
+            discover_features,
+            feature_directories,
+        )
+        from synthorg.core.feature_map import (  # noqa: PLC0415
+            FEATURE_INDEX_SCHEMA_VERSION,
+            FeatureIndex,
+            build_feature_map,
+        )
+
+        name_filter = arguments.get("name")
+        directories = feature_directories()
+        maps = tuple(
+            build_feature_map(feature, directories.get(feature.name, ""))
+            for feature in sorted(discover_features(), key=lambda f: f.name)
+            if name_filter is None or feature.name == name_filter
+        )
+        index = FeatureIndex(
+            schema_version=FEATURE_INDEX_SCHEMA_VERSION,
+            generated_at=datetime.now(UTC),
+            features=maps,
+        )
+        payload = index.model_dump(mode="json")
+    except Exception as exc:
+        reraise_critical(exc)
+        log_handler_invoke_failed(tool, exc)
+        return err(exc)
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
+    return ok(data=payload)
+
+
 META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     copy.deepcopy(
         {
@@ -258,6 +308,7 @@ META_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
             "synthorg_meta_list_mcp_tools": _meta_list_mcp_tools,
             "synthorg_meta_get_mcp_server_config": _meta_get_mcp_server_config,
             "synthorg_meta_trigger_cycle": _meta_trigger_cycle,
+            "synthorg_meta_query_feature_map": _meta_query_feature_map,
         },
     ),
 )

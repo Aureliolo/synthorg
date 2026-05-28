@@ -303,7 +303,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "providers",
         "research",
         "security",
-        "settings_ns",
+        "settings",
         "simulations",
         "telemetry",
         "tools",

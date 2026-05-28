@@ -48,7 +48,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, feature-manifest, no-implicit-state-attribute, feature-index-freshness, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -921,6 +921,33 @@ repos:
         entry: uv run python scripts/check_settings_namespace_complete.py
         language: system
         files: ^(src/synthorg/settings/(enums\.py|definitions/.*\.py)|scripts/check_settings_namespace_complete\.py|scripts/_settings_namespace_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Every slice-bearing feature directory ships a feature.py manifest.
+      - id: feature-manifest
+        name: every feature directory has a valid feature.py manifest
+        entry: uv run python scripts/check_feature_manifest.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_feature_manifest\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # AppState.__slots__ may not grow past the approved cross-cutting set.
+      - id: no-implicit-state-attribute
+        name: AppState may not grow new attributes (move state to a slice)
+        entry: uv run python scripts/check_no_implicit_state_attribute.py
+        language: system
+        files: ^(src/synthorg/api/state\.py|scripts/check_no_implicit_state_attribute\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # data/feature_index.json + codebase_map.json regenerate to match.
+      - id: feature-index-freshness
+        name: data/feature_index.json + codebase_map.json are up to date
+        entry: uv run python scripts/check_feature_index_freshness.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/(generate_feature_index|check_feature_index_freshness)\.py|data/(feature_index|codebase_map)\.json|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

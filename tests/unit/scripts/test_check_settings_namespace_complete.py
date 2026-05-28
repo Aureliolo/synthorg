@@ -67,9 +67,9 @@ def test_extract_definitions_lists_definition_files(tmp_path: Path) -> None:
     assert definitions == {"foo", "bar"}
 
 
-def test_extract_definitions_skips_settings_ns_module(tmp_path: Path) -> None:
-    """``settings_ns.py`` is the registry root, not a per-feature definition."""
-    _make_definitions(tmp_path, ["foo", "settings_ns"])
+def test_extract_definitions_skips_dunder_init(tmp_path: Path) -> None:
+    """``__init__.py`` is the package init, not a per-feature definition."""
+    _make_definitions(tmp_path, ["foo", "__init__"])
     definitions = _GATE.extract_definitions(tmp_path)
     assert definitions == {"foo"}
 

@@ -76,6 +76,20 @@ class MetaTriggerCycleArgs(_ArgsBase):
     """Args for ``meta.trigger_cycle``: no fields (admin op, no guardrails)."""
 
 
+class MetaQueryFeatureMapArgs(_ArgsBase):
+    """Args for ``meta.query_feature_map``: optional exact-name filter.
+
+    Attributes:
+        name: When set, return only the feature with this exact name; when
+            omitted, return the full index.
+    """
+
+    name: NotBlankStr | None = Field(
+        default=None,
+        description="Exact feature name to filter by (omit for full index)",
+    )
+
+
 # ── budget ──────────────────────────────────────────────────────────
 
 
@@ -457,6 +471,7 @@ __all__ = [
     "MetaGetMcpServerConfigArgs",
     "MetaListMcpToolsArgs",
     "MetaListRulesArgs",
+    "MetaQueryFeatureMapArgs",
     "MetaTriggerCycleArgs",
     "MetricsGetCurrentArgs",
     "MetricsGetHistoryArgs",
