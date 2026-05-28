@@ -1,15 +1,14 @@
 """Tests for audit log query controller."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.persistence._shared import parse_iso_utc
 from synthorg.security.audit import AuditLog
 from synthorg.security.models import AuditEntry, AuditVerdictStr
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -42,11 +41,11 @@ def _make_entry(  # noqa: PLR0913
 
 @pytest.mark.unit
 class TestAuditController:
-    def test_empty_audit_log(
+    async def test_empty_audit_log(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             headers=_HEADERS,
         )
@@ -55,14 +54,14 @@ class TestAuditController:
         assert body["success"] is True
         assert body["data"] == []
 
-    def test_returns_entries_paginated(
+    async def test_returns_entries_paginated(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         audit_log: AuditLog,
     ) -> None:
         for i in range(3):
             audit_log.record(_make_entry(entry_id=f"e-{i}"))
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             headers=_HEADERS,
         )
@@ -79,9 +78,9 @@ class TestAuditController:
             ("tool_name", "file_read", "code_write"),
         ],
     )
-    def test_filter_by_field(
+    async def test_filter_by_field(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         audit_log: AuditLog,
         field: str,
         match_val: str,
@@ -93,7 +92,7 @@ class TestAuditController:
         audit_log.record(
             _make_entry(entry_id="e-2", **{field: other_val}),  # type: ignore[arg-type]
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             params={field: match_val},
             headers=_HEADERS,
@@ -102,9 +101,9 @@ class TestAuditController:
         body = resp.json()
         assert body["data"][0][field] == match_val
 
-    def test_filter_by_since_until(
+    async def test_filter_by_since_until(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         audit_log: AuditLog,
     ) -> None:
         t1 = datetime(2026, 4, 1, tzinfo=UTC)
@@ -113,7 +112,7 @@ class TestAuditController:
         audit_log.record(_make_entry(entry_id="e-1", timestamp=t1))
         audit_log.record(_make_entry(entry_id="e-2", timestamp=t2))
         audit_log.record(_make_entry(entry_id="e-3", timestamp=t3))
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             params={
                 "since": t1.isoformat(),
@@ -140,15 +139,15 @@ class TestAuditController:
             entry_dt = parse_iso_utc(entry["timestamp"])
             assert t1 <= entry_dt <= t2
 
-    def test_pagination_offset_limit(
+    async def test_pagination_offset_limit(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         audit_log: AuditLog,
     ) -> None:
         for i in range(5):
             audit_log.record(_make_entry(entry_id=f"e-{i}"))
         # Walk two pages via cursor to reach offset 2.
-        resp1 = test_client.get(
+        resp1 = await async_test_client.get(
             "/api/v1/security/audit",
             params={"limit": 2},
             headers=_HEADERS,
@@ -156,7 +155,7 @@ class TestAuditController:
         assert resp1.status_code == 200
         cursor = resp1.json()["pagination"]["next_cursor"]
         assert cursor is not None
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             params={"limit": 2, "cursor": cursor},
             headers=_HEADERS,
@@ -166,23 +165,23 @@ class TestAuditController:
         assert body["pagination"]["limit"] == 2
         assert len(body["data"]) == 2
 
-    def test_rejects_inverted_time_window(
+    async def test_rejects_inverted_time_window(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """since > until is a validation failure (HTTP 422)."""
         t1 = datetime(2026, 4, 1, tzinfo=UTC)
         t2 = t1 - timedelta(hours=1)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             params={"since": t1.isoformat(), "until": t2.isoformat()},
             headers=_HEADERS,
         )
         assert resp.status_code == 422
 
-    def test_combined_filters_and(
+    async def test_combined_filters_and(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         audit_log: AuditLog,
     ) -> None:
         """Multiple filters are AND-combined."""
@@ -207,7 +206,7 @@ class TestAuditController:
                 verdict="allow",
             ),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/security/audit",
             params={"agent_id": "alice", "verdict": "deny"},
             headers=_HEADERS,

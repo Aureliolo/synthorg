@@ -1,11 +1,9 @@
 """Tests for the reports controller."""
 
-from typing import Any
-
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.state import BudgetStateSlice
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -24,11 +22,11 @@ class TestReportsController:
     unconfigured.
     """
 
-    def test_generate_daily_report_succeeds(
+    async def test_generate_daily_report_succeeds(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/reports/generate",
             headers=_HEADERS,
             json={"period": "daily"},
@@ -50,21 +48,21 @@ class TestReportsController:
         assert isinstance(data["has_task_completion"], bool)
         assert isinstance(data["has_risk_trends"], bool)
 
-    def test_list_periods(
+    async def test_list_periods(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/reports/periods", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/reports/periods", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert {"daily", "weekly", "monthly"}.issubset(set(body["data"]))
 
-    def test_generate_rejects_unknown_period(
+    async def test_generate_rejects_unknown_period(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/reports/generate",
             headers=_HEADERS,
             json={"period": "fortnightly"},
@@ -72,9 +70,9 @@ class TestReportsController:
         # Pydantic enum validation fails before the service runs.
         assert resp.status_code == 400
 
-    def test_generate_returns_503_when_service_not_wired(
+    async def test_generate_returns_503_when_service_not_wired(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Regression guard: missing wiring -> 503, not AttributeError.
 
@@ -86,11 +84,11 @@ class TestReportsController:
         as a 500. Force the not-wired state by swapping the budget slice's
         ``report_service`` to ``None``.
         """
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         original_slice = app_state.slice(BudgetStateSlice)
         app_state.wire(BudgetStateSlice, report_service=None)
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/reports/generate",
                 headers=_HEADERS,
                 json={"period": "daily"},
