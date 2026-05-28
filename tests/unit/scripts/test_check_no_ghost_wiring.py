@@ -289,14 +289,18 @@ def test_non_utf8_src_fails_closed(
 
 
 def test_extractor_ignores_ghost_wired_kwarg_outside_feature_manifest(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A non-FEATURE call carrying ``ghost_wired_symbols=`` cannot satisfy parity.
 
     Guards against spoofing: a helper / unrelated builder inside ``feature.py``
     that happens to pass ``ghost_wired_symbols=(...)`` MUST NOT be harvested as
     a claim, because doing so would silently bypass the ENFORCED↔feature parity
-    check.
+    check. Drives ``main()`` so the test exercises the real claim-derivation
+    path (``_claimed_symbols_from_features``) rather than skipping it via an
+    explicit ``claimed_symbols=`` kwarg.
     """
     _seed(
         tmp_path,
@@ -305,14 +309,17 @@ def test_extractor_ignores_ghost_wired_kwarg_outside_feature_manifest(
             "src/synthorg/engine/foo.py": "class Foo:\n    pass\n",
             "src/synthorg/api/app.py": "from x import Foo\n\nFoo()\n",
             # `dict(ghost_wired_symbols=...)` is NOT a FeatureManifest call, so
-            # the extractor must not harvest "Foo" from it. main() then derives
+            # the extractor must not harvest "Foo" from it; main() then derives
             # an empty claim set and the parity check must fail.
             "src/synthorg/engine/feature.py": (
                 'NOT_FEATURE = dict(ghost_wired_symbols=("Foo",))\n'
             ),
         },
     )
-    assert _MODULE._run(tmp_path) == 1
+    monkeypatch.setattr(
+        sys, "argv", ["check_no_ghost_wiring.py", "--repo-root", str(tmp_path)]
+    )
+    assert _MODULE.main() == 1
     assert "parity" in capsys.readouterr().out.lower()
 
 

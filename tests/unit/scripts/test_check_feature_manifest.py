@@ -152,12 +152,13 @@ def test_gate_treats_repo_root_as_passing(tmp_path: Path) -> None:
     assert findings == []
 
 
-def test_gate_skips_state_py_with_syntax_error(tmp_path: Path) -> None:
-    """A non-parseable ``state.py`` is treated as 'no slice' (graceful skip).
+def test_gate_fails_closed_on_state_py_with_syntax_error(tmp_path: Path) -> None:
+    """A non-parseable ``state.py`` fails closed: the dir still demands feature.py.
 
-    The scan walks every ``state.py`` under ``src/synthorg/`` to find
-    slice-bearing directories. A single malformed file should not abort
-    the walk; the directory simply does not look like a feature dir.
+    The walker cannot rule out a slice subclass when the file does not
+    parse, so the directory is presumed feature-bearing and surfaces a
+    missing-feature.py finding. Silently treating it as a non-slice would
+    let a corrupt state module skip the manifest check entirely.
     """
     src = tmp_path / "src"
     pkg = src / "synthorg" / "borked"
@@ -165,15 +166,15 @@ def test_gate_skips_state_py_with_syntax_error(tmp_path: Path) -> None:
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "state.py").write_text("def broken( :\n    pass\n", encoding="utf-8")
     findings = _GATE.check(src_root=src)
-    assert findings == []
+    assert any("missing feature.py" in finding for finding in findings), findings
 
 
-def test_gate_skips_state_py_with_non_utf8_bytes(tmp_path: Path) -> None:
-    """A non-UTF-8 ``state.py`` is treated as 'no slice' (graceful skip)."""
+def test_gate_fails_closed_on_state_py_with_non_utf8_bytes(tmp_path: Path) -> None:
+    """A non-UTF-8 ``state.py`` fails closed: same fail-closed rule as syntax errors."""
     src = tmp_path / "src"
     pkg = src / "synthorg" / "binary_blob"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "state.py").write_bytes(b"\xff\xfe not utf-8 \x00\n")
     findings = _GATE.check(src_root=src)
-    assert findings == []
+    assert any("missing feature.py" in finding for finding in findings), findings
