@@ -64,19 +64,21 @@ function loadViewport(): { x: number; y: number; zoom: number } | undefined {
     const stored = localStorage.getItem(VIEWPORT_KEY)
     if (!stored) return undefined
     const parsed: unknown = JSON.parse(stored)
-    const rec = parsed as Record<string, unknown>
-    if (
-      typeof parsed === 'object' && parsed !== null &&
-      typeof rec.x === 'number' && Number.isFinite(rec.x) &&
-      typeof rec.y === 'number' && Number.isFinite(rec.y) &&
-      typeof rec.zoom === 'number' && Number.isFinite(rec.zoom) && (rec.zoom as number) > 0
-    ) {
-      return parsed as { x: number; y: number; zoom: number }
-    }
+    if (isValidViewport(parsed)) return parsed
   } catch (err) {
     log.warn('Failed to load viewport from localStorage:', err)
   }
   return undefined
+}
+
+function isValidViewport(value: unknown): value is { x: number; y: number; zoom: number } {
+  if (typeof value !== 'object' || value === null) return false
+  const rec = value as Record<string, unknown>
+  return isFiniteNumber(rec.x) && isFiniteNumber(rec.y) && isFiniteNumber(rec.zoom) && rec.zoom > 0
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
 interface SelectedNodeDetails {
@@ -86,11 +88,7 @@ interface SelectedNodeDetails {
   readonly config: Record<string, unknown>
 }
 
-/** Resolve the currently-selected node and its display props in one place,
- *  so the sidebar receives a validated shape rather than raw inline casts.
- *  `type` is validated against {@link SUPPORTED_NODE_TYPES}; unknown types
- *  resolve to `null` so the sidebar never renders a config UI for a type
- *  it cannot handle. */
+/** Resolve the currently-selected node and its display props in one place. */
 function getSelectedNodeDetails(
   nodes: readonly Node[],
   selectedNodeId: string | null,
@@ -99,26 +97,33 @@ function getSelectedNodeDetails(
   const node = nodes.find((n) => n.id === selectedNodeId)
   if (!node) return null
   const data = (node.data ?? {}) as { label?: unknown; config?: unknown }
-  const label = typeof data.label === 'string' ? data.label : 'Node'
-  const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>
-  const type =
-    typeof node.type === 'string' && SUPPORTED_NODE_TYPES.has(node.type as WorkflowNodeType)
-      ? (node.type as WorkflowNodeType)
-      : null
-  return { node, type, label, config }
+  return {
+    node,
+    type: resolveSupportedNodeType(node.type),
+    label: typeof data.label === 'string' ? data.label : 'Node',
+    config: extractConfigObject(data.config),
+  }
+}
+
+function resolveSupportedNodeType(nodeType: string | undefined): WorkflowNodeType | null {
+  if (typeof nodeType !== 'string') return null
+  return SUPPORTED_NODE_TYPES.has(nodeType as WorkflowNodeType)
+    ? (nodeType as WorkflowNodeType)
+    : null
+}
+
+function extractConfigObject(config: unknown): Record<string, unknown> {
+  if (config && typeof config === 'object') return config as Record<string, unknown>
+  return {}
 }
 
 function WorkflowEditorInner() {
   const state = useWorkflowEditorState()
   const [editorMode, setEditorMode] = useState<'visual' | 'yaml'>('visual')
-  const createdInitialDraftRef = useRef(false)
   const [searchParams] = useSearchParams()
   const defId = searchParams.get('id')
-
   const defaultViewport = useMemo(() => loadViewport(), [])
-
   useWorkflowEditorKeyboard(editorMode)
-
   const callbacks = useWorkflowEditorCallbacks({
     selectedNodeId: state.selectedNodeId,
     addNode: state.addNode,
@@ -129,112 +134,247 @@ function WorkflowEditorInner() {
     validate: state.validate,
     saveViewport,
   })
-
-  const { loadDefinition, createDefinition } = state
-  useEffect(() => {
-    if (defId) {
-      void loadDefinition(defId)
-      return
-    }
-    // React 19 Strict Mode replays mount effects -- without this guard we
-    // would POST two empty draft workflows on the first visit to the editor.
-    if (createdInitialDraftRef.current) return
-    createdInitialDraftRef.current = true
-    void createDefinition('New Workflow', 'sequential_pipeline')
-  }, [defId, loadDefinition, createDefinition])
-
-  const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)
-
-  if (state.loading) return <WorkflowEditorSkeleton />
-
-  if (!state.loading && !state.definition && state.error) {
+  useInitialDefinition(defId, state.loadDefinition, state.createDefinition)
+  const lifecycle = deriveLifecycleMode(state)
+  if (lifecycle === 'loading') return <WorkflowEditorSkeleton />
+  if (lifecycle === 'error') {
     return (
       <EmptyState
         icon={Workflow}
         title="Failed to load workflow"
-        description={state.error}
+        description={state.error ?? undefined}
       />
     )
   }
+  return (
+    <WorkflowEditorReadyView
+      state={state}
+      callbacks={callbacks}
+      defId={defId}
+      editorMode={editorMode}
+      onEditorModeChange={setEditorMode}
+      defaultViewport={defaultViewport}
+    />
+  )
+}
 
+type WorkflowEditorLifecycle = 'loading' | 'error' | 'ready'
+
+function deriveLifecycleMode(
+  state: ReturnType<typeof useWorkflowEditorState>,
+): WorkflowEditorLifecycle {
+  if (state.loading) return 'loading'
+  if (!state.definition && state.error) return 'error'
+  return 'ready'
+}
+
+interface WorkflowEditorReadyViewProps {
+  state: ReturnType<typeof useWorkflowEditorState>
+  callbacks: ReturnType<typeof useWorkflowEditorCallbacks>
+  defId: string | null
+  editorMode: 'visual' | 'yaml'
+  onEditorModeChange: (mode: 'visual' | 'yaml') => void
+  defaultViewport: { x: number; y: number; zoom: number } | undefined
+}
+
+function WorkflowEditorReadyView({
+  state,
+  callbacks,
+  defId,
+  editorMode,
+  onEditorModeChange,
+  defaultViewport,
+}: WorkflowEditorReadyViewProps) {
+  const selectedNodeDetails = getSelectedNodeDetails(state.nodes, state.selectedNodeId)
   return (
     <div className="flex h-full flex-col">
-      {state.error && (
-        <div className="mb-2">
-          <ErrorBanner severity="error" title="Workflow editor error" description={state.error} />
-        </div>
-      )}
-
+      <WorkflowEditorErrorBanner error={state.error} />
       <div className="mb-2">
-        <WorkflowToolbar
-          onAddNode={callbacks.handleAddNode}
-          onUndo={state.undo}
-          onRedo={state.redo}
-          onSave={callbacks.handleSave}
-          onValidate={callbacks.handleValidate}
-          onExport={callbacks.handleExport}
-          onHistory={state.toggleVersionHistory}
-          onSaveAsNew={callbacks.handleSaveAsNew}
-          onSwitchWorkflow={callbacks.handleSwitchWorkflow}
-          currentWorkflowId={defId}
+        <WorkflowEditorToolbarRow
+          state={state}
+          callbacks={callbacks}
+          defId={defId}
           editorMode={editorMode}
-          onEditorModeChange={setEditorMode}
-          canUndo={state.undoStack.length > 0}
-          canRedo={state.redoStack.length > 0}
-          dirty={state.dirty}
-          saving={state.saving}
-          validating={state.validating}
-          validationValid={state.validationResult ? state.validationResult.valid : null}
+          onEditorModeChange={onEditorModeChange}
         />
       </div>
-
-      {editorMode === 'visual' ? (
-        <>
-          <WorkflowEditorCanvas
-            nodes={state.nodes}
-            edges={state.edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={defaultViewport}
-            onNodeClick={callbacks.handleNodeClick}
-            onPaneClick={callbacks.handlePaneClick}
-            onConnect={state.onConnect}
-            onNodesChange={state.onNodesChange}
-            onEdgesChange={state.onEdgesChange}
-            onMoveEnd={callbacks.handleMoveEnd}
-          />
-          <WorkflowYamlPreview yaml={state.yamlPreview} />
-        </>
-      ) : (
-        <div className="min-h-0 flex-1 rounded-lg border border-border">
-          <WorkflowYamlEditor initialYaml={state.yamlPreview} />
-        </div>
-      )}
-
-      <WorkflowEditorSidebar
-        nodeDrawerOpen={editorMode === 'visual' && selectedNodeDetails !== null && !state.versionHistoryOpen}
-        onNodeDrawerClose={callbacks.handleDrawerClose}
-        selectedNodeId={state.selectedNodeId}
-        selectedNodeType={selectedNodeDetails?.type ?? null}
-        selectedNodeLabel={selectedNodeDetails?.label ?? 'Node'}
-        selectedNodeConfig={selectedNodeDetails?.config ?? {}}
-        onConfigChange={callbacks.handleConfigChange}
-        versionHistoryOpen={state.versionHistoryOpen}
-        onVersionHistoryClose={state.toggleVersionHistory}
+      <EditorModeContent
+        editorMode={editorMode}
+        state={state}
+        callbacks={callbacks}
+        defaultViewport={defaultViewport}
+      />
+      <WorkflowEditorSidebarSlot
+        state={state}
+        callbacks={callbacks}
+        editorMode={editorMode}
+        selectedNodeDetails={selectedNodeDetails}
       />
     </div>
   )
 }
 
-export default function WorkflowEditorPage() {
+interface WorkflowEditorErrorBannerProps {
+  error: string | null
+}
+
+function WorkflowEditorErrorBanner({ error }: WorkflowEditorErrorBannerProps) {
+  if (!error) return null
   return (
-    // Responsive height: phones / tablets get extra vertical budget
-    // (mobile browser chrome + on-screen keyboard eat ~9rem of viewport);
-    // desktop keeps the original 7rem allowance so the bottom toolbar
-    // stays visible inside the editor canvas.
+    <div className="mb-2">
+      <ErrorBanner severity="error" title="Workflow editor error" description={error} />
+    </div>
+  )
+}
+
+interface WorkflowEditorSidebarSlotProps {
+  state: ReturnType<typeof useWorkflowEditorState>
+  callbacks: ReturnType<typeof useWorkflowEditorCallbacks>
+  editorMode: 'visual' | 'yaml'
+  selectedNodeDetails: SelectedNodeDetails | null
+}
+
+function WorkflowEditorSidebarSlot({
+  state,
+  callbacks,
+  editorMode,
+  selectedNodeDetails,
+}: WorkflowEditorSidebarSlotProps) {
+  const drawerOpen = computeNodeDrawerOpen(
+    editorMode,
+    selectedNodeDetails,
+    state.versionHistoryOpen,
+  )
+  return (
+    <WorkflowEditorSidebar
+      nodeDrawerOpen={drawerOpen}
+      onNodeDrawerClose={callbacks.handleDrawerClose}
+      selectedNodeId={state.selectedNodeId}
+      selectedNodeType={selectedNodeDetails?.type ?? null}
+      selectedNodeLabel={selectedNodeDetails?.label ?? 'Node'}
+      selectedNodeConfig={selectedNodeDetails?.config ?? {}}
+      onConfigChange={callbacks.handleConfigChange}
+      versionHistoryOpen={state.versionHistoryOpen}
+      onVersionHistoryClose={state.toggleVersionHistory}
+    />
+  )
+}
+
+function computeNodeDrawerOpen(
+  editorMode: 'visual' | 'yaml',
+  selectedNodeDetails: SelectedNodeDetails | null,
+  versionHistoryOpen: boolean,
+): boolean {
+  if (editorMode !== 'visual') return false
+  if (selectedNodeDetails === null) return false
+  return !versionHistoryOpen
+}
+
+interface WorkflowEditorToolbarRowProps {
+  state: ReturnType<typeof useWorkflowEditorState>
+  callbacks: ReturnType<typeof useWorkflowEditorCallbacks>
+  defId: string | null
+  editorMode: 'visual' | 'yaml'
+  onEditorModeChange: (mode: 'visual' | 'yaml') => void
+}
+
+function WorkflowEditorToolbarRow({
+  state,
+  callbacks,
+  defId,
+  editorMode,
+  onEditorModeChange,
+}: WorkflowEditorToolbarRowProps) {
+  return (
+    <WorkflowToolbar
+      onAddNode={callbacks.handleAddNode}
+      onUndo={state.undo}
+      onRedo={state.redo}
+      onSave={callbacks.handleSave}
+      onValidate={callbacks.handleValidate}
+      onExport={callbacks.handleExport}
+      onHistory={state.toggleVersionHistory}
+      onSaveAsNew={callbacks.handleSaveAsNew}
+      onSwitchWorkflow={callbacks.handleSwitchWorkflow}
+      currentWorkflowId={defId}
+      editorMode={editorMode}
+      onEditorModeChange={onEditorModeChange}
+      canUndo={state.undoStack.length > 0}
+      canRedo={state.redoStack.length > 0}
+      dirty={state.dirty}
+      saving={state.saving}
+      validating={state.validating}
+      validationValid={state.validationResult ? state.validationResult.valid : null}
+    />
+  )
+}
+
+function useInitialDefinition(
+  defId: string | null,
+  loadDefinition: ReturnType<typeof useWorkflowEditorState>['loadDefinition'],
+  createDefinition: ReturnType<typeof useWorkflowEditorState>['createDefinition'],
+): void {
+  const createdInitialDraftRef = useRef(false)
+  useEffect(() => {
+    if (defId) {
+      void loadDefinition(defId)
+      return
+    }
+    // React 19 Strict Mode replays mount effects: this guard avoids POSTing
+    // two empty draft workflows on the first visit to the editor.
+    if (createdInitialDraftRef.current) return
+    createdInitialDraftRef.current = true
+    void createDefinition('New Workflow', 'sequential_pipeline')
+  }, [defId, loadDefinition, createDefinition])
+}
+
+interface EditorModeContentProps {
+  editorMode: 'visual' | 'yaml'
+  state: ReturnType<typeof useWorkflowEditorState>
+  callbacks: ReturnType<typeof useWorkflowEditorCallbacks>
+  defaultViewport: { x: number; y: number; zoom: number } | undefined
+}
+
+function EditorModeContent({
+  editorMode,
+  state,
+  callbacks,
+  defaultViewport,
+}: EditorModeContentProps) {
+  if (editorMode === 'yaml') {
+    return (
+      <div className="min-h-0 flex-1 rounded-lg border border-border">
+        <WorkflowYamlEditor initialYaml={state.yamlPreview} />
+      </div>
+    )
+  }
+  return (
+    <>
+      <WorkflowEditorCanvas
+        nodes={state.nodes}
+        edges={state.edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultViewport={defaultViewport}
+        onNodeClick={callbacks.handleNodeClick}
+        onPaneClick={callbacks.handlePaneClick}
+        onConnect={state.onConnect}
+        onNodesChange={state.onNodesChange}
+        onEdgesChange={state.onEdgesChange}
+        onMoveEnd={callbacks.handleMoveEnd}
+      />
+      <WorkflowYamlPreview yaml={state.yamlPreview} />
+    </>
+  )
+}
+
+export default function WorkflowEditorPage() {
+  // Responsive height: phones/tablets get extra vertical budget (mobile
+  // browser chrome + on-screen keyboard eat ~9rem of viewport); desktop keeps
+  // the original 7rem allowance so the bottom toolbar stays visible.
+  return (
     <div className="flex h-[calc(100vh-9rem)] flex-col gap-section-gap md:h-[calc(100vh-7rem)]">
       <h1 className="text-lg font-semibold text-foreground">Workflow Editor</h1>
-
       <ErrorBoundary level="section">
         <ReactFlowProvider>
           <WorkflowEditorInner />

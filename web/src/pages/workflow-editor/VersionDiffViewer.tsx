@@ -87,112 +87,139 @@ function EdgeChangeRow({ change }: EdgeChangeRowProps) {
   )
 }
 
+type DiffResult = NonNullable<ReturnType<typeof useWorkflowEditorStore.getState>['diffResult']>
+
 export function VersionDiffViewer() {
   const diffResult = useWorkflowEditorStore((s) => s.diffResult)
   const clearDiff = useWorkflowEditorStore((s) => s.clearDiff)
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => () => {
-    if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
+    },
+    [],
+  )
+
+  const handleOpenChange = (open: boolean) => {
+    if (clearTimerRef.current) {
+      clearTimeout(clearTimerRef.current)
+      clearTimerRef.current = null
+    }
+    if (!open) {
+      // Delay clearing so the Base UI Dialog exit animation can finish before
+      // diffResult content is unmounted.
+      clearTimerRef.current = setTimeout(() => clearDiff(), 150)
+    }
+  }
 
   return (
-    <Dialog
-      open={diffResult !== null}
-      onOpenChange={(open) => {
-        if (clearTimerRef.current) {
-          clearTimeout(clearTimerRef.current)
-          clearTimerRef.current = null
-        }
-        if (!open) {
-          // Delay clearing so the Base UI Dialog exit animation can finish
-          // before diffResult content is unmounted.
-          clearTimerRef.current = setTimeout(() => clearDiff(), 150)
-        }
-      }}
-    >
-      <DialogContent>
-        {diffResult && (
-          <>
-            {/* Header */}
-            <DialogHeader>
-              <div>
-                <DialogTitle>Version Diff</DialogTitle>
-                <DialogDescription>
-                  v{diffResult.from_version} to v{diffResult.to_version}
-                </DialogDescription>
-              </div>
-              <DialogCloseButton />
-            </DialogHeader>
-
-            {/* Summary */}
-            <div className="border-b border-border p-card">
-              <p className="text-sm text-muted">{diffResult.summary}</p>
-            </div>
-
-            {/* Changes list */}
-            <div className="flex-1 overflow-y-auto p-card">
-              {/* Metadata changes */}
-              {diffResult.metadata_changes.length > 0 && (
-                <section className="mb-4">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                    Metadata
-                  </h3>
-                  <div className="flex flex-col gap-1">
-                    {diffResult.metadata_changes.map((mc) => (
-                      <MetadataChangeRow key={mc.field} change={mc} />
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Node changes */}
-              {diffResult.node_changes.length > 0 && (
-                <section className="mb-4">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                    Node Changes
-                  </h3>
-                  <div className="flex flex-col gap-1">
-                    {diffResult.node_changes.map((nc) => (
-                      <NodeChangeRow
-                        key={`${nc.node_id}-${nc.change_type}`}
-                        change={{
-                          node_id: nc.node_id,
-                          change_type: nc.change_type,
-                          old_value: nc.old_value ?? null,
-                          new_value: nc.new_value ?? null,
-                        }}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Edge changes */}
-              {diffResult.edge_changes.length > 0 && (
-                <section>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
-                    Edge Changes
-                  </h3>
-                  <div className="flex flex-col gap-1">
-                    {diffResult.edge_changes.map((ec) => (
-                      <EdgeChangeRow
-                        key={`${ec.edge_id}-${ec.change_type}`}
-                        change={{
-                          edge_id: ec.edge_id,
-                          change_type: ec.change_type,
-                          old_value: ec.old_value ?? null,
-                          new_value: ec.new_value ?? null,
-                        }}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
-          </>
-        )}
-      </DialogContent>
+    <Dialog open={diffResult !== null} onOpenChange={handleOpenChange}>
+      <DialogContent>{diffResult && <DiffDialogBody diffResult={diffResult} />}</DialogContent>
     </Dialog>
+  )
+}
+
+interface DiffDialogBodyProps {
+  diffResult: DiffResult
+}
+
+function DiffDialogBody({ diffResult }: DiffDialogBodyProps) {
+  return (
+    <>
+      <DialogHeader>
+        <div>
+          <DialogTitle>Version Diff</DialogTitle>
+          <DialogDescription>
+            v{diffResult.from_version} to v{diffResult.to_version}
+          </DialogDescription>
+        </div>
+        <DialogCloseButton />
+      </DialogHeader>
+      <div className="border-b border-border p-card">
+        <p className="text-sm text-muted">{diffResult.summary}</p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-card">
+        <MetadataChangesSection changes={diffResult.metadata_changes} />
+        <NodeChangesSection changes={diffResult.node_changes} />
+        <EdgeChangesSection changes={diffResult.edge_changes} />
+      </div>
+    </>
+  )
+}
+
+interface MetadataChangesSectionProps {
+  changes: DiffResult['metadata_changes']
+}
+
+function MetadataChangesSection({ changes }: MetadataChangesSectionProps) {
+  if (changes.length === 0) return null
+  return (
+    <section className="mb-4">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+        Metadata
+      </h3>
+      <div className="flex flex-col gap-1">
+        {changes.map((mc) => (
+          <MetadataChangeRow key={mc.field} change={mc} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+interface NodeChangesSectionProps {
+  changes: DiffResult['node_changes']
+}
+
+function NodeChangesSection({ changes }: NodeChangesSectionProps) {
+  if (changes.length === 0) return null
+  return (
+    <section className="mb-4">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+        Node Changes
+      </h3>
+      <div className="flex flex-col gap-1">
+        {changes.map((nc) => (
+          <NodeChangeRow
+            key={`${nc.node_id}-${nc.change_type}`}
+            change={{
+              node_id: nc.node_id,
+              change_type: nc.change_type,
+              old_value: nc.old_value ?? null,
+              new_value: nc.new_value ?? null,
+            }}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+interface EdgeChangesSectionProps {
+  changes: DiffResult['edge_changes']
+}
+
+function EdgeChangesSection({ changes }: EdgeChangesSectionProps) {
+  if (changes.length === 0) return null
+  return (
+    <section>
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+        Edge Changes
+      </h3>
+      <div className="flex flex-col gap-1">
+        {changes.map((ec) => (
+          <EdgeChangeRow
+            key={`${ec.edge_id}-${ec.change_type}`}
+            change={{
+              edge_id: ec.edge_id,
+              change_type: ec.change_type,
+              old_value: ec.old_value ?? null,
+              new_value: ec.new_value ?? null,
+            }}
+          />
+        ))}
+      </div>
+    </section>
   )
 }

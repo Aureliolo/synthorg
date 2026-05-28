@@ -1,5 +1,5 @@
 /**
- * Entity catalog section -- card grid with filter tabs.
+ * Entity catalog section: card grid with filter tabs.
  */
 import { ArrowDownAZ, ArrowUpAZ, Shapes } from 'lucide-react'
 import { useMemo } from 'react'
@@ -39,23 +39,126 @@ function sortEntities(
   const cmp = (a: EntityResponse, b: EntityResponse): number => {
     if (key === 'name') return a.name.localeCompare(b.name) * sign
     if (key === 'tier') return a.tier.localeCompare(b.tier) * sign
-    // ``attribute_count`` is the canonical scalar on summary list
-    // payloads; ``attributes`` (the full array) is only present on
-    // detail responses.  Read both so the comparator works against
-    // either shape and falls through to a name tiebreaker for stable
-    // ordering across re-fetches.
-    const readCount = (e: EntityResponse): number => {
-      const summary = (e as unknown as { attribute_count?: number }).attribute_count
-      if (typeof summary === 'number') return summary
-      const detail = (e as unknown as { attributes?: readonly unknown[] }).attributes
-      return detail?.length ?? 0
-    }
-    const countA = readCount(a)
-    const countB = readCount(b)
+    const countA = readAttributeCount(a)
+    const countB = readAttributeCount(b)
     if (countA === countB) return a.name.localeCompare(b.name) * sign
     return (countA - countB) * sign
   }
   return [...entities].sort(cmp)
+}
+
+// `attribute_count` is the canonical scalar on summary list payloads; the
+// `attributes` array is only present on detail responses. Read both so the
+// comparator works against either shape.
+function readAttributeCount(entity: EntityResponse): number {
+  const summary = (entity as unknown as { attribute_count?: number }).attribute_count
+  if (typeof summary === 'number') return summary
+  const detail = (entity as unknown as { attributes?: readonly unknown[] }).attributes
+  return detail?.length ?? 0
+}
+
+interface EntityCatalogControlsProps {
+  tierFilter: 'all' | 'core' | 'user'
+  searchQuery: string
+  sortBy: EntitySortKey
+  sortDirection: 'asc' | 'desc'
+  onTierFilterChange: (value: 'all' | 'core' | 'user') => void
+  onSearchQueryChange: (value: string) => void
+  onSortChange: (key: EntitySortKey) => void
+}
+
+function EntityCatalogControls({
+  tierFilter,
+  searchQuery,
+  sortBy,
+  sortDirection,
+  onTierFilterChange,
+  onSearchQueryChange,
+  onSortChange,
+}: EntityCatalogControlsProps) {
+  return (
+    <div className="flex flex-col gap-grid-gap sm:flex-row sm:items-center sm:justify-between">
+      <SegmentedControl
+        label="Filter by tier"
+        value={tierFilter}
+        onChange={onTierFilterChange}
+        options={TIER_OPTIONS}
+        size="sm"
+      />
+
+      <div className="flex flex-col gap-grid-gap sm:flex-row sm:items-center">
+        <SegmentedControl
+          label="Sort entities by"
+          value={sortBy}
+          onChange={onSortChange}
+          options={SORT_OPTIONS}
+          size="sm"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => onSortChange(sortBy)}
+          aria-label={sortDirection === 'asc' ? 'Sort descending' : 'Sort ascending'}
+        >
+          {sortDirection === 'asc' ? (
+            <ArrowDownAZ aria-hidden="true" className="size-4" />
+          ) : (
+            <ArrowUpAZ aria-hidden="true" className="size-4" />
+          )}
+        </Button>
+
+        <SearchInput
+          value={searchQuery}
+          onChange={onSearchQueryChange}
+          placeholder="Search entities..."
+          aria-label="Search entities"
+          maxWidth="narrow"
+        />
+      </div>
+    </div>
+  )
+}
+
+interface EntityCatalogEmptyProps {
+  hasActiveFilters: boolean
+  onClearFilters: () => void
+}
+
+function EntityCatalogEmpty({ hasActiveFilters, onClearFilters }: EntityCatalogEmptyProps) {
+  return (
+    <EmptyState
+      icon={Shapes}
+      title="No entities found"
+      description={
+        hasActiveFilters
+          ? 'Try adjusting your search or filter criteria.'
+          : 'Entity definitions will appear here once registered.'
+      }
+      action={
+        hasActiveFilters
+          ? { label: 'Clear filters', onClick: onClearFilters, variant: 'outline' }
+          : undefined
+      }
+    />
+  )
+}
+
+interface EntityCatalogGridProps {
+  entities: readonly EntityResponse[]
+  onSelect: (entity: EntityResponse) => void
+}
+
+function EntityCatalogGrid({ entities, onSelect }: EntityCatalogGridProps) {
+  return (
+    <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+      {entities.map((entity) => (
+        <StaggerItem key={entity.name}>
+          <EntityCard entity={entity} onClick={() => onSelect(entity)} />
+        </StaggerItem>
+      ))}
+    </StaggerGroup>
+  )
 }
 
 export function EntityCatalog({ entities }: EntityCatalogProps) {
@@ -75,88 +178,27 @@ export function EntityCatalog({ entities }: EntityCatalogProps) {
     [entities, sortBy, sortDirection],
   )
 
+  const handleClearFilters = () => {
+    setSearchQuery('')
+    setTierFilter('all')
+  }
+
   return (
     <SectionCard title="Entity Catalog" icon={Shapes}>
-      {/* Filters + sort */}
-      <div className="flex flex-col gap-grid-gap sm:flex-row sm:items-center sm:justify-between">
-        <SegmentedControl
-          label="Filter by tier"
-          value={tierFilter}
-          onChange={setTierFilter}
-          options={TIER_OPTIONS}
-          size="sm"
-        />
+      <EntityCatalogControls
+        tierFilter={tierFilter}
+        searchQuery={searchQuery}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
+        onTierFilterChange={setTierFilter}
+        onSearchQueryChange={setSearchQuery}
+        onSortChange={setEntitySort}
+      />
 
-        <div className="flex flex-col gap-grid-gap sm:flex-row sm:items-center">
-          <SegmentedControl
-            label="Sort entities by"
-            value={sortBy}
-            onChange={(next) => setEntitySort(next)}
-            options={SORT_OPTIONS}
-            size="sm"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => setEntitySort(sortBy)}
-            aria-label={
-              sortDirection === 'asc'
-                ? 'Sort descending'
-                : 'Sort ascending'
-            }
-          >
-            {sortDirection === 'asc' ? (
-              <ArrowDownAZ aria-hidden="true" className="size-4" />
-            ) : (
-              <ArrowUpAZ aria-hidden="true" className="size-4" />
-            )}
-          </Button>
-
-          <SearchInput
-            value={searchQuery}
-            onChange={(value) => setSearchQuery(value)}
-            placeholder="Search entities..."
-            aria-label="Search entities"
-            maxWidth="narrow"
-          />
-        </div>
-      </div>
-
-      {/* Card grid */}
       {sortedEntities.length === 0 ? (
-        <EmptyState
-          icon={Shapes}
-          title="No entities found"
-          description={
-            hasActiveFilters
-              ? 'Try adjusting your search or filter criteria.'
-              : 'Entity definitions will appear here once registered.'
-          }
-          action={
-            hasActiveFilters
-              ? {
-                  label: 'Clear filters',
-                  onClick: () => {
-                    setSearchQuery('')
-                    setTierFilter('all')
-                  },
-                  variant: 'outline',
-                }
-              : undefined
-          }
-        />
+        <EntityCatalogEmpty hasActiveFilters={hasActiveFilters} onClearFilters={handleClearFilters} />
       ) : (
-        <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
-          {sortedEntities.map((entity) => (
-            <StaggerItem key={entity.name}>
-              <EntityCard
-                entity={entity}
-                onClick={() => setSelectedEntity(entity)}
-              />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+        <EntityCatalogGrid entities={sortedEntities} onSelect={setSelectedEntity} />
       )}
     </SectionCard>
   )

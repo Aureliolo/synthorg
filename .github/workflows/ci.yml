@@ -1252,7 +1252,15 @@ jobs:
     needs: [changes, export-openapi]
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Re-baselined 2026-05-28 from 15 -> 30 minutes after EPIC #2066 D2a
+    # decomposition (PR #2154) grew the affected vitest universe past the
+    # 15-min wall (per-file gzip overhead from the 24 newly-extracted
+    # controller hooks pulled in more component-render coverage). Two
+    # consecutive Dashboard Test cancellations on dfad8c49 and ccd733ab
+    # both hit exactly 15m13s of wall-clock with vitest still iterating
+    # through the suite -- not a hang, just a budget overrun. Same
+    # justification pattern as the .size-limit.cjs re-baseline.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

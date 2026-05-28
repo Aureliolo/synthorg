@@ -12,6 +12,20 @@ const STAGES: { key: FineTuneStage; label: string }[] = [
 
 const STAGE_ORDER = STAGES.map((s) => s.key)
 
+type StepStatus = 'complete' | 'current' | 'upcoming'
+
+const STEP_CIRCLE_CLASSES: Readonly<Record<StepStatus, string>> = {
+  complete: 'bg-accent text-accent-foreground',
+  current: 'bg-accent/20 text-accent ring-2 ring-accent',
+  upcoming: 'bg-muted text-muted-foreground',
+}
+
+const STEP_LABEL_CLASSES: Readonly<Record<StepStatus, string>> = {
+  complete: 'text-muted-foreground',
+  current: 'font-medium text-foreground',
+  upcoming: 'text-muted-foreground',
+}
+
 interface StepItemProps {
   stage: { key: FineTuneStage; label: string }
   index: number
@@ -20,39 +34,25 @@ interface StepItemProps {
 }
 
 function StepItem({ stage: s, index: i, currentIdx, currentStage }: StepItemProps) {
-  const isComplete = i < currentIdx
-  const isCurrent = s.key === currentStage
+  const status: StepStatus =
+    i < currentIdx ? 'complete' : s.key === currentStage ? 'current' : 'upcoming'
   const connectorComplete = i <= currentIdx
 
   return (
     <div className="flex items-center gap-2">
       {i > 0 && (
-        <div
-          className={cn(
-            'h-0.5 w-8',
-            connectorComplete ? 'bg-accent' : 'bg-border',
-          )}
-        />
+        <div className={cn('h-0.5 w-8', connectorComplete ? 'bg-accent' : 'bg-border')} />
       )}
       <div className="flex flex-col items-center gap-1">
         <div
           className={cn(
             'flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium',
-            isComplete && 'bg-accent text-accent-foreground',
-            isCurrent && 'bg-accent/20 text-accent ring-2 ring-accent',
-            !isComplete && !isCurrent && 'bg-muted text-muted-foreground',
+            STEP_CIRCLE_CLASSES[status],
           )}
         >
-          {isComplete ? '\u2713' : i + 1}
+          {status === 'complete' ? '✓' : i + 1}
         </div>
-        <span
-          className={cn(
-            'text-xs',
-            isCurrent ? 'font-medium text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {s.label}
-        </span>
+        <span className={cn('text-xs', STEP_LABEL_CLASSES[status])}>{s.label}</span>
       </div>
     </div>
   )

@@ -97,44 +97,56 @@ function parseSingleComparison(str: string): ConditionComparison | null {
  * Split a condition string by a logical operator, respecting parenthesized
  * groups. Returns null if the operator is not found at the top level.
  */
-function splitByOperator(
-  str: string,
-  op: LogicalOperator,
-): string[] | null {
-  const parts: string[] = []
-  let depth = 0
-  let current = ''
-  // Build a regex that matches the operator with flexible whitespace
+function splitByOperator(str: string, op: LogicalOperator): string[] | null {
   const tokenRegex = new RegExp(`\\s+${op}\\s+`) // eslint-disable-line security/detect-non-literal-regexp -- op is from LogicalOperator literal union
-  let i = 0
+  const state = { parts: [] as string[], depth: 0, current: '', i: 0 }
+  while (state.i < str.length) {
+    const handled = consumeSplitChar(str, state, tokenRegex)
+    if (handled === 'unbalanced') return null
+  }
+  if (state.current.trim()) state.parts.push(state.current.trim())
+  if (state.depth !== 0) return null // Unbalanced parens
+  return state.parts.length > 1 ? state.parts : null
+}
 
-  while (i < str.length) {
-    if (str[i] === '(') {
-      depth++
-      current += '('
-      i++
-    } else if (str[i] === ')') {
-      depth--
-      if (depth < 0) return null // Unbalanced parens
-      current += ')'
-      i++
-    } else if (depth === 0 && str.substring(i).match(tokenRegex)?.index === 0) {
-      const match = str.substring(i).match(tokenRegex)!
-      parts.push(current.trim())
-      current = ''
-      i += match[0].length
-    } else {
-      current += str[i]
-      i++
+interface SplitState {
+  parts: string[]
+  depth: number
+  current: string
+  i: number
+}
+
+function consumeSplitChar(
+  str: string,
+  state: SplitState,
+  tokenRegex: RegExp,
+): 'ok' | 'unbalanced' {
+  const ch = str[state.i]
+  if (ch === '(') {
+    state.depth++
+    state.current += '('
+    state.i++
+    return 'ok'
+  }
+  if (ch === ')') {
+    state.depth--
+    if (state.depth < 0) return 'unbalanced'
+    state.current += ')'
+    state.i++
+    return 'ok'
+  }
+  if (state.depth === 0) {
+    const match = str.substring(state.i).match(tokenRegex)
+    if (match?.index === 0) {
+      state.parts.push(state.current.trim())
+      state.current = ''
+      state.i += match[0].length
+      return 'ok'
     }
   }
-
-  if (current.trim()) {
-    parts.push(current.trim())
-  }
-
-  if (depth !== 0) return null // Unbalanced parens
-  return parts.length > 1 ? parts : null
+  state.current += ch
+  state.i++
+  return 'ok'
 }
 
 /**
@@ -157,6 +169,17 @@ function unwrapParens(str: string): string {
   return trimmed.slice(1, -1).trim()
 }
 
+/** Discriminated result for the speculative ``tryParse*`` helpers. The
+ * three states are distinct: ``no_match`` means the input did not look like
+ * the construct this helper handles (try the next one); ``error`` means it
+ * looked right but parsing failed (give up); ``ok`` carries the parsed
+ * expression. Avoids the older ``ConditionExpression | null | undefined``
+ * shape where callers had to recall which sentinel meant what. */
+type TryParseResult =
+  | { kind: 'no_match' }
+  | { kind: 'error' }
+  | { kind: 'ok'; expr: ConditionExpression }
+
 /**
  * Parse a condition string into a structured expression.
  * Supports:
@@ -170,34 +193,40 @@ function unwrapParens(str: string): string {
 function parseConditionString(str: string): ConditionExpression | null {
   const trimmed = str.trim()
   if (!trimmed) return null
-
-  // Handle NOT prefix
-  const notMatch = /^NOT\s*\((.+)\)\s*$/i.exec(trimmed)
-  if (notMatch?.[1]) {
-    const inner = parseConditionString(notMatch[1])
-    if (!inner) return null
-    // Preserve inner as a single child -- keep its operator intact
-    return createGroup('NOT', [inner])
-  }
-
+  const negation = tryParseNotPrefix(trimmed)
+  if (negation.kind === 'ok') return negation.expr
+  if (negation.kind === 'error') return null
   const unwrapped = unwrapParens(trimmed)
-
-  // Split by OR first (lower precedence), then AND (higher precedence)
+  // Split by OR first (lower precedence), then AND (higher precedence).
   for (const op of ['OR', 'AND'] as const) {
-    const parts = splitByOperator(unwrapped, op)
-    if (parts) {
-      const conditions: ConditionExpression[] = []
-      for (const part of parts) {
-        const parsed = parseConditionString(part)
-        if (!parsed) return null
-        conditions.push(parsed)
-      }
-      return createGroup(op, conditions)
-    }
+    const grouped = tryParseLogicalGroup(unwrapped, op)
+    if (grouped.kind === 'ok') return grouped.expr
+    if (grouped.kind === 'error') return null
   }
-
-  // No logical operator found -- try single comparison
   return parseSingleComparison(unwrapped)
+}
+
+function tryParseNotPrefix(trimmed: string): TryParseResult {
+  const notMatch = /^NOT\s*\((.+)\)\s*$/i.exec(trimmed)
+  if (!notMatch?.[1]) return { kind: 'no_match' }
+  const inner = parseConditionString(notMatch[1])
+  if (!inner) return { kind: 'error' }
+  return { kind: 'ok', expr: createGroup('NOT', [inner]) }
+}
+
+function tryParseLogicalGroup(
+  unwrapped: string,
+  op: 'AND' | 'OR',
+): TryParseResult {
+  const parts = splitByOperator(unwrapped, op)
+  if (!parts) return { kind: 'no_match' }
+  const conditions: ConditionExpression[] = []
+  for (const part of parts) {
+    const parsed = parseConditionString(part)
+    if (!parsed) return { kind: 'error' }
+    conditions.push(parsed)
+  }
+  return { kind: 'ok', expr: createGroup(op, conditions) }
 }
 
 /** Extended builder state including negate and sub-groups. */
@@ -214,58 +243,70 @@ export interface BuilderState {
  * expressions too deep for the builder UI.
  */
 export function parseForBuilderState(str: string): BuilderState | null {
-  let expr = parseConditionString(str)
-  if (!expr) return null
+  const parsed = parseConditionString(str)
+  if (!parsed) return null
+  const { expr, negate } = unwrapNotPrefix(parsed)
+  if (expr.kind === 'comparison') {
+    return { comparisons: [expr], logicalOperator: 'AND', negate, subGroups: [] }
+  }
+  const groupRows = partitionGroupChildren(expr.conditions)
+  if (!groupRows) return null
+  if (groupRows.comparisons.length === 0 && groupRows.subGroups.length === 0) return null
+  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator) as 'AND' | 'OR'
+  return {
+    comparisons: groupRows.comparisons,
+    logicalOperator: op,
+    negate,
+    subGroups: groupRows.subGroups,
+  }
+}
 
-  let negate = false
-  // Unwrap NOT
+function unwrapNotPrefix(
+  expr: ConditionExpression,
+): { expr: ConditionExpression; negate: boolean } {
   if (
     expr.kind === 'group' &&
     expr.logicalOperator === 'NOT' &&
     expr.conditions.length === 1
   ) {
-    negate = true
-    const inner = expr.conditions[0]!
-    expr = inner
+    return { expr: expr.conditions[0]!, negate: true }
   }
+  return { expr, negate: false }
+}
 
-  // Single comparison
-  if (expr.kind === 'comparison') {
-    return { comparisons: [expr], logicalOperator: 'AND', negate, subGroups: [] }
-  }
-
-  // Group -- separate flat comparisons from sub-groups
+function partitionGroupChildren(
+  children: readonly ConditionExpression[],
+): { comparisons: ConditionComparison[]; subGroups: BuilderState['subGroups'] } | null {
   const comparisons: ConditionComparison[] = []
   const subGroups: BuilderState['subGroups'] = []
-
-  for (const child of expr.conditions) {
+  for (const child of children) {
     if (child.kind === 'comparison') {
       comparisons.push(child)
-    } else if (child.kind === 'group' && child.logicalOperator !== 'NOT') {
-      const groupComparisons: ConditionComparison[] = []
-      let allFlat = true
-      for (const gc of child.conditions) {
-        if (gc.kind === 'comparison') {
-          groupComparisons.push(gc)
-        } else {
-          allFlat = false
-          break
-        }
-      }
-      if (!allFlat) return null // nesting too deep
-      subGroups.push({
-        operator: child.logicalOperator as 'AND' | 'OR',
-        comparisons: groupComparisons,
-      })
-    } else {
-      return null // can't handle NOT sub-groups or deeper nesting
+      continue
     }
+    if (child.kind === 'group' && child.logicalOperator !== 'NOT') {
+      const sub = collectFlatSubGroup(child)
+      if (!sub) return null
+      subGroups.push(sub)
+      continue
+    }
+    return null // can't handle NOT sub-groups or deeper nesting
   }
+  return { comparisons, subGroups }
+}
 
-  if (comparisons.length === 0 && subGroups.length === 0) return null
-
-  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator) as 'AND' | 'OR'
-  return { comparisons, logicalOperator: op, negate, subGroups }
+function collectFlatSubGroup(
+  group: ConditionExpression & { kind: 'group' },
+): BuilderState['subGroups'][number] | null {
+  const groupComparisons: ConditionComparison[] = []
+  for (const gc of group.conditions) {
+    if (gc.kind !== 'comparison') return null // nesting too deep
+    groupComparisons.push(gc)
+  }
+  return {
+    operator: group.logicalOperator as 'AND' | 'OR',
+    comparisons: groupComparisons,
+  }
 }
 
 /** Common field suggestions for the condition builder. */

@@ -152,7 +152,11 @@ export default tseslint.config(
     // global caps govern it again). When every area is decomposed and
     // listed, this whole override block is deleted. The `ignores:`
     // entries below are the authoritative record of which areas the
-    // caps already govern.
+    // caps already govern; entries are a mix of directory globs
+    // (e.g. `src/pages/agents/**` for cleaned sub-buckets) and
+    // individual root-level files (e.g. `src/pages/AgentsPage.tsx`)
+    // since top-level `*Page.tsx` files are decomposed in place
+    // alongside their sub-bucket.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
@@ -170,6 +174,19 @@ export default tseslint.config(
       'src/pages/approvals/**',
       'src/pages/connections/**',
       'src/pages/escalations/**',
+      'src/pages/workflow-editor/**',
+      'src/pages/workflows/**',
+      'src/pages/subworkflows/**',
+      'src/pages/meta/**',
+      'src/pages/agents/**',
+      'src/pages/tasks/**',
+      'src/pages/fine-tuning/**',
+      'src/pages/training/**',
+      'src/pages/personalities/**',
+      'src/pages/ontology/**',
+      'src/pages/mcp-catalog/**',
+      'src/pages/artifacts/**',
+      'src/pages/messages/**',
       'src/pages/OrgChartPage.tsx',
       'src/pages/OrgEditPage.tsx',
       'src/pages/SettingsPage.tsx',
@@ -178,6 +195,22 @@ export default tseslint.config(
       'src/pages/ApprovalsPage.tsx',
       'src/pages/ConnectionsPage.tsx',
       'src/pages/EscalationQueuePage.tsx',
+      'src/pages/WorkflowEditorPage.tsx',
+      'src/pages/WorkflowsPage.tsx',
+      'src/pages/WorkflowExecutionsPage.tsx',
+      'src/pages/SubworkflowsPage.tsx',
+      'src/pages/MetaPage.tsx',
+      'src/pages/MetaAnalyticsPage.tsx',
+      'src/pages/AgentDetailPage.tsx',
+      'src/pages/AgentsPage.tsx',
+      'src/pages/PersonalitiesAdminPage.tsx',
+      'src/pages/TaskBoardPage.tsx',
+      'src/pages/TaskDetailPage.tsx',
+      'src/pages/FineTuningPage.tsx',
+      'src/pages/TrainingPage.tsx',
+      'src/pages/McpCatalogPage.tsx',
+      'src/pages/ArtifactDetailPage.tsx',
+      'src/pages/MessagesPage.tsx',
     ],
     rules: {
       complexity: 'off',

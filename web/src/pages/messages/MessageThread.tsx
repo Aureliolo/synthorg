@@ -10,7 +10,7 @@ interface MessageThreadProps {
   expanded: boolean
   onToggle: () => void
   onSelectMessage: (id: string) => void
-  newMessageIds?: Set<string>
+  newMessageIds?: ReadonlySet<string>
 }
 
 export function MessageThread({

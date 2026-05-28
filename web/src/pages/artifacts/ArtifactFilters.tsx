@@ -10,6 +10,11 @@ const CONTENT_TYPE_OPTIONS = [
   { value: 'application/', label: 'Application' },
 ] as const
 
+const TEXT_INPUT_CLASSES =
+  'h-9 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent'
+const SELECT_CLASSES =
+  'h-9 rounded-md border border-border bg-surface px-2 text-sm text-foreground'
+
 export function ArtifactFilters() {
   const searchQuery = useArtifactsStore((s) => s.searchQuery)
   const typeFilter = useArtifactsStore((s) => s.typeFilter)
@@ -26,74 +31,115 @@ export function ArtifactFilters() {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <input
-        type="text"
-        placeholder="Search artifacts..."
+      <FilterTextInput
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="h-9 w-64 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-        aria-label="Search artifacts"
+        onValueChange={setSearchQuery}
+        placeholder="Search artifacts..."
+        ariaLabel="Search artifacts"
+        widthClass="w-64"
       />
-
-      <select
-        value={typeFilter ?? ''}
-        onChange={(e) => {
-          const val = e.target.value
-          if (!val) {
-            setTypeFilter(null)
-            return
-          }
-          if (ARTIFACT_TYPE_VALUES.includes(val as ArtifactType)) {
-            setTypeFilter(val as ArtifactType)
-          }
-        }}
-        className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-foreground"
-        aria-label="Filter by type"
-      >
-        <option value="">All types</option>
-        {ARTIFACT_TYPE_VALUES.map((t) => (
-          <option key={t} value={t}>{formatLabel(t)}</option>
-        ))}
-      </select>
-
-      <input
-        type="text"
-        placeholder="Filter by agent..."
+      <ArtifactTypeFilter value={typeFilter} onValueChange={setTypeFilter} />
+      <FilterTextInput
         value={createdByFilter ?? ''}
-        onChange={(e) => setCreatedByFilter(e.target.value || null)}
-        className="h-9 w-40 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-        aria-label="Filter by creator agent"
+        onValueChange={(v) => setCreatedByFilter(v || null)}
+        placeholder="Filter by agent..."
+        ariaLabel="Filter by creator agent"
       />
-
-      <input
-        type="text"
-        placeholder="Filter by task..."
+      <FilterTextInput
         value={taskIdFilter ?? ''}
-        onChange={(e) => setTaskIdFilter(e.target.value || null)}
-        className="h-9 w-40 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-        aria-label="Filter by task ID"
+        onValueChange={(v) => setTaskIdFilter(v || null)}
+        placeholder="Filter by task..."
+        ariaLabel="Filter by task ID"
       />
-
-      <select
-        value={contentTypeFilter ?? ''}
-        onChange={(e) => setContentTypeFilter(e.target.value || null)}
-        className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-foreground"
-        aria-label="Filter by content type"
-      >
-        <option value="">All content types</option>
-        {CONTENT_TYPE_OPTIONS.map((ct) => (
-          <option key={ct.value} value={ct.value}>{ct.label}</option>
-        ))}
-      </select>
-
-      <input
-        type="text"
-        placeholder="Filter by project..."
+      <ContentTypeFilter value={contentTypeFilter} onValueChange={setContentTypeFilter} />
+      <FilterTextInput
         value={projectIdFilter ?? ''}
-        onChange={(e) => setProjectIdFilter(e.target.value || null)}
-        className="h-9 w-40 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-        aria-label="Filter by project ID"
+        onValueChange={(v) => setProjectIdFilter(v || null)}
+        placeholder="Filter by project..."
+        ariaLabel="Filter by project ID"
       />
     </div>
+  )
+}
+
+interface FilterTextInputProps {
+  value: string
+  placeholder: string
+  ariaLabel: string
+  onValueChange: (value: string) => void
+  widthClass?: string
+}
+
+function FilterTextInput({
+  value,
+  placeholder,
+  ariaLabel,
+  onValueChange,
+  widthClass = 'w-40',
+}: FilterTextInputProps) {
+  return (
+    <input
+      type="text"
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onValueChange(e.target.value)}
+      className={`${TEXT_INPUT_CLASSES} ${widthClass}`}
+      aria-label={ariaLabel}
+    />
+  )
+}
+
+interface ArtifactTypeFilterProps {
+  value: ArtifactType | null
+  onValueChange: (value: ArtifactType | null) => void
+}
+
+function ArtifactTypeFilter({ value, onValueChange }: ArtifactTypeFilterProps) {
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => {
+        const next = e.target.value
+        if (!next) {
+          onValueChange(null)
+          return
+        }
+        if (ARTIFACT_TYPE_VALUES.includes(next as ArtifactType)) {
+          onValueChange(next as ArtifactType)
+        }
+      }}
+      className={SELECT_CLASSES}
+      aria-label="Filter by type"
+    >
+      <option value="">All types</option>
+      {ARTIFACT_TYPE_VALUES.map((t) => (
+        <option key={t} value={t}>
+          {formatLabel(t)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+interface ContentTypeFilterProps {
+  value: string | null
+  onValueChange: (value: string | null) => void
+}
+
+function ContentTypeFilter({ value, onValueChange }: ContentTypeFilterProps) {
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onValueChange(e.target.value || null)}
+      className={SELECT_CLASSES}
+      aria-label="Filter by content type"
+    >
+      <option value="">All content types</option>
+      {CONTENT_TYPE_OPTIONS.map((ct) => (
+        <option key={ct.value} value={ct.value}>
+          {ct.label}
+        </option>
+      ))}
+    </select>
   )
 }

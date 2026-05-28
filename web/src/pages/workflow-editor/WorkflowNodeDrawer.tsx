@@ -1,10 +1,43 @@
-import { useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { NODE_CONFIG_SCHEMAS, type ConfigField } from './node-config-schemas'
 import { ConditionExpressionBuilder } from './ConditionExpressionBuilder'
 import type { WorkflowNodeType } from '@/api/types/workflows'
+
+const SKIP_WRITE = Symbol('skip-write')
+
+type ParsedFieldValue = string | number | object
+
+function parseFieldValue(
+  key: string,
+  value: string,
+  fieldType: string | undefined,
+): ParsedFieldValue | typeof SKIP_WRITE {
+  if (key === 'input_bindings' || key === 'output_bindings') {
+    return parseJsonObjectField(value)
+  }
+  if (fieldType === 'number' && value !== '') {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : SKIP_WRITE
+  }
+  return value
+}
+
+function parseJsonObjectField(value: string): object | typeof SKIP_WRITE {
+  try {
+    const obj = JSON.parse(value) as unknown
+    if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+      return obj
+    }
+  } catch {
+    // Keep raw string so the user can continue editing.
+  }
+  // Don't write raw strings or arrays back into config; only successfully
+  // parsed plain objects are accepted.
+  return SKIP_WRITE
+}
 
 interface FieldRendererProps {
   field: ConfigField
@@ -73,38 +106,50 @@ export function WorkflowNodeDrawer({
   onConfigChange,
 }: WorkflowNodeDrawerProps) {
   const fields = nodeType ? NODE_CONFIG_SCHEMAS[nodeType] : []
+  // Per-field draft state: when ``parseFieldValue`` can't commit (incomplete
+  // JSON, partial numbers like ``-`` or ``1.``), we hold the raw input here
+  // so the controlled input keeps rendering what the user typed instead of
+  // snapping back to the last successfully-parsed value. As soon as the
+  // parse succeeds we clear the draft for that key and commit to config.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  // Clearing drafts when the drawer switches nodes prevents partial input
+  // from one node's field bleeding into another node's same-named field
+  // (e.g. typing ``{`` into ``input_bindings`` on node A, then opening
+  // node B, would otherwise carry that draft over). Render-phase detection
+  // matches the project's prop-change pattern (see
+  // pages/agents/useQualityScoreOverride.ts::useResetOnAgentChange) and
+  // sidesteps the set-state-in-effect lint rule.
+  const prevNodeIdRef = useRef(nodeId)
+  if (prevNodeIdRef.current !== nodeId) {
+    prevNodeIdRef.current = nodeId
+    setDrafts({})
+  }
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {
-      // JSON object fields: try parsing, keep raw string on failure.
-      if (key === 'input_bindings' || key === 'output_bindings') {
-        try {
-          const obj = JSON.parse(value) as unknown
-          if (
-            typeof obj === 'object' &&
-            obj !== null &&
-            !Array.isArray(obj)
-          ) {
-            onConfigChange({ ...config, [key]: obj })
-            return
-          }
-        } catch {
-          // Keep raw string so the user can continue editing.
-        }
-        // Don't write raw strings or arrays back into config;
-        // only successfully parsed plain objects are accepted.
+      const next = parseFieldValue(key, value, fieldType)
+      if (next === SKIP_WRITE) {
+        setDrafts((prev) => ({ ...prev, [key]: value }))
         return
       }
-
-      let parsed: string | number = value
-      if (fieldType === 'number' && value !== '') {
-        const num = Number(value)
-        if (Number.isFinite(num)) parsed = num
-        else return
-      }
-      onConfigChange({ ...config, [key]: parsed })
+      setDrafts((prev) => {
+        if (!(key in prev)) return prev
+        const rest = { ...prev }
+        delete rest[key]
+        return rest
+      })
+      onConfigChange({ ...config, [key]: next })
     },
     [config, onConfigChange],
+  )
+
+  const resolveFieldValue = useCallback(
+    (key: string): string => {
+      if (key in drafts) return drafts[key]!
+      return String(config[key] ?? '')
+    },
+    [drafts, config],
   )
 
   return (
@@ -124,7 +169,7 @@ export function WorkflowNodeDrawer({
           <FieldRenderer
             key={field.key}
             field={field}
-            value={String(config[field.key] ?? '')}
+            value={resolveFieldValue(field.key)}
             onChange={handleFieldChange}
           />
         ))}

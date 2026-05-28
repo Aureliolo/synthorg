@@ -1,5 +1,3 @@
-import { useCallback, useRef, useState } from 'react'
-
 import { MessageCircle, Send } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -7,18 +5,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { LiveRegion } from '@/components/ui/live-region'
 import { cn } from '@/lib/utils'
-import { useMetaStore } from '@/stores/meta'
 
-
-interface ChatMessage {
-  id: number
-  role: 'user' | 'assistant'
-  content: string
-  sources?: string[]
-  confidence?: number
-}
-
-// ── Extracted sub-component ─────────────────────────────────────
+import { useMetaChatState, type MetaChatMessage } from './useMetaChatState'
 
 interface ChatInputAreaProps {
   value: string
@@ -63,9 +51,11 @@ function ChatInputArea({
   )
 }
 
-// ── Message bubble ──────────────────────────────────────────────
+interface MessageBubbleProps {
+  msg: MetaChatMessage
+}
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+function MessageBubble({ msg }: MessageBubbleProps) {
   return (
     <div
       className={cn(
@@ -83,69 +73,10 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   )
 }
 
-// ── Main component ──────────────────────────────────────────────
-
 export function MetaChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const chatLoading = useMetaStore((s) => s.chatLoading)
-  const sendChat = useMetaStore((s) => s.sendChat)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const msgIdRef = useRef(0)
+  const ctrl = useMetaChatState()
 
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
-
-  const handleSend = useCallback(async () => {
-    const question = input.trim()
-    if (!question || chatLoading) return
-
-    setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), role: 'user', content: question },
-    ])
-
-    const response = await sendChat(question)
-    if (response) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextMsgId(),
-          role: 'assistant',
-          content: response.answer,
-          sources: response.sources,
-          confidence: response.confidence,
-        },
-      ])
-    } else {
-      const errMsg = useMetaStore.getState().error
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextMsgId(),
-          role: 'assistant',
-          content: errMsg
-            ? `Chat request failed: ${errMsg}`
-            : 'Failed to get a response. Please try again.',
-        },
-      ])
-    }
-
-    // Scroll to bottom after render.
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
-    })
-  }, [input, chatLoading, sendChat, nextMsgId])
-
-  const triggerSend = useCallback(
-    () => void handleSend(),
-    [handleSend],
-  )
-
-  if (messages.length === 0 && !chatLoading) {
+  if (ctrl.messages.length === 0 && !ctrl.chatLoading) {
     return (
       <div className="space-y-section-gap">
         <EmptyState
@@ -154,10 +85,10 @@ export function MetaChat() {
           description="Ask questions about signals, proposals, or the improvement pipeline."
         />
         <ChatInputArea
-          value={input}
-          onChange={setInput}
-          onSend={triggerSend}
-          disabled={chatLoading}
+          value={ctrl.input}
+          onChange={ctrl.setInput}
+          onSend={ctrl.triggerSend}
+          disabled={ctrl.chatLoading}
         />
       </div>
     )
@@ -166,14 +97,14 @@ export function MetaChat() {
   return (
     <div className="flex flex-col gap-4">
       <div
-        ref={scrollRef}
+        ref={ctrl.scrollRef}
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         <LiveRegion politeness="polite">
-          {messages.map((msg) => (
+          {ctrl.messages.map((msg) => (
             <MessageBubble key={msg.id} msg={msg} />
           ))}
-          {chatLoading && (
+          {ctrl.chatLoading && (
             <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
               Thinking...
             </div>
@@ -182,10 +113,10 @@ export function MetaChat() {
       </div>
 
       <ChatInputArea
-        value={input}
-        onChange={setInput}
-        onSend={triggerSend}
-        disabled={chatLoading}
+        value={ctrl.input}
+        onChange={ctrl.setInput}
+        onSend={ctrl.triggerSend}
+        disabled={ctrl.chatLoading}
       />
     </div>
   )

@@ -16,12 +16,30 @@ export type TaskNodeType = Node<TaskNodeData, 'task'>
 
 const VALID_PRIORITIES = new Set<string>(['critical', 'high', 'medium', 'low'])
 
-function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const title = (data.config?.title as string) || data.label
-  const rawPriority = data.config?.priority as string | undefined
-  const priority = rawPriority && VALID_PRIORITIES.has(rawPriority) ? (rawPriority as Priority) : undefined
-  const taskType = (data.config?.task_type as string) || undefined
+interface TaskNodeFields {
+  title: string
+  priority: Priority | undefined
+  taskType: string | undefined
+}
 
+function extractTaskNodeFields(data: TaskNodeData): TaskNodeFields {
+  const title = nonEmptyString(data.config?.title) ?? data.label
+  const priority = resolvePriority(data.config?.priority)
+  const taskType = nonEmptyString(data.config?.task_type)
+  return { title, priority, taskType }
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined
+}
+
+function resolvePriority(value: unknown): Priority | undefined {
+  if (typeof value !== 'string') return undefined
+  return VALID_PRIORITIES.has(value) ? (value as Priority) : undefined
+}
+
+function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
+  const { title, priority, taskType } = extractTaskNodeFields(data)
   return (
     <div
       className={cn(
@@ -33,7 +51,6 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
       aria-label={`Task: ${title}`}
     >
       <Handle type="target" position={Position.Top} className="bg-border-bright! size-1.5!" />
-
       <div className="flex items-start gap-2">
         <ClipboardList className="mt-0.5 size-3.5 shrink-0 text-accent" aria-hidden="true" />
         <div className="min-w-0 flex-1">
@@ -50,8 +67,11 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
           )}
         </div>
       </div>
-
-      <Handle type="source" position={Position.Bottom} className="bg-border-bright! size-1.5!" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="bg-border-bright! size-1.5!"
+      />
     </div>
   )
 }

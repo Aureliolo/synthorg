@@ -31,17 +31,30 @@ const COLUMNS: { key: SortKey; label: string; width: string; sortable: boolean }
   { key: 'cost', label: 'Cost', width: 'w-20', sortable: true },
 ]
 
-function compareTasks(a: DashboardTask, b: DashboardTask, key: SortKey, dir: SortDirection): number {
-  let cmp = 0
-  switch (key) {
-    case 'status': cmp = a.status.localeCompare(b.status); break
-    case 'title': cmp = a.title.localeCompare(b.title); break
-    case 'assignee': cmp = (a.assigned_to ?? '').localeCompare(b.assigned_to ?? ''); break
-    case 'priority': cmp = (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9); break
-    case 'type': cmp = a.type.localeCompare(b.type); break
-    case 'deadline': cmp = (a.deadline ?? '').localeCompare(b.deadline ?? ''); break
-    case 'cost': cmp = (a.cost ?? 0) - (b.cost ?? 0); break
-  }
+const SORT_EXTRACTORS: Readonly<
+  Record<SortKey, (task: DashboardTask) => string | number>
+> = {
+  status: (t) => t.status,
+  title: (t) => t.title,
+  assignee: (t) => t.assigned_to ?? '',
+  priority: (t) => PRIORITY_ORDER[t.priority] ?? 9,
+  type: (t) => t.type,
+  deadline: (t) => t.deadline ?? '',
+  cost: (t) => t.cost ?? 0,
+}
+
+function compareTasks(
+  a: DashboardTask,
+  b: DashboardTask,
+  key: SortKey,
+  dir: SortDirection,
+): number {
+  const aVal = SORT_EXTRACTORS[key](a)
+  const bVal = SORT_EXTRACTORS[key](b)
+  const cmp =
+    typeof aVal === 'string' && typeof bVal === 'string'
+      ? aVal.localeCompare(bVal)
+      : (aVal as number) - (bVal as number)
   return dir === 'desc' ? -cmp : cmp
 }
 
