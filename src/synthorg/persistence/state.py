@@ -47,3 +47,18 @@ def persistence_of(app_state: AppStateSliceMixin) -> PersistenceBackend:
     return require_service(
         app_state.slice(PersistenceStateSlice).backend, "Persistence"
     )
+
+
+def persistence_backend_label(app_state: AppStateSliceMixin) -> str:
+    """Return the persistence backend class name, or ``"unwired"`` if absent.
+
+    Diagnostic-only helper for log paths that must run even when the
+    backend slot is unwired (e.g. orchestrator-unavailable branches
+    that still want to record which backend was active). Unlike
+    :func:`persistence_of`, this never raises.
+
+    Returns:
+        Backend class name, or ``"unwired"`` when the backend is ``None``.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return type(backend).__name__ if backend is not None else "unwired"

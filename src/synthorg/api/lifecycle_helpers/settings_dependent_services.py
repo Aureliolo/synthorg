@@ -44,8 +44,8 @@ async def safe_compose_settings_dependent_services(
     """Run :func:`compose_settings_dependent_services` with redacted logging.
 
     Wrapper used by ``auto_wire_settings``: on success this is a thin
-    pass-through; on failure it emits a redacted error log (SEC-1) and
-    stops the dispatcher (no leaked resources) before re-raising so the
+    pass-through; on failure it emits a redacted error log and stops
+    the dispatcher (no leaked resources) before re-raising so the
     caller still aborts startup.
     """
     try:

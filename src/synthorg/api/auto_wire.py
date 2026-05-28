@@ -869,7 +869,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     # All fallible operations succeeded -- safe to mutate AppState. The
     # composer wires the settings service onto its slice and the derived
     # config-resolver / management / org-mutation / audit / preset
-    # services; the safe wrapper logs SEC-1-redacted on failure and
+    # services; the safe wrapper logs the failure with redaction and
     # stops the dispatcher before re-raising to prevent leaked tasks.
     from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
         safe_compose_settings_dependent_services,
