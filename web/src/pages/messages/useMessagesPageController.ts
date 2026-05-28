@@ -6,8 +6,10 @@ import { filterMessages, type MessagePageFilters } from '@/utils/messages'
 import {
   MESSAGE_PRIORITY_VALUES,
   MESSAGE_TYPE_VALUES,
-} from '@/api/types/enums'
-import type { Message, MessagePriority, MessageType } from '@/api/types/messages'
+  type Message,
+  type MessagePriority,
+  type MessageType,
+} from '@/api/types/messages'
 
 // Derive from the generated enum tuples so new MessageType / MessagePriority
 // members added to the Python source flow through automatically; the old
