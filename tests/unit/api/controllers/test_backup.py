@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar.exceptions import InternalServerException
-from litestar.testing import TestClient
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
@@ -38,7 +37,7 @@ from synthorg.backup.models import (
 from synthorg.backup.service import BackupService
 from synthorg.backup.state import BackupStateSlice
 from synthorg.core.domain_errors import ConflictError, ValidationError
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -401,9 +400,9 @@ class TestBackupGuards:
     """HTTP-level guard tests for backup controller access control."""
 
     @pytest.fixture(autouse=True)
-    def _mock_backup_service(
+    async def _mock_backup_service(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> Any:
         """Override the API-wide backup disable.
@@ -429,17 +428,17 @@ class TestBackupGuards:
             "synthorg.api.app.build_backup_service",
             lambda *_a, **_kw: mock_svc,
         )
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         old_slice = app_state.slice(BackupStateSlice)
         app_state.swap_slice(BackupStateSlice(service=mock_svc))
         yield
         app_state.swap_slice(old_slice)
 
-    def test_ceo_can_access(
+    async def test_ceo_can_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/admin/backups",
             headers=make_auth_headers("ceo"),
         )
@@ -450,12 +449,12 @@ class TestBackupGuards:
         "role",
         ["manager", "board_member", "pair_programmer", "observer"],
     )
-    def test_non_admin_blocked(
+    async def test_non_admin_blocked(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         role: str,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/admin/backups",
             headers=make_auth_headers(role),
         )
@@ -466,12 +465,12 @@ class TestBackupGuards:
 class TestBackupPathParamValidation:
     """Path parameter validation via Litestar Parameter constraints."""
 
-    def test_oversized_backup_id_rejected(
+    async def test_oversized_backup_id_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/admin/backups/{long_id}",
             headers=make_auth_headers("ceo"),
         )
