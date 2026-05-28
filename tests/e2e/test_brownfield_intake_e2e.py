@@ -20,8 +20,7 @@ is a local git repo; knowledge ingestion is mocked).
 
 import asyncio
 import os
-import sys
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,23 +84,6 @@ from tests.unit.api.fakes import FakePersistenceBackend
 pytestmark = pytest.mark.e2e
 
 _PROJECT = "acquired-co"
-
-
-if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
-
-    def pytest_asyncio_loop_factories(
-        config: pytest.Config,
-        item: pytest.Item,
-    ) -> Mapping[str, Callable[[], asyncio.AbstractEventLoop]]:
-        """Use ``ProactorEventLoop`` so the real git seed can spawn.
-
-        The unit-tier root pins ``SelectorEventLoop`` on Windows, which
-        cannot drive ``asyncio.create_subprocess_exec`` (no IOCP
-        integration means ``CreateProcessW`` cannot be wired into the
-        loop) -- and the embedded git backend's seed depends on it.
-        Mirrors the git-backend unit conftest.
-        """
-        return {"proactor": asyncio.ProactorEventLoop}
 
 
 class _StopStrategy:

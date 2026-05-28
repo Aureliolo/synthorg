@@ -694,7 +694,7 @@ backends.
 `tests/conftest.py` (one file at the top level) hosts cross-suite
 fixtures: Hypothesis profile selection, the `FakeClock` factory, the
 repo-root resolver. Per-domain `tests/<area>/conftest.py` files host
-fixtures local to that suite (controller fixtures under `tests/api/`,
+fixtures local to that suite (controller fixtures under `tests/unit/api/`,
 persistence-conformance fixtures under `tests/conformance/persistence/`,
 etc.). Per-tier loop selection on Windows uses the
 `pytest_asyncio_loop_factories` pluggy hook in each tier's

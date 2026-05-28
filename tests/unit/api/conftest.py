@@ -90,10 +90,13 @@ _auth_mod._hasher = argon2.PasswordHasher(
 
 # pytest-asyncio loops in the unit tier run under ``SelectorEventLoop``
 # via the ``pytest_asyncio_loop_factories`` hook in
-# ``tests/unit/conftest.py`` (Windows-only), avoiding the Python 3.14
-# ``ProactorEventLoop`` IOCP teardown race that otherwise segfaults
-# the xdist worker ("node down") whenever an ``api/app.py`` edit
-# widens the affected-tests pre-push selection to the whole api tree.
+# ``tests/unit/conftest.py`` (Windows-only). The hook is the canonical
+# seam for per-tier loop selection: it makes the choice explicit (so
+# subprocess-driving tiers can shadow it with ``ProactorEventLoop``)
+# and keeps the unit tier on a consistent loop type regardless of the
+# Python default. The IOCP teardown race that originally motivated
+# pinning could not be reproduced under ``--count=2``, but pinning
+# remains as the per-tier seam for consistency.
 
 
 @pytest.fixture(scope="session", autouse=True)
