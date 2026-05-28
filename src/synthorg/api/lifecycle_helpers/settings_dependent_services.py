@@ -10,12 +10,13 @@ service is injected) and at startup (when the settings service is
 auto-wired) to keep them composed.
 """
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.budget.state import BudgetStateSlice
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.management.audit_service import ProviderAuditService
@@ -29,9 +30,37 @@ from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+async def safe_compose_settings_dependent_services(
+    app_state: AppState,
+    settings_service: SettingsService | None,
+    dispatcher: SettingsChangeDispatcher | None,
+) -> None:
+    """Run :func:`compose_settings_dependent_services` with redacted logging.
+
+    Wrapper used by ``auto_wire_settings``: on success this is a thin
+    pass-through; on failure it emits a redacted error log (SEC-1) and
+    stops the dispatcher (no leaked resources) before re-raising so the
+    caller still aborts startup.
+    """
+    try:
+        compose_settings_dependent_services(app_state, settings_service)
+    except Exception as exc:
+        log_exception_redacted(
+            logger,
+            API_APP_STARTUP,
+            exc,
+            note="Failed to compose settings-dependent services",
+        )
+        if dispatcher is not None:
+            with contextlib.suppress(Exception):
+                await dispatcher.stop()
+        raise
 
 
 def compose_settings_dependent_services(
@@ -85,7 +114,7 @@ def compose_settings_dependent_services(
     )
     preset_override_service = (
         PresetOverrideService(preset_override_repo, audit_service=audit_service)
-        if preset_override_repo is not None
+        if preset_override_repo is not None and audit_service is not None
         else None
     )
     management = ProviderManagementService(

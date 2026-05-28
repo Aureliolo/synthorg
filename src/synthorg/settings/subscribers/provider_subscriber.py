@@ -117,6 +117,11 @@ class ProviderSettingsSubscriber:
                 new_routing,
                 dict(config.providers),
             )
+            from synthorg.providers.state import (  # noqa: PLC0415
+                ProvidersStateSlice,
+            )
+
+            self._app_state.wire(ProvidersStateSlice, model_router=new_router)
         except Exception as exc:
             reraise_critical(exc)
             logger.error(
@@ -127,6 +132,3 @@ class ProviderSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
-
-        self._app_state.wire(ProvidersStateSlice, model_router=new_router)

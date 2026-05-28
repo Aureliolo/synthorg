@@ -346,8 +346,13 @@ async def wire_real_brownfield_entry(
     """
     workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
     knowledge_service = app_state.slice(KnowledgeStateSlice).service
+    # Persistence must be connected too: the adapter pulls
+    # ``codebase_structure_maps`` off the backend unconditionally, so
+    # an unwired backend would raise from ``persistence_of(app_state)``
+    # below and abort boot instead of the documented logged no-op.
     if (
         app_state.slice(EngineStateSlice).work_pipeline is None
+        or app_state.slice(PersistenceStateSlice).backend is None
         or workspace_service is None
         or knowledge_service is None
     ):
@@ -355,7 +360,10 @@ async def wire_real_brownfield_entry(
             BROWNFIELD_ENTRY_WIRED,
             service="brownfield_entry_adapter",
             mode="disabled",
-            note="missing work pipeline / workspace service / knowledge service",
+            note=(
+                "missing work pipeline / persistence / workspace service "
+                "/ knowledge service"
+            ),
         )
         return
     from synthorg.engine.brownfield.scanner import (  # noqa: PLC0415

@@ -75,7 +75,7 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
-from synthorg.persistence.state import persistence_of
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.definitions.memory import (
     FINE_TUNE_DEFAULT_BATCH_SIZE,
     FINE_TUNE_MIN_DOCS_RECOMMENDED,
@@ -90,6 +90,21 @@ if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
+
+
+def _persistence_backend_label(app_state: AppState) -> str:
+    """Return the persistence backend class name, or ``"unwired"`` if absent.
+
+    Used by the orchestrator-unavailable log paths so the diagnostic
+    log line never itself raises ``ServiceUnavailableError`` from a
+    bare ``persistence_of(app_state)`` call when persistence is not
+    yet wired (the orchestrator and persistence both come up lazily).
+
+    Returns:
+        Backend class name, or ``"unwired"`` when persistence is absent.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return type(backend).__name__ if backend is not None else "unwired"
 
 
 def _build_memory_service(
@@ -352,7 +367,7 @@ class MemoryAdminController(Controller):
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="start",
                 reason="orchestrator_not_configured",
-                backend=type(persistence_of(app_state)).__name__,
+                backend=_persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
         try:
@@ -419,7 +434,7 @@ class MemoryAdminController(Controller):
                 operation="resume",
                 run_id=run_id,
                 reason="orchestrator_not_configured",
-                backend=type(persistence_of(app_state)).__name__,
+                backend=_persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
         try:
@@ -495,7 +510,7 @@ class MemoryAdminController(Controller):
                 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
                 operation="cancel",
                 reason="orchestrator_not_configured",
-                backend=type(persistence_of(app_state)).__name__,
+                backend=_persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
         await orchestrator.cancel()

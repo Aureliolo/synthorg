@@ -48,7 +48,6 @@ from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.state import (
     EngineStateSlice,
-    task_board_entry_adapter_of,
     task_engine_of,
 )
 from synthorg.observability import (
@@ -296,7 +295,13 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
-        if app_state.slice(EngineStateSlice).task_board_entry_adapter is None:
+        # Read the adapter once and reuse the same instance for the
+        # presence check and the spawn; otherwise a concurrent unwire/
+        # rewire between the check and the second ``*_of(app_state)``
+        # lookup could bypass the rejection path or surface an
+        # unexpected ``ServiceUnavailableError``.
+        adapter = app_state.slice(EngineStateSlice).task_board_entry_adapter
+        if adapter is None:
             logger.warning(
                 API_TASK_BOARD_REJECTED_NO_ADAPTER,
                 title=data.title,
@@ -321,7 +326,6 @@ class TaskController(Controller):
             estimated_complexity=data.estimated_complexity,
         )
         sim_state = client_simulation_state_of(app_state)
-        adapter = task_board_entry_adapter_of(app_state)
         _spawn_task_board_pipeline(
             sim_state=sim_state,
             adapter=adapter,

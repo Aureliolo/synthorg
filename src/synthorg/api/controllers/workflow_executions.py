@@ -38,7 +38,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXECUTION_USERNAME_FALLBACK,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -86,15 +86,11 @@ async def _build_service(state: State) -> WorkflowExecutionService:
     Returns:
         ``WorkflowExecutionService`` instance.
     """
-    from synthorg.settings.bridge_configs import (  # noqa: PLC0415
-        EngineBridgeConfig,
-    )
-
     app_state = state.app_state
-    if app_state.slice(SettingsStateSlice).config_resolver is not None:
-        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
-    else:
-        engine_bridge = EngineBridgeConfig()
+    # Resolver is mandatory: silently falling back to ``EngineBridgeConfig()``
+    # would hide a wiring failure and run executions with the code default
+    # instead of the resolved DB / env value (Cat-1 precedence).
+    engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
     return WorkflowExecutionService(
         definition_repo=persistence_of(app_state).workflow_definitions,
         execution_repo=persistence_of(app_state).workflow_executions,

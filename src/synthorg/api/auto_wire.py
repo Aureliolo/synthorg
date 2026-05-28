@@ -12,7 +12,6 @@ On-startup: creates SettingsService + dispatcher after persistence
 connects and migrations complete.
 """
 
-import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -870,18 +869,13 @@ async def auto_wire_settings(  # noqa: PLR0913
     # All fallible operations succeeded -- safe to mutate AppState. The
     # composer wires the settings service onto its slice and the derived
     # config-resolver / management / org-mutation / audit / preset
-    # services. On failure, stop the dispatcher to prevent leaks.
-    try:
-        from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
-            compose_settings_dependent_services,
-        )
+    # services; the safe wrapper logs SEC-1-redacted on failure and
+    # stops the dispatcher before re-raising to prevent leaked tasks.
+    from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
+        safe_compose_settings_dependent_services,
+    )
 
-        compose_settings_dependent_services(app_state, settings_svc)
-    except Exception:
-        if dispatcher is not None:
-            with contextlib.suppress(Exception):
-                await dispatcher.stop()
-        raise
+    await safe_compose_settings_dependent_services(app_state, settings_svc, dispatcher)
     logger.info(API_SERVICE_AUTO_WIRED, service="settings_service")
     return dispatcher
 

@@ -174,9 +174,14 @@ async def _resolve_snapshots(
     """
     if not agent_ids:
         return ()
-    tracker = require_service(
-        app_state.slice(HrStateSlice).performance_tracker, "Performance Tracker"
-    )
+    # Performance tracker is optional: ``assemble_department_health``
+    # only catches ``ExceptionGroup`` for snapshot resolution, so a
+    # ``ServiceUnavailableError`` from ``require_service`` would abort
+    # the endpoint instead of returning the documented empty-snapshot
+    # fallback.  Treat an unwired tracker as "no snapshots available".
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is None:
+        return ()
     snapshots = await tracker.get_snapshots(
         tuple(NotBlankStr(a) for a in agent_ids),
     )
@@ -422,10 +427,15 @@ async def assemble_department_health(
     now = datetime.now(UTC)
     seven_days_ago = now - timedelta(days=7)
 
-    cost_tracker = require_service(
-        app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
-    )
     try:
+        # Resolve ``cost_tracker`` inside the try so an unwired tracker
+        # takes the documented degraded-fallback path (zeroed metrics)
+        # rather than aborting the whole request.  Both the unwired-
+        # service case and the TaskGroup-fan-out failure case feed into
+        # the same degraded response below.
+        cost_tracker = require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        )
         async with asyncio.TaskGroup() as tg:
             t_active = tg.create_task(
                 _resolve_active_count(app_state, dept_name),
@@ -448,6 +458,14 @@ async def assemble_department_health(
             endpoint="departments.health",
             department=dept_name,
             error_count=len(eg.exceptions),
+        )
+        return _build_degraded_health(dept_name, agent_count, now, currency=currency)
+    except ServiceUnavailableError as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.health",
+            department=dept_name,
+            error_type=type(exc).__name__,
         )
         return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 

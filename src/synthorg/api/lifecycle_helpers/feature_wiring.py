@@ -429,6 +429,13 @@ async def _wire_chief_of_staff_proposer(
             "conversational-intake approvals. Switch the backend to "
             "Postgres, or keep ApprovalStore in-memory on SQLite."
         )
+        logger.error(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="blocked unsupported proposer configuration",
+            backend_name=persistence.backend_name,
+            approval_store_type=type(effective_approval_store).__name__,
+        )
         raise ServiceUnavailableError(msg)
     proposer = build_chief_of_staff_proposer(
         meta_self_improvement.chief_of_staff,

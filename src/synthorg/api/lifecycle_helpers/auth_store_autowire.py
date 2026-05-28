@@ -38,17 +38,29 @@ async def wire_auth_stores(
     Loads the revoked-session and locked-account state into memory as
     part of wiring so the auth middleware sees the durable state from
     the first request. Lockout wiring is best-effort (logged, non-fatal)
-    so a lockout-policy build failure does not abort startup.
+    so a lockout-policy build failure does not abort startup; session
+    and refresh-token wiring failures abort startup so the API never
+    serves requests with partially-wired auth.
     """
     if app_state.slice(ApiCoreStateSlice).session_store is None:
-        session_store: SessionRepository = persistence.sessions
-        await session_store.load_revoked()
-        app_state.wire(ApiCoreStateSlice, session_store=session_store)
-        logger.info(
-            API_APP_STARTUP,
-            note="Session store initialized",
-            backend=type(session_store).__name__,
-        )
+        try:
+            session_store: SessionRepository = persistence.sessions
+            await session_store.load_revoked()
+            app_state.wire(ApiCoreStateSlice, session_store=session_store)
+            logger.info(
+                API_APP_STARTUP,
+                note="Session store initialized",
+                backend=type(session_store).__name__,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            log_exception_redacted(
+                logger,
+                API_APP_STARTUP,
+                exc,
+                note="Session store initialization failed",
+            )
+            raise
 
     auth_cfg = app_state.config.api.auth if app_state.config is not None else None
     if (
@@ -90,3 +102,4 @@ async def wire_auth_stores(
                 exc,
                 note="Refresh-token store initialization failed",
             )
+            raise

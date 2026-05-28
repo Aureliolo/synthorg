@@ -385,6 +385,15 @@ def feature_directories() -> dict[str, str]:
     directories: dict[str, str] = {}
     for module_name in _iter_feature_module_names():
         feature = _require_feature_manifest(module_name)
+        if feature.name in directories:
+            logger.error(
+                API_APP_STARTUP,
+                action="feature_dependency_invalid",
+                reason="duplicate_name",
+                feature=feature.name,
+            )
+            msg = f"duplicate feature name: {feature.name!r}"
+            raise FeatureDependencyError(msg)
         package_parts = module_name.split(".")[:-1]
         directories[feature.name] = "src/" + "/".join(package_parts)
     return directories

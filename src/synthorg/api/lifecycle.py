@@ -358,12 +358,15 @@ async def _wire_ontology_service(
     app_state: AppState,
 ) -> None:
     """Wire ontology after persistence connects; no-op if already wired."""
+    # Short-circuit BEFORE calling ``auto_wire_ontology``: the factory
+    # allocates repositories and caches that we'd otherwise drop without
+    # cleanup on a lifespan re-entry when the slice is already wired.
+    if app_state.slice(OntologyStateSlice).service is not None:
+        return
     from synthorg.api.auto_wire import auto_wire_ontology  # noqa: PLC0415
 
     service = await auto_wire_ontology(app_state.config, persistence)
     if service is not None:
-        if app_state.slice(OntologyStateSlice).service is not None:
-            return
         app_state.wire(OntologyStateSlice, service=service)
 
 
