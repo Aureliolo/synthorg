@@ -148,9 +148,9 @@ class TestDiscoverFeatures:
     """End-to-end discovery walk over the live ``src/synthorg/`` tree."""
 
     def test_returns_at_least_thirty_feature_manifests(self) -> None:
-        # The post-#2149 tree carries 32 feature directories; lock a
-        # floor that catches accidental discovery regressions without
-        # tying the test to the exact count.
+        # The live tree carries one feature per slice-bearing directory;
+        # lock a conservative floor so accidental discovery regressions
+        # fail without coupling the test to the exact current count.
         features = discover_features(force=True)
         assert len(features) >= 30
 
