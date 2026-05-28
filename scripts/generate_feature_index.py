@@ -16,7 +16,6 @@ Run from the repo root::
     uv run python scripts/generate_feature_index.py
 """
 
-import importlib
 import json
 import sys
 import tempfile
@@ -32,65 +31,18 @@ from _module_size_lib import (
 )
 
 from synthorg._core.features import (
-    FeatureModule,
     discover_features,
     feature_directories,
 )
 from synthorg.core.feature_map import (
     FeatureIndex,
-    FeatureMap,
+    build_feature_map,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_ROOT = _REPO_ROOT / "src" / "synthorg"
 _DATA_DIR = _REPO_ROOT / "data"
 _SCHEMA_VERSION = 1
-
-
-def _package_name(directory: str) -> str:
-    """Convert a repo-relative ``src/...`` directory to a dotted package name."""
-    return ".".join(Path(directory).parts[1:])
-
-
-def _protocol_exports(directory: str) -> tuple[str, ...]:
-    """Return the runtime-checkable Protocol names a feature package exports."""
-    try:
-        package = importlib.import_module(_package_name(directory))
-    except ImportError:
-        return ()
-    exported: tuple[str, ...] = tuple(getattr(package, "__all__", ()))
-    return tuple(
-        name
-        for name in exported
-        if getattr(getattr(package, name, None), "_is_protocol", False)
-    )
-
-
-def _state_slice_fields(feature: FeatureModule) -> tuple[str, ...]:
-    """Return the field names declared on the feature's state slice."""
-    slice_type = feature.state_slice
-    if slice_type is None:
-        return ()
-    return tuple(slice_type.model_fields)
-
-
-def _build_feature_map(feature: FeatureModule, directory: str) -> FeatureMap:
-    """Assemble a :class:`FeatureMap` from a discovered manifest."""
-    namespace = feature.settings_namespace
-    mcp_tool_names = tuple(
-        name for handler in feature.mcp_handlers for name in handler.tool_names
-    )
-    return FeatureMap(
-        name=feature.name,
-        directory=directory,
-        settings_namespace=namespace.value if namespace is not None else None,
-        protocol_exports=_protocol_exports(directory),
-        controllers=tuple(controller.__name__ for controller in feature.controllers),
-        mcp_tool_names=mcp_tool_names,
-        ghost_wired_symbols=feature.ghost_wired_symbols,
-        state_slice_fields=_state_slice_fields(feature),
-        depends_on=feature.depends_on,
-    )
 
 
 def build_feature_index() -> FeatureIndex:
@@ -106,7 +58,7 @@ def build_feature_index() -> FeatureIndex:
     directories = feature_directories()
     features_by_name = sorted(discover_features(force=True), key=lambda f: f.name)
     maps = tuple(
-        _build_feature_map(feature, directories.get(feature.name, ""))
+        build_feature_map(feature, directories.get(feature.name, ""))
         for feature in features_by_name
     )
     return FeatureIndex(

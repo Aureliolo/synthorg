@@ -150,3 +150,30 @@ def test_gate_treats_repo_root_as_passing(tmp_path: Path) -> None:
     (src / "synthorg").mkdir(parents=True)
     findings = _GATE.check(src_root=src)
     assert findings == []
+
+
+def test_gate_skips_state_py_with_syntax_error(tmp_path: Path) -> None:
+    """A non-parseable ``state.py`` is treated as 'no slice' (graceful skip).
+
+    The scan walks every ``state.py`` under ``src/synthorg/`` to find
+    slice-bearing directories. A single malformed file should not abort
+    the walk; the directory simply does not look like a feature dir.
+    """
+    src = tmp_path / "src"
+    pkg = src / "synthorg" / "borked"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "state.py").write_text("def broken( :\n    pass\n", encoding="utf-8")
+    findings = _GATE.check(src_root=src)
+    assert findings == []
+
+
+def test_gate_skips_state_py_with_non_utf8_bytes(tmp_path: Path) -> None:
+    """A non-UTF-8 ``state.py`` is treated as 'no slice' (graceful skip)."""
+    src = tmp_path / "src"
+    pkg = src / "synthorg" / "binary_blob"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "state.py").write_bytes(b"\xff\xfe not utf-8 \x00\n")
+    findings = _GATE.check(src_root=src)
+    assert findings == []

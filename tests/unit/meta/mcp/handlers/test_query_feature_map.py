@@ -73,3 +73,24 @@ async def test_query_args_model_rejects_blank_name() -> None:
 
     with pytest.raises(ValidationError):
         MetaQueryFeatureMapArgs(name="")
+
+
+async def test_query_returns_error_envelope_when_discovery_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A discovery-time failure surfaces as a status="error" MCP envelope.
+
+    Mocks ``discover_features`` to raise ``FeatureDependencyError`` (the
+    typed error class the substrate exposes when the dependency graph is
+    invalid); the handler's outer try/except must catch this, log
+    handler_invoke_failed, and return an error envelope (not crash).
+    """
+    from synthorg._core import features as features_module
+
+    def _raise(**_: object) -> None:
+        msg = "fake cycle"
+        raise features_module.FeatureDependencyError(msg)
+
+    monkeypatch.setattr(features_module, "discover_features", _raise)
+    envelope = await _invoke({})
+    assert envelope["status"] == "error"

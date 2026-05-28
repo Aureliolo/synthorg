@@ -70,13 +70,15 @@ slice for every discovered feature at boot.
 Every directory under `src/synthorg/` whose `state.py` (or peer
 `*_state.py` for the api-core case) declares a `BaseFeatureStateSlice`
 subclass carries a sibling `feature.py` exposing a module-level
-`FEATURE: FeatureModule`. The post-#2149 tree has 32 such directories
-(`a2a`, `api_core`, `approval`, `backup`, `budget`, `client`,
-`charter`, `cockpit`, `communication`, `coordination`, `docs`,
-`engine`, `facades`, `hr`, `integrations`, `knowledge`, `memory`,
-`meta`, `notifications`, `observability`, `ontology`, `organization`,
+`FEATURE: FeatureModule`. The live tree carries 32 feature manifests,
+most under top-level packages (`a2a`, `api_core`, `approval`, `backup`,
+`budget`, `client`, `communication`, `coordination`, `docs`, `engine`,
+`facades`, `hr`, `integrations`, `knowledge`, `memory`, `meta`,
+`notifications`, `observability`, `ontology`, `organization`,
 `persistence`, `providers`, `research`, `runtime`, `security`,
-`settings`, `telemetry`, `tools`, `toolsmith`, `workspace`).
+`settings`, `telemetry`, `tools`) and the rest nested under those
+parents (`meta/charter`, `meta/toolsmith`, `engine/cockpit`,
+`engine/workspace`).
 
 Each `feature.py` carries `# module-kind: feature` on the first
 non-blank line so the module-size budget gate caps it at 100 LOC.

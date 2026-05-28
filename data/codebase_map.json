@@ -3222,7 +3222,7 @@
     },
     {
       "kind": "code",
-      "loc": 105,
+      "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/core/feature_map.py",
       "owning_feature": null
@@ -9522,7 +9522,7 @@
     },
     {
       "kind": "code",
-      "loc": 321,
+      "loc": 322,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/_simple_args.py",
       "owning_feature": "meta"
@@ -9823,7 +9823,7 @@
     },
     {
       "kind": "code",
-      "loc": 288,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/meta.py",
       "owning_feature": "meta"

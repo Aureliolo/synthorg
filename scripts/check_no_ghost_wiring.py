@@ -232,8 +232,15 @@ def _claimed_symbols_from_features(repo_root: Path) -> frozenset[str]:
             tree = ast.parse(
                 feature_py.read_text(encoding="utf-8"), filename=str(feature_py)
             )
-        except OSError, SyntaxError, UnicodeDecodeError:
-            continue
+        except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+            # A feature.py that does not parse silently dropping its claims
+            # would mask real ghost-wiring violations: a symbol legitimately
+            # claimed there would look orphan to this gate. Re-raise with the
+            # offending file in the message so the operator can fix the root
+            # cause; check_feature_manifest reports the same file in its own
+            # findings, but failing fast here keeps the parity diagnosis honest.
+            msg = f"{feature_py}: {exc}"
+            raise OSError(msg) from exc
         for value in _ghost_wired_kwarg_values(tree):
             symbols.update(value)
     return frozenset(symbols)

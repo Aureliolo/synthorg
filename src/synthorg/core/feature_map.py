@@ -15,6 +15,8 @@ models EXTERNAL brownfield-imported codebases; :class:`FeatureIndex` models
 the INTERNAL SynthOrg surface. Different concerns, sibling files.
 """
 
+import importlib
+from pathlib import Path
 from typing import Self
 
 from pydantic import (
@@ -25,6 +27,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg._core.features import FeatureModule  # noqa: TC001
 from synthorg.core.codebase_structure_map import RelPath  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -122,3 +125,72 @@ class FeatureIndex(BaseModel):
                 raise ValueError(msg)
             seen.add(feature.name)
         return self
+
+
+def protocol_exports(directory: str) -> tuple[str, ...]:
+    """Return the ``@runtime_checkable`` Protocol names a feature package exports.
+
+    Imports the package and walks its ``__all__``, returning only names whose
+    referent is a runtime-checkable Protocol (detected via the private
+    ``_is_protocol`` attribute typing adds to Protocol subclasses).
+
+    Args:
+        directory: Repository-relative feature directory (e.g.
+            ``src/synthorg/meta/charter``). The leading ``src/`` is stripped
+            and the remainder converted to a dotted package name.
+
+    Returns:
+        Tuple of exported Protocol class names. Empty when the package fails
+        to import (best-effort: missing optional deps would otherwise block
+        the whole index build).
+    """
+    package_name = ".".join(Path(directory).parts[1:])
+    try:
+        package = importlib.import_module(package_name)
+    except ImportError:
+        return ()
+    exported: tuple[str, ...] = tuple(getattr(package, "__all__", ()))
+    return tuple(
+        name
+        for name in exported
+        if getattr(getattr(package, name, None), "_is_protocol", False)
+    )
+
+
+def build_feature_map(feature: FeatureModule, directory: str) -> FeatureMap:
+    """Assemble a :class:`FeatureMap` from one discovered manifest.
+
+    Single source of truth used by both ``scripts/generate_feature_index.py``
+    (writes ``data/feature_index.json``) and the
+    ``synthorg_meta_query_feature_map`` MCP handler (returns the same shape
+    in-memory). Keeping the assembly here guarantees the persisted artefact
+    and the live MCP response cannot drift.
+
+    Args:
+        feature: A discovered :class:`FeatureModule` (typically a frozen
+            :class:`~synthorg._core.features.FeatureManifest`).
+        directory: The repo-relative directory the feature lives in (from
+            :func:`synthorg._core.features.feature_directories`).
+
+    Returns:
+        Frozen :class:`FeatureMap` ready to drop into a :class:`FeatureIndex`.
+    """
+    namespace = feature.settings_namespace
+    mcp_tool_names = tuple(
+        name for handler in feature.mcp_handlers for name in handler.tool_names
+    )
+    slice_type = feature.state_slice
+    state_slice_fields = (
+        tuple(slice_type.model_fields) if slice_type is not None else ()
+    )
+    return FeatureMap(
+        name=feature.name,
+        directory=directory,
+        settings_namespace=namespace.value if namespace is not None else None,
+        protocol_exports=protocol_exports(directory),
+        controllers=tuple(controller.__name__ for controller in feature.controllers),
+        mcp_tool_names=mcp_tool_names,
+        ghost_wired_symbols=feature.ghost_wired_symbols,
+        state_slice_fields=state_slice_fields,
+        depends_on=feature.depends_on,
+    )

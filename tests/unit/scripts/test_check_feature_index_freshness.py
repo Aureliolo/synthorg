@@ -69,3 +69,42 @@ def test_gate_fails_on_stale_feature_index(tmp_path: Path) -> None:
     )
     findings = _GATE.check(repo_root=fake)
     assert findings, "stale committed index must fail"
+
+
+def test_gate_fails_when_committed_index_is_not_a_json_object(tmp_path: Path) -> None:
+    """A non-object JSON body (array, string, scalar) fails with a clean message.
+
+    Exercises the ``isinstance(committed_index_raw, dict)`` guard so a
+    truncated or accidentally-rewritten artefact gets a specific
+    "not a JSON object (corrupt)" finding rather than a crash later in the
+    diff comparison path. Uses a stub generator that returns a valid index
+    object so the gate progresses past the loader and into the diff stage.
+    """
+    fake = tmp_path / "fake_repo"
+    (fake / "data").mkdir(parents=True)
+    (fake / "data" / "feature_index.json").write_text("[]", encoding="utf-8")
+    (fake / "data" / "codebase_map.json").write_text(
+        json.dumps({"modules": []}), encoding="utf-8"
+    )
+    (fake / "scripts").mkdir(parents=True)
+    (fake / "scripts" / "generate_feature_index.py").write_text(
+        # Minimal stand-in: matches the generator's public surface but
+        # returns a dict-shaped FeatureIndex dump and an empty module map.
+        """
+class _StubIndex:
+    @staticmethod
+    def model_dump(mode="json"):
+        return {"schema_version": 1, "features": [], "generated_at": "x"}
+
+
+def build_feature_index():
+    return _StubIndex()
+
+
+def build_codebase_map():
+    return []
+""",
+        encoding="utf-8",
+    )
+    findings = _GATE.check(repo_root=fake)
+    assert any("corrupt" in finding for finding in findings)

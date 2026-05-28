@@ -65,20 +65,23 @@ Every other piece of application state belongs in a feature state slice
 def extract_slots(state_py: Path) -> frozenset[str]:
     """Extract the ``__slots__`` declared on :class:`AppState`.
 
-    AST-only parse; returns the empty frozenset when *state_py* has no
-    ``AppState`` class or its ``__slots__`` is missing / not a literal
-    tuple of strings.
+    AST-only parse. Returns the empty frozenset only when *state_py* has no
+    ``AppState`` class or its ``__slots__`` is missing / not a literal tuple
+    of strings; parse failures on the target file propagate so the operator
+    sees the real cause rather than a misleading "slots changed" finding.
 
     Args:
         state_py: Path to the module declaring ``AppState``.
 
     Returns:
         Set of slot names AppState declares.
+
+    Raises:
+        OSError: Cannot read *state_py*.
+        SyntaxError: *state_py* is not valid Python.
+        UnicodeDecodeError: *state_py* is not valid UTF-8.
     """
-    try:
-        tree = ast.parse(state_py.read_text(encoding="utf-8"), filename=str(state_py))
-    except OSError, SyntaxError, UnicodeDecodeError:
-        return frozenset()
+    tree = ast.parse(state_py.read_text(encoding="utf-8"), filename=str(state_py))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == _APP_STATE_CLASS:
             return _slots_from_class(node)

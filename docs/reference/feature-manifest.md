@@ -141,6 +141,12 @@ at boot. For example, `build_coordinator` is defined in
 `engine/coordination/factory.py` and called from
 `workers.runtime_builder`; the claim is on the `engine` manifest.
 
+The parity check is AST-driven, so `ghost_wired_symbols=(...)` MUST
+hold string literals, not module-level constants. Writing
+`ghost_wired_symbols=(MY_SYM,)` (a `Name` node) silently drops the
+claim from the gate's union; the gate would then incorrectly flag
+the symbol as orphan. Always use string literals.
+
 ## Discovering features at runtime
 
 `synthorg._core.features.discover_features()` walks the filesystem for
