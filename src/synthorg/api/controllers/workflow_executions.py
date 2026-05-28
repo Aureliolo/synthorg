@@ -78,10 +78,11 @@ async def _build_service(state: State) -> WorkflowExecutionService:
 
     Resolves ``engine.max_subworkflow_depth`` through the engine bridge
     config so the service inherits the operator's settings (DB > env >
-    YAML > code default) on every request. The ``config_resolver`` slot
-    is mandatory: an unwired resolver raises a 503 instead of silently
-    falling back to the Pydantic default, so a wiring failure surfaces
-    immediately rather than running executions with code defaults.
+    code default, via :class:`SettingsService` / :class:`ConfigResolver`)
+    on every request. The ``config_resolver`` slot is mandatory: an
+    unwired resolver raises a 503 instead of silently falling back to
+    the Pydantic default, so a wiring failure surfaces immediately
+    rather than running executions with code defaults.
 
     Returns:
         ``WorkflowExecutionService`` instance.

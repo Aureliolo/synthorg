@@ -10,7 +10,6 @@ service is injected) and at startup (when the settings service is
 auto-wired) to keep them composed.
 """
 
-import contextlib
 from typing import TYPE_CHECKING
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -64,8 +63,13 @@ async def safe_compose_settings_dependent_services(
             note="Failed to compose settings-dependent services",
         )
         if dispatcher is not None:
-            with contextlib.suppress(Exception):
+            # Ordinary stop failures are best-effort (we're already on
+            # the failure path); critical errors propagate so the
+            # asyncio loop's handler still sees them.
+            try:
                 await dispatcher.stop()
+            except Exception as stop_exc:
+                reraise_critical(stop_exc)
         raise
 
 
