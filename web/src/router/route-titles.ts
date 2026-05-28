@@ -61,6 +61,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.OAUTH_APPS]: 'OAuth Apps',
   [ROUTES.MCP_CATALOG]: 'MCP Catalog',
   [ROUTES.SETTINGS]: 'Settings',
+  [ROUTES.SETTINGS_SECURITY_SESSIONS]: 'Active Sessions',
   [ROUTES.SETTINGS_SINKS]: 'Log Sinks',
   [ROUTES.SETTINGS_CEREMONY_POLICY]: 'Ceremony Policy',
   [ROUTES.SETTINGS_FINE_TUNING]: 'Fine-Tuning',

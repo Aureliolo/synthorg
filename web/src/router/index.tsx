@@ -63,6 +63,7 @@ const McpCatalogPage = lazy(() => import('@/pages/McpCatalogPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
+const SessionsPage = lazy(() => import('@/pages/SessionsPage'))
 const CeremonyPolicyPage = lazy(() => import('@/pages/settings/ceremony-policy/CeremonyPolicyPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
@@ -187,6 +188,7 @@ export const router = createBrowserRouter([
               { path: 'clients/:clientId', element: <ClientDetailPage /> },
               { path: ROUTES.SETTINGS_FINE_TUNING.slice(1), element: <FineTuningPage /> },
               { path: 'settings', element: <SettingsPage /> },
+              { path: 'settings/security/sessions', element: <SessionsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
               { path: ROUTES.SETTINGS_CEREMONY_POLICY.slice(1), element: <CeremonyPolicyPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },

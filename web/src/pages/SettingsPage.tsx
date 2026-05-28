@@ -54,6 +54,15 @@ const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
 }
 
 function getFooterAction(ns: SettingNamespace): React.ReactNode {
+  if (ns === 'security') {
+    return (
+      <SettingsActionCard
+        to={ROUTES.SETTINGS_SECURITY_SESSIONS}
+        title="Active Sessions"
+        description="Review and revoke active sessions for your account"
+      />
+    )
+  }
   if (ns === 'observability') {
     return (
       <SettingsActionCard
