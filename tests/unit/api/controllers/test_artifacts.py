@@ -1,31 +1,35 @@
 """Tests for artifact controller."""
 
-from typing import Any
-
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.engine.workspace.state import WorkspaceStateSlice
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
 @pytest.mark.unit
 class TestArtifactController:
-    def test_list_artifacts_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/artifacts")
+    async def test_list_artifacts_empty(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/artifacts")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_get_artifact_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/artifacts/nonexistent")
+    async def test_get_artifact_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/artifacts/nonexistent")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "not found" in body["error"].lower()
 
-    def test_create_and_get_artifact(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_create_and_get_artifact(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -44,12 +48,14 @@ class TestArtifactController:
         assert created["data"]["type"] == "code"
         assert created["data"]["path"] == "src/auth/login.py"
 
-        get_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}")
+        get_resp = await async_test_client.get(f"/api/v1/artifacts/{artifact_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["data"]["id"] == artifact_id
 
-    def test_list_artifacts_after_create(self, test_client: TestClient[Any]) -> None:
-        test_client.post(
+    async def test_list_artifacts_after_create(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -59,7 +65,7 @@ class TestArtifactController:
             },
             headers=make_auth_headers("ceo"),
         )
-        test_client.post(
+        await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "tests",
@@ -69,7 +75,7 @@ class TestArtifactController:
             },
             headers=make_auth_headers("ceo"),
         )
-        resp = test_client.get("/api/v1/artifacts")
+        resp = await async_test_client.get("/api/v1/artifacts")
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["data"], list)
@@ -79,10 +85,10 @@ class TestArtifactController:
         returned_paths = {item.get("path") for item in body["data"]}
         assert {"src/a.py", "tests/a.py"}.issubset(returned_paths)
 
-    def test_list_artifacts_filter_by_task_id(
-        self, test_client: TestClient[Any]
+    async def test_list_artifacts_filter_by_task_id(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        test_client.post(
+        await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -92,7 +98,7 @@ class TestArtifactController:
             },
             headers=make_auth_headers("ceo"),
         )
-        test_client.post(
+        await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -102,15 +108,15 @@ class TestArtifactController:
             },
             headers=make_auth_headers("ceo"),
         )
-        resp = test_client.get("/api/v1/artifacts?task_id=task-A")
+        resp = await async_test_client.get("/api/v1/artifacts?task_id=task-A")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["task_id"] == "task-A"
 
-    def test_list_artifacts_filter_by_invalid_type(
-        self, test_client: TestClient[Any]
+    async def test_list_artifacts_filter_by_invalid_type(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.get("/api/v1/artifacts?type=bogus")
+        resp = await async_test_client.get("/api/v1/artifacts?type=bogus")
         # Domain ``ValidationError`` maps to 422 via the central
         # exception handler, not the legacy 400 the manual
         # ``Response(...)`` site emitted.
@@ -119,16 +125,18 @@ class TestArtifactController:
         assert body["success"] is False
         assert "Invalid artifact type" in body["error"]
 
-    def test_oversized_artifact_id_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_artifact_id_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/artifacts/{long_id}",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 400
 
-    def test_delete_artifact(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_delete_artifact(self, async_test_client: LoopAsyncClient) -> None:
+        create_resp = await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -139,27 +147,27 @@ class TestArtifactController:
             headers=make_auth_headers("ceo"),
         )
         artifact_id = create_resp.json()["data"]["id"]
-        del_resp = test_client.delete(
+        del_resp = await async_test_client.delete(
             f"/api/v1/artifacts/{artifact_id}",
             headers=make_auth_headers("ceo"),
         )
         assert del_resp.status_code == 200
         # Confirm it's gone.
-        get_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}")
+        get_resp = await async_test_client.get(f"/api/v1/artifacts/{artifact_id}")
         assert get_resp.status_code == 404
 
-    def test_delete_artifact_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_delete_artifact_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/artifacts/nonexistent",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
-    def test_download_content(self, test_client: TestClient[Any]) -> None:
+    async def test_download_content(self, async_test_client: LoopAsyncClient) -> None:
         """Pre-populate storage via public API, then test download."""
-        import asyncio
-
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -172,24 +180,30 @@ class TestArtifactController:
         )
         artifact_id = create_resp.json()["data"]["id"]
         payload = b"hello world"
-        storage = test_client.app.state.app_state.slice(
+        storage = async_test_client.app.state.app_state.slice(
             WorkspaceStateSlice
         ).artifact_storage
-        asyncio.run(storage.store(artifact_id, payload))
-        dl_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
+        await storage.store(artifact_id, payload)
+        dl_resp = await async_test_client.get(
+            f"/api/v1/artifacts/{artifact_id}/content"
+        )
         assert dl_resp.status_code == 200
         assert dl_resp.content == payload
         assert "attachment" in dl_resp.headers.get("content-disposition", "")
 
-    def test_download_content_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/artifacts/nonexistent/content")
+    async def test_download_content_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/artifacts/nonexistent/content")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
 
-    def test_download_content_missing_bytes(self, test_client: TestClient[Any]) -> None:
+    async def test_download_content_missing_bytes(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """Artifact exists in DB but content not in storage."""
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/artifacts",
             json={
                 "type": "code",
@@ -201,7 +215,7 @@ class TestArtifactController:
         )
         artifact_id = create_resp.json()["data"]["id"]
         # Do not upload content -- storage has no bytes.
-        resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
+        resp = await async_test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
         assert resp.status_code == 404
         body = resp.json()
         # Error message includes the artifact_id for parity with the
