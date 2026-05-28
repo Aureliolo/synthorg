@@ -4,28 +4,34 @@ from typing import Any
 
 import pytest
 import structlog.testing
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
 @pytest.mark.unit
 class TestProjectController:
-    def test_list_projects_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/projects")
+    async def test_list_projects_empty(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/projects")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_get_project_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/projects/nonexistent")
+    async def test_get_project_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/projects/nonexistent")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "not found" in body["error"].lower()
 
-    def test_create_and_get_project(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_create_and_get_project(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
             "/api/v1/projects",
             json={
                 "name": "Auth System",
@@ -42,45 +48,49 @@ class TestProjectController:
         assert created["data"]["name"] == "Auth System"
         assert created["data"]["budget"] == 500.0
 
-        get_resp = test_client.get(f"/api/v1/projects/{project_id}")
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["data"]["id"] == project_id
 
-    def test_list_projects_after_create(self, test_client: TestClient[Any]) -> None:
-        test_client.post(
+    async def test_list_projects_after_create(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await async_test_client.post(
             "/api/v1/projects",
             json={"name": "P1"},
             headers=make_auth_headers("ceo"),
         )
-        test_client.post(
+        await async_test_client.post(
             "/api/v1/projects",
             json={"name": "P2"},
             headers=make_auth_headers("ceo"),
         )
-        resp = test_client.get("/api/v1/projects")
+        resp = await async_test_client.get("/api/v1/projects")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
 
-    def test_list_projects_has_more_with_overflow(
-        self, test_client: TestClient[Any]
+    async def test_list_projects_has_more_with_overflow(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         for i in range(4):
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/projects",
                 json={"name": f"P-page-{i:02d}"},
                 headers=make_auth_headers("ceo"),
             )
 
-        resp = test_client.get("/api/v1/projects?limit=2")
+        resp = await async_test_client.get("/api/v1/projects?limit=2")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
         assert body["pagination"]["has_more"] is True
         assert body["pagination"]["next_cursor"] is not None
 
-    def test_create_project_with_deadline(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_project_with_deadline(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             "/api/v1/projects",
             json={
                 "name": "Deadline Project",
@@ -91,10 +101,10 @@ class TestProjectController:
         assert resp.status_code == 201
         assert resp.json()["data"]["deadline"] == "2026-12-31"
 
-    def test_create_project_invalid_deadline(
-        self, test_client: TestClient[Any]
+    async def test_create_project_invalid_deadline(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/projects",
             json={
                 "name": "Bad Deadline",
@@ -104,15 +114,17 @@ class TestProjectController:
         )
         assert resp.status_code == 400
 
-    def test_oversized_project_id_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_project_id_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(f"/api/v1/projects/{long_id}")
+        resp = await async_test_client.get(f"/api/v1/projects/{long_id}")
         assert resp.status_code == 400
 
-    def test_list_projects_filter_by_invalid_status(
-        self, test_client: TestClient[Any]
+    async def test_list_projects_filter_by_invalid_status(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.get("/api/v1/projects?status=bogus")
+        resp = await async_test_client.get("/api/v1/projects?status=bogus")
         # ValidationError is 422 Unprocessable Entity (RFC 9457).
         assert resp.status_code == 422
         body = resp.json()
@@ -120,10 +132,10 @@ class TestProjectController:
         assert "Invalid project status" in body["error"]
         assert body["error_detail"]["error_category"] == "validation"
 
-    def test_create_project_with_duplicate_team(
-        self, test_client: TestClient[Any]
+    async def test_create_project_with_duplicate_team(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/projects",
             json={
                 "name": "Dupe Team",
@@ -133,8 +145,10 @@ class TestProjectController:
         )
         assert resp.status_code == 400
 
-    def test_delete_project_succeeds(self, test_client: TestClient[Any]) -> None:
-        create_resp = test_client.post(
+    async def test_delete_project_succeeds(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        create_resp = await async_test_client.post(
             "/api/v1/projects",
             json={"name": "To be deleted"},
             headers=make_auth_headers("ceo"),
@@ -142,18 +156,20 @@ class TestProjectController:
         assert create_resp.status_code == 201
         project_id = create_resp.json()["data"]["id"]
 
-        delete_resp = test_client.delete(
+        delete_resp = await async_test_client.delete(
             f"/api/v1/projects/{project_id}",
             headers=make_auth_headers("ceo"),
         )
         assert delete_resp.status_code == 204
 
         # Subsequent fetch must 404.
-        get_resp = test_client.get(f"/api/v1/projects/{project_id}")
+        get_resp = await async_test_client.get(f"/api/v1/projects/{project_id}")
         assert get_resp.status_code == 404
 
-    def test_delete_project_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_delete_project_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/projects/proj-does-not-exist",
             headers=make_auth_headers("ceo"),
         )
@@ -162,9 +178,9 @@ class TestProjectController:
         assert body["success"] is False
         assert body["error"] == "Project 'proj-does-not-exist' not found"
 
-    def test_delete_project_broadcasts_ws_event(
+    async def test_delete_project_broadcasts_ws_event(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Successful delete must publish a PROJECT_DELETED WS event.
@@ -196,7 +212,7 @@ class TestProjectController:
             capture,
         )
 
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/projects",
             json={"name": "Doomed"},
             headers=make_auth_headers("ceo"),
@@ -204,7 +220,7 @@ class TestProjectController:
         project_id = create_resp.json()["data"]["id"]
 
         with structlog.testing.capture_logs() as logs:
-            delete_resp = test_client.delete(
+            delete_resp = await async_test_client.delete(
                 f"/api/v1/projects/{project_id}",
                 headers=make_auth_headers("ceo"),
             )
