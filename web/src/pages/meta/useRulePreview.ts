@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Comparator, PreviewResult } from '@/api/endpoints/custom-rules'
 
 const log = createLogger('rule-preview-panel')
@@ -51,8 +52,9 @@ export function useRulePreview(
         })
         setResult(res)
       } catch (err) {
-        log.error('Preview evaluation failed', err)
-        setError(getErrorMessage(err))
+        const message = getErrorMessage(err)
+        log.error('Preview evaluation failed', { error: sanitizeForLog(message) })
+        setError(message)
         setResult(null)
       }
     },

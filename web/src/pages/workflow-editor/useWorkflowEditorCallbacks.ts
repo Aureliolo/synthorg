@@ -73,11 +73,12 @@ export function useWorkflowEditorCallbacks(
     [navigate],
   )
   const handleSaveAsNew = useCallback(() => duplicateWorkflow(navigate), [navigate])
+  const { saveViewport } = args
   const handleMoveEnd = useCallback(
     (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
-      args.saveViewport(viewport)
+      saveViewport(viewport)
     },
-    [args],
+    [saveViewport],
   )
   return {
     ...nodeOps,

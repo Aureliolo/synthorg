@@ -196,11 +196,14 @@ async function runFetchOverride(
   fetchState.setLoading(true)
   fetchState.setOverride(null)
   fetchState.setLoadError(false)
-  const result = await useQualityOverridesStore.getState().getOverride(agentId)
-  if (activeAgentRef.current !== agentId) return
-  if (result.kind === 'ok') fetchState.setOverride(result.data)
-  else if (result.kind === 'error') fetchState.setLoadError(true)
-  fetchState.setLoading(false)
+  try {
+    const result = await useQualityOverridesStore.getState().getOverride(agentId)
+    if (activeAgentRef.current !== agentId) return
+    if (result.kind === 'ok') fetchState.setOverride(result.data)
+    else if (result.kind === 'error') fetchState.setLoadError(true)
+  } finally {
+    fetchState.setLoading(false)
+  }
 }
 
 interface SubmitOverrideArgs {

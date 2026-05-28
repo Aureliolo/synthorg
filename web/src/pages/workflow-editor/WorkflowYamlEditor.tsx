@@ -190,8 +190,9 @@ function ParseErrorsBanner({ errors }: ParseErrorsBannerProps) {
         {errors.length} error{errors.length !== 1 ? 's' : ''}
       </div>
       <ul className="mt-1 space-y-0.5 text-xs text-danger">
-        {errors.map((err) => (
-          <li key={err}>{err}</li>
+        {errors.map((err, index) => (
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- error messages may duplicate; index disambiguates
+          <li key={`yaml-error-${index}`}>{err}</li>
         ))}
       </ul>
     </div>
@@ -206,8 +207,9 @@ function ParseWarningsBanner({ warnings }: ParseWarningsBannerProps) {
   return (
     <div className="border-t border-warning/30 bg-warning/5 p-card">
       <ul className="space-y-0.5 text-xs text-warning">
-        {warnings.map((w) => (
-          <li key={w}>{w}</li>
+        {warnings.map((w, index) => (
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- warning messages may duplicate; index disambiguates
+          <li key={`yaml-warning-${index}`}>{w}</li>
         ))}
       </ul>
     </div>

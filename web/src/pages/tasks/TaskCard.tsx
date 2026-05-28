@@ -16,6 +16,13 @@ export interface TaskCardProps {
   isOverlay?: boolean
   className?: string
   ref?: Ref<HTMLDivElement>
+  /** Currency code for cost display (e.g. ``'USD'``). Pass the active
+   * tenant / user / workspace currency to override the framework-wide
+   * default. Optional so existing callers keep working; new code paths
+   * should thread the active currency through explicitly per the
+   * regional-defaults policy (no privileged region/currency in framework
+   * code). */
+  currency?: string
 }
 
 export function TaskCard({
@@ -25,6 +32,7 @@ export function TaskCard({
   isOverlay,
   className,
   ref,
+  currency,
   ...props
 }: TaskCardProps) {
   const { triggerFlash, flashStyle } = useFlash()
@@ -67,7 +75,7 @@ export function TaskCard({
       {task.description && (
         <p className="mt-1 line-clamp-2 text-xs text-text-secondary">{task.description}</p>
       )}
-      <TaskCardFooter task={task} />
+      <TaskCardFooter task={task} currency={currency} />
     </div>
   )
 }
@@ -88,10 +96,16 @@ function TaskCardHeader({ title, status }: TaskCardHeaderProps) {
 
 interface TaskCardFooterProps {
   task: DashboardTask
+  currency?: string
 }
 
-function TaskCardFooter({ task }: TaskCardFooterProps) {
+function TaskCardFooter({ task, currency }: TaskCardFooterProps) {
   const showCost = task.cost != null && task.cost > 0
+  // ``currency ?? DEFAULT_CURRENCY``: callers that thread the active
+  // tenant/user currency win; legacy callers fall back to the framework
+  // default. The hardcoded reference is still here as a fallback only,
+  // not as the privileged source.
+  const displayCurrency = currency ?? DEFAULT_CURRENCY
   return (
     <div className="mt-2 flex items-center gap-2">
       <PriorityBadge priority={task.priority} />
@@ -108,7 +122,7 @@ function TaskCardFooter({ task }: TaskCardFooterProps) {
         )}
         {showCost && (
           <span className="text-[10px] font-mono">
-            {formatCurrency(task.cost!, DEFAULT_CURRENCY)}
+            {formatCurrency(task.cost!, displayCurrency)}
           </span>
         )}
         {task.deadline && (

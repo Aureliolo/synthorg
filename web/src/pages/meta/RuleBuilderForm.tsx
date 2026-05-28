@@ -238,7 +238,7 @@ function RuleBuilderActions({
       <Button variant="ghost" onClick={onCancel} disabled={submitting}>
         Cancel
       </Button>
-      <Button onClick={onSubmit} disabled={submitting}>
+      <Button onClick={() => void onSubmit()} disabled={submitting}>
         {submitLabel}
       </Button>
     </div>

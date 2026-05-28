@@ -75,8 +75,8 @@ export function PrioritySection({ task, onUpdate }: TaskUpdateProps) {
         <PriorityBadge priority={task.priority} />
         <select
           value={task.priority}
-          onChange={async (e) => {
-            await onUpdate(task.id, {
+          onChange={(e) => {
+            void onUpdate(task.id, {
               priority: e.target.value as Priority,
               expected_version: task.version,
             })
@@ -220,7 +220,7 @@ export function TransitionsSection({
             size="sm"
             variant="outline"
             disabled={transitioning !== null}
-            onClick={() => onTransition(targetStatus)}
+            onClick={() => void onTransition(targetStatus)}
           >
             {transitioning === targetStatus && (
               <Loader2 className="mr-1 size-3 animate-spin" />

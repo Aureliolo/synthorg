@@ -71,13 +71,16 @@ export function useSubworkflowDetailDrawerData(
   const handleDelete = useCallback(async () => {
     if (!subworkflow || loading || parents.length > 0 || !detailsLoaded) return
     setDeleting(true)
-    const ok = await useSubworkflowsStore
-      .getState()
-      .deleteSubworkflow(subworkflow.subworkflow_id, subworkflow.latest_version)
-    setDeleting(false)
-    if (ok) {
-      setDeleteConfirmOpen(false)
-      onClose()
+    try {
+      const ok = await useSubworkflowsStore
+        .getState()
+        .deleteSubworkflow(subworkflow.subworkflow_id, subworkflow.latest_version)
+      if (ok) {
+        setDeleteConfirmOpen(false)
+        onClose()
+      }
+    } finally {
+      setDeleting(false)
     }
   }, [subworkflow, loading, parents, detailsLoaded, onClose])
 

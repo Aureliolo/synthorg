@@ -68,18 +68,26 @@ export function useArtifactCreateForm({
     [],
   )
 
+  // Synchronous in-flight guard: React batches setState, so a second click that
+  // arrives before the next render still sees ``submitting === false``. The ref
+  // flips inside the same call frame, so the second invocation early-returns.
+  const isSubmittingRef = useRef(false)
+
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
       e?.preventDefault()
+      if (isSubmittingRef.current) return
       const nextErrors = validateArtifactForm(form)
       setErrors(nextErrors)
       if (Object.keys(nextErrors).length > 0) return
+      isSubmittingRef.current = true
       setSubmitting(true)
       try {
         const created = await onCreate(buildCreatePayload(form))
         if (created === null) return
         onOpenChange(false)
       } finally {
+        isSubmittingRef.current = false
         setSubmitting(false)
       }
     },

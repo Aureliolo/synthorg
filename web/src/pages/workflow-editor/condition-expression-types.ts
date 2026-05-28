@@ -169,6 +169,17 @@ function unwrapParens(str: string): string {
   return trimmed.slice(1, -1).trim()
 }
 
+/** Discriminated result for the speculative ``tryParse*`` helpers. The
+ * three states are distinct: ``no_match`` means the input did not look like
+ * the construct this helper handles (try the next one); ``error`` means it
+ * looked right but parsing failed (give up); ``ok`` carries the parsed
+ * expression. Avoids the older ``ConditionExpression | null | undefined``
+ * shape where callers had to recall which sentinel meant what. */
+type TryParseResult =
+  | { kind: 'no_match' }
+  | { kind: 'error' }
+  | { kind: 'ok'; expr: ConditionExpression }
+
 /**
  * Parse a condition string into a structured expression.
  * Supports:
@@ -183,37 +194,39 @@ function parseConditionString(str: string): ConditionExpression | null {
   const trimmed = str.trim()
   if (!trimmed) return null
   const negation = tryParseNotPrefix(trimmed)
-  if (negation !== undefined) return negation
+  if (negation.kind === 'ok') return negation.expr
+  if (negation.kind === 'error') return null
   const unwrapped = unwrapParens(trimmed)
   // Split by OR first (lower precedence), then AND (higher precedence).
   for (const op of ['OR', 'AND'] as const) {
     const grouped = tryParseLogicalGroup(unwrapped, op)
-    if (grouped !== undefined) return grouped
+    if (grouped.kind === 'ok') return grouped.expr
+    if (grouped.kind === 'error') return null
   }
   return parseSingleComparison(unwrapped)
 }
 
-function tryParseNotPrefix(trimmed: string): ConditionExpression | null | undefined {
+function tryParseNotPrefix(trimmed: string): TryParseResult {
   const notMatch = /^NOT\s*\((.+)\)\s*$/i.exec(trimmed)
-  if (!notMatch?.[1]) return undefined
+  if (!notMatch?.[1]) return { kind: 'no_match' }
   const inner = parseConditionString(notMatch[1])
-  if (!inner) return null
-  return createGroup('NOT', [inner])
+  if (!inner) return { kind: 'error' }
+  return { kind: 'ok', expr: createGroup('NOT', [inner]) }
 }
 
 function tryParseLogicalGroup(
   unwrapped: string,
   op: 'AND' | 'OR',
-): ConditionExpression | null | undefined {
+): TryParseResult {
   const parts = splitByOperator(unwrapped, op)
-  if (!parts) return undefined
+  if (!parts) return { kind: 'no_match' }
   const conditions: ConditionExpression[] = []
   for (const part of parts) {
     const parsed = parseConditionString(part)
-    if (!parsed) return null
+    if (!parsed) return { kind: 'error' }
     conditions.push(parsed)
   }
-  return createGroup(op, conditions)
+  return { kind: 'ok', expr: createGroup(op, conditions) }
 }
 
 /** Extended builder state including negate and sub-groups. */

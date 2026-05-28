@@ -26,5 +26,5 @@ export function buildStartRequest(state: PipelineFormState): StartFineTuneReques
 function applyPositiveNumber(input: string, apply: (value: number) => void): void {
   if (input === '') return
   const parsed = Number(input)
-  if (!Number.isNaN(parsed) && parsed > 0) apply(parsed)
+  if (Number.isFinite(parsed) && parsed > 0) apply(parsed)
 }

@@ -20,7 +20,14 @@ import {
   groupTasksByColumn,
   type TaskBoardFilters,
 } from '@/utils/tasks'
-import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import {
+  PRIORITY_VALUES,
+  TASK_STATUS_VALUES,
+  TASK_TYPE_VALUES,
+  type Priority,
+  type TaskStatus,
+  type TaskType,
+} from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 
 export interface TaskBoardController {
@@ -215,11 +222,9 @@ function useSyncSelectedTaskFromUrl(
   fetchTask: ReturnType<typeof useTaskBoardData>['fetchTask'],
 ): void {
   const prevSelectedRef = useRef<string | null>(null)
-  const skipNextFetchRef = useRef(false)
   useEffect(() => {
     if (selectedTaskId && selectedTaskId !== prevSelectedRef.current) {
-      if (skipNextFetchRef.current) skipNextFetchRef.current = false
-      else void fetchTask(selectedTaskId)
+      void fetchTask(selectedTaskId)
     }
     prevSelectedRef.current = selectedTaskId
   }, [selectedTaskId, fetchTask])
@@ -231,12 +236,27 @@ interface BoardKeyboardShortcutsArgs {
   onCycleView: () => void
 }
 
-function useBoardKeyboardShortcuts(args: BoardKeyboardShortcutsArgs): void {
+function useBoardKeyboardShortcuts({
+  setShowDeps,
+  setShowTerminal,
+  onCycleView,
+}: BoardKeyboardShortcutsArgs): void {
+  // ``onCycleView`` is an inline arrow in the caller (closes over viewMode
+  // and urlHandlers), so its identity changes every render. Stashing it in a
+  // ref keeps the effect's dep array stable while still invoking the latest
+  // closure on each keypress.
+  const onCycleViewRef = useRef(onCycleView)
+  onCycleViewRef.current = onCycleView
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => handleBoardShortcut(event, args)
+    const handler = (event: KeyboardEvent) =>
+      handleBoardShortcut(event, {
+        setShowDeps,
+        setShowTerminal,
+        onCycleView: () => onCycleViewRef.current(),
+      })
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [args])
+  }, [setShowDeps, setShowTerminal])
 }
 
 function handleBoardShortcut(event: KeyboardEvent, args: BoardKeyboardShortcutsArgs): void {
@@ -270,14 +290,27 @@ function isEditableTarget(target: EventTarget | null): boolean {
 
 function parseFiltersFromSearchParams(searchParams: URLSearchParams): TaskBoardFilters {
   return {
-    status: (searchParams.get('status') as TaskStatus) || undefined,
-    priority: (searchParams.get('priority') as Priority) || undefined,
+    status: narrowToEnum<TaskStatus>(searchParams.get('status'), TASK_STATUS_VALUES),
+    priority: narrowToEnum<Priority>(searchParams.get('priority'), PRIORITY_VALUES),
     assignee: searchParams.get('assignee') || undefined,
-    taskType: (searchParams.get('type') as TaskType) || undefined,
+    taskType: narrowToEnum<TaskType>(searchParams.get('type'), TASK_TYPE_VALUES),
     search: searchParams.get('search') || undefined,
     dateFrom: searchParams.get('dateFrom') || undefined,
     dateTo: searchParams.get('dateTo') || undefined,
   }
+}
+
+/** Validate a URL-supplied string against an allowed enum tuple. Returns
+ * ``undefined`` for missing or unknown values so callers can omit the
+ * filter rather than apply a forged enum. URL filters are optional, so this
+ * is the right shape; ``sanitizeWsEnum`` is for required WS payloads where
+ * a fallback must always be supplied. */
+function narrowToEnum<T extends string>(
+  value: string | null,
+  allowed: readonly T[],
+): T | undefined {
+  if (!value) return undefined
+  return (allowed as readonly string[]).includes(value) ? (value as T) : undefined
 }
 
 const FILTER_PARAM_KEYS: readonly (keyof TaskBoardFilters)[] = [

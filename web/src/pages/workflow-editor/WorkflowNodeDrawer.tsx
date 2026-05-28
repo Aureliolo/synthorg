@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -106,14 +106,45 @@ export function WorkflowNodeDrawer({
   onConfigChange,
 }: WorkflowNodeDrawerProps) {
   const fields = nodeType ? NODE_CONFIG_SCHEMAS[nodeType] : []
+  // Per-field draft state: when ``parseFieldValue`` can't commit (incomplete
+  // JSON, partial numbers like ``-`` or ``1.``), we hold the raw input here
+  // so the controlled input keeps rendering what the user typed instead of
+  // snapping back to the last successfully-parsed value. As soon as the
+  // parse succeeds we clear the draft for that key and commit to config.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  // Clearing drafts when the drawer switches nodes prevents partial input
+  // from one node's field bleeding into another node's same-named field
+  // (e.g. typing ``{`` into ``input_bindings`` on node A, then opening
+  // node B, would otherwise carry that draft over).
+  useEffect(() => {
+    setDrafts({})
+  }, [nodeId])
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {
       const next = parseFieldValue(key, value, fieldType)
-      if (next === SKIP_WRITE) return
+      if (next === SKIP_WRITE) {
+        setDrafts((prev) => ({ ...prev, [key]: value }))
+        return
+      }
+      setDrafts((prev) => {
+        if (!(key in prev)) return prev
+        const rest = { ...prev }
+        delete rest[key]
+        return rest
+      })
       onConfigChange({ ...config, [key]: next })
     },
     [config, onConfigChange],
+  )
+
+  const resolveFieldValue = useCallback(
+    (key: string): string => {
+      if (key in drafts) return drafts[key]!
+      return String(config[key] ?? '')
+    },
+    [drafts, config],
   )
 
   return (
@@ -133,7 +164,7 @@ export function WorkflowNodeDrawer({
           <FieldRenderer
             key={field.key}
             field={field}
-            value={String(config[field.key] ?? '')}
+            value={resolveFieldValue(field.key)}
             onChange={handleFieldChange}
           />
         ))}

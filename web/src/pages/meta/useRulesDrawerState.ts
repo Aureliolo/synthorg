@@ -129,14 +129,19 @@ function useDeleteConfirmCallback(
   return useCallback(async () => {
     if (!deleteTarget) return false
     setDeleting(true)
-    // Sentinel-return contract: the store emits success and error toasts. On
-    // failure, leave the dialog open so the user can retry without losing
-    // their place (return false tells ConfirmDialog not to auto-close).
-    const ok = await deleteRule(deleteTarget)
-    setDeleting(false)
-    if (!ok) return false
-    setDeleteTarget(null)
-    await safeRefresh()
-    return true
+    try {
+      // Sentinel-return contract: the store emits success and error toasts. On
+      // failure, leave the dialog open so the user can retry without losing
+      // their place (return false tells ConfirmDialog not to auto-close).
+      const ok = await deleteRule(deleteTarget)
+      if (!ok) return false
+      setDeleteTarget(null)
+      await safeRefresh()
+      return true
+    } catch {
+      return false
+    } finally {
+      setDeleting(false)
+    }
   }, [deleteTarget, deleteRule, setDeleting, setDeleteTarget, safeRefresh])
 }

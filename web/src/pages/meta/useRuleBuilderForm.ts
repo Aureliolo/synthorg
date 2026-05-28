@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
@@ -70,6 +70,15 @@ export function useRuleBuilderForm({
   )
   const [errors, setErrors] = useState<RuleBuilderFormErrors>({})
   const [submitting, setSubmitting] = useState(false)
+
+  // Re-sync the form whenever the caller swaps to a different rule (or to
+  // create mode) without unmounting the drawer; without this the previous
+  // rule's fields stay rendered while the new identity is in editRule.
+  useEffect(() => {
+    setForm(editRule ? formFromRule(editRule) : INITIAL_FORM)
+    setErrors({})
+    setSubmitting(false)
+  }, [editRule])
 
   const createRule = useCustomRulesStore((s) => s.createRule)
   const updateRule = useCustomRulesStore((s) => s.updateRule)

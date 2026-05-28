@@ -54,9 +54,18 @@ export function useConditionBuilderState(
       comparisons.map((comparison) => ({ key: allocKey(), comparison })),
     [allocKey],
   )
+  // Race guard: ``useExternalValueSync`` writes to core state when an
+  // outside value changes; React then re-renders and ``useEmitOnBuilderChange``
+  // fires, which would see the freshly-applied state and re-emit the same
+  // value back to the parent (potentially in a slightly different
+  // serialisation, defeating the ``serialized !== value`` short-circuit and
+  // ping-ponging through the parent). Setting this ref inside the sync
+  // effect makes the emit effect skip exactly one cycle so the
+  // external-originated update never round-trips.
+  const appliedExternalUpdateRef = useRef(false)
   const core = useBuilderCoreState(value, toEntries, allocKey)
-  useExternalValueSync({ value, core, allocKey, toEntries })
-  useEmitOnBuilderChange({ value, core, onChange })
+  useExternalValueSync({ value, core, allocKey, toEntries, appliedExternalUpdateRef })
+  useEmitOnBuilderChange({ value, core, onChange, appliedExternalUpdateRef })
   const rowHandlers = useRowHandlers(core.setEntries, allocKey, core.subGroups.length)
   const groupHandlers = useGroupHandlers(core.setSubGroups, allocKey)
   const handleFreeTextChange = useCallback(
@@ -160,9 +169,16 @@ interface SyncArgs {
   core: BuilderCoreState
   allocKey: () => number
   toEntries: (comparisons: ConditionComparison[]) => ComparisonEntry[]
+  appliedExternalUpdateRef: React.MutableRefObject<boolean>
 }
 
-function useExternalValueSync({ value, core, allocKey, toEntries }: SyncArgs): void {
+function useExternalValueSync({
+  value,
+  core,
+  allocKey,
+  toEntries,
+  appliedExternalUpdateRef,
+}: SyncArgs): void {
   const lastSyncedRef = useRef(value)
   useEffect(() => {
     const currentSerialized = computeCurrentSerialized(core)
@@ -171,6 +187,7 @@ function useExternalValueSync({ value, core, allocKey, toEntries }: SyncArgs): v
       return
     }
     lastSyncedRef.current = value
+    appliedExternalUpdateRef.current = true
     applyExternalValue(value, core, allocKey, toEntries)
   }, [value]) // eslint-disable-line @eslint-react/exhaustive-deps -- resync only on external change
 }
@@ -214,15 +231,29 @@ interface EmitArgs {
   value: string
   core: BuilderCoreState
   onChange: (value: string) => void
+  appliedExternalUpdateRef: React.MutableRefObject<boolean>
 }
 
-function useEmitOnBuilderChange({ value, core, onChange }: EmitArgs): void {
+function useEmitOnBuilderChange({
+  value,
+  core,
+  onChange,
+  appliedExternalUpdateRef,
+}: EmitArgs): void {
   const comparisons = useMemo(
     () => core.entries.map((e) => e.comparison),
     [core.entries],
   )
   useEffect(() => {
     if (core.mode !== 'builder') return
+    if (appliedExternalUpdateRef.current) {
+      // The state we are about to serialise was just written by
+      // useExternalValueSync from an external value; do not re-emit it back
+      // (the serialisation may not be byte-identical, which would cause a
+      // ping-pong through the parent's controlled-input).
+      appliedExternalUpdateRef.current = false
+      return
+    }
     const serialized = serializeBuilder(
       comparisons,
       core.logicalOperator,
@@ -230,5 +261,5 @@ function useEmitOnBuilderChange({ value, core, onChange }: EmitArgs): void {
       core.negate,
     )
     if (serialized !== value) onChange(serialized)
-  }, [comparisons, core.logicalOperator, core.mode, value, core.negate, core.subGroups, onChange])
+  }, [comparisons, core.logicalOperator, core.mode, value, core.negate, core.subGroups, onChange, appliedExternalUpdateRef])
 }

@@ -78,7 +78,8 @@ function ABTestCard({ test }: ABTestCardProps) {
 
 function computeObservationProgress(elapsed: number, total: number): number {
   if (total <= 0) return 0
-  return Math.min((elapsed / total) * 100, 100)
+  const percent = (elapsed / total) * 100
+  return Math.min(Math.max(percent, 0), 100)
 }
 
 interface ABTestHeaderProps {

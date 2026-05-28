@@ -23,9 +23,10 @@ const STATUSES: TaskStatus[] = [
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
-const SELECT_CLASSES =
-  'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'
-const INPUT_CLASSES =
+// Shared filter-control styling: selects and text/date inputs render with the
+// same chrome so the toolbar reads as one strip. Split back into two constants
+// only if the two control families need to diverge.
+const CONTROL_CLASSES =
   'h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent'
 
 export interface TaskFilterBarProps {
@@ -123,7 +124,7 @@ function TaskFilterControls({ filters, assignees, updateFilter }: TaskFilterCont
         value={filters.search ?? ''}
         onChange={(e) => updateFilter('search', e.target.value || undefined)}
         placeholder="Search tasks..."
-        className={`${INPUT_CLASSES} w-48 placeholder:text-text-muted`}
+        className={`${CONTROL_CLASSES} w-48 placeholder:text-text-muted`}
         aria-label="Search tasks"
       />
     </>
@@ -142,7 +143,7 @@ function StatusFilter({ value, onValueChange }: StatusFilterProps) {
       onChange={(e) =>
         onValueChange((e.target.value || undefined) as TaskStatus | undefined)
       }
-      className={SELECT_CLASSES}
+      className={CONTROL_CLASSES}
       aria-label="Filter by status"
     >
       <option value="">All statuses</option>
@@ -165,7 +166,7 @@ function PriorityFilter({ value, onValueChange }: PriorityFilterProps) {
     <select
       value={value ?? ''}
       onChange={(e) => onValueChange((e.target.value || undefined) as Priority | undefined)}
-      className={SELECT_CLASSES}
+      className={CONTROL_CLASSES}
       aria-label="Filter by priority"
     >
       <option value="">All priorities</option>
@@ -189,7 +190,7 @@ function AssigneeFilter({ value, assignees, onValueChange }: AssigneeFilterProps
     <select
       value={value ?? ''}
       onChange={(e) => onValueChange(e.target.value || undefined)}
-      className={SELECT_CLASSES}
+      className={CONTROL_CLASSES}
       aria-label="Filter by assignee"
     >
       <option value="">All assignees</option>
@@ -212,7 +213,7 @@ function TypeFilter({ value, onValueChange }: TypeFilterProps) {
     <select
       value={value ?? ''}
       onChange={(e) => onValueChange((e.target.value || undefined) as TaskType | undefined)}
-      className={SELECT_CLASSES}
+      className={CONTROL_CLASSES}
       aria-label="Filter by type"
     >
       <option value="">All types</option>
@@ -244,7 +245,7 @@ function DateRangeFilters({
         type="date"
         value={dateFrom ?? ''}
         onChange={(e) => onFromChange(e.target.value || undefined)}
-        className={INPUT_CLASSES}
+        className={CONTROL_CLASSES}
         aria-label="Deadline from"
         title="Deadline from"
       />
@@ -252,7 +253,7 @@ function DateRangeFilters({
         type="date"
         value={dateTo ?? ''}
         onChange={(e) => onToChange(e.target.value || undefined)}
-        className={INPUT_CLASSES}
+        className={CONTROL_CLASSES}
         aria-label="Deadline to"
         title="Deadline to"
       />

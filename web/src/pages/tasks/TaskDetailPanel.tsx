@@ -304,7 +304,7 @@ function CancelConfirmDialog({ dialogs }: ConfirmDialogProps) {
         value={dialogs.cancelReason}
         onChange={(e) => dialogs.setCancelReason(e.target.value)}
         placeholder="Reason for cancellation..."
-        className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+        className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
         aria-label="Cancellation reason"
       />
     </ConfirmDialog>

@@ -49,11 +49,11 @@ function DescriptionField({ task }: TaskFieldProps) {
           // Sentinel-return contract: ``updateTask`` handles its own toast UX
           // and returns ``null`` on failure. Throwing when the result is null
           // is how InlineEdit is signalled to keep the input open and show
-          // its error state.
+          // its error state. Omit priority entirely so a description-only edit
+          // never inadvertently clears the task's existing priority.
           const updated = await useTasksStore.getState().updateTask(task.id, {
             description: value,
             expected_version: task.version,
-            priority: null,
           })
           if (!updated) {
             throw new Error('Failed to save description')

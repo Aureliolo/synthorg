@@ -74,8 +74,8 @@ function deriveDeleteTooltip(
   detailsLoaded: boolean,
   parentsCount: number,
 ): string {
-  if (!detailsLoaded) return 'Details out of date. Refresh to enable delete.'
   if (loading) return 'Checking parent references...'
+  if (!detailsLoaded) return 'Details out of date. Refresh to enable delete.'
   if (parentsCount > 0) return 'Cannot delete: still referenced'
   return 'Delete this subworkflow version'
 }
