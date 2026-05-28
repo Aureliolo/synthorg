@@ -9,9 +9,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.providers.state import ProvidersStateSlice
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.controllers.conftest import setup_mock_providers
 
@@ -20,11 +20,11 @@ from tests.unit.api.controllers.conftest import setup_mock_providers
 class TestSetupAgent:
     """POST /api/v1/setup/agent -- create agent."""
 
-    def test_nonexistent_provider(
+    async def test_nonexistent_provider(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/agent",
             json={
                 "name": "Alice Chen",
@@ -35,11 +35,11 @@ class TestSetupAgent:
         )
         assert resp.status_code == 404
 
-    def test_invalid_personality_preset(
+    async def test_invalid_personality_preset(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/agent",
             json={
                 "name": "Alice Chen",
@@ -52,14 +52,14 @@ class TestSetupAgent:
         # Pydantic model_validator returns 400
         assert resp.status_code == 400
 
-    def test_requires_write_access(
+    async def test_requires_write_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        saved_headers = dict(test_client.headers)
-        test_client.headers.update(make_auth_headers("observer"))
+        saved_headers = dict(async_test_client.headers)
+        async_test_client.headers.update(make_auth_headers("observer"))
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/agent",
                 json={
                     "name": "Alice Chen",
@@ -70,11 +70,11 @@ class TestSetupAgent:
             )
             assert resp.status_code == 403
         finally:
-            test_client.headers.update(saved_headers)
+            async_test_client.headers.update(saved_headers)
 
-    def test_successful_agent_creation(
+    async def test_successful_agent_creation(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Happy path: provider and model exist, agent is created."""
         # Build a mock provider config with a test model.
@@ -89,11 +89,11 @@ class TestSetupAgent:
             return_value={"test-provider": mock_provider_config},
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         original_mgmt = app_state.slice(ProvidersStateSlice).management
         app_state.wire(ProvidersStateSlice, management=mock_mgmt)
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/agent",
                 json={
                     "name": "agent-ceo-001",
@@ -181,14 +181,14 @@ class TestAgentDictToSummary:
 class TestSetupCompanyAutoAgents:
     """POST /api/v1/setup/company -- auto-create agents from template."""
 
-    def test_template_creates_agents(
+    async def test_template_creates_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Company creation with template auto-creates agents."""
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "My Startup",
@@ -209,12 +209,12 @@ class TestSetupCompanyAutoAgents:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_blank_company_has_no_agents(
+    async def test_blank_company_has_no_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Blank company (no template) creates zero agents."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={"company_name": "Blank Corp"},
         )
@@ -228,25 +228,25 @@ class TestSetupCompanyAutoAgents:
 class TestSetupAgentsList:
     """GET /api/v1/setup/agents -- list agents configured during setup."""
 
-    def test_empty_when_no_agents(
+    async def test_empty_when_no_agents(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/agents")
+        resp = await async_test_client.get("/api/v1/setup/agents")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 
-    def test_returns_agents_after_company_creation(
+    async def test_returns_agents_after_company_creation(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
             # Create company with template.
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Test Startup",
@@ -254,7 +254,7 @@ class TestSetupAgentsList:
                 },
             )
             # Now list agents.
-            resp = test_client.get("/api/v1/setup/agents")
+            resp = await async_test_client.get("/api/v1/setup/agents")
             assert resp.status_code == 200
             agents = resp.json()["data"]
             assert len(agents) >= 1
@@ -267,13 +267,13 @@ class TestSetupAgentsList:
 class TestSetupAgentModelUpdate:
     """PUT /api/v1/setup/agents/{index}/model -- reassign agent model."""
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/99/model",
                 json={
                     "model_provider": "test-provider",
@@ -284,14 +284,14 @@ class TestSetupAgentModelUpdate:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_successful_model_update(
+    async def test_successful_model_update(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
             # Create company with template to get agents.
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Update Test",
@@ -299,7 +299,7 @@ class TestSetupAgentModelUpdate:
                 },
             )
             # Update first agent's model.
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "test-provider",
@@ -316,7 +316,7 @@ class TestSetupAgentModelUpdate:
             # Anchor on the updated agent's name so the assertion cannot
             # accidentally pass via a different agent that already
             # carries the same provider/model pair.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             assert get_resp.status_code == 200
             agents = get_resp.json()["data"]
             assert any(
@@ -328,14 +328,14 @@ class TestSetupAgentModelUpdate:
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_invalid_provider_rejected(
+    async def test_invalid_provider_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
             # Create agents first -- verify seed succeeded.
-            seed = test_client.post(
+            seed = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Validation Test",
@@ -344,7 +344,7 @@ class TestSetupAgentModelUpdate:
             )
             assert seed.status_code == 201
             assert seed.json()["data"]["agent_count"] >= 1
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/model",
                 json={
                     "model_provider": "nonexistent-provider",
@@ -360,21 +360,21 @@ class TestSetupAgentModelUpdate:
 class TestUpdateAgentName:
     """PUT /api/v1/setup/agents/{index}/name -- rename an agent."""
 
-    def test_successful_name_update(
+    async def test_successful_name_update(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Renaming an agent persists the new name."""
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Name Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/name",
                 json={"name": "New Agent Name"},
             )
@@ -383,38 +383,38 @@ class TestUpdateAgentName:
             assert data["name"] == "New Agent Name"
 
             # Verify persistence -- search by value, not by index.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == "New Agent Name" for a in agents)
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Out-of-range index returns 404."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/agents/99/name",
             json={"name": "Some Name"},
         )
         assert resp.status_code == 404
 
-    def test_blank_name_rejected(
+    async def test_blank_name_rejected(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Empty or whitespace-only name is rejected by validation."""
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Blank Name Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/agents/0/name",
                 json={"name": "   "},
             )
@@ -427,21 +427,21 @@ class TestUpdateAgentName:
 class TestRandomizeAgentName:
     """POST /api/v1/setup/agents/{index}/randomize-name."""
 
-    def test_randomize_generates_new_name(
+    async def test_randomize_generates_new_name(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Randomize endpoint generates a non-empty name."""
-        app_state, original = setup_mock_providers(test_client)
+        app_state, original = setup_mock_providers(async_test_client)
         try:
-            test_client.post(
+            await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Randomize Test",
                     "template_name": "solo_founder",
                 },
             )
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/setup/agents/0/randomize-name",
             )
             assert resp.status_code == 200
@@ -450,18 +450,18 @@ class TestRandomizeAgentName:
             assert len(data["name"]) >= 3
 
             # Verify persistence -- search by value, not by index.
-            get_resp = test_client.get("/api/v1/setup/agents")
+            get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == data["name"] for a in agents)
         finally:
             app_state.wire(ProvidersStateSlice, management=original)
 
-    def test_out_of_range_index(
+    async def test_out_of_range_index(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Out-of-range index returns 404."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/agents/99/randomize-name",
         )
         assert resp.status_code == 404
