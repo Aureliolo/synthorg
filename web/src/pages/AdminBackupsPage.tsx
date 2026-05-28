@@ -49,9 +49,12 @@ function dialogCopy(pending: PendingAction): DialogCopy {
 export default function AdminBackupsPage() {
   const backups = useBackupsStore((s) => s.backups)
   const loading = useBackupsStore((s) => s.loading)
+  const loadingMore = useBackupsStore((s) => s.loadingMore)
+  const hasMore = useBackupsStore((s) => s.hasMore)
   const error = useBackupsStore((s) => s.error)
   const mutating = useBackupsStore((s) => s.mutating)
   const fetchBackups = useBackupsStore((s) => s.fetchBackups)
+  const fetchMoreBackups = useBackupsStore((s) => s.fetchMoreBackups)
   const createBackup = useBackupsStore((s) => s.createBackup)
   const deleteBackup = useBackupsStore((s) => s.deleteBackup)
   const restoreBackup = useBackupsStore((s) => s.restoreBackup)
@@ -82,9 +85,12 @@ export default function AdminBackupsPage() {
       <BackupsBody
         backups={backups}
         loading={loading}
+        loadingMore={loadingMore}
+        hasMore={hasMore}
         error={error}
         onDelete={(id) => setPending({ kind: 'delete', backupId: id })}
         onRestore={(id) => setPending({ kind: 'restore', backupId: id })}
+        onLoadMore={() => void fetchMoreBackups()}
       />
 
       {pending && (
@@ -113,12 +119,24 @@ export default function AdminBackupsPage() {
 interface BackupsBodyProps {
   backups: readonly BackupInfo[]
   loading: boolean
+  loadingMore: boolean
+  hasMore: boolean
   error: string | null
   onDelete: (id: string) => void
   onRestore: (id: string) => void
+  onLoadMore: () => void
 }
 
-function BackupsBody({ backups, loading, error, onDelete, onRestore }: BackupsBodyProps) {
+function BackupsBody({
+  backups,
+  loading,
+  loadingMore,
+  hasMore,
+  error,
+  onDelete,
+  onRestore,
+  onLoadMore,
+}: BackupsBodyProps) {
   if (loading && backups.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -162,6 +180,13 @@ function BackupsBody({ backups, loading, error, onDelete, onRestore }: BackupsBo
           </tbody>
         </table>
       </div>
+      {hasMore && (
+        <div className="mt-3 flex justify-center">
+          <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </Button>
+        </div>
+      )}
     </SectionCard>
   )
 }

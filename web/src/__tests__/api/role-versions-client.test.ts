@@ -33,10 +33,11 @@ describe('createRoleVersionsClient', () => {
         captured = new URL(request.url).pathname
         return HttpResponse.json({
           data: {
-            id: 'v3',
+            entity_id: 'role-x',
             version: 3,
-            created_at: '2026-04-19T00:00:00Z',
             content_hash: 'h',
+            saved_at: '2026-04-19T00:00:00Z',
+            saved_by: 'user-1',
             snapshot: {},
           },
           error: null,

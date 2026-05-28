@@ -20,7 +20,7 @@ const SOURCE_LABELS = {
 } as const
 
 const MENU_POPUP_CLASSES =
-  'z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-duration-default)] ease-[var(--so-ease-default)] data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
+  'z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-transition-fast)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
 
 const MENU_ITEM_CLASSES =
   'flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-[highlighted]:bg-surface'

@@ -79,6 +79,7 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 - **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
 - **Performance metrics**: 2x2 grid of MetricCards (tasks completed, avg completion time, success rate, cost per task) with sparklines
 - **Tool badges**: Horizontal flex-wrap of permitted tools
+- **Collaboration override**: Active collaboration-score override (score, applied by, reason, optional expiry) with a destructive Clear action gated to CEO / Manager, shown alongside the quality-score override panel
 - **Career timeline**: Vertical timeline with coloured dots (hired=green, promoted=blue, demoted=yellow, fired=red)
 - **Task history**: Gantt-style horizontal bars sorted by time, type-coloured, pulse on in-progress tasks, duration labels
 - **Activity log**: Paginated chronological event list with type icons, descriptions, timestamps
@@ -221,7 +222,7 @@ The **coordination namespace** includes a dedicated **Ceremony Policy** sub-page
 
 The **memory namespace** includes a dedicated **Fine-Tuning** sub-page (`/settings/memory/fine-tuning`) for managing the domain-specific embedding fine-tuning pipeline. The page displays pipeline status (5-stage stepper with live progress bar), run history, preflight validation (dependencies, GPU, documents, disk space), and controls for starting/cancelling fine-tuning runs with optional advanced parameter overrides (epochs, learning rate, batch size). A **Checkpoints** section lists all fine-tuned model checkpoints with evaluation metrics (NDCG@10, Recall@10), deploy/rollback/delete actions (deploy activates the checkpoint and updates embedder settings; rollback restores the pre-deployment backup config; delete is rejected for the active checkpoint), and an active-checkpoint indicator. All checkpoint actions require CEO or SYSTEM role.
 
-The **backup namespace** will include backup management CRUD (trigger, list, restore, delete) in a future iteration, consolidating the BackupController under the Settings page. The current implementation covers backup configuration settings only (schedule, retention, path).
+The **backup namespace** covers backup configuration settings (schedule, retention, path) and links to a dedicated **Admin Backups** page at `/admin/backups` (a standalone admin route, reached via a Settings action card from the backup namespace). That page surfaces the full backup lifecycle: create, cursor-paginated list, restore (with a restart-required notice), and delete.
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 
@@ -305,7 +306,7 @@ Slide-in drawer aggregating system notifications: budget alerts, approval arriva
 #### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
-Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
+Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Collaboration override, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
 
 ---
 
@@ -317,6 +318,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 - **Primary**:
   - Dashboard, `LayoutDashboard`, `/`
   - Org Chart, `GitBranch`, `/org`
+  - Roles, `Briefcase`, `/roles`
   - Task Board, `KanbanSquare`, `/tasks`
   - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
   - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
@@ -364,6 +366,8 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |
 | `/org` | Org Chart | Interactive visualization with Hierarchy (default, drag-drop agent reassignment) and Communication (d3-force) views, 400ms animated transitions |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
+| `/roles` | Roles | Distinct role definitions derived from the org structure (no backend `GET /roles`); each links to its version history |
+| `/roles/:roleName/versions` | Role versions | Read-only role-definition version timeline (list + get; no diff/rollback) |
 | `/tasks` | Task Board | Kanban default |
 | `/tasks?view=list` | Task Board (list) | List view toggle |
 | `/tasks?status=:status` | Task Board (filtered) | Filter by task status |
@@ -401,8 +405,10 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
+| `/settings/security/sessions` | Active Sessions | Active-session list with per-row revoke (current device disabled); reached via a Settings action card from the security namespace |
 | `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection with resolved-policy source badges, department overrides with inherit/override toggle, per-ceremony overrides, velocity-calculator auto-selection per strategy |
 | `/settings/memory/fine-tuning` | Fine-Tuning | Embedding fine-tuning pipeline management (status, run history, preflight checks, start/cancel) |
+| `/admin/backups` | Admin Backups | System backup lifecycle: create, cursor-paginated list, restore (restart notice), delete; reached via a Settings action card from the backup namespace |
 | `/clients` | Client List | Synthetic-client roster with search/filter |
 | `/clients/:clientId` | Client Detail | Per-client profile, request history, satisfaction |
 | `/clients/requests` | Request Queue | Client-request intake lifecycle (submit, scope, approve, reject). Approve returns `202`; the request runs through the work pipeline in the background and reaches its terminal state asynchronously |
@@ -518,9 +524,9 @@ Every backend controller has a home in the page structure. No orphans.
 | ProviderController | Providers |
 | ApprovalsController | Approvals, Dashboard |
 | SettingsController | Settings |
-| BackupController | Settings (backup namespace) |
+| BackupController | Admin Backups page (`/admin/backups`) |
 | AutonomyController | Agent Detail page (planned) |
-| CollaborationController | Agent Detail page (planned) |
+| CollaborationController | Agent Detail page (Collaboration override panel) |
 | CoordinationController | Task Board (task detail action) |
 | CoordinationMetricsController | Settings (coordination namespace) |
 | AuditController | Settings (security namespace) |

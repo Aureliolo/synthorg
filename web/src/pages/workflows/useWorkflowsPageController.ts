@@ -18,7 +18,7 @@ export interface WorkflowsPageController {
   setCreateOpen: (open: boolean) => void
   setViewMode: (mode: WorkflowsViewMode) => void
   setBulkDeleteOpen: (open: boolean) => void
-  handleDelete: (id: string) => Promise<void>
+  handleDelete: (id: string) => Promise<boolean>
   handleDuplicate: (id: string) => Promise<void>
   handleExport: (id: string) => Promise<void>
   handleToggleSelect: (id: string) => void
@@ -37,10 +37,12 @@ export function useWorkflowsPageController(): WorkflowsPageController {
   const navigate = useNavigate()
   const data = useWorkflowsData()
 
-  const handleDelete = useCallback(async (id: string) => {
-    // Store owns success/error UX. WS updates drive the authoritative list.
-    await useWorkflowsStore.getState().deleteWorkflow(id)
-  }, [])
+  const handleDelete = useCallback(
+    // Store owns success/error UX. Returning its boolean sentinel lets the
+    // ConfirmDialog stay open on failure so the user can retry.
+    (id: string) => useWorkflowsStore.getState().deleteWorkflow(id),
+    [],
+  )
 
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {

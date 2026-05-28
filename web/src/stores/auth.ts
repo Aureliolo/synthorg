@@ -59,10 +59,10 @@ const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
 //
 // On reload with no session cookie, multiple inflight requests can
 // land 401 in the same tick. Each invokes ``handleUnauthorized`` via
-// the response interceptor, which previously meant N concurrent
-// ``window.location.href = '/login'`` assignments and N concurrent
-// websocket disconnects -- a flicker that the audit's "auth-on-reload
-// glitch" report calls out. The guard ensures the redirect path runs
+// the response interceptor, which without this guard would mean N
+// concurrent ``window.location.href = '/login'`` assignments and N
+// concurrent websocket disconnects, a visible login-redirect flicker.
+// The guard ensures the redirect path runs
 // at most once per page load; ``login()`` resets it on success so a
 // later session expiry still works.
 let unauthorizedRedirectInFlight = false

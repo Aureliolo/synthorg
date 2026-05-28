@@ -71,7 +71,9 @@ interface VersionHistorySectionBase {
  * recover the full payload without re-fetching.
  */
 function toItem<T>(s: VersionSnapshot<T>): TimelineItem {
-  return { id: s.id, version: s.version, created_at: s.created_at }
+  // `version` is the unique per-entity key (entity_id repeats across a
+  // single entity's versions, so it cannot serve as the row identity).
+  return { id: String(s.version), version: s.version, created_at: s.saved_at }
 }
 
 export interface RollbackToolbarProps {

@@ -10,7 +10,8 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
-  onDelete: (id: string) => void | Promise<void>
+  /** Returning ``false`` keeps the confirm dialog open so the user can retry. */
+  onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   /** Export the persisted definition as YAML. */
   onExport: (id: string) => void | Promise<void>
@@ -50,6 +51,7 @@ export function WorkflowCard({
           <WorkflowCardBody workflow={workflow} />
         </Link>
         <WorkflowCardMenu
+          workflowName={workflow.name}
           editorUrl={editorUrl}
           onNavigate={navigate}
           onDuplicate={() => onDuplicate(workflow.id)}
@@ -136,12 +138,13 @@ function WorkflowCardBody({ workflow }: WorkflowCardBodyProps) {
 }
 
 const MENU_POPUP_CLASSES =
-  'z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-duration-default)] ease-[var(--so-ease-default)] data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
+  'z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-transition-fast)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
 
 const MENU_ITEM_CLASSES =
   'flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-[highlighted]:bg-surface'
 
 interface WorkflowCardMenuProps {
+  workflowName: string
   editorUrl: string
   onNavigate: (url: string) => unknown
   onDuplicate: () => void
@@ -150,6 +153,7 @@ interface WorkflowCardMenuProps {
 }
 
 function WorkflowCardMenu({
+  workflowName,
   editorUrl,
   onNavigate,
   onDuplicate,
@@ -167,7 +171,7 @@ function WorkflowCardMenu({
               e.stopPropagation()
             }}
             className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
-            aria-label="Workflow actions"
+            aria-label={`Workflow actions for ${workflowName}`}
           >
             <MoreHorizontal className="size-4" />
           </button>

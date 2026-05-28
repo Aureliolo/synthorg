@@ -74,7 +74,7 @@ describe('useOntologyStore', () => {
 
     await useOntologyStore.getState().fetchEntities()
 
-    expect(useOntologyStore.getState().entitiesError).toBeTruthy()
+    expect(typeof useOntologyStore.getState().entitiesError).toBe('string')
     expect(useOntologyStore.getState().entitiesLoading).toBe(false)
   })
 

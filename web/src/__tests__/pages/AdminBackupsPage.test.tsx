@@ -5,10 +5,11 @@ import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import AdminBackupsPage from '@/pages/AdminBackupsPage'
 import { listBackups } from '@/api/endpoints/backup'
-import { successFor } from '@/mocks/handlers'
+import { apiError, paginatedFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { useBackupsStore } from '@/stores/backups'
 import { useToastStore } from '@/stores/toast'
+import type { PaginatedResult } from '@/api/client'
 import type { BackupInfo } from '@/api/types/backup'
 
 function buildBackup(overrides: Partial<BackupInfo> = {}): BackupInfo {
@@ -23,10 +24,21 @@ function buildBackup(overrides: Partial<BackupInfo> = {}): BackupInfo {
   }
 }
 
+function singlePage(backups: BackupInfo[]): PaginatedResult<BackupInfo> {
+  const limit = 200
+  return {
+    data: [...backups],
+    limit,
+    nextCursor: null,
+    hasMore: false,
+    pagination: { limit, next_cursor: null, has_more: false },
+  }
+}
+
 function seedList(backups: BackupInfo[]) {
   server.use(
     http.get('/api/v1/admin/backups', () =>
-      HttpResponse.json(successFor<typeof listBackups>(backups)),
+      HttpResponse.json(paginatedFor<typeof listBackups>(singlePage(backups))),
     ),
   )
 }
@@ -41,7 +53,15 @@ function renderPage() {
 
 describe('AdminBackupsPage', () => {
   beforeEach(() => {
-    useBackupsStore.setState({ backups: [], loading: false, error: null, mutating: false })
+    useBackupsStore.setState({
+      backups: [],
+      loading: false,
+      loadingMore: false,
+      error: null,
+      mutating: false,
+      nextCursor: null,
+      hasMore: false,
+    })
     useToastStore.getState().dismissAll()
   })
 
@@ -81,6 +101,30 @@ describe('AdminBackupsPage', () => {
         useToastStore.getState().toasts.some((t) => t.title === 'Backup restored'),
       ).toBe(true)
     })
+  })
+
+  it('keeps the row and surfaces an error toast when delete fails', async () => {
+    const user = userEvent.setup()
+    seedList([buildBackup({ backup_id: 'backup-1' })])
+    renderPage()
+
+    await screen.findByText('backup-1')
+    server.use(
+      http.delete('/api/v1/admin/backups/:id', () =>
+        HttpResponse.json(apiError('boom'), { status: 500 }),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: /delete backup backup-1/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
+
+    await waitFor(() => {
+      expect(
+        useToastStore.getState().toasts.some((t) => t.title === 'Failed to delete backup'),
+      ).toBe(true)
+    })
+    // Optimistic removal rolled back: the row is still rendered.
+    expect(screen.getByText('backup-1')).toBeInTheDocument()
   })
 
   it('creates a backup from the header action', async () => {

@@ -99,7 +99,7 @@ function SettingsHeader({ ctrl }: { ctrl: SettingsPageController }) {
     ? [...filters.filteredByNamespace.values()].reduce((sum, arr) => sum + arr.length, 0)
     : undefined
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-wrap items-center justify-between gap-section-gap">
       <div className="flex items-baseline gap-2">
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         {data.isRefetching && (

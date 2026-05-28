@@ -29,9 +29,13 @@ const log = createLogger('backups')
 interface BackupsState {
   backups: BackupInfo[]
   loading: boolean
+  loadingMore: boolean
   error: string | null
   mutating: boolean
+  nextCursor: string | null
+  hasMore: boolean
   fetchBackups: () => Promise<void>
+  fetchMoreBackups: () => Promise<void>
   createBackup: () => Promise<boolean>
   deleteBackup: (backupId: string) => Promise<boolean>
   restoreBackup: (backupId: string) => Promise<boolean>
@@ -43,11 +47,34 @@ type BackupsGet = StoreApi<BackupsState>['getState']
 async function fetchBackupsImpl(set: BackupsSet): Promise<void> {
   set({ loading: true, error: null })
   try {
-    const backups = await apiList()
-    set({ backups, loading: false })
+    const page = await apiList()
+    set({
+      backups: [...page.data],
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      loading: false,
+    })
   } catch (err) {
     log.error('Failed to fetch backups:', getErrorMessage(err))
     set({ error: getErrorMessage(err), loading: false })
+  }
+}
+
+async function fetchMoreBackupsImpl(set: BackupsSet, get: BackupsGet): Promise<void> {
+  const { hasMore, nextCursor, loadingMore } = get()
+  if (!hasMore || !nextCursor || loadingMore) return
+  set({ loadingMore: true })
+  try {
+    const page = await apiList({ cursor: nextCursor })
+    set((s) => ({
+      backups: [...s.backups, ...page.data],
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      loadingMore: false,
+    }))
+  } catch (err) {
+    log.error('Failed to fetch more backups:', getErrorMessage(err))
+    set({ error: getErrorMessage(err), loadingMore: false })
   }
 }
 
@@ -130,9 +157,13 @@ async function restoreBackupImpl(set: BackupsSet, backupId: string): Promise<boo
 export const useBackupsStore = create<BackupsState>()((set, get) => ({
   backups: [],
   loading: false,
+  loadingMore: false,
   error: null,
   mutating: false,
+  nextCursor: null,
+  hasMore: false,
   fetchBackups: () => fetchBackupsImpl(set),
+  fetchMoreBackups: () => fetchMoreBackupsImpl(set, get),
   createBackup: () => createBackupImpl(set),
   deleteBackup: (backupId) => deleteBackupImpl(set, get, backupId),
   restoreBackup: (backupId) => restoreBackupImpl(set, backupId),

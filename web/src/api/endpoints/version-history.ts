@@ -24,10 +24,15 @@ import {
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface VersionSnapshot<T> {
-  readonly id: string
+  /** Primary key of the versioned entity (stable across all its versions). */
+  readonly entity_id: string
+  /** Monotonic per-entity version counter (1-indexed); unique per entity. */
   readonly version: number
-  readonly created_at: string
   readonly content_hash: string
+  /** ISO-8601 timestamp the snapshot was saved. */
+  readonly saved_at: string
+  /** Actor that triggered the snapshot. */
+  readonly saved_by: string
   readonly snapshot: T
 }
 

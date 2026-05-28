@@ -8,6 +8,7 @@ import { successFor } from '@/mocks/handlers'
 import { buildAgent } from '@/mocks/handlers/agents'
 import { server } from '@/test-setup'
 import { useCompanyStore } from '@/stores/company'
+import { ROUTES } from '@/router/routes'
 import type { CompanyConfig } from '@/api/types/org'
 
 function configWithRoles(): CompanyConfig {
@@ -46,17 +47,12 @@ describe('RolesPage', () => {
     expect(screen.getByText('Engineer')).toBeInTheDocument()
 
     const engineerLink = screen.getByRole('link', { name: /Engineer/i })
-    expect(engineerLink).toHaveAttribute('href', '/roles/Engineer/versions')
+    expect(engineerLink).toHaveAttribute('href', `${ROUTES.ROLES}/Engineer/versions`)
   })
 
   it('shows an empty state when no agents have roles', async () => {
-    server.use(
-      http.get('/api/v1/company', () =>
-        HttpResponse.json(
-          successFor<typeof getCompanyConfig>(configWithRoles()),
-        ),
-      ),
-    )
+    // Pre-seed the store directly; RolesPage only fetches when config is
+    // null, so no MSW handler is exercised here.
     useCompanyStore.setState({
       config: {
         company_name: 'Empty Co',

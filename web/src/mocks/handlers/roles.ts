@@ -15,10 +15,11 @@ type RoleSnapshot = VersionSnapshot<Record<string, unknown>>
 
 function buildRoleSnapshot(version: number): RoleSnapshot {
   return {
-    id: `role-version-${version}`,
+    entity_id: 'role-example',
     version,
-    created_at: '2026-04-19T00:00:00Z',
     content_hash: 'sha256:0',
+    saved_at: '2026-04-19T00:00:00Z',
+    saved_by: 'user-1',
     snapshot: {},
   }
 }

@@ -16,6 +16,9 @@ describe('useCollaborationStore', () => {
     it('returns the active override', async () => {
       const result = await useCollaborationStore.getState().getOverride('agent-1')
       expect(result.kind).toBe('ok')
+      if (result.kind === 'ok') {
+        expect(result.data.agent_id).toBe('agent-1')
+      }
     })
 
     it('treats a 404 as missing without toasting', async () => {

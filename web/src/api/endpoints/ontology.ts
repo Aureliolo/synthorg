@@ -139,7 +139,9 @@ export async function listDriftReports(params?: {
   return unwrapPaginated<DriftReportResponse>(response)
 }
 
-export async function triggerDriftCheck(): Promise<string> {
-  const response = await apiClient.post<ApiResponse<string>>('/ontology/drift/check')
+export async function triggerDriftCheck(): Promise<Record<string, string>> {
+  const response = await apiClient.post<ApiResponse<Record<string, string>>>(
+    '/ontology/drift/check',
+  )
   return unwrap(response)
 }

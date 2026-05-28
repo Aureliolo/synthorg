@@ -40,6 +40,20 @@ describe('EntityCard', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders field and relationship counts', () => {
+    render(
+      <EntityCard
+        entity={buildEntity({
+          fields: [{ name: 'id', type_hint: 'str', description: '' }],
+          relationships: [{ target: 'Agent', relation: 'owned_by', description: '' }],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('1 fields')).toBeInTheDocument()
+    expect(screen.getByText('1 relations')).toBeInTheDocument()
+  })
+
   it('deletes through a confirmation dialog', async () => {
     const user = userEvent.setup()
     const onDelete = vi.fn()

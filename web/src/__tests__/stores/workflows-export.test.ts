@@ -34,7 +34,14 @@ function makeWorkflow(
 
 describe('useWorkflowsStore.exportWorkflow', () => {
   beforeEach(() => {
-    useWorkflowsStore.setState({ workflows: [], totalWorkflows: 0 })
+    useWorkflowsStore.setState({
+      workflows: [],
+      totalWorkflows: 0,
+      nextCursor: null,
+      hasMore: false,
+      listLoading: false,
+      listError: null,
+    })
     useToastStore.getState().dismissAll()
     vi.mocked(downloadTextFile).mockClear()
   })

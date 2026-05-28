@@ -12,11 +12,16 @@ export function downloadTextFile(
   filename: string,
   mimeType = 'text/plain',
 ): void {
+  // Defence-in-depth: filenames are often built from server-supplied
+  // names (workflow/role titles). Browsers normalise `a.download`, but
+  // strip path separators and cap the length here so a hostile name
+  // cannot produce a path-bearing or unwieldy download prompt.
+  const safeName = filename.replace(/[/\\]+/g, '_').slice(0, 200).trim() || 'download'
   const blob = new Blob([content], { type: mimeType })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename
+  a.download = safeName
   try {
     document.body.appendChild(a)
     a.click()

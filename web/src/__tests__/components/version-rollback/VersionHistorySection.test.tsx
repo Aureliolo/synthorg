@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { VersionHistorySection } from '@/components/version-rollback/VersionHistorySection'
 import type {
@@ -9,10 +9,11 @@ import type { PaginatedResult } from '@/api/client'
 
 function snap(version: number): VersionSnapshot<Record<string, unknown>> {
   return {
-    id: `v${version}`,
+    entity_id: 'entity-1',
     version,
-    created_at: '2026-04-19T00:00:00Z',
     content_hash: 'h',
+    saved_at: '2026-04-19T00:00:00Z',
+    saved_by: 'user-1',
     snapshot: {},
   }
 }
@@ -53,7 +54,8 @@ describe('VersionHistorySection diff gating', () => {
     expect(screen.getByText('v2')).toBeInTheDocument()
     // ...but as static text, not selectable buttons, so the two-click
     // compare that would hit the (absent) diff endpoint cannot fire.
-    expect(screen.queryByRole('button')).toBeNull()
+    const timeline = screen.getByRole('list', { name: /version history/i })
+    expect(within(timeline).queryByRole('button')).toBeNull()
     expect(diff).not.toHaveBeenCalled()
   })
 })

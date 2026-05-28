@@ -6,7 +6,7 @@ import {
 } from '@/api/endpoints/workflows'
 import { useToastStore } from '@/stores/toast'
 import { downloadTextFile } from '@/utils/download'
-import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
+import { formatBatchErrors, getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -55,7 +55,7 @@ async function createWorkflowImpl(
     log.error('Create workflow failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create workflow',
+      ...getCrudErrorTitle(err, 'Failed to create workflow'),
       description: getErrorMessage(err),
     })
     return null
@@ -78,7 +78,7 @@ async function createFromBlueprintImpl(
     log.error('Create workflow from blueprint failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create workflow from blueprint',
+      ...getCrudErrorTitle(err, 'Failed to create workflow from blueprint'),
       description: getErrorMessage(err),
     })
     return null
@@ -122,7 +122,7 @@ async function deleteWorkflowImpl(
     }
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete workflow',
+      ...getCrudErrorTitle(err, 'Failed to delete workflow'),
       description: getErrorMessage(err),
     })
     return false
@@ -146,7 +146,7 @@ async function exportWorkflowImpl(
     log.error('Export workflow YAML failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to export workflow',
+      ...getCrudErrorTitle(err, 'Failed to export workflow'),
       description: getErrorMessage(err),
     })
     return false
@@ -291,9 +291,12 @@ async function batchDeleteWorkflowsImpl(
     const distinctCount = new Set(ids).size
     useToastStore.getState().add({
       variant: 'error',
-      title: distinctCount === 1
-        ? 'Failed to delete workflow'
-        : `Failed to delete ${distinctCount} workflows`,
+      ...getCrudErrorTitle(
+        err,
+        distinctCount === 1
+          ? 'Failed to delete workflow'
+          : `Failed to delete ${distinctCount} workflows`,
+      ),
       description: getErrorMessage(err),
     })
     return false

@@ -18,7 +18,19 @@ import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatDateTime } from '@/utils/format'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
+import { LOG_SANITIZE_MAX_LENGTH } from '@/utils/constants'
 import type { SessionInfo } from '@/api/types/auth'
+
+/**
+ * Render a session's device label. `user_agent` is server-recorded from
+ * the request and, under the CEO `scope=all` view, can carry another
+ * user's attacker-supplied header; sanitize it (strip controls / bidi
+ * overrides, cap length) before it reaches dialog copy or ARIA text.
+ */
+function deviceLabel(userAgent: string, fallback: string): string {
+  return sanitizeWsString(userAgent, LOG_SANITIZE_MAX_LENGTH) || fallback
+}
 
 export default function SessionsPage() {
   const sessions = useAuthStore((s) => s.sessions)
@@ -61,7 +73,7 @@ export default function SessionsPage() {
         title="Revoke session"
         description={
           target
-            ? `Revoke the session for "${target.user_agent || 'this device'}"? That device will need to sign in again.`
+            ? `Revoke the session for "${deviceLabel(target.user_agent, 'this device')}"? That device will need to sign in again.`
             : 'Revoke this session?'
         }
         confirmLabel="Revoke"
@@ -132,12 +144,13 @@ interface SessionRowProps {
 }
 
 function SessionRow({ session, onRevoke }: SessionRowProps) {
+  const device = deviceLabel(session.user_agent, 'Unknown device')
   return (
     <tr className="align-top">
       <td className="px-3 py-2 text-text-secondary">
         <div className="flex items-center gap-2">
-          <span className="truncate" title={session.user_agent}>
-            {session.user_agent || 'Unknown device'}
+          <span className="truncate" title={device}>
+            {device}
           </span>
           {session.is_current && <StatPill value="This device" />}
         </div>
@@ -153,7 +166,7 @@ function SessionRow({ session, onRevoke }: SessionRowProps) {
             variant="ghost"
             size="sm"
             onClick={() => onRevoke(session.session_id)}
-            aria-label={`Revoke session for ${session.user_agent || 'this device'}`}
+            aria-label={`Revoke session for ${device}`}
           >
             <Trash2 className="size-3.5" />
             Revoke

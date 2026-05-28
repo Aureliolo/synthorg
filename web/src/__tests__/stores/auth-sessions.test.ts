@@ -51,7 +51,7 @@ describe('useAuthStore sessions', () => {
 
     await useAuthStore.getState().fetchSessions('own')
 
-    expect(useAuthStore.getState().sessionsError).toBeTruthy()
+    expect(typeof useAuthStore.getState().sessionsError).toBe('string')
     expect(useAuthStore.getState().sessionsLoading).toBe(false)
   })
 
@@ -76,7 +76,7 @@ describe('useAuthStore sessions', () => {
     useAuthStore.setState({ sessions: [buildSession({ session_id: 'a' })] })
     server.use(
       http.delete('/api/v1/auth/sessions/:id', () =>
-        HttpResponse.json(apiError('boom')),
+        HttpResponse.json(apiError('boom'), { status: 500 }),
       ),
     )
 

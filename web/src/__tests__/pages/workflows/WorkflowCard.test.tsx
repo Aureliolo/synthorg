@@ -33,6 +33,16 @@ describe('WorkflowCard', () => {
     expect(onExport).toHaveBeenCalledWith('wf-1')
   })
 
+  it('duplicates from the actions menu', async () => {
+    const user = userEvent.setup()
+    const { onDuplicate } = renderCard()
+
+    await user.click(screen.getByRole('button', { name: /workflow actions/i }))
+    await user.click(await screen.findByRole('menuitem', { name: /duplicate/i }))
+
+    expect(onDuplicate).toHaveBeenCalledWith('wf-1')
+  })
+
   it('guards delete behind a confirmation dialog', async () => {
     const user = userEvent.setup()
     const { onDelete } = renderCard()
@@ -43,5 +53,17 @@ describe('WorkflowCard', () => {
     await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
     expect(onDelete).toHaveBeenCalledWith('wf-1')
+  })
+
+  it('does not delete when the dialog is cancelled', async () => {
+    const user = userEvent.setup()
+    const { onDelete } = renderCard()
+
+    await user.click(screen.getByRole('button', { name: /workflow actions/i }))
+    await user.click(await screen.findByRole('menuitem', { name: /^delete$/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+    expect(onDelete).not.toHaveBeenCalled()
   })
 })

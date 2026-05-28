@@ -10,7 +10,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
-  onDelete: (id: string) => void | Promise<void>
+  onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
   onToggleSelect?: (id: string) => void
@@ -174,7 +174,7 @@ function WorkflowTableRow({
 }
 
 const MENU_POPUP_CLASSES =
-  'z-50 min-w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
+  'z-50 min-w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-[var(--so-transition-fast)] ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95'
 
 const MENU_ITEM_CLASSES =
   'flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-[highlighted]:bg-surface'

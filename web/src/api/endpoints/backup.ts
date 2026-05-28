@@ -1,6 +1,6 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types/backup'
-import type { ApiResponse } from '../types/http'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export async function createBackup(idempotencyKey?: string): Promise<BackupManifest> {
   // The backend requires the Idempotency-Key header on POST
@@ -24,9 +24,15 @@ export async function createBackup(idempotencyKey?: string): Promise<BackupManif
   return unwrap(response)
 }
 
-export async function listBackups(): Promise<BackupInfo[]> {
-  const response = await apiClient.get<ApiResponse<BackupInfo[]>>('/admin/backups')
-  return unwrap(response)
+export async function listBackups(params?: {
+  /** Opaque pagination cursor from the previous response's `pagination.next_cursor`. */
+  cursor?: string | null
+  limit?: number
+}): Promise<PaginatedResult<BackupInfo>> {
+  const response = await apiClient.get<PaginatedResponse<BackupInfo>>('/admin/backups', {
+    params,
+  })
+  return unwrapPaginated<BackupInfo>(response)
 }
 
 export async function getBackup(backupId: string): Promise<BackupManifest> {
