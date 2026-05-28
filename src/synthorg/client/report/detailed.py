@@ -1,6 +1,6 @@
 """Detailed report strategy."""
 
-from typing import Any
+from pydantic import JsonValue
 
 from synthorg.client.models import SimulationMetrics
 
@@ -15,9 +15,22 @@ class DetailedReport:
     async def generate_report(
         self,
         metrics: SimulationMetrics,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Return a detailed metrics report with narrative summary."""
         summary = self._format_summary(metrics)
+        # Re-emit each TypedDict snapshot as a plain JSON object so the
+        # report stays a precise ``dict[str, JsonValue]`` (a TypedDict is
+        # not assignable to ``JsonValue`` under list invariance).
+        per_round: list[JsonValue] = [
+            {
+                "round_number": entry["round_number"],
+                "total_requirements": entry["total_requirements"],
+                "tasks_created": entry["tasks_created"],
+                "accepted": entry["accepted"],
+                "rejected": entry["rejected"],
+            }
+            for entry in metrics.round_metrics
+        ]
         return {
             "format": "detailed",
             "summary": summary,
@@ -33,7 +46,7 @@ class DetailedReport:
                 "rework_rate": metrics.rework_rate,
                 "avg_review_rounds": metrics.avg_review_rounds,
             },
-            "per_round": list(metrics.round_metrics),
+            "per_round": per_round,
         }
 
     @staticmethod

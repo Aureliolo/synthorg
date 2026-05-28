@@ -1,7 +1,9 @@
 """JSON archival export report strategy."""
 
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Final
+
+from pydantic import JsonValue
 
 from synthorg.client.models import SimulationMetrics
 
@@ -19,7 +21,7 @@ class JsonExportReport:
     async def generate_report(
         self,
         metrics: SimulationMetrics,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Return metrics wrapped in an archival envelope."""
         return {
             "format": "json_export",

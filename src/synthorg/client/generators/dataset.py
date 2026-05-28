@@ -4,9 +4,8 @@ import csv
 import json
 import random
 from pathlib import Path
-from typing import Any
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.client.models import (
     GenerationContext,
@@ -112,10 +111,10 @@ class DatasetGenerator:
     def _filter_rows(
         self,
         context: GenerationContext,
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, JsonValue], ...]:
         allowed = {c.value for c in context.complexity_range}
 
-        def matches(row: dict[str, Any]) -> bool:
+        def matches(row: dict[str, JsonValue]) -> bool:
             domain = row.get("domain")
             if domain and domain != context.domain:
                 return False
@@ -126,21 +125,21 @@ class DatasetGenerator:
 
     def _sample(
         self,
-        pool: tuple[dict[str, Any], ...],
+        pool: tuple[dict[str, JsonValue], ...],
         count: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, JsonValue]]:
         if count <= len(pool):
             return self._rng.sample(list(pool), count)
         extras = [self._rng.choice(pool) for _ in range(count - len(pool))]
         return list(pool) + extras
 
     @staticmethod
-    def _load_csv(path: Path) -> tuple[dict[str, Any], ...]:
-        rows: list[dict[str, Any]] = []
+    def _load_csv(path: Path) -> tuple[dict[str, JsonValue], ...]:
+        rows: list[dict[str, JsonValue]] = []
         with path.open("r", encoding="utf-8", newline="") as fh:
             reader = csv.DictReader(fh)
             for raw in reader:
-                row: dict[str, Any] = dict(raw)
+                row: dict[str, JsonValue] = dict(raw)
                 criteria_raw = row.get("acceptance_criteria")
                 if isinstance(criteria_raw, str) and criteria_raw:
                     try:
@@ -151,8 +150,8 @@ class DatasetGenerator:
         return tuple(rows)
 
     @staticmethod
-    def _load_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
-        rows: list[dict[str, Any]] = []
+    def _load_jsonl(path: Path) -> tuple[dict[str, JsonValue], ...]:
+        rows: list[dict[str, JsonValue]] = []
         with path.open("r", encoding="utf-8") as fh:
             for lineno, line in enumerate(fh, start=1):
                 stripped = line.strip()
@@ -181,17 +180,17 @@ class DatasetGenerator:
         return tuple(rows)
 
     @staticmethod
-    def _to_requirement(row: dict[str, Any]) -> TaskRequirement:
+    def _to_requirement(row: dict[str, JsonValue]) -> TaskRequirement:
         criteria = row.get("acceptance_criteria", ())
         if not isinstance(criteria, list | tuple):
             criteria = ()
         return TaskRequirement(
             title=str(row["title"]),
             description=str(row["description"]),
-            task_type=TaskType(row.get("task_type", "development")),
-            priority=Priority(row.get("priority", "medium")),
+            task_type=TaskType(str(row.get("task_type", "development"))),
+            priority=Priority(str(row.get("priority", "medium"))),
             estimated_complexity=Complexity(
-                row.get("estimated_complexity", "medium"),
+                str(row.get("estimated_complexity", "medium")),
             ),
             acceptance_criteria=tuple(str(c) for c in criteria),
         )

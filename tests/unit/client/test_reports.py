@@ -25,8 +25,20 @@ def _metrics() -> SimulationMetrics:
         tasks_reworked=2,
         avg_review_rounds=1.5,
         round_metrics=(
-            {"round": 1, "accepted": 5},
-            {"round": 2, "accepted": 5},
+            {
+                "round_number": 1,
+                "total_requirements": 10,
+                "tasks_created": 8,
+                "accepted": 5,
+                "rejected": 3,
+            },
+            {
+                "round_number": 2,
+                "total_requirements": 10,
+                "tasks_created": 7,
+                "accepted": 5,
+                "rejected": 0,
+            },
         ),
     )
 
@@ -38,8 +50,12 @@ class TestSummaryReport:
     async def test_summary_structure(self) -> None:
         report = await SummaryReport().generate_report(_metrics())
         assert report["format"] == "summary"
-        assert report["totals"]["requirements"] == 20
-        assert report["rates"]["acceptance_rate"] == pytest.approx(10 / 15)
+        totals = report["totals"]
+        assert isinstance(totals, dict)
+        assert totals["requirements"] == 20
+        rates = report["rates"]
+        assert isinstance(rates, dict)
+        assert rates["acceptance_rate"] == pytest.approx(10 / 15)
 
     async def test_summary_has_no_per_round_detail(self) -> None:
         report = await SummaryReport().generate_report(_metrics())
@@ -54,13 +70,19 @@ class TestDetailedReport:
         report = await DetailedReport().generate_report(_metrics())
         assert report["format"] == "detailed"
         assert "summary" in report
-        assert len(report["per_round"]) == 2
-        assert report["per_round"][0]["round"] == 1
+        per_round = report["per_round"]
+        assert isinstance(per_round, list)
+        assert len(per_round) == 2
+        first = per_round[0]
+        assert isinstance(first, dict)
+        assert first["round_number"] == 1
 
     async def test_summary_narrative_text(self) -> None:
         report = await DetailedReport().generate_report(_metrics())
-        assert "20 requirements" in report["summary"]
-        assert "%" in report["summary"]
+        summary = report["summary"]
+        assert isinstance(summary, str)
+        assert "20 requirements" in summary
+        assert "%" in summary
 
 
 class TestMetricsOnlyReport:
@@ -84,7 +106,9 @@ class TestJsonExportReport:
         assert report["format"] == "json_export"
         assert "schema_version" in report
         assert "exported_at" in report
-        assert report["metrics"]["total_requirements"] == 20
+        metrics = report["metrics"]
+        assert isinstance(metrics, dict)
+        assert metrics["total_requirements"] == 20
 
     async def test_json_serializable(self) -> None:
         report = await JsonExportReport().generate_report(_metrics())

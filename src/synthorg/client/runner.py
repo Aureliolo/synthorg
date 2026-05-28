@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.client.config import SimulationRunnerConfig
 from synthorg.client.models import (
@@ -10,6 +11,7 @@ from synthorg.client.models import (
     ClientRequest,
     GenerationContext,
     ReviewContext,
+    RoundMetrics,
     SimulationConfig,
     SimulationMetrics,
     TaskRequirement,
@@ -77,7 +79,7 @@ class SimulationRunner:
         *,
         sim_config: SimulationConfig,
         clients: tuple[ClientInterface, ...],
-    ) -> tuple[SimulationMetrics, dict[str, Any] | None]:
+    ) -> tuple[SimulationMetrics, dict[str, JsonValue] | None]:
         """Execute the full simulation loop.
 
         Args:
@@ -121,7 +123,7 @@ class SimulationRunner:
             )
 
         final_metrics = metrics.freeze()
-        report: dict[str, Any] | None = None
+        report: dict[str, JsonValue] | None = None
         if self._report_strategy is not None:
             report = await self._report_strategy.generate_report(final_metrics)
 
@@ -139,7 +141,7 @@ class SimulationRunner:
         round_index: int,
         sim_config: SimulationConfig,
         clients: tuple[ClientInterface, ...],
-    ) -> dict[str, Any]:
+    ) -> RoundMetrics:
         participants = clients[: sim_config.clients_per_round]
         context = self._build_generation_context(
             sim_config=sim_config,
@@ -332,9 +334,9 @@ class _RunningTotals:
         self._total_tasks_created = 0
         self._tasks_accepted = 0
         self._tasks_rejected = 0
-        self._round_snapshots: list[dict[str, Any]] = []
+        self._round_snapshots: list[RoundMetrics] = []
 
-    def accumulate(self, round_metrics: dict[str, Any]) -> None:
+    def accumulate(self, round_metrics: RoundMetrics) -> None:
         self._total_requirements += int(round_metrics["total_requirements"])
         self._total_tasks_created += int(round_metrics["tasks_created"])
         self._tasks_accepted += int(round_metrics["accepted"])

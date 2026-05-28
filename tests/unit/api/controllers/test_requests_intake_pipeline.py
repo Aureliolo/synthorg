@@ -138,7 +138,9 @@ async def test_intake_rejection_cancels_request() -> None:
 
     final = await sim_state.request_store.get(_REQUEST_ID)
     assert final.status is RequestStatus.CANCELLED
-    assert "not actionable" in final.metadata["rejection_reason"]
+    rejection_reason = final.metadata["rejection_reason"]
+    assert isinstance(rejection_reason, str)
+    assert "not actionable" in rejection_reason
 
 
 async def test_pipeline_error_cancels_request() -> None:

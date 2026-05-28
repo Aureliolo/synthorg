@@ -1,6 +1,6 @@
 """Metrics-only report strategy."""
 
-from typing import Any
+from pydantic import JsonValue
 
 from synthorg.client.models import SimulationMetrics
 
@@ -16,6 +16,6 @@ class MetricsOnlyReport:
     async def generate_report(
         self,
         metrics: SimulationMetrics,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Return the Pydantic model dump of metrics."""
         return metrics.model_dump()

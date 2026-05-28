@@ -7762,7 +7762,9 @@ export type components = {
             readonly created_at: string;
             /** @description Additional request metadata */
             readonly metadata: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /** @description Unique request identifier */
             readonly request_id: string;
@@ -12929,6 +12931,14 @@ export type components = {
             /** @description Snapshot version to rollback to */
             readonly target_version: number;
         };
+        /** RoundMetrics */
+        readonly RoundMetrics: {
+            readonly accepted: number;
+            readonly rejected: number;
+            readonly round_number: number;
+            readonly tasks_created: number;
+            readonly total_requirements: number;
+        };
         /**
          * RuleSeverity
          * @description Severity of a rule match.
@@ -13366,9 +13376,7 @@ export type components = {
              * @description Per-round metric snapshots
              * @default []
              */
-            readonly round_metrics: readonly {
-                readonly [key: string]: unknown;
-            }[];
+            readonly round_metrics: readonly components["schemas"]["RoundMetrics"][];
             /** @default 0 */
             readonly tasks_accepted: number;
             /** @default 0 */

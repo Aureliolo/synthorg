@@ -89,7 +89,9 @@ class TestSimulationRunnerBasic:
         assert metrics.total_tasks_created >= 1
         assert report is not None
         assert report["format"] == "detailed"
-        assert len(report["per_round"]) == 2
+        per_round = report["per_round"]
+        assert isinstance(per_round, list)
+        assert len(per_round) == 2
 
     async def test_run_without_report_strategy(self) -> None:
         intake = IntakeEngine(strategy=_CountingStrategy(accept_pattern=(True,)))

@@ -369,7 +369,10 @@ class TestClientRequest:
             requirement=self._make_requirement(),
         )
         with pytest.raises(ValueError, match="status override"):
-            req.with_status(
+            # mypy rejects ``status`` statically (not in the overrides
+            # TypedDict); this asserts the runtime guard still rejects a
+            # ``status`` smuggled through an untyped ``**overrides`` splat.
+            req.with_status(  # type: ignore[call-arg]
                 RequestStatus.TRIAGING,
                 status=RequestStatus.APPROVED,
             )

@@ -5,7 +5,9 @@ generation, feedback evaluation, reporting, and pool management.
 All protocols are ``@runtime_checkable`` for structural subtyping.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from pydantic import JsonValue
 
 if TYPE_CHECKING:
     from synthorg.client.models import (
@@ -121,7 +123,7 @@ class ReportStrategy(Protocol):
     async def generate_report(
         self,
         metrics: SimulationMetrics,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Generate a report from simulation metrics.
 
         Args:

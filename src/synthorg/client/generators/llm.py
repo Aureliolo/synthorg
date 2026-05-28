@@ -1,9 +1,9 @@
 """LLM-backed requirement generator."""
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.client.models import GenerationContext, TaskRequirement
@@ -184,21 +184,21 @@ class LLMGenerator:
         ]
 
     @staticmethod
-    def _extract_json_array(content: str) -> list[dict[str, Any]] | None:
+    def _extract_json_array(content: str) -> list[dict[str, JsonValue]] | None:
         parsed = extract_json_array_from_llm_response(content)
         if parsed is None:
             return None
         return [item for item in parsed if isinstance(item, dict)]
 
     @staticmethod
-    def _to_requirement(item: dict[str, Any]) -> TaskRequirement:
+    def _to_requirement(item: dict[str, JsonValue]) -> TaskRequirement:
         return TaskRequirement(
-            title=item["title"],
-            description=item["description"],
-            task_type=TaskType(item.get("task_type", "development")),
-            priority=Priority(item.get("priority", "medium")),
+            title=str(item["title"]),
+            description=str(item["description"]),
+            task_type=TaskType(str(item.get("task_type", "development"))),
+            priority=Priority(str(item.get("priority", "medium"))),
             estimated_complexity=Complexity(
-                item.get("estimated_complexity", "medium"),
+                str(item.get("estimated_complexity", "medium")),
             ),
             acceptance_criteria=_normalize_criteria(
                 item.get("acceptance_criteria"),

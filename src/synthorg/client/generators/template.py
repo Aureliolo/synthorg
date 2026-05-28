@@ -3,9 +3,8 @@
 import json
 import random
 from pathlib import Path
-from typing import Any
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.client.models import (
     GenerationContext,
@@ -61,7 +60,7 @@ class TemplateGenerator:
             msg = f"Template file must contain a JSON array, got {type(raw).__name__}"
             raise TypeError(msg)
         valid = [entry for entry in raw if isinstance(entry, dict)]
-        self._templates: tuple[dict[str, Any], ...] = tuple(valid)
+        self._templates: tuple[dict[str, JsonValue], ...] = tuple(valid)
         self._rng = (
             random.Random(seed)  # noqa: S311
             if seed is not None
@@ -118,10 +117,10 @@ class TemplateGenerator:
     def _filter_templates(
         self,
         context: GenerationContext,
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, JsonValue], ...]:
         allowed = {c.value for c in context.complexity_range}
 
-        def matches(template: dict[str, Any]) -> bool:
+        def matches(template: dict[str, JsonValue]) -> bool:
             domain = template.get("domain")
             if domain is not None and domain != context.domain:
                 return False
@@ -132,25 +131,26 @@ class TemplateGenerator:
 
     def _sample(
         self,
-        pool: tuple[dict[str, Any], ...],
+        pool: tuple[dict[str, JsonValue], ...],
         count: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, JsonValue]]:
         if count <= len(pool):
             return self._rng.sample(list(pool), count)
         extras = [self._rng.choice(pool) for _ in range(count - len(pool))]
         return list(pool) + extras
 
     @staticmethod
-    def _to_requirement(template: dict[str, Any]) -> TaskRequirement:
+    def _to_requirement(template: dict[str, JsonValue]) -> TaskRequirement:
+        criteria = template.get("acceptance_criteria", ())
+        if not isinstance(criteria, list | tuple):
+            criteria = ()
         return TaskRequirement(
-            title=template["title"],
-            description=template["description"],
-            task_type=TaskType(template.get("task_type", "development")),
-            priority=Priority(template.get("priority", "medium")),
+            title=str(template["title"]),
+            description=str(template["description"]),
+            task_type=TaskType(str(template.get("task_type", "development"))),
+            priority=Priority(str(template.get("priority", "medium"))),
             estimated_complexity=Complexity(
-                template.get("estimated_complexity", "medium"),
+                str(template.get("estimated_complexity", "medium")),
             ),
-            acceptance_criteria=tuple(
-                template.get("acceptance_criteria", ()),
-            ),
+            acceptance_criteria=tuple(str(c) for c in criteria),
         )
