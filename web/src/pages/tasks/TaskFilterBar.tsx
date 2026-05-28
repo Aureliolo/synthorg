@@ -35,7 +35,7 @@ export interface TaskFilterBarProps {
   viewMode: 'board' | 'list'
   onViewModeChange: (mode: 'board' | 'list') => void
   onCreateTask: () => void
-  assignees: string[]
+  assignees: readonly string[]
   taskCount: number
 }
 
@@ -92,7 +92,7 @@ function computeHasActiveFilters(filters: TaskBoardFilters): boolean {
 
 interface TaskFilterControlsProps {
   filters: TaskBoardFilters
-  assignees: string[]
+  assignees: readonly string[]
   updateFilter: <K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) => void
 }
 
@@ -181,7 +181,7 @@ function PriorityFilter({ value, onValueChange }: PriorityFilterProps) {
 
 interface AssigneeFilterProps {
   value: string | undefined
-  assignees: string[]
+  assignees: readonly string[]
   onValueChange: (value: string | undefined) => void
 }
 

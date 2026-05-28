@@ -37,7 +37,7 @@ export default function TaskBoardPage() {
         viewMode={ctrl.viewMode}
         onViewModeChange={ctrl.handleViewModeChange}
         onCreateTask={() => ctrl.setCreateOpen(true)}
-        assignees={ctrl.assignees as string[]}
+        assignees={ctrl.assignees}
         taskCount={ctrl.filteredTasks.length}
       />
       <BoardToggles

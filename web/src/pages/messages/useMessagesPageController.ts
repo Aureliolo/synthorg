@@ -3,21 +3,18 @@ import { useSearchParams } from 'react-router'
 import { useMessagesData } from '@/hooks/useMessagesData'
 import { useMessagesStore } from '@/stores/messages'
 import { filterMessages, type MessagePageFilters } from '@/utils/messages'
+import {
+  MESSAGE_PRIORITY_VALUES,
+  MESSAGE_TYPE_VALUES,
+} from '@/api/types/enums'
 import type { Message, MessagePriority, MessageType } from '@/api/types/messages'
 
-const VALID_TYPES: ReadonlySet<string> = new Set([
-  'task_update',
-  'question',
-  'announcement',
-  'review_request',
-  'approval',
-  'delegation',
-  'status_report',
-  'escalation',
-  'meeting_contribution',
-  'hr_notification',
-])
-const VALID_PRIORITIES: ReadonlySet<string> = new Set(['low', 'normal', 'high', 'urgent'])
+// Derive from the generated enum tuples so new MessageType / MessagePriority
+// members added to the Python source flow through automatically; the old
+// hand-maintained sets silently rejected any new enum value until someone
+// updated this file too.
+const VALID_TYPES: ReadonlySet<string> = new Set(MESSAGE_TYPE_VALUES)
+const VALID_PRIORITIES: ReadonlySet<string> = new Set(MESSAGE_PRIORITY_VALUES)
 const NEW_MESSAGE_FLASH_MS = 2000
 
 export interface MessagesPageController {
@@ -42,7 +39,13 @@ export function useMessagesPageController(): MessagesPageController {
   const activeChannel = searchParams.get('channel')
   const data = useMessagesData(activeChannel)
 
-  if (data.wsConnected) wasConnectedRef.current = true
+  // Latching the "have we ever connected?" signal in an effect rather than in
+  // the render body avoids a concurrent-mode hazard: render-phase ref writes
+  // happen even on discarded renders, so a transient flicker could falsely
+  // latch the flag. The effect only runs after commit.
+  useEffect(() => {
+    if (data.wsConnected) wasConnectedRef.current = true
+  }, [data.wsConnected])
 
   useClearNewMessageFlashes(data.newMessageIds)
 

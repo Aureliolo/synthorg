@@ -133,13 +133,15 @@ function useDeleteConfirmCallback(
       // Sentinel-return contract: the store emits success and error toasts. On
       // failure, leave the dialog open so the user can retry without losing
       // their place (return false tells ConfirmDialog not to auto-close).
+      // No catch: per the store-mutation pattern, callers MUST NOT wrap
+      // store calls in try/catch -- the store owns the error UX (toast +
+      // sentinel return). Letting exceptions propagate keeps that path
+      // honest.
       const ok = await deleteRule(deleteTarget)
       if (!ok) return false
       setDeleteTarget(null)
       await safeRefresh()
       return true
-    } catch {
-      return false
     } finally {
       setDeleting(false)
     }

@@ -127,7 +127,7 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       </ErrorBoundary>
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">
-          <CareerTimeline events={[...careerHistory]} />
+          <CareerTimeline events={careerHistory} />
         </ErrorBoundary>
         <ErrorBoundary level="section">
           <TaskHistory tasks={agentTasks} />
@@ -135,7 +135,7 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
       </div>
       <ErrorBoundary level="section">
         <ActivityLog
-          events={[...activity]}
+          events={activity}
           total={activityTotal}
           onLoadMore={fetchMoreActivity}
         />

@@ -56,13 +56,23 @@ export function useAgentsPageController(): AgentsPageController {
 
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
-    const { succeeded, failed } = await runBulkDelete(visibleSelected, idToName, deleteAgent)
-    setBulkDeleting(false)
-    setBulkDeleteOpen(false)
-    clearSelection()
-    emitBulkDeleteToast(succeeded, failed)
-    if (failed > 0 && succeeded === 0) {
-      log.warn('bulk_agent_delete_all_failed', sanitizeForLog({ failed }))
+    try {
+      const { succeeded, failed } = await runBulkDelete(
+        visibleSelected,
+        idToName,
+        deleteAgent,
+      )
+      emitBulkDeleteToast(succeeded, failed)
+      if (failed > 0 && succeeded === 0) {
+        log.warn('bulk_agent_delete_all_failed', sanitizeForLog({ failed }))
+      }
+    } finally {
+      // Always release the UI regardless of whether runBulkDelete threw or
+      // resolved -- otherwise an exception leaves the bulk-delete dialog
+      // stuck in its loading state with no recovery.
+      setBulkDeleting(false)
+      setBulkDeleteOpen(false)
+      clearSelection()
     }
   }, [visibleSelected, idToName, deleteAgent, clearSelection])
 

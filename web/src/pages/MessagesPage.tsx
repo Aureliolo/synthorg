@@ -33,7 +33,7 @@ export default function MessagesPage() {
       <MessagesMainContent ctrl={ctrl} />
 
       <AnimatePresence>
-        {ctrl.selectedMessageId && (
+        {ctrl.selectedMessageId && ctrl.selectedMessage && (
           <MessageDetailDrawer
             message={ctrl.selectedMessage}
             open

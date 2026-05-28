@@ -126,7 +126,17 @@ interface TaskOnlyProps {
   task: DashboardTask
 }
 
-export function MetaGrid({ task }: TaskOnlyProps) {
+interface MetaGridProps extends TaskOnlyProps {
+  /** Currency code for the task-cost display (e.g. ``'USD'``). Optional so
+   * existing callers keep working with DEFAULT_CURRENCY; new code should
+   * thread the active tenant / user / workspace currency through (regional-
+   * defaults: no region/currency is privileged in framework code). Mirrors
+   * the TaskCard ``currency`` prop. */
+  currency?: string
+}
+
+export function MetaGrid({ task, currency }: MetaGridProps) {
+  const displayCurrency = currency ?? DEFAULT_CURRENCY
   return (
     <div className="grid grid-cols-2 gap-grid-gap rounded-lg border border-border p-card">
       <MetaField icon={Tag} label="Type" value={getTaskTypeLabel(task.type)} />
@@ -140,7 +150,7 @@ export function MetaGrid({ task }: TaskOnlyProps) {
         <MetaField
           icon={Tag}
           label="Cost"
-          value={formatCurrency(task.cost, DEFAULT_CURRENCY)}
+          value={formatCurrency(task.cost, displayCurrency)}
         />
       )}
     </div>

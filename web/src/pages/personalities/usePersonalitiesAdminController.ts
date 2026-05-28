@@ -66,7 +66,13 @@ export function usePersonalitiesAdminController(): PersonalitiesAdminController 
   })
   useEffect(() => {
     pagination.resetPage()
-  }, [list.searchQuery, list.sortKey, pagination])
+    // ``pagination`` is a fresh object every render from ``useListPagination``
+    // (no useMemo on the returned object), so including it would re-run this
+    // effect on every render and reset the page on every keystroke. The
+    // ``resetPage`` reference is what we actually need; depending on the
+    // search/sort primitives is sufficient.
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- pagination.resetPage identity is unstable; sort/search are the real triggers
+  }, [list.searchQuery, list.sortKey])
 
   const handleCreateSubmit = useCallback(
     () => submitCreate(createState, list.refresh),
