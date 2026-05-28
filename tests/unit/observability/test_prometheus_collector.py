@@ -1,15 +1,22 @@
 """Tests for the Prometheus metrics collector."""
 
 from datetime import datetime
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 from prometheus_client import generate_latest
 
+from synthorg.api.state import AppState
+from synthorg.budget.state import BudgetStateSlice
+from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability.prometheus_collector import (
     PrometheusCollector,
     _fetch_tool_names,
 )
+from tests._shared import make_app_state
 
 
 def _mock_app_state(  # noqa: PLR0913
@@ -27,7 +34,7 @@ def _mock_app_state(  # noqa: PLR0913
     agent_costs: dict[str, float] | None = None,
     agent_daily_costs: dict[str, float] | None = None,
     reset_day: int = 1,
-) -> MagicMock:
+) -> AppState:
     """Build a mock AppState with configurable service availability.
 
     Args:
@@ -38,12 +45,7 @@ def _mock_app_state(  # noqa: PLR0913
         reset_day: Budget reset day (1-28). Determines which
             ``get_total_cost(start=...)`` calls return billing cost.
     """
-    state = MagicMock()
-    type(state).has_cost_tracker = PropertyMock(return_value=has_cost_tracker)
-    type(state).has_agent_registry = PropertyMock(
-        return_value=has_agent_registry,
-    )
-    type(state).has_task_engine = PropertyMock(return_value=has_task_engine)
+    overrides: dict[str, Any] = {}
 
     if has_cost_tracker:
         tracker = AsyncMock()
@@ -91,19 +93,19 @@ def _mock_app_state(  # noqa: PLR0913
             tracker.budget_config = budget_cfg
         else:
             tracker.budget_config = None
-        type(state).cost_tracker = PropertyMock(return_value=tracker)
+        overrides["cost_tracker"] = tracker
 
     if has_agent_registry:
         registry = AsyncMock()
         registry.list_active = AsyncMock(return_value=agents)
-        type(state).agent_registry = PropertyMock(return_value=registry)
+        overrides["agent_registry"] = registry
 
     if has_task_engine:
         engine = AsyncMock()
         engine.list_tasks = AsyncMock(return_value=(tasks, len(tasks)))
-        type(state).task_engine = PropertyMock(return_value=engine)
+        overrides["task_engine"] = engine
 
-    return state
+    return make_app_state(**overrides)
 
 
 def _make_agent(
@@ -253,7 +255,9 @@ class TestPrometheusCollectorRefresh:
             has_cost_tracker=True,
             budget_total_monthly=200.0,
         )
-        state_v2.cost_tracker.get_total_cost = AsyncMock(
+        cast(
+            Any, state_v2.slice(BudgetStateSlice).cost_tracker
+        ).get_total_cost = AsyncMock(
             side_effect=RuntimeError("tracker down"),
         )
         await collector.refresh(state_v2)
@@ -294,7 +298,9 @@ class TestPrometheusCollectorRefresh:
             has_agent_registry=True,
             agents=agents,
         )
-        state.cost_tracker.get_total_cost = AsyncMock(
+        cast(
+            Any, state.slice(BudgetStateSlice).cost_tracker
+        ).get_total_cost = AsyncMock(
             side_effect=RuntimeError("tracker down"),
         )
         await collector.refresh(state)
@@ -310,7 +316,7 @@ class TestPrometheusCollectorRefresh:
             has_task_engine=True,
             tasks=tasks,
         )
-        state.agent_registry.list_active = AsyncMock(
+        cast(Any, state.slice(HrStateSlice).agent_registry).list_active = AsyncMock(
             side_effect=RuntimeError("registry down"),
         )
         await collector.refresh(state)
@@ -711,7 +717,9 @@ class TestPrometheusCollectorAgentCost:
         assert 'synthorg_agent_cost_total{agent_id="alice"}' in output_v1
 
         # Second scrape: agent cost query fails.
-        state.cost_tracker.get_agent_cost = AsyncMock(
+        cast(
+            Any, state.slice(BudgetStateSlice).cost_tracker
+        ).get_agent_cost = AsyncMock(
             side_effect=RuntimeError("db error"),
         )
         await collector.refresh(state)
@@ -764,8 +772,12 @@ class TestPrometheusCollectorErrorPaths:
     source does not abort the whole scrape."""
 
     async def test_fetch_tool_names_registry_failure_returns_none(self) -> None:
-        state = _mock_app_state()
-        state.tool_registry.list_tools.side_effect = RuntimeError("registry boom")
+        registry = MagicMock()
+        registry.list_tools.side_effect = RuntimeError("registry boom")
+        # ``_fetch_tool_names`` reads ``app_state.tool_registry`` via
+        # ``getattr`` (it is not a state slice), so a bare attribute-bag
+        # carrying the registry exercises the failure path.
+        state = cast("AppState", SimpleNamespace(tool_registry=registry))
 
         # A failing tool registry yields ``None`` so the merge step keeps
         # the prior allowlist instead of cancelling sibling fetchers.
@@ -773,25 +785,23 @@ class TestPrometheusCollectorErrorPaths:
 
     def test_pg_pool_stats_failure_is_swallowed(self) -> None:
         collector = PrometheusCollector()
-        state = MagicMock()
-        type(state).has_persistence = PropertyMock(return_value=True)
         backend = MagicMock()
         backend.kind = "postgres"
         pool = MagicMock()
         pool.get_stats.side_effect = RuntimeError("pool stats boom")
         backend._pool = pool
-        type(state).persistence = PropertyMock(return_value=backend)
+        state = make_app_state(persistence=backend)
 
         # A pool-stats failure logs and returns without raising.
         collector._refresh_pg_pool_metrics(state)
 
     def test_budget_metrics_failure_clears_gauges(self) -> None:
         collector = PrometheusCollector()
-        state = MagicMock()
-        type(state).has_cost_tracker = PropertyMock(return_value=True)
-        type(state).cost_tracker = PropertyMock(
+        tracker = AsyncMock()
+        type(tracker).budget_config = PropertyMock(
             side_effect=RuntimeError("tracker boom"),
         )
+        state = make_app_state(cost_tracker=tracker)
 
         # A cost-tracker failure resets the budget gauges to zero rather
         # than leaving stale values.
@@ -800,7 +810,9 @@ class TestPrometheusCollectorErrorPaths:
     async def test_task_metrics_failure_is_swallowed(self) -> None:
         collector = PrometheusCollector()
         state = _mock_app_state(has_task_engine=True)
-        state.task_engine.list_tasks.side_effect = RuntimeError("list boom")
+        cast(
+            Any, state.slice(EngineStateSlice).task_engine
+        ).list_tasks.side_effect = RuntimeError("list boom")
 
         # A task-engine failure logs and returns without raising.
         await collector._refresh_task_metrics(state)

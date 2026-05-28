@@ -1,5 +1,7 @@
 """API controllers for all resource groups."""
 
+from typing import TYPE_CHECKING
+
 from litestar import Controller
 
 from synthorg.api.auth.controller import AuthController
@@ -103,12 +105,13 @@ from synthorg.api.controllers.workflow_versions import (
 )
 from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
+from synthorg.client.state import has_simulation_runtime
 
 # Core API controllers (always registered).
 #
-# Handlers that dereference ``state.app_state.persistence`` (including the
-# ``*VersionController`` family) degrade to HTTP 503 when persistence is
-# ``None`` via ``AppState.persistence``'s ``ServiceUnavailableError``.  No
+# Handlers that resolve the persistence backend through ``persistence_of``
+# (including the ``*VersionController`` family) degrade to HTTP 503 when
+# persistence is ``None`` via its ``ServiceUnavailableError``.  No
 # per-controller gating is required.
 BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LivenessController,
@@ -175,6 +178,34 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CockpitController,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from synthorg.api.state import AppState
+
+
+def _has_objective_entry_adapter(app_state: AppState) -> bool:
+    """Report whether the objective work-entry adapter is wired.
+
+    Returns:
+        ``True`` when the objective entry adapter is composed.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    return app_state.slice(EngineStateSlice).objective_entry_adapter is not None
+
+
+def _has_brownfield_entry_adapter(app_state: AppState) -> bool:
+    """Report whether the brownfield work-entry adapter is wired.
+
+    Returns:
+        ``True`` when the brownfield entry adapter is composed.
+    """
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+
+    return app_state.slice(EngineStateSlice).brownfield_entry_adapter is not None
+
+
 # Controllers gated by their collaborator service.  These do NOT live
 # in ``BASE_CONTROLLERS`` -- they are registered only when their
 # dependency is wired so an unconfigured install returns 404 (route
@@ -182,14 +213,16 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
 # dashboard reads ``GET /api/v1/capabilities`` once per session and
 # skips polling whichever subsystem reports ``False``.
 #
-# Each tuple is ``(controller_class, predicate_attribute_on_appstate)``;
-# ``app.py`` includes the controller in ``route_handlers`` only when
-# the predicate evaluates truthy at controller-list assembly time.
-OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = (
-    (SimulationController, "has_simulation_runtime"),
-    (RequestController, "has_simulation_runtime"),
-    (ObjectiveController, "has_objective_entry_adapter"),
-    (BrownfieldController, "has_brownfield_entry_adapter"),
+# Each tuple is ``(controller_class, predicate)``; ``app.py`` includes
+# the controller in ``route_handlers`` only when the predicate returns
+# ``True`` against the live ``AppState`` at controller-list assembly time.
+OPTIONAL_CONTROLLERS: tuple[
+    tuple[type[Controller], Callable[[AppState], bool]], ...
+] = (
+    (SimulationController, has_simulation_runtime),
+    (RequestController, has_simulation_runtime),
+    (ObjectiveController, _has_objective_entry_adapter),
+    (BrownfieldController, _has_brownfield_entry_adapter),
 )
 
 # Integration subsystem controllers. Registered only when

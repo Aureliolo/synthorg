@@ -23,7 +23,6 @@ from synthorg.api.controllers.objectives import (
     SubmitObjectivePayload,
     submit_objective_impl,
 )
-from synthorg.api.state import AppState
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
@@ -37,7 +36,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
-from tests._shared import mock_of
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -84,11 +83,7 @@ def _state_with_recording_adapter() -> tuple[Any, list[ObjectiveSubmission]]:
         )
 
     adapter = mock_of[ObjectiveEntryAdapter](submit=_submit)
-    background: set[asyncio.Task[None]] = set()
-    app_state = mock_of[AppState](
-        objective_entry_adapter=adapter,
-        objective_background_tasks=background,
-    )
+    app_state = make_app_state(objective_entry_adapter=adapter)
     return app_state, captured
 
 
@@ -136,11 +131,7 @@ async def test_submit_does_not_block_on_pipeline_run() -> None:
         )
 
     adapter = mock_of[ObjectiveEntryAdapter](submit=_slow_submit)
-    background: set[asyncio.Task[None]] = set()
-    app_state = mock_of[AppState](
-        objective_entry_adapter=adapter,
-        objective_background_tasks=background,
-    )
+    app_state = make_app_state(objective_entry_adapter=adapter)
     response = await submit_objective_impl(app_state, _payload())
     ack = response.data
     assert ack is not None

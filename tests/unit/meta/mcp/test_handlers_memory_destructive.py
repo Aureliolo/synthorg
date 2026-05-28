@@ -15,19 +15,22 @@ invariant for the success path.
 
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
+from synthorg.memory.state import MemoryStateSlice
 from synthorg.meta.mcp.handlers.memory import MEMORY_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -39,7 +42,7 @@ def actor() -> AgentIdentity:
     return make_test_actor(name="cancel-caller")
 
 
-def _fake_state_with_cancel(run_id: str = "run-cancelled") -> SimpleNamespace:
+def _fake_state_with_cancel(run_id: str = "run-cancelled") -> AppState:
     """Wired state where ``cancel_fine_tune`` cancels an active run.
 
     The handler now guards ``MCP_ADMIN_OP_EXECUTED`` on a
@@ -50,13 +53,12 @@ def _fake_state_with_cancel(run_id: str = "run-cancelled") -> SimpleNamespace:
     """
     memory_service = AsyncMock()
     memory_service.cancel_fine_tune.return_value = run_id
-    return SimpleNamespace(
-        memory_service=memory_service,
-        has_memory_service=True,
+    return make_app_state(
+        slices={MemoryStateSlice: {"service": memory_service}},
     )
 
 
-def _fake_state_with_rollback(checkpoint_id: str) -> SimpleNamespace:
+def _fake_state_with_rollback(checkpoint_id: str) -> AppState:
     cp = SimpleNamespace(
         model_dump=lambda mode="json": {
             "checkpoint_id": checkpoint_id,
@@ -65,13 +67,12 @@ def _fake_state_with_rollback(checkpoint_id: str) -> SimpleNamespace:
     )
     memory_service = AsyncMock()
     memory_service.rollback_checkpoint.return_value = cp
-    return SimpleNamespace(
-        memory_service=memory_service,
-        has_memory_service=True,
+    return make_app_state(
+        slices={MemoryStateSlice: {"service": memory_service}},
     )
 
 
-def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
+def _fake_state_with_delete(checkpoint_id: str) -> AppState:
     """Wired-service app state that drives the happy-path delete audit.
 
     Previous iterations of this fixture used a bare-persistence state
@@ -85,9 +86,8 @@ def _fake_state_with_delete(checkpoint_id: str) -> SimpleNamespace:
     """
     memory_service = AsyncMock()
     memory_service.delete_checkpoint.return_value = None
-    return SimpleNamespace(
-        memory_service=memory_service,
-        has_memory_service=True,
+    return make_app_state(
+        slices={MemoryStateSlice: {"service": memory_service}},
     )
 
 
@@ -200,16 +200,16 @@ class TestDeleteCheckpointDestructiveAudit:
         assert event["actor_agent_id"] == str(actor.id)
         assert event["reason"] == "checkpoint superseded"
         assert event["target_id"] == checkpoint_id
-        state.memory_service.delete_checkpoint.assert_awaited_once()
+        service = cast("AsyncMock", state.slice(MemoryStateSlice).service)
+        service.delete_checkpoint.assert_awaited_once()
 
 
-def _fake_state_with_delete_entry(*, deleted: bool = True) -> SimpleNamespace:
+def _fake_state_with_delete_entry(*, deleted: bool = True) -> AppState:
     """Wired-service app state that drives the happy-path entry-delete audit."""
     memory_service = AsyncMock()
     memory_service.delete_memory_entry.return_value = deleted
-    return SimpleNamespace(
-        memory_service=memory_service,
-        has_memory_service=True,
+    return make_app_state(
+        slices={MemoryStateSlice: {"service": memory_service}},
     )
 
 
@@ -252,7 +252,8 @@ class TestDeleteMemoryEntryDestructiveAudit:
         # the correct positional ordering (agent_id then memory_id) so
         # an accidental swap would surface as a test failure rather
         # than as a confused audit log on a real backend.
-        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+        service = cast("AsyncMock", state.slice(MemoryStateSlice).service)
+        service.delete_memory_entry.assert_awaited_once_with(
             agent_id,
             memory_id,
         )
@@ -290,7 +291,8 @@ class TestDeleteMemoryEntryDestructiveAudit:
             if e.get("event") == MCP_ADMIN_OP_EXECUTED
             and e.get("tool_name") == "synthorg_memory_delete_entry"
         ]
-        state.memory_service.delete_memory_entry.assert_awaited_once_with(
+        service = cast("AsyncMock", state.slice(MemoryStateSlice).service)
+        service.delete_memory_entry.assert_awaited_once_with(
             "agent-x",
             "missing-mem",
         )
@@ -314,4 +316,5 @@ class TestDeleteMemoryEntryDestructiveAudit:
         )
         body: dict[str, Any] = json.loads(raw)
         assert body["status"] == "error"
-        state.memory_service.delete_memory_entry.assert_not_awaited()
+        service = cast("AsyncMock", state.slice(MemoryStateSlice).service)
+        service.delete_memory_entry.assert_not_awaited()

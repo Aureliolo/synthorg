@@ -2,14 +2,16 @@
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from litestar.testing import TestClient
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.roles import HumanRole
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.state import ProvidersStateSlice
 
 _DEFAULT_MIN_PW = AuthConfig.model_fields["min_password_length"].default
 
@@ -24,8 +26,8 @@ class TestSetupStatus:
     ) -> None:
         """With pre-seeded users, needs_admin is False."""
         app_state = test_client.app.state.app_state
-        original_registry = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry({})
+        original_registry = app_state.slice(ProvidersStateSlice).registry
+        app_state.wire(ProvidersStateSlice, registry=ProviderRegistry({}))
         try:
             resp = test_client.get("/api/v1/setup/status")
             assert resp.status_code == 200
@@ -36,7 +38,7 @@ class TestSetupStatus:
             assert data["needs_setup"] is True
             assert data["has_providers"] is False
         finally:
-            app_state._provider_registry = original_registry
+            app_state.wire(ProvidersStateSlice, registry=original_registry)
 
     def test_status_without_auth_header(
         self,
@@ -73,7 +75,7 @@ class TestSetupStatus:
     ) -> None:
         """needs_admin is True when only non-CEO users exist."""
         app_state = test_client.app.state.app_state
-        users_repo = app_state.persistence._users
+        users_repo = cast(Any, persistence_of(app_state))._users
 
         # Remove all CEO users, keep only observers
         removed = {
@@ -118,7 +120,7 @@ class TestSetupStatus:
     ) -> None:
         """Status returns non-default min_password_length from settings."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
 
         settings_repo._store[("api", "min_password_length")] = ("16", now)
@@ -136,7 +138,7 @@ class TestSetupStatus:
     ) -> None:
         """has_agents is False when agents setting contains non-list JSON."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
 
         agents_key = ("company", "agents")
@@ -159,7 +161,7 @@ class TestSetupStatus:
     ) -> None:
         """has_agents is False when agents setting contains invalid JSON."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
 
         agents_key = ("company", "agents")
@@ -182,7 +184,7 @@ class TestSetupStatus:
     ) -> None:
         """Non-integer min_password_length falls back to the default (12)."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
 
         pw_key = ("api", "min_password_length")
@@ -205,7 +207,7 @@ class TestSetupStatus:
     ) -> None:
         """min_password_length below default (12) is clamped to default."""
         app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+        settings_repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
 
         pw_key = ("api", "min_password_length")
@@ -234,7 +236,7 @@ class TestSetupStatus:
         via YAML.  With no DB-stored value, the status endpoint must
         report has_company=False.
         """
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
         key = ("company", "company_name")
         original = repo._store.get(key)
         repo._store.pop(key, None)
@@ -252,7 +254,7 @@ class TestSetupStatus:
         test_client: TestClient[Any],
     ) -> None:
         """has_company is True when company_name is DB-persisted."""
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         key = ("company", "company_name")
         original = repo._store.get(key)
@@ -277,7 +279,7 @@ class TestSetupStatus:
         Simulates a non-DB source by removing the DB entry so the
         settings service falls through to YAML/code defaults.
         """
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
         agents_key = ("company", "agents")
         original = repo._store.get(agents_key)
         repo._store.pop(agents_key, None)
@@ -295,7 +297,7 @@ class TestSetupStatus:
         test_client: TestClient[Any],
     ) -> None:
         """has_agents is True when agents list is DB-persisted."""
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        repo = cast(Any, persistence_of(test_client.app.state.app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         agents_key = ("company", "agents")
         original = repo._store.get(agents_key)

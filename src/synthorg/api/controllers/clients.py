@@ -8,10 +8,16 @@ from litestar import Controller, Request, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_CLIENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -20,6 +26,7 @@ from synthorg.client.ai_client import AIClient
 from synthorg.client.feedback.scored import ScoredFeedback
 from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import ClientProfile
+from synthorg.client.state import ClientStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -30,6 +37,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.settings.bridge_configs import ClientBridgeConfig
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -153,10 +161,10 @@ async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConf
     Returns:
         ``ClientBridgeConfig`` instance.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return ClientBridgeConfig()
     try:
-        return await app_state.config_resolver.get_client_bridge_config()
+        return await config_resolver_of(app_state).get_client_bridge_config()
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
@@ -245,13 +253,16 @@ class ClientController(Controller):
             ``PaginatedResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         profiles = await sim_state.pool.list_profiles()
         page, meta = paginate_cursor(
             profiles,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -270,7 +281,10 @@ class ClientController(Controller):
             ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         try:
             profile = await sim_state.pool.get_profile(client_id)
         except KeyError as exc:
@@ -306,7 +320,10 @@ class ClientController(Controller):
             ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         if await sim_state.pool.has_profile(data.client_id):
             msg = f"Client {data.client_id!r} already exists"
             logger.warning(
@@ -346,7 +363,10 @@ class ClientController(Controller):
             ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         # Fetch the profile first so a missing client surfaces as a
         # clean 404. Resolving the bridge config inside the same
         # TaskGroup risked an ExceptionGroup that bypassed the
@@ -390,7 +410,10 @@ class ClientController(Controller):
             NotFoundError: If the client is not known.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         try:
             profile = await sim_state.pool.deactivate(client_id)
         except KeyError as exc:
@@ -419,7 +442,10 @@ class ClientController(Controller):
             ``ApiResponse[SatisfactionHistory]`` instance.
         """
         app_state: AppState = state.app_state
-        sim_state = app_state.client_simulation_state
+        sim_state = require_service(
+            app_state.slice(ClientStateSlice).simulation_state,
+            "Client Simulation State",
+        )
         try:
             await sim_state.pool.get_profile(client_id)
         except KeyError as exc:

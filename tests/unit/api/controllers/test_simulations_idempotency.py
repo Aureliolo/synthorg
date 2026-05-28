@@ -8,7 +8,7 @@ with HTTP 409 Conflict.
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,12 +18,13 @@ from synthorg.api.controllers.simulations import (
     SimulationController,
     StartSimulationPayload,
 )
-from synthorg.api.state import AppState
 from synthorg.client.models import SimulationConfig
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.client.state import client_simulation_state_of
 from synthorg.client.store import SimulationStore
 from synthorg.core.domain_errors import ConflictError
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -58,15 +59,13 @@ def _make_state(*, claim_succeeds: bool) -> SimpleNamespace:
     # them. ``_publish_event`` and the runner spawn are patched in
     # the tests so the bodies of these attributes never get touched.
     sim_state.background_tasks = set()
-    app_state = MagicMock(spec=AppState)
-    app_state.client_simulation_state = sim_state
-    app_state.config_resolver = MagicMock(spec=ConfigResolver)
-    # ``state.app_state`` must return the bound ``AppState`` exactly
-    # as assigned. ``SimpleNamespace`` is a plain attribute container
-    # with no auto-mocking, so the read is a direct attribute lookup.
-    # ``MagicMock(spec=State)`` would route the read through
-    # Litestar's ``State.__getattr__`` and could return a fresh
-    # auto-mock instead of the bound object.
+    app_state = make_app_state(
+        client_simulation_state=sim_state,
+        config_resolver=MagicMock(spec=ConfigResolver),
+    )
+    # ``state.app_state`` must return the bound ``AppState`` exactly as
+    # assigned; ``SimpleNamespace`` is a plain attribute container with
+    # no auto-mocking, so the read is a direct attribute lookup.
     return SimpleNamespace(app_state=app_state)
 
 
@@ -92,7 +91,9 @@ class TestSimulationsIdempotency:
             )
         assert exc.value.status_code == 409
         assert "already exists" in str(exc.value)
-        sim_store = state.app_state.client_simulation_state.simulation_store
+        sim_store = cast(
+            AsyncMock, client_simulation_state_of(state.app_state).simulation_store
+        )
         sim_store.register_if_absent.assert_awaited_once()
 
     async def test_first_request_passes_idempotency_check(self) -> None:
@@ -142,5 +143,7 @@ class TestSimulationsIdempotency:
                 state=state,
                 data=payload,
             )
-        sim_store = state.app_state.client_simulation_state.simulation_store
+        sim_store = cast(
+            AsyncMock, client_simulation_state_of(state.app_state).simulation_store
+        )
         sim_store.register_if_absent.assert_awaited_once()

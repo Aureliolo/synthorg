@@ -1,7 +1,7 @@
 """Tests for workflow execution controller."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from litestar.testing import TestClient
@@ -12,6 +12,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.persistence.state import persistence_of
 
 # ── Seed data ─────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ def _seed_definition(
     """Seed a workflow definition into the fake persistence."""
     defn = definition or _VALID_DEFINITION
     app_state = test_client.app.state.app_state
-    repo = app_state.persistence.workflow_definitions
+    repo = cast(Any, persistence_of(app_state).workflow_definitions)
     repo._definitions[defn.id] = defn
 
 

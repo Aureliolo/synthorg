@@ -17,13 +17,14 @@ invariants that the engine tests rely on.
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
 from prometheus_client import generate_latest
 from prometheus_client.parser import text_string_to_metric_families
 
+from synthorg.api.state import AppState
 from synthorg.observability.events.metrics import (
     CLIENT_DISCONNECTED,
     METRICS_SCRAPE_FAILED,
@@ -34,6 +35,8 @@ from synthorg.observability.prometheus_labels import (
     is_known_agent_id,
     update_label_snapshot,
 )
+from synthorg.organization.state import OrganizationStateSlice
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -132,26 +135,23 @@ def _stub_app_state(
     agents: tuple[MagicMock, ...],
     workflow_repo_raises: bool = False,
     department_service_raises: bool = False,
-) -> MagicMock:
-    state = MagicMock()
-    type(state).has_cost_tracker = PropertyMock(return_value=False)
-    type(state).has_agent_registry = PropertyMock(return_value=True)
-    type(state).has_task_engine = PropertyMock(return_value=False)
-    type(state).has_config_resolver = PropertyMock(return_value=False)
-    state.agent_registry.list_active = AsyncMock(return_value=agents)
+) -> AppState:
+    registry = MagicMock()
+    registry.list_active = AsyncMock(return_value=agents)
 
-    state.persistence = MagicMock()
+    backend = MagicMock()
     if workflow_repo_raises:
-        state.persistence.workflow_definitions.list_definitions = AsyncMock(
+        backend.workflow_definitions.list_definitions = AsyncMock(
             side_effect=RuntimeError("workflow repo down"),
         )
     else:
-        state.persistence.workflow_definitions.list_definitions = AsyncMock(
+        backend.workflow_definitions.list_definitions = AsyncMock(
             return_value=(MagicMock(id="wf-1"),),
         )
 
+    dept_service = MagicMock()
     if department_service_raises:
-        state.department_service.list_departments = AsyncMock(
+        dept_service.list_departments = AsyncMock(
             side_effect=RuntimeError("dept service down"),
         )
     else:
@@ -160,10 +160,14 @@ def _stub_app_state(
         # collector's ``str(r.name)`` would yield a Mock repr
         # instead of "engineering". ``SimpleNamespace`` gives a
         # real ``name`` attribute that survives the str() coercion.
-        state.department_service.list_departments = AsyncMock(
+        dept_service.list_departments = AsyncMock(
             return_value=((SimpleNamespace(name="engineering"),), 1),
         )
-    return state
+    return make_app_state(
+        agent_registry=registry,
+        persistence=backend,
+        slices={OrganizationStateSlice: {"department_service": dept_service}},
+    )
 
 
 async def test_rebuild_label_snapshot_uses_live_registries() -> None:

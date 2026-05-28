@@ -3,12 +3,13 @@
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 from structlog.testing import capture_logs
 
+from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.coordination_store import CoordinationMetricsStore
@@ -36,7 +37,7 @@ from synthorg.workers.runtime_builder import (
     RuntimeServices,
     build_runtime_services,
 )
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -102,48 +103,35 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
             return await _get_str(namespace, key)
 
         get_str_mock = AsyncMock(side_effect=_get_str_failing)
-    # ``mock_of[T](...)`` is ``Any`` by design; cast back to the spec so
-    # the helper keeps a precise signature for its callers.
-    return cast(
-        "AppState",
-        mock_of[AppState](
-            has_active_provider=True,
-            provider_registry=registry,
-            config=RootConfig(company_name="test-corp"),
-            config_resolver=mock_of[ConfigResolver](
-                get_float=AsyncMock(return_value=30.0),
-                get_str=get_str_mock,
-                get_int=AsyncMock(return_value=1),
-                get_engine_bridge_config=bridge_mock,
-            ),
-            task_engine=mock_of[TaskEngine](),
-            agent_registry=AgentRegistryService(),
-            approval_store=None,
-            has_simulation_runtime=simulation_runtime,
-            client_simulation_state=(
-                mock_of[ClientSimulationState](
-                    intake_engine=IntakeEngine(strategy=_AcceptingIntakeStrategy()),
-                )
-                if simulation_runtime
-                else None
-            ),
-            persistence=mock_of[PersistenceBackend](
-                projects=mock_of[ProjectRepository](),
-            ),
-            clock=FakeClock(),
-            event_stream_hub=None,
-            interrupt_store=None,
-            agent_workspace_root=workspace,
-            has_cost_tracker=cost_tracker is not None,
-            cost_tracker=cost_tracker,
-            has_message_bus=False,
-            has_coordination_metrics_store=coordination_metrics_store is not None,
-            coordination_metrics_store=coordination_metrics_store,
-            has_audit_log=False,
-            has_memory_backend=False,
-            has_performance_tracker=False,
-            has_trust_service=False,
+    return make_app_state(
+        provider_registry=registry,
+        config=RootConfig(company_name="test-corp"),
+        config_resolver=mock_of[ConfigResolver](
+            get_float=AsyncMock(return_value=30.0),
+            get_str=get_str_mock,
+            get_int=AsyncMock(return_value=1),
+            get_engine_bridge_config=bridge_mock,
         ),
+        task_engine=mock_of[TaskEngine](),
+        agent_registry=AgentRegistryService(),
+        # A real store: the engine builder's ``require_service`` needs a
+        # wired approval store. The old ``mock_of[AppState]`` auto-filled
+        # the slice read, masking that requirement with ``approval_store=None``.
+        approval_store=ApprovalStore(),
+        client_simulation_state=(
+            mock_of[ClientSimulationState](
+                intake_engine=IntakeEngine(strategy=_AcceptingIntakeStrategy()),
+            )
+            if simulation_runtime
+            else None
+        ),
+        persistence=mock_of[PersistenceBackend](
+            projects=mock_of[ProjectRepository](),
+        ),
+        clock=FakeClock(),
+        agent_workspace_root=workspace,
+        cost_tracker=cost_tracker,
+        coordination_metrics_store=coordination_metrics_store,
     )
 
 
@@ -152,7 +140,7 @@ class TestProviderPresentSwitch:
         self,
         tmp_path: Path,
     ) -> None:
-        app_state = mock_of[AppState](has_active_provider=False)
+        app_state = make_app_state()
         result = await build_runtime_services(
             app_state,
             workspace_root=tmp_path,
@@ -169,10 +157,7 @@ class TestProviderPresentSwitch:
         self,
         tmp_path: Path,
     ) -> None:
-        app_state = mock_of[AppState](
-            has_active_provider=True,
-            provider_registry=ProviderRegistry({}),
-        )
+        app_state = make_app_state(provider_registry=ProviderRegistry({}))
         result = await build_runtime_services(
             app_state,
             workspace_root=tmp_path,
@@ -330,10 +315,7 @@ class TestBootLogSafetySpineState:
         tmp_path: Path,
     ) -> None:
         """Empty-company boot still emits the safety-spine fields."""
-        app_state = mock_of[AppState](
-            has_active_provider=False,
-            config=RootConfig(company_name="empty-co"),
-        )
+        app_state = make_app_state(config=RootConfig(company_name="empty-co"))
         with capture_logs() as logs:
             await build_runtime_services(app_state, workspace_root=tmp_path)
         runtime_logs = self._runtime_services_logs(logs)
@@ -347,8 +329,7 @@ class TestBootLogSafetySpineState:
         tmp_path: Path,
     ) -> None:
         """Provider-registry-empty boot still emits the safety-spine fields."""
-        app_state = mock_of[AppState](
-            has_active_provider=True,
+        app_state = make_app_state(
             provider_registry=ProviderRegistry({}),
             config=RootConfig(company_name="registry-empty-co"),
         )

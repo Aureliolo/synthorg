@@ -1,449 +1,255 @@
-"""Tests for application state accessors."""
+"""Tests for the thin :class:`AppState` composition root.
 
-from unittest.mock import AsyncMock
+After the feature-manifest collapse, ``AppState`` carries only
+``config`` / ``clock`` / ``startup_time``, the cross-cutting mutable
+primitives a frozen slice cannot own (the per-request-id lock registry,
+bridge-config snapshots, WS timeouts, background-task sets, the
+shutdown event), and a typed per-feature *slice store*. Every domain
+service now lives on its feature slice and is read through
+``app_state.slice(XStateSlice).field`` (or a ``*_of`` accessor), so the
+per-service ``has_X`` flags and once-only ``set_X`` seams the old
+god-object carried are gone.
+
+These tests cover the slice store (``slice`` / ``has_slice`` /
+``set_slice`` / ``swap_slice`` / ``wire``), the ``_require_service``
+503 guard, the surviving primitives, the per-request-id lock registry,
+and the API bridge-config snapshot accessor.
+"""
+
+import asyncio
 
 import pytest
+from pydantic import ConfigDict
 
-from synthorg.api.approval_store import ApprovalStore
+from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
-from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
-from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.review_gate import ReviewGateService
-from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.training.service import TrainingService
-from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-from synthorg.settings.service import SettingsService
-from tests._shared import mock_of
-from tests.unit.api.fakes import (
-    FakeMessageBus,
-    FakePersistenceBackend,
-)
+
+pytestmark = pytest.mark.unit
 
 
-def _make_state(**overrides: object) -> AppState:
-    defaults: dict[str, object] = {
-        "config": RootConfig(company_name="test"),
-        "approval_store": ApprovalStore(),
-    }
-    defaults.update(overrides)
-    return AppState(**defaults)  # type: ignore[arg-type]
+def _make_state() -> AppState:
+    """Build a bare thin ``AppState`` with no services wired."""
+    return AppState(config=RootConfig(company_name="test"))
 
 
-@pytest.mark.unit
-class TestAppStateAccessors:
-    def test_persistence_raises_when_none(self) -> None:
-        state = _make_state(persistence=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.persistence
+class _ProbeSlice(BaseFeatureStateSlice):
+    """Throwaway slice for exercising the generic slice-store seams."""
 
-    def test_message_bus_raises_when_none(self) -> None:
-        state = _make_state(message_bus=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.message_bus
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    def test_cost_tracker_raises_when_none(self) -> None:
-        state = _make_state(cost_tracker=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.cost_tracker
+    first: object | None = None
+    second: object | None = None
 
-    async def test_persistence_returns_when_set(self) -> None:
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        state = _make_state(persistence=backend)
-        assert state.persistence is backend
 
-    async def test_message_bus_returns_when_set(self) -> None:
-        bus = FakeMessageBus()
-        await bus.start()
-        state = _make_state(message_bus=bus)
-        assert state.message_bus is bus
+class TestSliceStore:
+    """``slice`` / ``has_slice`` / ``set_slice`` / ``swap_slice`` / ``wire``."""
 
-    def test_cost_tracker_returns_when_set(self) -> None:
-        from synthorg.budget.tracker import CostTracker
-
-        tracker = CostTracker()
-        state = _make_state(cost_tracker=tracker)
-        assert state.cost_tracker is tracker
-
-    def test_auth_service_raises_when_none(self) -> None:
-        state = _make_state(auth_service=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.auth_service
-
-    def test_auth_service_returns_when_set(self) -> None:
-        from synthorg.api.auth.service import AuthService
-        from synthorg.core.auth.config import AuthConfig
-
-        secret = "test-secret-that-is-at-least-32-characters-long"
-        svc = AuthService(AuthConfig(jwt_secret=secret))
-        state = _make_state(auth_service=svc)
-        assert state.auth_service is svc
-
-    def test_set_auth_service_succeeds_once(self) -> None:
-        from synthorg.api.auth.service import AuthService
-        from synthorg.core.auth.config import AuthConfig
-
-        secret = "test-secret-that-is-at-least-32-characters-long"
-        svc = AuthService(AuthConfig(jwt_secret=secret))
+    def test_slice_composes_empty_when_absent(self) -> None:
         state = _make_state()
-        state.set_auth_service(svc)
-        assert state.auth_service is svc
+        composed = state.slice(_ProbeSlice)
+        # A bare state lazily composes an empty slice so a reader never
+        # faces an absent slice; the controller still 503s on a None field.
+        assert isinstance(composed, _ProbeSlice)
+        assert composed.first is None
+        assert composed.second is None
 
-    def test_set_auth_service_twice_raises(self) -> None:
-        from synthorg.api.auth.service import AuthService
-        from synthorg.core.auth.config import AuthConfig
+    def test_slice_returns_same_instance_until_swapped(self) -> None:
+        state = _make_state()
+        first = state.slice(_ProbeSlice)
+        assert state.slice(_ProbeSlice) is first
 
-        secret = "test-secret-that-is-at-least-32-characters-long"
-        svc = AuthService(AuthConfig(jwt_secret=secret))
-        state = _make_state(auth_service=svc)
+    def test_has_slice_reflects_composition(self) -> None:
+        state = _make_state()
+        assert state.has_slice(_ProbeSlice) is False
+        state.slice(_ProbeSlice)  # lazy-composes the empty slice
+        assert state.has_slice(_ProbeSlice) is True
+
+    def test_set_slice_installs_once(self) -> None:
+        state = _make_state()
+        sentinel = object()
+        state.set_slice(_ProbeSlice(first=sentinel))
+        assert state.slice(_ProbeSlice).first is sentinel
+
+    def test_set_slice_twice_raises(self) -> None:
+        state = _make_state()
+        state.set_slice(_ProbeSlice())
         with pytest.raises(RuntimeError, match="already configured"):
-            state.set_auth_service(svc)
+            state.set_slice(_ProbeSlice())
 
-
-@pytest.mark.unit
-class TestAppStateTaskEngine:
-    """Tests for task_engine property, has_task_engine, set_task_engine."""
-
-    def test_task_engine_raises_when_none(self) -> None:
-        state = _make_state(task_engine=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.task_engine
-
-    def test_task_engine_returns_when_set(self) -> None:
-        engine = mock_of[TaskEngine]()
-        state = _make_state(task_engine=engine)
-        assert state.task_engine is engine
-
-    def test_has_task_engine_false_when_none(self) -> None:
-        state = _make_state(task_engine=None)
-        assert state.has_task_engine is False
-
-    def test_has_task_engine_true_when_set(self) -> None:
-        engine = mock_of[TaskEngine]()
-        state = _make_state(task_engine=engine)
-        assert state.has_task_engine is True
-
-    def test_set_task_engine_succeeds_once(self) -> None:
-        engine = mock_of[TaskEngine]()
+    def test_swap_slice_replaces_existing(self) -> None:
         state = _make_state()
-        state.set_task_engine(engine)
-        assert state.task_engine is engine
+        first = _ProbeSlice(first=object())
+        second = _ProbeSlice(first=object())
+        state.set_slice(first)
+        state.swap_slice(second)
+        assert state.slice(_ProbeSlice) is second
 
-    def test_set_task_engine_twice_raises(self) -> None:
-        engine = mock_of[TaskEngine]()
-        state = _make_state(task_engine=engine)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_task_engine(engine)
-
-
-@pytest.mark.unit
-class TestAppStateCoordinator:
-    """Tests for coordinator property and has_coordinator."""
-
-    def test_coordinator_raises_when_none(self) -> None:
-        state = _make_state(coordinator=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.coordinator
-
-    def test_coordinator_returns_when_set(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=coordinator)
-        assert state.coordinator is coordinator
-
-    def test_has_coordinator_false_when_none(self) -> None:
-        state = _make_state(coordinator=None)
-        assert state.has_coordinator is False
-
-    def test_has_coordinator_true_when_set(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=coordinator)
-        assert state.has_coordinator is True
-
-    def test_set_coordinator_attaches_when_none(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=None)
-        state.set_coordinator(coordinator)
-        assert state.coordinator is coordinator
-        assert state.has_coordinator is True
-
-    def test_set_coordinator_is_once_only(self) -> None:
-        first = mock_of[MultiAgentCoordinator]()
-        second = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=first)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_coordinator(second)
-
-    def test_set_coordinator_if_absent_installs_when_none(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=None)
-        installed = state.set_coordinator_if_absent(coordinator)
-        assert installed is True
-        assert state.coordinator is coordinator
-
-    def test_set_coordinator_if_absent_keeps_injected(self) -> None:
-        injected = mock_of[MultiAgentCoordinator]()
-        autowired = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=injected)
-        installed = state.set_coordinator_if_absent(autowired)
-        # Injection-over-autowire: the injected one wins, no raise.
-        assert installed is False
-        assert state.coordinator is injected
-
-    def test_swap_coordinator_attaches_when_none(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=None)
-        state.swap_coordinator(coordinator)
-        assert state.coordinator is coordinator
-
-    def test_swap_coordinator_replaces_existing(self) -> None:
-        first = mock_of[MultiAgentCoordinator]()
-        second = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=first)
-        state.swap_coordinator(second)
-        assert state.coordinator is second
-
-    def test_swap_coordinator_noop_when_identical(self) -> None:
-        coordinator = mock_of[MultiAgentCoordinator]()
-        state = _make_state(coordinator=coordinator)
-        state.swap_coordinator(coordinator)
-        assert state.coordinator is coordinator
-
-
-@pytest.mark.unit
-class TestAppStateWorkPipeline:
-    """Tests for the work_pipeline seam (mirrors the coordinator seam)."""
-
-    def test_work_pipeline_raises_when_none(self) -> None:
-        state = _make_state(work_pipeline=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.work_pipeline
-
-    def test_work_pipeline_returns_when_set(self) -> None:
-        pipeline = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=pipeline)
-        assert state.work_pipeline is pipeline
-
-    def test_has_work_pipeline_false_when_none(self) -> None:
-        state = _make_state(work_pipeline=None)
-        assert state.has_work_pipeline is False
-
-    def test_has_work_pipeline_true_when_set(self) -> None:
-        pipeline = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=pipeline)
-        assert state.has_work_pipeline is True
-
-    def test_set_work_pipeline_is_once_only(self) -> None:
-        first = mock_of[WorkPipeline]()
-        second = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=first)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_work_pipeline(second)
-
-    def test_set_work_pipeline_if_absent_installs_when_none(self) -> None:
-        pipeline = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=None)
-        installed = state.set_work_pipeline_if_absent(pipeline)
-        assert installed is True
-        assert state.work_pipeline is pipeline
-
-    def test_set_work_pipeline_if_absent_keeps_injected(self) -> None:
-        injected = mock_of[WorkPipeline]()
-        autowired = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=injected)
-        installed = state.set_work_pipeline_if_absent(autowired)
-        # Injection-over-autowire: the injected one wins, no raise.
-        assert installed is False
-        assert state.work_pipeline is injected
-
-    def test_swap_work_pipeline_replaces_existing(self) -> None:
-        first = mock_of[WorkPipeline]()
-        second = mock_of[WorkPipeline]()
-        state = _make_state(work_pipeline=first)
-        state.swap_work_pipeline(second)
-        assert state.work_pipeline is second
-
-
-@pytest.mark.unit
-class TestAppStateAgentRegistry:
-    """Tests for agent_registry property."""
-
-    def test_agent_registry_raises_when_none(self) -> None:
-        state = _make_state(agent_registry=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.agent_registry
-
-    def test_agent_registry_returns_when_set(self) -> None:
-        from synthorg.hr.registry import AgentRegistryService
-
-        registry = AgentRegistryService()
-        state = _make_state(agent_registry=registry)
-        assert state.agent_registry is registry
-
-    def test_has_agent_registry_false_when_none(self) -> None:
-        state = _make_state(agent_registry=None)
-        assert state.has_agent_registry is False
-
-    def test_has_agent_registry_true_when_set(self) -> None:
-        from synthorg.hr.registry import AgentRegistryService
-
-        registry = AgentRegistryService()
-        state = _make_state(agent_registry=registry)
-        assert state.has_agent_registry is True
-
-
-@pytest.mark.unit
-class TestAppStatePersistenceFlag:
-    """Tests for has_persistence property."""
-
-    def test_has_persistence_false_when_none(self) -> None:
-        state = _make_state(persistence=None)
-        assert state.has_persistence is False
-
-    async def test_has_persistence_true_when_set(self) -> None:
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        state = _make_state(persistence=backend)
-        assert state.has_persistence is True
-
-
-@pytest.mark.unit
-class TestAppStateMessageBusFlag:
-    """Tests for has_message_bus property."""
-
-    def test_has_message_bus_false_when_none(self) -> None:
-        state = _make_state(message_bus=None)
-        assert state.has_message_bus is False
-
-    async def test_has_message_bus_true_when_set(self) -> None:
-        bus = FakeMessageBus()
-        await bus.start()
-        state = _make_state(message_bus=bus)
-        assert state.has_message_bus is True
-
-
-@pytest.mark.unit
-class TestAppStateSettingsServiceFlag:
-    """Tests for has_settings_service property."""
-
-    def test_has_settings_service_false_when_none(self) -> None:
-        state = _make_state(settings_service=None)
-        assert state.has_settings_service is False
-
-    def test_has_settings_service_true_when_set(self) -> None:
-        mock_svc = AsyncMock(spec=SettingsService)
-        state = _make_state(settings_service=mock_svc)
-        assert state.has_settings_service is True
-
-
-@pytest.mark.unit
-class TestAppStateReviewGateService:
-    """Tests for review_gate_service property and set_review_gate_service."""
-
-    def test_review_gate_service_none_by_default(self) -> None:
+    def test_swap_slice_is_atomic_whole_old_or_new(self) -> None:
+        # A reader holding the old slice keeps its references; the next
+        # ``slice`` call observes the whole new slice -- never a partial.
         state = _make_state()
-        assert state.review_gate_service is None
+        state.set_slice(_ProbeSlice(first="old"))
+        held = state.slice(_ProbeSlice)
+        state.swap_slice(_ProbeSlice(first="new"))
+        assert held.first == "old"
+        assert state.slice(_ProbeSlice).first == "new"
 
-    def test_set_review_gate_service_succeeds_once(self) -> None:
-        svc = mock_of[ReviewGateService]()
+    def test_wire_updates_named_field(self) -> None:
         state = _make_state()
-        state.set_review_gate_service(svc)
-        assert state.review_gate_service is svc
+        sentinel = object()
+        state.wire(_ProbeSlice, first=sentinel)
+        assert state.slice(_ProbeSlice).first is sentinel
+        assert state.slice(_ProbeSlice).second is None
 
-    def test_set_review_gate_service_twice_raises(self) -> None:
-        svc = mock_of[ReviewGateService]()
+    def test_wire_preserves_other_fields(self) -> None:
         state = _make_state()
-        state.set_review_gate_service(svc)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_review_gate_service(svc)
+        a = object()
+        b = object()
+        state.wire(_ProbeSlice, first=a)
+        state.wire(_ProbeSlice, second=b)
+        composed = state.slice(_ProbeSlice)
+        assert composed.first is a
+        assert composed.second is b
 
-
-@pytest.mark.unit
-class TestAppStateApprovalTimeoutScheduler:
-    """Tests for approval_timeout_scheduler and set_approval_timeout_scheduler."""
-
-    def test_approval_timeout_scheduler_none_by_default(self) -> None:
+    def test_wire_yields_a_fresh_frozen_slice(self) -> None:
         state = _make_state()
-        assert state.approval_timeout_scheduler is None
+        state.wire(_ProbeSlice, first=object())
+        before = state.slice(_ProbeSlice)
+        state.wire(_ProbeSlice, second=object())
+        # ``model_copy(update=...)`` produces a new frozen instance, so a
+        # reader holding the pre-wire slice is never mutated under it.
+        assert state.slice(_ProbeSlice) is not before
 
-    def test_set_approval_timeout_scheduler_succeeds_once(self) -> None:
-        scheduler = mock_of[ApprovalTimeoutScheduler]()
+    def test_set_field_once_installs(self) -> None:
         state = _make_state()
-        state.set_approval_timeout_scheduler(scheduler)
-        assert state.approval_timeout_scheduler is scheduler
+        sentinel = object()
+        state.set_field_once(_ProbeSlice, "first", sentinel, "Probe")
+        assert state.slice(_ProbeSlice).first is sentinel
 
-    def test_set_approval_timeout_scheduler_twice_raises(self) -> None:
-        scheduler = mock_of[ApprovalTimeoutScheduler]()
+    def test_set_field_once_twice_raises(self) -> None:
         state = _make_state()
-        state.set_approval_timeout_scheduler(scheduler)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_approval_timeout_scheduler(scheduler)
+        state.set_field_once(_ProbeSlice, "first", object(), "Probe")
+        with pytest.raises(RuntimeError, match="Probe already configured"):
+            state.set_field_once(_ProbeSlice, "first", object(), "Probe")
 
-
-@pytest.mark.unit
-class TestAppStateConfigResolver:
-    """Tests for config_resolver property."""
-
-    def test_config_resolver_raises_when_settings_service_none(self) -> None:
-        state = _make_state(settings_service=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.config_resolver
-
-    def test_config_resolver_returns_when_settings_service_set(self) -> None:
-        from synthorg.settings.resolver import ConfigResolver
-
-        mock_svc = AsyncMock(spec=SettingsService)
-        state = _make_state(settings_service=mock_svc)
-        resolver = state.config_resolver
-        assert isinstance(resolver, ConfigResolver)
-
-    def test_config_resolver_is_singleton(self) -> None:
-        """Successive property accesses return the same cached instance."""
-        mock_svc = AsyncMock(spec=SettingsService)
-        state = _make_state(settings_service=mock_svc)
-        first = state.config_resolver
-        second = state.config_resolver
-        assert first is second
-
-    def test_has_config_resolver_false_when_none(self) -> None:
-        state = _make_state(settings_service=None)
-        assert state.has_config_resolver is False
-
-    def test_has_config_resolver_true_when_set(self) -> None:
-        mock_svc = AsyncMock(spec=SettingsService)
-        state = _make_state(settings_service=mock_svc)
-        assert state.has_config_resolver is True
-
-
-@pytest.mark.unit
-class TestAppStateTrainingService:
-    """Tests for training_service property and set_training_service."""
-
-    def test_training_service_raises_when_none(self) -> None:
-        state = _make_state(training_service=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.training_service
-
-    def test_has_training_service_false_when_none(self) -> None:
-        state = _make_state(training_service=None)
-        assert state.has_training_service is False
-
-    def test_set_training_service_once(self) -> None:
+    def test_wire_if_field_absent_installs_when_absent(self) -> None:
         state = _make_state()
-        mock_svc = AsyncMock(spec=TrainingService)
-        state.set_training_service(mock_svc)
-        assert state.training_service is mock_svc
-        assert state.has_training_service is True
+        sentinel = object()
+        assert state.wire_if_field_absent(_ProbeSlice, "first", sentinel) is True
+        assert state.slice(_ProbeSlice).first is sentinel
 
-    def test_set_training_service_twice_raises(self) -> None:
+    def test_wire_if_field_absent_skips_when_present(self) -> None:
         state = _make_state()
-        mock_svc = AsyncMock(spec=TrainingService)
-        state.set_training_service(mock_svc)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_training_service(mock_svc)
+        first = object()
+        state.wire_if_field_absent(_ProbeSlice, "first", first)
+        assert state.wire_if_field_absent(_ProbeSlice, "first", object()) is False
+        # The first writer wins; a later if-absent call is a no-op.
+        assert state.slice(_ProbeSlice).first is first
+
+    def test_swap_field_returns_previous(self) -> None:
+        state = _make_state()
+        first = object()
+        second = object()
+        state.wire(_ProbeSlice, first=first)
+        previous = state.swap_field_returning_previous(_ProbeSlice, "first", second)
+        assert previous is first
+        assert state.slice(_ProbeSlice).first is second
+
+    def test_swap_field_returns_none_on_first_install(self) -> None:
+        state = _make_state()
+        previous = state.swap_field_returning_previous(_ProbeSlice, "first", object())
+        assert previous is None
+
+    def test_concurrent_set_field_once_single_winner(self) -> None:
+        # The presence check and the write must share one lock
+        # acquisition: with N threads racing on the same field, exactly
+        # one installs and the rest see the field already set and raise.
+        # A check outside the lock would let two threads both pass the
+        # guard and both install (the once-only contract broken).
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        state = _make_state()
+        workers = 16
+        barrier = Barrier(workers)
+
+        def _install(_: int) -> bool:
+            barrier.wait()
+            try:
+                state.set_field_once(_ProbeSlice, "first", object(), "Probe")
+            except RuntimeError:
+                return False
+            return True
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(_install, range(workers)))
+        assert sum(results) == 1, "set_field_once not atomic: multiple winners"
+        assert state.slice(_ProbeSlice).first is not None
+
+    def test_concurrent_wire_if_field_absent_single_winner(self) -> None:
+        # Same race for the set-if-absent seam: only one of N concurrent
+        # callers may report it installed the field; the rest observe
+        # the winner's write under the shared lock and skip.
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        state = _make_state()
+        workers = 16
+        barrier = Barrier(workers)
+
+        def _install(_: int) -> bool:
+            barrier.wait()
+            return state.wire_if_field_absent(_ProbeSlice, "first", object())
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(_install, range(workers)))
+        assert sum(results) == 1, "wire_if_field_absent not atomic: multiple winners"
+        assert state.slice(_ProbeSlice).first is not None
+
+
+class TestRequireService:
+    """``_require_service`` returns the value or 503s on ``None``."""
+
+    def test_returns_service_when_present(self) -> None:
+        state = _make_state()
+        sentinel = object()
+        assert state._require_service(sentinel, "Probe") is sentinel
+
+    def test_raises_service_unavailable_when_none(self) -> None:
+        state = _make_state()
+        with pytest.raises(
+            ServiceUnavailableError,
+            match="Probe Service not configured",
+        ):
+            state._require_service(None, "probe_service")
+
+
+class TestPrimitives:
+    """The cross-cutting mutable primitives a frozen slice cannot own."""
+
+    def test_shutdown_requested_is_unset_event(self) -> None:
+        state = _make_state()
+        assert isinstance(state.shutdown_requested, asyncio.Event)
+        assert not state.shutdown_requested.is_set()
+
+    def test_bridge_config_applied_flips_once(self) -> None:
+        state = _make_state()
+        assert state.bridge_config_applied is False
+        state.mark_bridge_config_applied()
+        assert state.bridge_config_applied is True
+
+    def test_background_task_sets_are_distinct(self) -> None:
+        state = _make_state()
+        assert state.objective_background_tasks == set()
+        assert state.brownfield_background_tasks == set()
+        assert state.objective_background_tasks is not state.brownfield_background_tasks
+
+    def test_clock_and_startup_time_present(self) -> None:
+        state = _make_state()
+        assert state.clock is not None
+        assert isinstance(state.startup_time, float)
 
 
 @pytest.mark.unit
@@ -658,155 +464,3 @@ class TestAppStateApiBridgeConfig:
         state.swap_api_bridge_config(snapshot)
         state.swap_api_bridge_config(snapshot)
         assert state.api_bridge_config is snapshot
-
-
-@pytest.mark.unit
-class TestAppStateSimulationRuntime:
-    """Tests for has_client_simulation_state vs has_simulation_runtime.
-
-    The two predicates intentionally differ: the broad one is always
-    true in production (so ``/clients`` serves an empty list rather
-    than 503ing on the dashboard's first poll), and the strict one
-    gates the optional Simulation / Request controllers that need a
-    real ``intake_engine`` + ``review_pipeline``.
-    """
-
-    def _state_with_simulation(
-        self,
-        *,
-        intake_engine: object | None = None,
-        review_pipeline: object | None = None,
-    ) -> AppState:
-        from synthorg.client.simulation_state import ClientSimulationState
-
-        sim = ClientSimulationState(
-            intake_engine=intake_engine,  # type: ignore[arg-type]
-            review_pipeline=review_pipeline,  # type: ignore[arg-type]
-        )
-        state = _make_state()
-        state.set_client_simulation_state(sim)
-        return state
-
-    def test_has_simulation_runtime_false_when_no_state(self) -> None:
-        state = _make_state()
-        assert state.has_client_simulation_state is False
-        assert state.has_simulation_runtime is False
-
-    def test_has_simulation_runtime_false_when_only_state_present(self) -> None:
-        state = self._state_with_simulation()
-        assert state.has_client_simulation_state is True
-        assert state.has_simulation_runtime is False
-
-    def test_has_simulation_runtime_false_when_only_intake_engine(self) -> None:
-        sentinel = object()
-        state = self._state_with_simulation(intake_engine=sentinel)
-        assert state.has_simulation_runtime is False
-
-    def test_has_simulation_runtime_false_when_only_review_pipeline(self) -> None:
-        sentinel = object()
-        state = self._state_with_simulation(review_pipeline=sentinel)
-        assert state.has_simulation_runtime is False
-
-    def test_has_simulation_runtime_true_when_both_present(self) -> None:
-        state = self._state_with_simulation(
-            intake_engine=object(),
-            review_pipeline=object(),
-        )
-        assert state.has_simulation_runtime is True
-
-
-@pytest.mark.unit
-class TestAppStateIntakeEntryAdapter:
-    """Tests for the intake_entry_adapter seam (mirrors work_pipeline)."""
-
-    def test_raises_when_none(self) -> None:
-        state = _make_state(intake_entry_adapter=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.intake_entry_adapter
-
-    def test_returns_when_set(self) -> None:
-        adapter = mock_of[WorkEntryAdapter]()
-        state = _make_state(intake_entry_adapter=adapter)
-        assert state.intake_entry_adapter is adapter
-
-    def test_has_false_when_none(self) -> None:
-        assert _make_state(intake_entry_adapter=None).has_intake_entry_adapter is False
-
-    def test_has_true_when_set(self) -> None:
-        state = _make_state(intake_entry_adapter=mock_of[WorkEntryAdapter]())
-        assert state.has_intake_entry_adapter is True
-
-    def test_set_is_once_only(self) -> None:
-        first = mock_of[WorkEntryAdapter]()
-        state = _make_state(intake_entry_adapter=first)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_intake_entry_adapter(mock_of[WorkEntryAdapter]())
-
-    def test_set_if_absent_installs_when_none(self) -> None:
-        adapter = mock_of[WorkEntryAdapter]()
-        state = _make_state(intake_entry_adapter=None)
-        assert state.set_intake_entry_adapter_if_absent(adapter) is True
-        assert state.intake_entry_adapter is adapter
-
-    def test_set_if_absent_keeps_injected(self) -> None:
-        injected = mock_of[WorkEntryAdapter]()
-        autowired = mock_of[WorkEntryAdapter]()
-        state = _make_state(intake_entry_adapter=injected)
-        assert state.set_intake_entry_adapter_if_absent(autowired) is False
-        assert state.intake_entry_adapter is injected
-
-    def test_swap_replaces_existing(self) -> None:
-        first = mock_of[WorkEntryAdapter]()
-        second = mock_of[WorkEntryAdapter]()
-        state = _make_state(intake_entry_adapter=first)
-        state.swap_intake_entry_adapter(second)
-        assert state.intake_entry_adapter is second
-
-
-@pytest.mark.unit
-class TestAppStateTaskBoardEntryAdapter:
-    """Tests for the task_board_entry_adapter seam (mirrors intake)."""
-
-    def test_raises_when_none(self) -> None:
-        state = _make_state(task_board_entry_adapter=None)
-        with pytest.raises(ServiceUnavailableError):
-            _ = state.task_board_entry_adapter
-
-    def test_returns_when_set(self) -> None:
-        adapter = mock_of[TaskBoardEntryAdapter]()
-        state = _make_state(task_board_entry_adapter=adapter)
-        assert state.task_board_entry_adapter is adapter
-
-    def test_has_false_when_none(self) -> None:
-        state = _make_state(task_board_entry_adapter=None)
-        assert state.has_task_board_entry_adapter is False
-
-    def test_has_true_when_set(self) -> None:
-        state = _make_state(task_board_entry_adapter=mock_of[TaskBoardEntryAdapter]())
-        assert state.has_task_board_entry_adapter is True
-
-    def test_set_is_once_only(self) -> None:
-        first = mock_of[TaskBoardEntryAdapter]()
-        state = _make_state(task_board_entry_adapter=first)
-        with pytest.raises(RuntimeError, match="already configured"):
-            state.set_task_board_entry_adapter(mock_of[TaskBoardEntryAdapter]())
-
-    def test_set_if_absent_installs_when_none(self) -> None:
-        adapter = mock_of[TaskBoardEntryAdapter]()
-        state = _make_state(task_board_entry_adapter=None)
-        assert state.set_task_board_entry_adapter_if_absent(adapter) is True
-        assert state.task_board_entry_adapter is adapter
-
-    def test_set_if_absent_keeps_injected(self) -> None:
-        injected = mock_of[TaskBoardEntryAdapter]()
-        autowired = mock_of[TaskBoardEntryAdapter]()
-        state = _make_state(task_board_entry_adapter=injected)
-        assert state.set_task_board_entry_adapter_if_absent(autowired) is False
-        assert state.task_board_entry_adapter is injected
-
-    def test_swap_replaces_existing(self) -> None:
-        first = mock_of[TaskBoardEntryAdapter]()
-        second = mock_of[TaskBoardEntryAdapter]()
-        state = _make_state(task_board_entry_adapter=first)
-        state.swap_task_board_entry_adapter(second)
-        assert state.task_board_entry_adapter is second

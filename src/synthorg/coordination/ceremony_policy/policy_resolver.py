@@ -30,6 +30,11 @@ from synthorg.observability.events.api import (
     API_SERVICE_UNAVAILABLE,
 )
 from synthorg.settings.errors import SettingNotFoundError, SettingsError
+from synthorg.settings.state import (
+    SettingsStateSlice,
+    config_resolver_of,
+    settings_service_of,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -309,12 +314,12 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         ServiceUnavailableError: If the settings service is not
             available or one or more settings cannot be fetched.
     """
-    if not app_state.has_settings_service:
+    if app_state.slice(SettingsStateSlice).settings_service is None:
         msg = "Settings service not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
         raise ServiceUnavailableError(msg)
 
-    settings = app_state.settings_service
+    settings = settings_service_of(app_state)
     keys = (
         "ceremony_strategy",
         "ceremony_strategy_config",
@@ -383,10 +388,10 @@ async def _lookup_dept_override_from_settings(
     department_name: NotBlankStr,
 ) -> CeremonyPolicyConfig | None | _SettingsLookup:
     """Try to find a department override in the settings service."""
-    if not app_state.has_settings_service:
+    if app_state.slice(SettingsStateSlice).settings_service is None:
         return _SETTINGS_NOT_FOUND
     try:
-        entry = await app_state.settings_service.get(
+        entry = await settings_service_of(app_state).get(
             "coordination",
             "dept_ceremony_policies",
         )
@@ -489,12 +494,12 @@ async def _fetch_department_policy(
     if not isinstance(result, _SettingsLookup):
         return result
 
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         msg = "Config resolver not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
 
-    departments = await app_state.config_resolver.get_departments()
+    departments = await config_resolver_of(app_state).get_departments()
     for dept in departments:
         if dept.name == department_name:
             if dept.ceremony_policy is None:

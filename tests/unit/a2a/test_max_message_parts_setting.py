@@ -10,25 +10,15 @@ a transient settings outage cannot let an oversized message slip
 through.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.a2a import gateway as gateway_mod
+from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
-
-
-class _AppStateNoResolver:
-    has_config_resolver = False
-
-
-class _AppStateWithResolver:
-    def __init__(self, value: int) -> None:
-        self.has_config_resolver = True
-        self.config_resolver = AsyncMock()
-        self.config_resolver.get_int = AsyncMock(return_value=value)
 
 
 async def test_falls_back_when_app_state_is_none() -> None:
@@ -37,24 +27,23 @@ async def test_falls_back_when_app_state_is_none() -> None:
 
 
 async def test_falls_back_when_resolver_unwired() -> None:
-    state: Any = _AppStateNoResolver()
+    state = make_app_state()
     result = await gateway_mod._resolve_max_message_parts(state)
     assert result == gateway_mod._MAX_MESSAGE_PARTS_FALLBACK
 
 
 async def test_uses_resolver_value_when_wired() -> None:
-    state: Any = _AppStateWithResolver(value=42)
+    resolver = mock_of[ConfigResolver](get_int=AsyncMock(return_value=42))
+    state = make_app_state(config_resolver=resolver)
     result = await gateway_mod._resolve_max_message_parts(state)
     assert result == 42
-    state.config_resolver.get_int.assert_awaited_once_with("a2a", "max_message_parts")
+    resolver.get_int.assert_awaited_once_with("a2a", "max_message_parts")
 
 
 async def test_resolver_outage_falls_back() -> None:
-    # ``value`` is irrelevant here because ``get_int`` is replaced
-    # with a side_effect that raises before returning; pass any
-    # placeholder.  Use a clearly arbitrary sentinel so a future
-    # reader does not assume the value matters.
-    state: Any = _AppStateWithResolver(value=-1)
-    state.config_resolver.get_int.side_effect = RuntimeError("transient")
+    resolver = mock_of[ConfigResolver](
+        get_int=AsyncMock(side_effect=RuntimeError("transient")),
+    )
+    state = make_app_state(config_resolver=resolver)
     result = await gateway_mod._resolve_max_message_parts(state)
     assert result == gateway_mod._MAX_MESSAGE_PARTS_FALLBACK

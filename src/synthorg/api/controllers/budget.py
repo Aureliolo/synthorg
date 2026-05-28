@@ -9,25 +9,33 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import (
     ApiResponse,
     ErrorDetail,
     PaginationMeta,
 )
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_BUDGET_RECORDS_LISTED,
     API_VALIDATION_FAILED,
 )
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -304,7 +312,7 @@ class BudgetController(Controller):
             Budget config envelope.
         """
         app_state: AppState = state.app_state
-        budget = await app_state.config_resolver.get_budget_config()
+        budget = await config_resolver_of(app_state).get_budget_config()
         return ApiResponse(data=budget)
 
     @get("/records")
@@ -344,9 +352,11 @@ class BudgetController(Controller):
             Paginated cost records with daily and period summaries.
         """
         app_state: AppState = state.app_state
-        budget_cfg = await app_state.config_resolver.get_budget_config()
+        budget_cfg = await config_resolver_of(app_state).get_budget_config()
         currency = budget_cfg.currency
-        records = await app_state.cost_tracker.get_records(
+        records = await require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        ).get_records(
             agent_id=agent_id,
             task_id=task_id,
         )
@@ -361,7 +371,7 @@ class BudgetController(Controller):
             records,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return CostRecordListResponse(
             data=page,
@@ -387,8 +397,10 @@ class BudgetController(Controller):
             Agent spending envelope.
         """
         app_state: AppState = state.app_state
-        budget_cfg = await app_state.config_resolver.get_budget_config()
-        total = await app_state.cost_tracker.get_agent_cost(agent_id)
+        budget_cfg = await config_resolver_of(app_state).get_budget_config()
+        total = await require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        ).get_agent_cost(agent_id)
         return ApiResponse(
             data=AgentSpending(
                 agent_id=agent_id,

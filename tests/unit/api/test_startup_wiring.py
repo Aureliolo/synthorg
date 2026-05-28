@@ -6,7 +6,7 @@ tunnel wiring path, and the once-only contract on `set_ontology_service`.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import structlog
@@ -19,20 +19,24 @@ from synthorg.api.lifecycle_builder import (
     _wire_workflow_observer,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.ontology.state import OntologyStateSlice
+from synthorg.settings.state import SettingsStateSlice
+from tests._shared import make_app_state
 
 
 def _make_state(**overrides: object) -> AppState:
-    defaults: dict[str, object] = {
+    defaults: dict[str, Any] = {
         "config": RootConfig(company_name="test"),
         "approval_store": ApprovalStore(),
     }
     defaults.update(overrides)
-    return AppState(**defaults)  # type: ignore[arg-type]
+    return make_app_state(**defaults)
 
 
 @dataclass
@@ -94,7 +98,7 @@ class TestWireWorkflowObserver:
     async def test_uses_resolver_max_depth_when_resolver_wired(self) -> None:
         state = _make_state()
         resolver = _FakeConfigResolver(max_depth=7)
-        state._config_resolver = resolver  # type: ignore[assignment]
+        state.wire(SettingsStateSlice, config_resolver=resolver)
         persistence = _FakeWorkflowPersistence(
             workflow_definitions=object(),
             workflow_executions=object(),
@@ -167,14 +171,14 @@ class TestWireOntologyService:
 
         await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
 
-        assert state.has_ontology_service is True
+        assert state.slice(OntologyStateSlice).service is not None
 
     async def test_silently_returns_when_already_wired(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = _make_state()
         first = _FakeOntologyService("first")
-        state.set_ontology_service(first)  # type: ignore[arg-type]
+        state.wire(OntologyStateSlice, service=first)
 
         async def fake_auto_wire(*args: Any, **kwargs: Any) -> Any:
             return _FakeOntologyService("second")
@@ -184,19 +188,11 @@ class TestWireOntologyService:
             fake_auto_wire,
         )
 
-        # Helper's try/except RuntimeError swallows the once-only setter rejection.
+        # The helper's slice-presence guard short-circuits when a service
+        # is already wired, so the autowired "second" never replaces it.
         await _wire_ontology_service(object(), state)  # type: ignore[arg-type]
 
-        assert state.ontology_service is first  # type: ignore[comparison-overlap]
-
-
-@pytest.mark.unit
-class TestSetOntologyServiceOnceOnly:
-    def test_second_call_raises_runtime_error(self) -> None:
-        state = _make_state()
-        state.set_ontology_service(_FakeOntologyService("first"))  # type: ignore[arg-type]
-        with pytest.raises(RuntimeError):
-            state.set_ontology_service(_FakeOntologyService("second"))  # type: ignore[arg-type]
+        assert cast(Any, state.slice(OntologyStateSlice).service) is first
 
 
 @dataclass
@@ -226,7 +222,7 @@ class TestWireApprovalGate:
         with structlog.testing.capture_logs() as captured:
             await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
 
-        gate = state.approval_gate
+        gate = state.slice(ApprovalStateSlice).gate
         assert gate is not None
         # ``id`` rather than ``is``: the fake is not typed as the
         # protocol, so a direct identity check trips mypy's
@@ -246,19 +242,19 @@ class TestWireApprovalGate:
 
         existing = ApprovalGate(park_service=ParkService())
         state = _make_state()
-        state.set_approval_gate(existing)
+        state.wire(ApprovalStateSlice, gate=existing)
         persistence = _FakeParkedPersistence(parked_contexts=_FakeParkedContextRepo())
 
         await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
 
-        assert state.approval_gate is existing
+        assert state.slice(ApprovalStateSlice).gate is existing
 
     async def test_gate_built_without_repo_when_persistence_absent(self) -> None:
         state = _make_state()
 
         await _wire_approval_gate(None, state)
 
-        gate = state.approval_gate
+        gate = state.slice(ApprovalStateSlice).gate
         assert gate is not None
         assert gate._parked_context_repo is None
 

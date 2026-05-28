@@ -39,6 +39,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.events.metrics import METRICS_RECORD_FAILED
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
+from synthorg.observability.state import ObservabilityStateSlice
 
 _UNMATCHED_ROUTE: Final[str] = "__unmatched__"
 
@@ -342,7 +343,7 @@ def _record_request_metric(
     if state is None:
         return
     app_state: Any = state.get("app_state") if isinstance(state, dict) else None
-    if app_state is None or not getattr(app_state, "has_prometheus_collector", False):
+    if app_state is None:
         return
     # Skip pre-response disconnects entirely rather than synthesising
     # a 5xx: those weren't errors the handler produced, and folding
@@ -350,7 +351,7 @@ def _record_request_metric(
     if status_code is None:
         return
     try:
-        collector = app_state.prometheus_collector
+        collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
     except Exception as exc:
         reraise_critical(exc)
         # Log the lookup failure so operators notice a metrics-
@@ -360,6 +361,8 @@ def _record_request_metric(
             component="api_request_duration",
             reason="collector_access_failed",
         )
+        return
+    if collector is None:
         return
     try:
         collector.record_api_request(

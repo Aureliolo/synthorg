@@ -28,6 +28,7 @@ from synthorg.budget.forecaster import BriefSignal
 from synthorg.budget.pareto import (  # noqa: TC001 -- runtime return annotation
     ParetoFrontier,
 )
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import (
     ConflictError,
     ResourceNotFoundError,
@@ -134,7 +135,7 @@ def _require_repo(state: State) -> CostForecastRepository:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
     app_state: AppState = state.app_state
-    repo = app_state.cost_forecast_repo
+    repo = app_state.slice(BudgetStateSlice).cost_forecast_repo
     if repo is None:
         msg = "Cost forecast repository not configured"
         raise ServiceUnavailableError(msg)
@@ -163,9 +164,9 @@ class ForecastBudgetController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        forecaster = app_state.cost_forecaster
-        repo = app_state.cost_forecast_repo
-        budget = app_state.budget_config
+        forecaster = app_state.slice(BudgetStateSlice).cost_forecaster
+        repo = app_state.slice(BudgetStateSlice).cost_forecast_repo
+        budget = app_state.slice(BudgetStateSlice).budget_config
         if forecaster is None or repo is None or budget is None:
             logger.warning(
                 BUDGET_FORECAST_UNAVAILABLE,
@@ -293,7 +294,7 @@ class ForecastBudgetController(Controller):
             ConflictError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        budget = app_state.budget_config
+        budget = app_state.slice(BudgetStateSlice).budget_config
         if budget is None:
             msg = "Budget configuration not available"
             raise ServiceUnavailableError(msg)
@@ -346,7 +347,7 @@ class ForecastBudgetController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        analyzer = app_state.pareto_analyzer
+        analyzer = app_state.slice(BudgetStateSlice).pareto_analyzer
         if analyzer is None:
             msg = "Pareto analyzer not configured"
             raise ServiceUnavailableError(msg)

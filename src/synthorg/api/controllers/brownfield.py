@@ -16,6 +16,7 @@ from litestar import Controller, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import (
@@ -25,6 +26,7 @@ from synthorg.api.rate_limits import (
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.models import CodebaseImportSubmission
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.brownfield import (
@@ -95,7 +97,10 @@ async def import_codebase_impl(
         requested_by=data.requested_by,
         default_branch=data.default_branch,
     )
-    adapter = app_state.brownfield_entry_adapter
+    adapter = require_service(
+        app_state.slice(EngineStateSlice).brownfield_entry_adapter,
+        "Brownfield Entry Adapter",
+    )
     logger.info(BROWNFIELD_IMPORT_STARTED, project_id=submission.project_id)
     task = asyncio.create_task(_drive_pipeline(adapter, submission))
     task.add_done_callback(

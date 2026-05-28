@@ -6,15 +6,18 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.domain_errors import ForbiddenError, NotFoundError
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTONOMY_PROMOTION_DENIED,
@@ -23,6 +26,8 @@ from synthorg.observability.events.security import (
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyUpdate
 from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.security.state import SecurityStateSlice
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -116,7 +121,7 @@ class AutonomyController(Controller):
             Current autonomy level info.
         """
         app_state: AppState = state.app_state
-        level = await app_state.config_resolver.get_autonomy_level()
+        level = await config_resolver_of(app_state).get_autonomy_level()
         return ApiResponse(
             data=AutonomyLevelResponse(
                 agent_id=agent_id,
@@ -164,7 +169,10 @@ class AutonomyController(Controller):
         agent_key = NotBlankStr(str(agent_id))
         requested_level = data.level
 
-        identity = await app_state.agent_registry.get(agent_key)
+        registry = require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        )
+        identity = await registry.get(agent_key)
         if identity is None:
             logger.warning(
                 SECURITY_AUTONOMY_PROMOTION_DENIED,
@@ -192,7 +200,10 @@ class AutonomyController(Controller):
 
         # Consult the boot-wired strategy. HUMAN_ONLY always returns
         # False (pending); an opt-in auto-grant strategy returns True.
-        strategy = app_state.autonomy_change_strategy
+        strategy = require_service(
+            app_state.slice(SecurityStateSlice).autonomy_change_strategy,
+            "Autonomy Change Strategy",
+        )
         strategy_granted = strategy.request_promotion(
             agent_key,
             requested_level,
@@ -204,7 +215,7 @@ class AutonomyController(Controller):
         # applies the level change. ``granted_by_strategy`` carries the
         # strategy's class name so the auto-decision is attributable;
         # ``None`` (HUMAN_ONLY) keeps the request pending for a human.
-        result = await app_state.agent_registry.update_autonomy(
+        result = await registry.update_autonomy(
             agent_key,
             AutonomyUpdate(
                 requested_level=requested_level,
@@ -217,7 +228,9 @@ class AutonomyController(Controller):
                     NotBlankStr(type(strategy).__name__) if strategy_granted else None
                 ),
             ),
-            approval_store=app_state.approval_store,
+            approval_store=require_service(
+                app_state.slice(ApprovalStateSlice).store, "Approval Store"
+            ),
         )
 
         logger.info(

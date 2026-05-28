@@ -10,6 +10,7 @@ from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_200_OK
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.dto_training import (
     CreateTrainingPlanRequest,
@@ -29,6 +30,7 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.state import HrStateSlice
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,
@@ -43,6 +45,7 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.training import (
     HR_TRAINING_PLAN_EXECUTION_ERROR,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -59,7 +62,9 @@ async def _resolve_agent(
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    identity = await app_state.agent_registry.get_by_name(agent_name)
+    identity = await require_service(
+        app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+    ).get_by_name(agent_name)
     if identity is None:
         logger.warning(
             API_RESOURCE_NOT_FOUND,
@@ -243,7 +248,10 @@ class TrainingController(Controller):
         # and the ``HR_TRAINING_PLAN_CREATED`` audit event happen in
         # one place.  Raises 503 when the service is not yet wired
         # (matches every other persistence-bound facade).
-        await app_state.training_plan_service.create_plan(plan)
+        await require_service(
+            app_state.slice(HrStateSlice).training_plan_service,
+            "Training Plan Service",
+        ).create_plan(plan)
         return ApiResponse(data=_plan_to_response(plan))
 
     @post(
@@ -281,7 +289,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = await app_state.persistence.training_plans.latest_pending(
+        plan = await persistence_of(app_state).training_plans.latest_pending(
             NotBlankStr(agent_id),
         )
         if plan is None:
@@ -294,9 +302,14 @@ class TrainingController(Controller):
             raise NotFoundError(msg)
 
         # Raises 503 ServiceUnavailableError when not wired.
-        service = app_state.training_service
+        service = require_service(
+            app_state.slice(HrStateSlice).training_service, "Training Service"
+        )
 
-        plan_service = app_state.training_plan_service
+        plan_service = require_service(
+            app_state.slice(HrStateSlice).training_plan_service,
+            "Training Plan Service",
+        )
         try:
             result = await service.execute(plan)
         except Exception as exc:
@@ -351,7 +364,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        result = await app_state.persistence.training_results.get_latest(
+        result = await persistence_of(app_state).training_results.get_latest(
             NotBlankStr(agent_id),
         )
         if result is None:
@@ -396,7 +409,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = await app_state.persistence.training_plans.latest_by_agent(
+        plan = await persistence_of(app_state).training_plans.latest_by_agent(
             NotBlankStr(agent_id),
         )
         if plan is None:
@@ -438,7 +451,7 @@ class TrainingController(Controller):
         identity = await _resolve_agent(app_state, agent_name)
         agent_id = str(identity.id)
 
-        plan = await app_state.persistence.training_plans.latest_pending(
+        plan = await persistence_of(app_state).training_plans.latest_pending(
             NotBlankStr(agent_id),
         )
         if plan is None:
@@ -451,7 +464,9 @@ class TrainingController(Controller):
             raise NotFoundError(msg)
 
         # Raises 503 when not wired; preview does NOT persist.
-        result = await app_state.training_service.preview(plan)
+        result = await require_service(
+            app_state.slice(HrStateSlice).training_service, "Training Service"
+        ).preview(plan)
         return ApiResponse(data=_result_to_response(result))
 
     @put(
@@ -495,7 +510,7 @@ class TrainingController(Controller):
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
 
-        plan = await app_state.persistence.training_plans.get(
+        plan = await persistence_of(app_state).training_plans.get(
             NotBlankStr(plan_id),
         )
         if plan is None:
@@ -544,7 +559,10 @@ class TrainingController(Controller):
         # ``update_overrides`` applies the diff, persists the new
         # plan, and emits ``HR_TRAINING_PLAN_OVERRIDES_UPDATED``
         # inside the service.
-        updated = await app_state.training_plan_service.update_overrides(
+        updated = await require_service(
+            app_state.slice(HrStateSlice).training_plan_service,
+            "Training Plan Service",
+        ).update_overrides(
             plan,
             updates=updates,
         )

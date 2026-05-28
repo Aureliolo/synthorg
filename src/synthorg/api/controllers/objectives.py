@@ -17,12 +17,14 @@ from litestar import Controller, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveSubmission
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.objectives import (
@@ -104,7 +106,10 @@ async def submit_objective_impl(
         ``ApiResponse[SubmitObjectiveAck]`` instance.
     """
     submission = _build_submission(data)
-    adapter = app_state.objective_entry_adapter
+    adapter = require_service(
+        app_state.slice(EngineStateSlice).objective_entry_adapter,
+        "Objective Entry Adapter",
+    )
     logger.info(
         OBJECTIVE_SUBMISSION_RECEIVED,
         submission_id=submission.submission_id,

@@ -13,6 +13,7 @@ from synthorg.api.controllers.mcp_catalog import (
     MCPCatalogController,
 )
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
+from tests._shared import make_app_state
 
 
 @pytest.mark.unit
@@ -95,11 +96,13 @@ class TestInstallEntryValidateFirst:
         connection_catalog = MagicMock()
         connection_catalog.get = AsyncMock(return_value=None)
 
-        app_state = MagicMock()
-        app_state.mcp_catalog_service = MagicMock()
-        app_state.mcp_installations_repo = MagicMock()
-        app_state.has_connection_catalog = True
-        app_state.connection_catalog = connection_catalog
+        mcp_svc = MagicMock()
+        mcp_repo = MagicMock()
+        app_state = make_app_state(
+            connection_catalog=connection_catalog,
+            mcp_catalog_service=mcp_svc,
+            mcp_installations_repo=mcp_repo,
+        )
 
         state = State({"app_state": app_state})
         data = InstallEntryRequest(
@@ -109,7 +112,7 @@ class TestInstallEntryValidateFirst:
         with pytest.raises(DomainValidationError, match="unknown connection"):
             await install_entry(self=None, state=state, data=data)
         # Ensure we never reached the install service.
-        app_state.mcp_catalog_service.install.assert_not_called()
+        mcp_svc.install.assert_not_called()
         connection_catalog.get.assert_awaited_once_with("does-not-exist")
 
     async def test_missing_connection_catalog_with_connection_name_raises(
@@ -120,10 +123,12 @@ class TestInstallEntryValidateFirst:
         slip through to the persistence layer."""
         install_entry = MCPCatalogController.install_entry.fn
 
-        app_state = MagicMock()
-        app_state.mcp_catalog_service = MagicMock()
-        app_state.mcp_installations_repo = MagicMock()
-        app_state.has_connection_catalog = False
+        mcp_svc = MagicMock()
+        mcp_repo = MagicMock()
+        app_state = make_app_state(
+            mcp_catalog_service=mcp_svc,
+            mcp_installations_repo=mcp_repo,
+        )
 
         state = State({"app_state": app_state})
         data = InstallEntryRequest(
@@ -135,7 +140,7 @@ class TestInstallEntryValidateFirst:
             match="Integrations subsystem is not configured",
         ):
             await install_entry(self=None, state=state, data=data)
-        app_state.mcp_catalog_service.install.assert_not_called()
+        mcp_svc.install.assert_not_called()
 
 
 @pytest.mark.unit

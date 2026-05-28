@@ -15,6 +15,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import ApiKey, User
 from synthorg.core.auth.roles import HumanRole
+from tests._shared import make_app_state
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 
@@ -22,25 +23,6 @@ from tests.unit.api.conftest import FakePersistenceBackend
 def _pwd_sig(password_hash: str) -> str:
     """Mirror AuthService.create_token's pwd_sig derivation."""
     return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
-
-
-class _FakeState:
-    """Reusable fake app state for middleware tests."""
-
-    def __init__(
-        self,
-        *,
-        auth_service: AuthService,
-        persistence: FakePersistenceBackend,
-        has_session_store: bool = False,
-        session_store: object | None = None,
-        config: RootConfig | None = None,
-    ) -> None:
-        self.auth_service = auth_service
-        self.persistence = persistence
-        self.has_session_store = has_session_store
-        self.session_store = session_store
-        self.config = config
 
 
 def _make_auth_service() -> AuthService:
@@ -95,7 +77,7 @@ def _build_app(
         route_handlers=[protected_route, public_route],
         middleware=[middleware_cls],
     )
-    app.state["app_state"] = _FakeState(
+    app.state["app_state"] = make_app_state(
         auth_service=auth_service,
         persistence=persistence,
     )
@@ -245,18 +227,15 @@ class TestAuthMiddlewareRevocation:
 
         middleware_cls = create_auth_middleware_class(auth_config)
 
-        class _RevokedState:
-            def __init__(self) -> None:
-                self.auth_service = svc
-                self.persistence = persistence
-                self.has_session_store = True
-                self.session_store = mock_store
-
         app = Litestar(
             route_handlers=[protected_route],
             middleware=[middleware_cls],
         )
-        app.state["app_state"] = _RevokedState()
+        app.state["app_state"] = make_app_state(
+            auth_service=svc,
+            persistence=persistence,
+            session_store=mock_store,
+        )
 
         with TestClient(app) as client:
             resp = client.get(
@@ -568,13 +547,9 @@ class TestAuthMiddlewareSystemUser:
             ),
         )
 
-        class _FakeAppState:
-            def __init__(self) -> None:
-                self.persistence = persistence
-
         result = await _resolve_jwt_user(
             claims,
-            _FakeAppState(),  # type: ignore[arg-type]
+            make_app_state(persistence=persistence),
             "/admin/backups",
         )
         assert result is not None
@@ -934,10 +909,9 @@ class TestAuthMiddlewareCookieAuth:
             route_handlers=[protected_route],
             middleware=[middleware_cls],
         )
-        app.state["app_state"] = _FakeState(
+        app.state["app_state"] = make_app_state(
             auth_service=svc,
             persistence=persistence,
-            has_session_store=True,
             session_store=mock_store,
             config=RootConfig(company_name="test"),
         )
@@ -974,7 +948,7 @@ class TestAuthMiddlewareCookieAuth:
             route_handlers=[protected_route],
             middleware=[middleware_cls],
         )
-        app.state["app_state"] = _FakeState(
+        app.state["app_state"] = make_app_state(
             auth_service=svc,
             persistence=persistence,
             config=RootConfig(

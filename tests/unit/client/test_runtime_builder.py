@@ -20,7 +20,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -121,17 +121,12 @@ class TestBuildClientSimulationRuntime:
     """Boot-wiring behaviour of ``build_client_simulation_runtime``."""
 
     def test_returns_populated_state_with_direct_default(self) -> None:
-        from synthorg.api.state import AppState
         from synthorg.client.runtime_builder import (
             build_client_simulation_runtime,
         )
 
         task_engine = mock_of[TaskEngine]()
-        app_state = mock_of[AppState](
-            task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=False,
-        )
+        app_state = make_app_state(task_engine=task_engine)
         state = build_client_simulation_runtime(app_state, env={})
         assert isinstance(state, ClientSimulationState)
         assert state.intake_engine is not None
@@ -140,17 +135,12 @@ class TestBuildClientSimulationRuntime:
         assert state.intake_default_project == "client-intake"
 
     def test_intake_default_project_env_override(self) -> None:
-        from synthorg.api.state import AppState
         from synthorg.client.runtime_builder import (
             build_client_simulation_runtime,
         )
 
         task_engine = mock_of[TaskEngine]()
-        app_state = mock_of[AppState](
-            task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=False,
-        )
+        app_state = make_app_state(task_engine=task_engine)
         state = build_client_simulation_runtime(
             app_state,
             env={"SYNTHORG_SIMULATIONS_INTAKE_DEFAULT_PROJECT": "ops-intake"},
@@ -158,17 +148,12 @@ class TestBuildClientSimulationRuntime:
         assert state.intake_default_project == "ops-intake"
 
     def test_agent_selected_without_provider_falls_back_to_direct(self) -> None:
-        from synthorg.api.state import AppState
         from synthorg.client.runtime_builder import (
             build_client_simulation_runtime,
         )
 
         task_engine = mock_of[TaskEngine]()
-        app_state = mock_of[AppState](
-            task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=False,
-        )
+        app_state = make_app_state(task_engine=task_engine)
         with structlog.testing.capture_logs() as cap:
             state = build_client_simulation_runtime(
                 app_state,
@@ -189,7 +174,6 @@ class TestBuildClientSimulationRuntime:
         assert degrade[0]["effective_strategy"] == "direct"
 
     def test_agent_selected_with_provider_uses_agent_intake(self) -> None:
-        from synthorg.api.state import AppState
         from synthorg.client.runtime_builder import (
             build_client_simulation_runtime,
         )
@@ -197,10 +181,8 @@ class TestBuildClientSimulationRuntime:
         task_engine = mock_of[TaskEngine]()
         provider = ScriptedDriver("test-provider")
         registry = ProviderRegistry({"test-provider": provider})
-        app_state = mock_of[AppState](
+        app_state = make_app_state(
             task_engine=task_engine,
-            has_task_engine=True,
-            has_active_provider=True,
             provider_registry=registry,
         )
         state = build_client_simulation_runtime(
@@ -219,7 +201,6 @@ class TestBuildClientSimulationRuntime:
     ) -> None:
         """A failed *default* strategy build is a real bug: it must not
         be swallowed by the agent->direct degrade path."""
-        from synthorg.api.state import AppState
         from synthorg.client import runtime_builder
 
         def _boom(*_args: object, **_kwargs: object) -> object:
@@ -227,11 +208,7 @@ class TestBuildClientSimulationRuntime:
             raise UnknownStrategyError(msg)
 
         monkeypatch.setattr(runtime_builder, "build_intake_strategy", _boom)
-        app_state = mock_of[AppState](
-            task_engine=mock_of[TaskEngine](),
-            has_task_engine=True,
-            has_active_provider=False,
-        )
+        app_state = make_app_state(task_engine=mock_of[TaskEngine]())
         # Default strategy is "direct"; the except branch must re-raise
         # rather than recurse into a fallback.
         with pytest.raises(UnknownStrategyError):

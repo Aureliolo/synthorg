@@ -12,7 +12,6 @@ On-startup: creates SettingsService + dispatcher after persistence
 connects and migrations complete.
 """
 
-import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -734,9 +733,8 @@ def _select_participant_resolver(
     logger.warning(
         API_APP_STARTUP,
         note=(
-            "No agent registry available -- meeting "
-            "scheduler using passthrough participant "
-            "resolver (literal IDs only)"
+            "No agent registry available -- meeting scheduler using passthrough "
+            "participant resolver (literal IDs only)"
         ),
     )
     return PassthroughParticipantResolver()
@@ -833,9 +831,7 @@ async def auto_wire_settings(  # noqa: PLR0913
             logger,
             API_APP_STARTUP,
             exc,
-            note=(
-                "Failed to create SettingsService; check encryption key configuration"
-            ),
+            note="Failed to create SettingsService; check encryption key configuration",
         )
         raise
 
@@ -870,15 +866,16 @@ async def auto_wire_settings(  # noqa: PLR0913
             raise
         logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")
 
-    # All fallible operations succeeded -- safe to mutate AppState.
-    # If set_settings_service fails, stop the dispatcher to prevent leaks.
-    try:
-        app_state.set_settings_service(settings_svc)
-    except Exception:
-        if dispatcher is not None:
-            with contextlib.suppress(Exception):
-                await dispatcher.stop()
-        raise
+    # All fallible operations succeeded -- safe to mutate AppState. The
+    # composer wires the settings service onto its slice and the derived
+    # config-resolver / management / org-mutation / audit / preset
+    # services; the safe wrapper logs the failure with redaction and
+    # stops the dispatcher before re-raising to prevent leaked tasks.
+    from synthorg.api.lifecycle_helpers.settings_dependent_services import (  # noqa: PLC0415
+        safe_compose_settings_dependent_services,
+    )
+
+    await safe_compose_settings_dependent_services(app_state, settings_svc, dispatcher)
     logger.info(API_SERVICE_AUTO_WIRED, service="settings_service")
     return dispatcher
 

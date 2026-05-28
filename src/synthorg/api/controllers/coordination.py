@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from litestar import Controller, Request, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_TASKS, get_channels_plugin
 from synthorg.api.dto import (
     ApiResponse,
@@ -29,6 +30,8 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -42,6 +45,8 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_WS_SEND_FAILED,
 )
+from synthorg.settings.state import config_resolver_of
+from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -160,7 +165,7 @@ class CoordinationController(Controller):
         """
         app_state: AppState = state.app_state
 
-        if not app_state.has_coordinator:
+        if app_state.slice(RuntimeStateSlice).coordinator is None:
             logger.warning(
                 API_COORDINATION_FAILED,
                 error="Coordinator not configured",
@@ -168,7 +173,7 @@ class CoordinationController(Controller):
             msg = "Coordinator not configured"
             raise ServiceUnavailableError(msg)
 
-        if not app_state.has_agent_registry:
+        if app_state.slice(HrStateSlice).agent_registry is None:
             logger.warning(
                 API_COORDINATION_FAILED,
                 error="Agent registry not configured",
@@ -198,7 +203,7 @@ class CoordinationController(Controller):
             task_id,
         )
         try:
-            budget_cfg = await app_state.config_resolver.get_budget_config()
+            budget_cfg = await config_resolver_of(app_state).get_budget_config()
             currency = budget_cfg.currency
         except Exception as exc:
             reraise_critical(exc)
@@ -231,7 +236,10 @@ class CoordinationController(Controller):
         Raises:
             NotFoundError: Raised on the corresponding failure path.
         """
-        task = await app_state.task_engine.get_task(task_id)
+        task_engine = require_service(
+            app_state.slice(EngineStateSlice).task_engine, "Task Engine"
+        )
+        task = await task_engine.get_task(task_id)
         if task is None:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -258,7 +266,7 @@ class CoordinationController(Controller):
             DecompositionContext,
         )
 
-        coord_config = await app_state.config_resolver.get_coordination_config(
+        coord_config = await config_resolver_of(app_state).get_coordination_config(
             max_concurrency_per_wave=data.max_concurrency_per_wave,
             fail_fast=data.fail_fast,
         )
@@ -288,7 +296,10 @@ class CoordinationController(Controller):
             Exception: Raised on the corresponding failure path.
         """
         try:
-            attributed = await app_state.coordinator.coordinate(context)
+            coordinator = require_service(
+                app_state.slice(RuntimeStateSlice).coordinator, "Coordinator"
+            )
+            attributed = await coordinator.coordinate(context)
         except CoordinationPhaseError as exc:
             logger.warning(
                 API_COORDINATION_FAILED,
@@ -373,7 +384,9 @@ class CoordinationController(Controller):
         Raises:
             ValidationError: If agents cannot be resolved.
         """
-        registry = app_state.agent_registry
+        registry = require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        )
 
         if data.agent_names is not None:
             names = data.agent_names

@@ -27,6 +27,7 @@ from synthorg.observability.events.tracing import (
 )
 from synthorg.observability.metrics_hub import set_active_collector
 from synthorg.observability.otlp_handler import OtlpHandler
+from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.observability.tracing import (
     DisabledTraceConfig,
     OtlpHttpTraceConfig,
@@ -135,14 +136,18 @@ def wire_observability_callbacks(app_state: AppState) -> None:
     Args:
         app_state: The configured :class:`AppState`.
     """
-    if not app_state.has_trace_handler:
+    if app_state.slice(ObservabilityStateSlice).trace_handler is None:
         handler = build_trace_handler(_load_trace_config())
-        app_state.set_trace_handler(handler)
+        app_state.swap_slice(
+            app_state.slice(ObservabilityStateSlice).model_copy(
+                update={"trace_handler": handler}
+            )
+        )
         logger.info(
             TRACE_HANDLER_INITIALIZED,
             kind=handler.__class__.__name__,
         )
-    if app_state.has_prometheus_collector:
-        collector = app_state.prometheus_collector
+    collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
+    if collector is not None:
         set_active_collector(collector)
         _wire_prometheus_sinks(collector)

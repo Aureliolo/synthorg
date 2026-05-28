@@ -8,14 +8,21 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
@@ -27,6 +34,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -57,7 +65,7 @@ async def _resolve_max_context_keys(app_state: AppState) -> int:
         CancelledError: Raised on the corresponding failure path.
     """
     global _meeting_context_cap_fallback_logged  # noqa: PLW0603
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         # Treat absent resolver as a fallback path identical to the
         # except-branch below: log once on first observation so
         # operators see the gap, and arm the recovery log so it fires
@@ -74,7 +82,7 @@ async def _resolve_max_context_keys(app_state: AppState) -> int:
             _meeting_context_cap_fallback_logged = True
         return _MAX_CONTEXT_KEYS_FALLBACK
     try:
-        result: int = await app_state.config_resolver.get_int(
+        result: int = await config_resolver_of(app_state).get_int(
             SettingNamespace.API.value, "max_meeting_context_keys"
         )
     except asyncio.CancelledError:
@@ -279,7 +287,10 @@ class MeetingController(Controller):
         Returns:
             Paginated meeting records with analytics fields.
         """
-        orchestrator = state.app_state.meeting_orchestrator
+        orchestrator = require_service(
+            state.app_state.slice(CommunicationStateSlice).meeting_orchestrator,
+            "Meeting Orchestrator",
+        )
         records = orchestrator.get_records()
 
         if status is not None:
@@ -291,7 +302,7 @@ class MeetingController(Controller):
             records,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         enriched = tuple(_to_meeting_response(r) for r in page)
         return PaginatedResponse(data=enriched, pagination=meta)
@@ -314,7 +325,10 @@ class MeetingController(Controller):
         Raises:
             NotFoundError: If the meeting is not found.
         """
-        orchestrator = state.app_state.meeting_orchestrator
+        orchestrator = require_service(
+            state.app_state.slice(CommunicationStateSlice).meeting_orchestrator,
+            "Meeting Orchestrator",
+        )
         record = orchestrator.get_record(meeting_id)
         if record is not None:
             return ApiResponse(data=_to_meeting_response(record))
@@ -357,7 +371,11 @@ class MeetingController(Controller):
             NotFoundError: If no meeting exists for ``meeting_id``.
         """
         app_state: AppState = state.app_state
-        deleted = await app_state.meeting_service.delete_meeting(
+        meeting_service = require_service(
+            app_state.slice(CommunicationStateSlice).meeting_service,
+            "Meeting Service",
+        )
+        deleted = await meeting_service.delete_meeting(
             meeting_id=NotBlankStr(meeting_id),
             actor_id=NotBlankStr(str(request.user.user_id)),
             reason=NotBlankStr("operator delete via REST API"),
@@ -394,20 +412,21 @@ class MeetingController(Controller):
             ValidationError: If ``data.context`` exceeds the
                 operator-configured key cap
                 (``api.max_meeting_context_keys``).
-            ServiceUnavailableError: Raised by the
-                ``app_state.meeting_scheduler`` property (503) when the
+            ServiceUnavailableError: Raised (503) when the meeting
                 scheduler was not auto-wired -- happens in the degraded
                 (unconfigured) meeting agent caller mode.  The operator
                 must provide the agent and provider registries before
                 meetings can be triggered.
         """
         app_state: AppState = state.app_state
-        # Resolve the scheduler FIRST: ``app_state.meeting_scheduler``
-        # raises ``ServiceUnavailableError`` when the scheduler is
-        # ``None`` (degraded mode).  Failing fast with a clean 503
-        # before the settings-backend round trip avoids unnecessary
-        # I/O when the endpoint can't dispatch anyway.
-        scheduler = app_state.meeting_scheduler
+        # Resolve the scheduler FIRST: a ``None`` scheduler (degraded
+        # mode) surfaces a clean 503 here. Failing fast before the
+        # settings-backend round trip avoids unnecessary I/O when the
+        # endpoint can't dispatch anyway.
+        scheduler = require_service(
+            app_state.slice(CommunicationStateSlice).meeting_scheduler,
+            "Meeting Scheduler",
+        )
         max_keys = await _resolve_max_context_keys(app_state)
         if len(data.context) > max_keys:
             msg = f"context must have at most {max_keys} keys"

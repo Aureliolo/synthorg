@@ -19,7 +19,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.cursor import decode_cursor, encode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse, PaginationMeta
 from synthorg.api.guards import require_approval_roles, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam  # noqa: TC001
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -29,6 +33,7 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     EscalationStatus,
 )
 from synthorg.communication.errors import EscalationDecisionError
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -156,7 +161,7 @@ class EscalationsController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        store = app_state.escalation_store
+        store = app_state.slice(CommunicationStateSlice).escalation_store
         if store is None:
             msg = "Escalation queue is not configured"
             logger.warning(
@@ -164,7 +169,7 @@ class EscalationsController(Controller):
                 note="escalation_store_not_configured",
             )
             raise NotFoundError(msg)
-        secret = app_state.cursor_secret
+        secret = cursor_secret_of(app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         page, total = await store.list_items(
             status=status,
@@ -204,7 +209,7 @@ class EscalationsController(Controller):
             NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        store = app_state.escalation_store
+        store = app_state.slice(CommunicationStateSlice).escalation_store
         if store is None:
             msg = "Escalation queue is not configured"
             logger.warning(
@@ -254,9 +259,9 @@ class EscalationsController(Controller):
             ``ApiResponse[EscalationResponse]`` instance.
         """
         app_state: AppState = state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
-        processor = app_state.escalation_processor
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
+        processor = app_state.slice(CommunicationStateSlice).escalation_processor
         if store is None or registry is None or processor is None:
             msg = "Escalation queue is not configured"
             logger.warning(
@@ -380,8 +385,8 @@ class EscalationsController(Controller):
             ConflictError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
         if store is None or registry is None:
             msg = "Escalation queue is not configured"
             logger.warning(

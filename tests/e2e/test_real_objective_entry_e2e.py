@@ -24,7 +24,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
@@ -61,7 +60,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -193,14 +192,20 @@ async def _build_objective_adapter(
         settings_service=settings_service,
         config=root_config,
     )
+    from synthorg.engine.review.pipeline import ReviewPipeline
+
     sim_state = ClientSimulationState(
         intake_engine=IntakeEngine(
             strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
         ),
+        # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
+        # truthy without exercising review logic the objective-entry path
+        # does not touch; without this, the work-pipeline build short-
+        # circuits to ``None`` and every objective-entry assertion fails.
+        review_pipeline=ReviewPipeline(stages=()),
         intake_default_project=_PROJECT,
     )
-    harness_state = mock_of[AppState](
-        has_active_provider=True,
+    harness_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
@@ -208,22 +213,10 @@ async def _build_objective_adapter(
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
         clock=FakeClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
-        project_workspace_service=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
-        has_simulation_runtime=True,
         client_simulation_state=sim_state,
-        has_cost_tracker=True,
         cost_tracker=CostTracker(),
-        has_message_bus=False,
-        has_coordination_metrics_store=False,
-        coordination_metrics_store=None,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
-        has_trust_service=False,
     )
     runtime = await build_runtime_services(harness_state, workspace_root=tmp_path)
     assert runtime.work_pipeline is not None

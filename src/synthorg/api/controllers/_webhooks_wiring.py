@@ -34,6 +34,7 @@ from synthorg.integrations.webhooks.replay_protection import (
     MAX_NONCE_CHARS,
     ReplayProtector,
 )
+from synthorg.persistence.state import persistence_of
 
 
 class WebhookEventPayload(
@@ -185,7 +186,7 @@ async def _get_activity_service(state: State) -> WebhookActivityService:
         cached = getattr(app_state, "_webhook_activity_service", None)
         if cached is None:
             cached = WebhookActivityService(
-                receipts_repo=app_state.persistence.webhook_receipts,
+                receipts_repo=persistence_of(app_state).webhook_receipts,
             )
             app_state._webhook_activity_service = cached  # noqa: SLF001
         return cached

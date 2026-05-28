@@ -18,6 +18,7 @@ from typing import Any
 
 from litestar import WebSocket  # noqa: TC002
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
@@ -28,6 +29,7 @@ from synthorg.observability.events.api import (
     API_WS_TRANSPORT_ERROR,
 )
 from synthorg.observability.events.security import SECURITY_SESSION_REVOKED
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -131,7 +133,7 @@ async def _periodic_revalidate(
         except asyncio.CancelledError:
             return
         try:
-            db_user = await app_state.persistence.users.get(user.user_id)
+            db_user = await persistence_of(app_state).users.get(user.user_id)
         except Exception as exc:
             admitted = await failure_limiter.take(user.user_id)
             logger.warning(
@@ -205,10 +207,11 @@ def _revocation_reason(
         return "user_role_missing"
     if role not in _READ_ROLES:
         return "role_demoted"
+    session_store = app_state.slice(ApiCoreStateSlice).session_store
     if (
         user.session_id is not None
-        and app_state.has_session_store
-        and app_state.session_store.is_revoked(user.session_id)
+        and session_store is not None
+        and session_store.is_revoked(user.session_id)
     ):
         return "session_revoked"
     return None

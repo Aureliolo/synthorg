@@ -14,6 +14,11 @@ from litestar.middleware import (
 )
 from pydantic import ValidationError
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    auth_service_of,
+    session_store_of,
+)
 from synthorg.api.auth.claims import JwtClaims  # noqa: TC001 -- runtime annotation
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.api.auth.system_user import (
@@ -34,6 +39,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_SUCCESS,
 )
+from synthorg.persistence.state import persistence_of
 
 if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
@@ -109,7 +115,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
             NotAuthorizedException: If authentication fails.
         """
         app_state = connection.app.state["app_state"]
-        auth_service: AuthService = app_state.auth_service
+        auth_service: AuthService = auth_service_of(app_state)
         path = str(connection.url.path)
 
         # 1. Try session cookie (primary path for browser sessions)
@@ -236,8 +242,8 @@ async def _try_jwt_auth(
         return None
 
     # Check session revocation (sync, O(1) in-memory lookup).
-    if app_state.has_session_store:
-        session_store = app_state.session_store
+    if app_state.slice(ApiCoreStateSlice).session_store is not None:
+        session_store = session_store_of(app_state)
         if session_store.is_revoked(claims.jti):
             logger.warning(
                 SECURITY_AUTH_FAILED,
@@ -268,7 +274,7 @@ async def _resolve_jwt_user(
         The ``AuthenticatedUser`` value when present, ``None`` otherwise.
     """
     user_id = claims.sub
-    db_user = await app_state.persistence.users.get(user_id)
+    db_user = await persistence_of(app_state).users.get(user_id)
     if db_user is None:
         logger.warning(
             SECURITY_AUTH_FAILED,
@@ -375,7 +381,7 @@ async def _try_api_key_auth(
         )
         return None
 
-    api_key = await app_state.persistence.api_keys.get_by_hash(key_hash)
+    api_key = await persistence_of(app_state).api_keys.get_by_hash(key_hash)
     if api_key is None:
         logger.warning(
             SECURITY_AUTH_FAILED,
@@ -413,7 +419,7 @@ async def _resolve_api_key_user(
         )
         return None
 
-    db_user = await app_state.persistence.users.get(api_key.user_id)
+    db_user = await persistence_of(app_state).users.get(api_key.user_id)
     if db_user is None:
         logger.error(
             SECURITY_AUTH_FAILED,

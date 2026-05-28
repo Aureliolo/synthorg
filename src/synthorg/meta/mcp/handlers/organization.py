@@ -44,6 +44,12 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
 )
 from synthorg.organization.services import UNSET, UnsetType
+from synthorg.organization.state import (
+    company_read_service_of,
+    department_service_of,
+    role_version_service_of,
+    team_service_of,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -180,7 +186,7 @@ async def _company_get(
     """
     tool = "synthorg_company_get"
     try:
-        company = await app_state.company_read_service.get_company()
+        company = await company_read_service_of(app_state).get_company()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -206,7 +212,7 @@ async def _company_update(
     tool = "synthorg_company_update"
     try:
         payload = require_dict(arguments, "payload")
-        result = await app_state.company_read_service.update_company(
+        result = await company_read_service_of(app_state).update_company(
             payload=payload,
             actor_id=require_actor_id(actor),
         )
@@ -234,7 +240,7 @@ async def _company_list_departments(
     """
     tool = "synthorg_company_list_departments"
     try:
-        departments = await app_state.company_read_service.list_departments()
+        departments = await company_read_service_of(app_state).list_departments()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -260,7 +266,7 @@ async def _company_reorder_departments(
     tool = "synthorg_company_reorder_departments"
     try:
         ids = _require_uuid_list(arguments, "department_ids")
-        await app_state.company_read_service.reorder_departments(
+        await company_read_service_of(app_state).reorder_departments(
             department_ids=ids,
             actor_id=require_actor_id(actor),
         )
@@ -288,7 +294,7 @@ async def _company_versions_list(
     """
     tool = "synthorg_company_versions_list"
     try:
-        versions = await app_state.company_read_service.list_versions()
+        versions = await company_read_service_of(app_state).list_versions()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -314,7 +320,7 @@ async def _company_versions_get(
     tool = "synthorg_company_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")
-        version = await app_state.company_read_service.get_version(version_id)
+        version = await company_read_service_of(app_state).get_version(version_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -348,7 +354,7 @@ async def _departments_list(
     tool = "synthorg_departments_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.department_service.list_departments(
+        page, total = await department_service_of(app_state).list_departments(
             offset=offset,
             limit=limit,
         )
@@ -376,7 +382,7 @@ async def _departments_get(
     tool = "synthorg_departments_get"
     try:
         department_id = _require_uuid(arguments, "department_id")
-        record = await app_state.department_service.get_department(department_id)
+        record = await department_service_of(app_state).get_department(department_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -406,7 +412,7 @@ async def _departments_create(
     try:
         name = _require_str(arguments, "name")
         description = _require_str(arguments, "description")
-        record = await app_state.department_service.create_department(
+        record = await department_service_of(app_state).create_department(
             name=name,
             description=description,
             actor_id=require_actor_id(actor),
@@ -436,7 +442,7 @@ async def _departments_update(
         department_id = _require_uuid(arguments, "department_id")
         name = get_optional_str(arguments, "name")
         description = get_optional_str(arguments, "description")
-        record = await app_state.department_service.update_department(
+        record = await department_service_of(app_state).update_department(
             department_id=department_id,
             actor_id=require_actor_id(actor),
             name=name,
@@ -472,7 +478,7 @@ async def _departments_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         department_id = _require_uuid(arguments, "department_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.department_service.delete_department(
+        removed = await department_service_of(app_state).delete_department(
             department_id=department_id,
             actor_id=actor_id,
             reason=reason,
@@ -512,7 +518,7 @@ async def _departments_get_health(
     tool = "synthorg_departments_get_health"
     try:
         department_id = _require_uuid(arguments, "department_id")
-        result = await app_state.department_service.get_health(department_id)
+        result = await department_service_of(app_state).get_health(department_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -539,7 +545,7 @@ async def _teams_list(
     tool = "synthorg_teams_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.team_service.list_teams(
+        page, total = await team_service_of(app_state).list_teams(
             offset=offset,
             limit=limit,
         )
@@ -567,7 +573,7 @@ async def _teams_get(
     tool = "synthorg_teams_get"
     try:
         team_id = _require_uuid(arguments, "team_id")
-        record = await app_state.team_service.get_team(team_id)
+        record = await team_service_of(app_state).get_team(team_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -597,7 +603,7 @@ async def _teams_create(
     try:
         name = _require_str(arguments, "name")
         department_id = get_optional_str(arguments, "department_id")
-        record = await app_state.team_service.create_team(
+        record = await team_service_of(app_state).create_team(
             name=name,
             actor_id=require_actor_id(actor),
             department_id=department_id,
@@ -633,7 +639,7 @@ async def _teams_update(
             )
         else:
             department_id = UNSET
-        record = await app_state.team_service.update_team(
+        record = await team_service_of(app_state).update_team(
             team_id=team_id,
             actor_id=require_actor_id(actor),
             name=name,
@@ -669,7 +675,7 @@ async def _teams_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         team_id = _require_uuid(arguments, "team_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.team_service.delete_team(
+        removed = await team_service_of(app_state).delete_team(
             team_id=team_id,
             actor_id=actor_id,
             reason=reason,
@@ -712,7 +718,7 @@ async def _role_versions_list(
     tool = "synthorg_role_versions_list"
     try:
         role_name = get_optional_str(arguments, "role_name")
-        versions = await app_state.role_version_service.list_versions(
+        versions = await role_version_service_of(app_state).list_versions(
             role_name=role_name,
         )
     except ArgumentValidationError as exc:
@@ -740,7 +746,7 @@ async def _role_versions_get(
     tool = "synthorg_role_versions_get"
     try:
         version_id = _require_str(arguments, "version_id")
-        version = await app_state.role_version_service.get_version(version_id)
+        version = await role_version_service_of(app_state).get_version(version_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

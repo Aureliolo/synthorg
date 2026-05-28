@@ -11,8 +11,12 @@ re-entering Litestar lifespan does not churn long-lived clients.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.api.api_core_state import ticket_store_of
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.notifications.factory import build_notification_dispatcher
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -20,6 +24,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -52,10 +57,10 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
         ValueError: Raised on the corresponding failure path.
     """
     try:
-        critical = await app_state.config_resolver.get_float(
+        critical = await config_resolver_of(app_state).get_float(
             SettingNamespace.API.value, "approval_urgency_critical_seconds"
         )
-        high = await app_state.config_resolver.get_float(
+        high = await config_resolver_of(app_state).get_float(
             SettingNamespace.API.value, "approval_urgency_high_seconds"
         )
     except asyncio.CancelledError:
@@ -112,7 +117,7 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
         ("sidecar_image", set_resolved_sidecar_image),
     ):
         try:
-            image_value = await app_state.config_resolver.get_str(
+            image_value = await config_resolver_of(app_state).get_str(
                 SettingNamespace.TOOLS.value, setting_key
             )
         except asyncio.CancelledError:
@@ -149,8 +154,9 @@ async def _apply_notification_dispatcher_config(
         CancelledError: Raised on the corresponding failure path.
     """
     notif_bridge: NotificationsBridgeConfig | None
+    resolver = config_resolver_of(app_state)
     try:
-        notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
+        notif_bridge = await resolver.get_notifications_bridge_config()
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -162,12 +168,15 @@ async def _apply_notification_dispatcher_config(
             error=safe_error_description(exc),
         )
         notif_bridge = None
-    if not (app_state.has_notification_dispatcher and effective_config is not None):
+    if not (
+        app_state.slice(NotificationsStateSlice).dispatcher is not None
+        and effective_config is not None
+    ):
         return
     new_dispatcher = build_notification_dispatcher(
         effective_config.notifications,
         bridge_config=notif_bridge,
-        config_resolver=app_state.config_resolver,
+        config_resolver=config_resolver_of(app_state),
     )
     old_dispatcher = app_state.swap_notification_dispatcher(new_dispatcher)
     if old_dispatcher is None:
@@ -201,12 +210,12 @@ async def _apply_bridge_snapshot[T](
 
     No-op when no resolver is wired (dev/test rigs that bypass
     ``create_app``); ``getter`` is only invoked after that guard so
-    binding it to ``app_state.config_resolver`` stays safe.
+    binding it to ``config_resolver_of(app_state)`` stays safe.
 
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return
     try:
         snapshot = await getter()
@@ -243,7 +252,7 @@ async def _apply_api_bridge_config_snapshot(app_state: AppState) -> None:
         bridge="api",
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
-        getter=lambda: app_state.config_resolver.get_api_bridge_config(),  # noqa: PLW0108
+        getter=lambda: config_resolver_of(app_state).get_api_bridge_config(),
         setter=app_state.swap_api_bridge_config,
     )
 
@@ -266,7 +275,7 @@ async def _apply_workers_bridge_config_snapshot(app_state: AppState) -> None:
         bridge="workers",
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
-        getter=lambda: app_state.config_resolver.get_workers_bridge_config(),  # noqa: PLW0108
+        getter=lambda: config_resolver_of(app_state).get_workers_bridge_config(),
         setter=app_state.swap_workers_bridge_config,
     )
 
@@ -289,7 +298,7 @@ async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
         bridge="memory",
         # Lambda is required: ``config_resolver`` raises until wired, so
         # access must defer past the helper's has_config_resolver guard.
-        getter=lambda: app_state.config_resolver.get_memory_bridge_config(),  # noqa: PLW0108
+        getter=lambda: config_resolver_of(app_state).get_memory_bridge_config(),
         setter=app_state.swap_memory_bridge_config,
     )
 
@@ -301,8 +310,8 @@ async def _apply_ws_ticket_settings(app_state: AppState) -> None:
         CancelledError: Raised on the corresponding failure path.
     """
     try:
-        app_state.ticket_store.set_max_pending_per_user(
-            await app_state.config_resolver.get_int(
+        ticket_store_of(app_state).set_max_pending_per_user(
+            await config_resolver_of(app_state).get_int(
                 SettingNamespace.API.value,
                 "ws_ticket_max_pending_per_user",
             )
@@ -327,7 +336,7 @@ async def _apply_ws_auth_timeout(app_state: AppState) -> None:
     """
     try:
         app_state.set_ws_auth_timeout_seconds(
-            await app_state.config_resolver.get_float(
+            await config_resolver_of(app_state).get_float(
                 SettingNamespace.API.value,
                 "ws_auth_timeout_seconds",
             )
@@ -362,7 +371,7 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
         ("auth_revalidate_max_failures", "set_auth_revalidate_max_failures"),
     ):
         try:
-            value = await app_state.config_resolver.get_int(
+            value = await config_resolver_of(app_state).get_int(
                 SettingNamespace.API.value,
                 setting_key,
             )
@@ -397,7 +406,7 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
 
     try:
         set_auth_token_bytes(
-            await app_state.config_resolver.get_int(
+            await config_resolver_of(app_state).get_int(
                 SettingNamespace.SECURITY.value,
                 "auth_token_bytes",
             )
@@ -433,7 +442,7 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
 
     try:
         set_timeout_enforcement_enabled(
-            value=await app_state.config_resolver.get_bool(
+            value=await config_resolver_of(app_state).get_bool(
                 SettingNamespace.ENGINE.value,
                 "timeout_enforcement_enabled",
             )
@@ -454,23 +463,28 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
 
 def _wire_resolver_dependents(app_state: AppState) -> None:
     """Push the active ``config_resolver`` into bridge-aware managers."""
-    if app_state.oauth_token_manager is not None:
-        app_state.oauth_token_manager.set_config_resolver(
-            app_state.config_resolver,
+    integrations = app_state.slice(IntegrationsStateSlice)
+    oauth_token_manager = integrations.oauth_token_manager
+    if oauth_token_manager is not None:
+        oauth_token_manager.set_config_resolver(
+            config_resolver_of(app_state),
         )
-    if app_state.webhook_event_bridge is not None:
-        app_state.webhook_event_bridge.set_config_resolver(
-            app_state.config_resolver,
+    webhook_event_bridge = integrations.webhook_event_bridge
+    if webhook_event_bridge is not None:
+        webhook_event_bridge.set_config_resolver(
+            config_resolver_of(app_state),
         )
-    if app_state.escalation_notify_subscriber is not None:
-        app_state.escalation_notify_subscriber.set_config_resolver(
-            app_state.config_resolver,
+    communication = app_state.slice(CommunicationStateSlice)
+    escalation_notify_subscriber = communication.escalation_notify_subscriber
+    if escalation_notify_subscriber is not None:
+        escalation_notify_subscriber.set_config_resolver(
+            config_resolver_of(app_state),
         )
-    bus = app_state.message_bus if app_state.has_message_bus else None
+    bus = communication.message_bus
     if bus is not None:
         set_resolver = getattr(bus, "set_config_resolver", None)
         if callable(set_resolver):
-            set_resolver(app_state.config_resolver)
+            set_resolver(config_resolver_of(app_state))
 
 
 async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
@@ -480,7 +494,7 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
         CancelledError: Raised on the corresponding failure path.
     """
     try:
-        signing_timeout = await app_state.config_resolver.get_float(
+        signing_timeout = await config_resolver_of(app_state).get_float(
             SettingNamespace.OBSERVABILITY.value,
             "audit_chain_signing_timeout_seconds",
         )
@@ -529,7 +543,10 @@ async def _apply_bridge_config(
     Litestar lifespan (shared-app test fixtures, multi-lifespan runs)
     does not churn httpx/SMTP clients or rebuild the OAuth flow.
     """
-    if not app_state.has_config_resolver or app_state.bridge_config_applied:
+    if (
+        app_state.slice(SettingsStateSlice).config_resolver is None
+        or app_state.bridge_config_applied
+    ):
         return
 
     await _validate_approval_urgency_invariant(app_state)
@@ -571,14 +588,14 @@ async def _apply_security_timeout_interval(
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if scheduler is None or not app_state.has_config_resolver:
+    if scheduler is None or app_state.slice(SettingsStateSlice).config_resolver is None:
         return
     fallback = registered_default_float(
         SettingNamespace.SECURITY.value,
         "timeout_check_interval_seconds",
     )
     try:
-        interval = await app_state.config_resolver.get_float(
+        interval = await config_resolver_of(app_state).get_float(
             SettingNamespace.SECURITY.value,
             "timeout_check_interval_seconds",
         )

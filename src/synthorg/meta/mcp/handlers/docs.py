@@ -24,6 +24,7 @@ from synthorg.docs_engine.errors import (
     DocNotFoundError,
     DocValidationError,
 )
+from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -84,7 +85,7 @@ def _require_docs_service(app_state: Any) -> Any:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc = getattr(app_state, "docs_service", None)
+    svc = app_state.slice(DocsStateSlice).service
     if svc is None:
         msg = "docs service is not wired on app_state in this deployment"
         raise ServiceUnavailableError(msg)

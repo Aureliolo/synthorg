@@ -16,6 +16,7 @@ from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.charter.models import InterviewTurnArgs
+from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -76,11 +77,11 @@ def _require_charter_service(app_state: Any) -> Any:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    svc = getattr(app_state, "charter_service", None)
-    if svc is None or not app_state.has_charter_service:
+    svc = app_state.slice(CharterStateSlice).interview_service
+    if svc is None:
         msg = "charter interview service is not wired in this deployment"
         raise ServiceUnavailableError(msg)
-    return app_state.charter_service
+    return svc
 
 
 def _require_charter_dispatcher(app_state: Any) -> Any:
@@ -89,10 +90,11 @@ def _require_charter_dispatcher(app_state: Any) -> Any:
     Raises:
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    if not app_state.has_charter_dispatcher:
+    dispatcher = app_state.slice(CharterStateSlice).dispatcher
+    if dispatcher is None:
         msg = "charter approval dispatcher is not wired in this deployment"
         raise ServiceUnavailableError(msg)
-    return app_state.charter_dispatcher
+    return dispatcher
 
 
 def _opt_nonblank(arguments: dict[str, Any], key: str) -> NotBlankStr | None:

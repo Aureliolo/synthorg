@@ -16,7 +16,7 @@ from synthorg.api.controllers.approvals import (
     _resolve_decision,
     _signal_resume_intent,
 )
-from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -27,6 +27,7 @@ from synthorg.core.domain_errors import (
     UnauthorizedError,
 )
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
+from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.errors import (
     SelfReviewError,
     TaskInternalError,
@@ -34,7 +35,7 @@ from synthorg.engine.errors import (
     TaskVersionConflictError,
 )
 from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import mock_of
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -67,6 +68,30 @@ def _store(item: ApprovalItem | None) -> Any:
     assign it to the typed ``app_state.approval_store`` slot.
     """
     return mock_of[ApprovalStore](get=AsyncMock(return_value=item))
+
+
+def _app_state(
+    *,
+    gate: Any = None,
+    review_gate: Any = None,
+    store: Any = None,
+    worker: Any = None,
+) -> Any:
+    """An ``AppState`` double whose ``ApprovalStateSlice`` carries the doubles.
+
+    The resume helpers read the approval store / gate / review gate
+    through ``app_state.slice(ApprovalStateSlice)``; the worker
+    execution service is still a direct attribute. ``model_construct``
+    bypasses Pydantic validation so the test mocks slot in unchanged.
+
+    Returns:
+        ``Any`` instance.
+    """
+    return make_app_state(
+        approval_store=store,
+        worker_execution_service=worker,
+        slices={ApprovalStateSlice: {"gate": gate, "review_gate": review_gate}},
+    )
 
 
 def _make_request(*, user: object = None) -> MagicMock:
@@ -139,10 +164,11 @@ class TestSignalResumeIntent:
 
     async def test_no_gate_no_review_gate_is_noop(self) -> None:
         """When both gates are None, function is a no-op."""
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = None
-        app_state.review_gate_service = None
-        app_state.approval_store = _store(_make_pending_item())
+        app_state = _app_state(
+            gate=None,
+            review_gate=None,
+            store=_store(_make_pending_item()),
+        )
         await _signal_resume_intent(
             app_state,
             "approval-1",
@@ -166,12 +192,13 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = mock_gate
-        app_state.worker_execution_service = mock_worker
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(
-            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        app_state = _app_state(
+            gate=mock_gate,
+            worker=mock_worker,
+            review_gate=mock_review,
+            store=_store(
+                _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+            ),
         )
 
         await _signal_resume_intent(
@@ -203,12 +230,13 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = mock_gate
-        app_state.worker_execution_service = mock_worker
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(
-            _make_pending_item(source=ApprovalSource.REVIEW_GATE),
+        app_state = _app_state(
+            gate=mock_gate,
+            worker=mock_worker,
+            review_gate=mock_review,
+            store=_store(
+                _make_pending_item(source=ApprovalSource.REVIEW_GATE),
+            ),
         )
 
         await _signal_resume_intent(
@@ -247,10 +275,11 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = mock_gate
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(None)
+        app_state = _app_state(
+            gate=mock_gate,
+            review_gate=mock_review,
+            store=_store(None),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -280,12 +309,13 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = MagicMock()
-        app_state.worker_execution_service = mock_worker
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(
-            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        app_state = _app_state(
+            gate=mock_of[ApprovalGate](),
+            worker=mock_worker,
+            review_gate=mock_review,
+            store=_store(
+                _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+            ),
         )
 
         await _signal_resume_intent(
@@ -319,12 +349,13 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = MagicMock()
-        app_state.worker_execution_service = mock_worker
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(
-            _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+        app_state = _app_state(
+            gate=mock_of[ApprovalGate](),
+            worker=mock_worker,
+            review_gate=mock_review,
+            store=_store(
+                _make_pending_item(source=ApprovalSource.PARKED_CONTEXT),
+            ),
         )
 
         with pytest.raises(AgentRuntimeNotConfiguredError):
@@ -344,10 +375,11 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = None
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(_make_pending_item())
+        app_state = _app_state(
+            gate=None,
+            review_gate=mock_review,
+            store=_store(_make_pending_item()),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -372,10 +404,11 @@ class TestSignalResumeIntent:
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = None
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(_make_pending_item())
+        app_state = _app_state(
+            gate=None,
+            review_gate=mock_review,
+            store=_store(_make_pending_item()),
+        )
 
         await _signal_resume_intent(
             app_state,
@@ -403,10 +436,11 @@ class TestSignalResumeIntent:
             side_effect=RuntimeError("transition failed"),
         )
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = None
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(_make_pending_item())
+        app_state = _app_state(
+            gate=None,
+            review_gate=mock_review,
+            store=_store(_make_pending_item()),
+        )
 
         with pytest.raises(RuntimeError, match="transition failed"):
             await _signal_resume_intent(
@@ -433,10 +467,11 @@ class TestSignalResumeIntent:
             side_effect=error_cls("fatal"),
         )
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = mock_gate
-        app_state.review_gate_service = None
-        app_state.approval_store = _store(None)
+        app_state = _app_state(
+            gate=mock_gate,
+            review_gate=None,
+            store=_store(None),
+        )
 
         with pytest.raises(error_cls):
             await _signal_resume_intent(
@@ -460,10 +495,11 @@ class TestSignalResumeIntent:
             side_effect=error_cls("fatal"),
         )
 
-        app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = None
-        app_state.review_gate_service = mock_review
-        app_state.approval_store = _store(_make_pending_item())
+        app_state = _app_state(
+            gate=None,
+            review_gate=mock_review,
+            store=_store(_make_pending_item()),
+        )
 
         with pytest.raises(error_cls):
             await _signal_resume_intent(

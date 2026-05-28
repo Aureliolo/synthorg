@@ -6,18 +6,19 @@ parsing + envelope shaping without standing up real services.
 """
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,
 )
 from synthorg.communication.meeting.models import MeetingRecord
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -26,12 +27,14 @@ from synthorg.integrations.connections.models import (
     ConnectionType,
     SecretRef,
 )
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.integrations.tunnel.mcp_service import TunnelStatus
 from synthorg.integrations.webhooks.models import (
     WebhookDefinition,
     WebhookVerifierKind,
 )
 from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -145,13 +148,19 @@ def fake_app_state(
     fake_connection_service: AsyncMock,
     fake_webhook_service: AsyncMock,
     fake_tunnel_service: AsyncMock,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        message_service=fake_message_service,
-        meeting_service=fake_meeting_service,
-        connection_service=fake_connection_service,
-        webhook_service=fake_webhook_service,
-        tunnel_service=fake_tunnel_service,
+) -> AppState:
+    return make_app_state(
+        slices={
+            CommunicationStateSlice: {
+                "message_service": fake_message_service,
+                "meeting_service": fake_meeting_service,
+            },
+            IntegrationsStateSlice: {
+                "connection_service": fake_connection_service,
+                "webhook_service": fake_webhook_service,
+                "tunnel_service": fake_tunnel_service,
+            },
+        },
     )
 
 
@@ -159,7 +168,7 @@ def fake_app_state(
 
 
 class TestMessagesHandlers:
-    async def test_list_empty(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list_empty(self, fake_app_state: AppState) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         payload = json.loads(response)
@@ -168,7 +177,7 @@ class TestMessagesHandlers:
 
     async def test_get_missing_channel_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_get"]
         response = await handler(
@@ -179,7 +188,7 @@ class TestMessagesHandlers:
 
     async def test_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_get"]
         response = await handler(
@@ -190,7 +199,7 @@ class TestMessagesHandlers:
 
     async def test_send_invalid_payload_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_send"]
         response = await handler(
@@ -201,7 +210,7 @@ class TestMessagesHandlers:
 
     async def test_delete_happy_path_returns_removed_true(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_delete"]
         response = await handler(
@@ -219,7 +228,7 @@ class TestMessagesHandlers:
 
     async def test_delete_returns_removed_false_when_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_message_service: AsyncMock,
     ) -> None:
         fake_message_service.delete_message = AsyncMock(return_value=False)
@@ -239,7 +248,7 @@ class TestMessagesHandlers:
 
     async def test_delete_missing_confirm_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_messages_delete"]
         response = await handler(
@@ -254,7 +263,7 @@ class TestMessagesHandlers:
 
     async def test_delete_unexpected_service_exception_returns_error(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_message_service: AsyncMock,
     ) -> None:
         """An unexpected exception bubbles into the generic error envelope."""
@@ -281,7 +290,7 @@ class TestMessagesHandlers:
 class TestMeetingsHandlers:
     async def test_list_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_meeting_service: AsyncMock,
     ) -> None:
         fake_meeting_service.list_meetings = AsyncMock(
@@ -294,7 +303,7 @@ class TestMeetingsHandlers:
 
     async def test_list_status_filter_invalid(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_list"]
         response = await handler(
@@ -305,7 +314,7 @@ class TestMeetingsHandlers:
 
     async def test_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_get"]
         response = await handler(
@@ -316,7 +325,7 @@ class TestMeetingsHandlers:
 
     async def test_create_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_create"]
         response = await handler(app_state=fake_app_state, arguments={})
@@ -324,7 +333,7 @@ class TestMeetingsHandlers:
 
     async def test_delete_requires_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
         response = await handler(app_state=fake_app_state, arguments={})
@@ -332,7 +341,7 @@ class TestMeetingsHandlers:
 
     async def test_delete_happy_path_returns_removed_true(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_meetings_delete"]
         response = await handler(
@@ -350,7 +359,7 @@ class TestMeetingsHandlers:
 
     async def test_delete_returns_removed_false_when_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_meeting_service: AsyncMock,
     ) -> None:
         fake_meeting_service.delete_meeting = AsyncMock(return_value=False)
@@ -370,7 +379,7 @@ class TestMeetingsHandlers:
 
     async def test_delete_unexpected_service_exception_returns_error(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_meeting_service: AsyncMock,
     ) -> None:
         """An unexpected exception bubbles into the generic error envelope."""
@@ -395,14 +404,14 @@ class TestMeetingsHandlers:
 
 
 class TestConnectionsHandlers:
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_create_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_create"]
         response = await handler(
@@ -421,7 +430,7 @@ class TestConnectionsHandlers:
 
     async def test_create_guardrail_violation_when_confirm_missing(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_create"]
         response = await handler(
@@ -441,7 +450,7 @@ class TestConnectionsHandlers:
 
     async def test_create_invalid_type_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_create"]
         response = await handler(
@@ -460,7 +469,7 @@ class TestConnectionsHandlers:
 
     async def test_delete_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_delete"]
         response = await handler(
@@ -472,7 +481,7 @@ class TestConnectionsHandlers:
 
     async def test_check_health(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_connections_check_health"]
         response = await handler(
@@ -486,14 +495,14 @@ class TestConnectionsHandlers:
 
 
 class TestWebhooksHandlers:
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_get"]
         response = await handler(
@@ -504,7 +513,7 @@ class TestWebhooksHandlers:
 
     async def test_create_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_create"]
         definition = _webhook().model_dump(mode="json")
@@ -522,7 +531,7 @@ class TestWebhooksHandlers:
 
     async def test_create_guardrail_violation_when_confirm_missing(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_create"]
         definition = _webhook().model_dump(mode="json")
@@ -541,7 +550,7 @@ class TestWebhooksHandlers:
 
     async def test_create_invalid_rejected(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_create"]
         response = await handler(
@@ -557,7 +566,7 @@ class TestWebhooksHandlers:
 
     async def test_delete_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_webhooks_delete"]
         response = await handler(
@@ -578,14 +587,14 @@ class TestWebhooksHandlers:
 
 
 class TestTunnelHandlers:
-    async def test_status(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_status(self, fake_app_state: AppState) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_tunnel_get_status"]
         response = await handler(app_state=fake_app_state, arguments={})
         payload = json.loads(response)
         assert payload["status"] == "ok"
         assert payload["data"]["running"] is False
 
-    async def test_connect(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_connect(self, fake_app_state: AppState) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_tunnel_connect"]
         response = await handler(
             app_state=fake_app_state,
@@ -600,7 +609,7 @@ class TestTunnelHandlers:
 
     async def test_connect_guardrail_violation_when_confirm_missing(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = COMMUNICATION_HANDLERS["synthorg_tunnel_connect"]
         response = await handler(

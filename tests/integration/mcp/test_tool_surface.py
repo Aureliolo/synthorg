@@ -27,7 +27,6 @@ sweep layers the acceptance criteria on top:
 
 import json
 from collections import Counter
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -72,9 +71,20 @@ def _mkversion_repo() -> AsyncMock:
 
 
 @pytest.fixture
-def fake_app_state() -> SimpleNamespace:
-    """Wide-blast stub covering every primitive the handlers probe."""
-    ns = SimpleNamespace()
+def fake_app_state() -> Any:
+    """Wide-blast ``AppState`` stub covering every primitive the handlers probe.
+
+    Returns a live ``AppState`` so handlers can call ``app_state.slice(...)``
+    and the ``*_of`` accessors; sub-mocks are wired through ``make_app_state``
+    keyed by the legacy attribute names.
+    """
+    from synthorg.persistence.fine_tune_protocol import (
+        FineTuneCheckpointRepository,
+        FineTuneRunRepository,
+    )
+    from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.persistence.version_protocol import VersionRepository
+    from tests._shared import make_app_state
 
     dummy_task = _sync_dumped({"id": "task-1", "title": "x"})
 
@@ -82,19 +92,17 @@ def fake_app_state() -> SimpleNamespace:
     defrepo.query.return_value = ()
     defrepo.get.return_value = None
     defrepo.delete.return_value = False
-    from synthorg.persistence.fine_tune_protocol import (
-        FineTuneCheckpointRepository,
-        FineTuneRunRepository,
-    )
-    from synthorg.persistence.version_protocol import VersionRepository
 
-    ns.persistence = SimpleNamespace(
-        workflow_definitions=defrepo,
-        workflow_versions=AsyncMock(spec=VersionRepository),
-        budget_config_versions=_mkversion_repo(),
-        fine_tune_checkpoints=AsyncMock(spec=FineTuneCheckpointRepository),
-        fine_tune_runs=AsyncMock(spec=FineTuneRunRepository),
-    )
+    fine_tune_checkpoints = AsyncMock(spec=FineTuneCheckpointRepository)
+    fine_tune_checkpoints.list_items_page.return_value = ((), 0)
+    fine_tune_checkpoints.get.return_value = None
+
+    persistence = MagicMock(spec=PersistenceBackend)
+    persistence.workflow_definitions = defrepo
+    persistence.workflow_versions = AsyncMock(spec=VersionRepository)
+    persistence.budget_config_versions = _mkversion_repo()
+    persistence.fine_tune_checkpoints = fine_tune_checkpoints
+    persistence.fine_tune_runs = AsyncMock(spec=FineTuneRunRepository)
 
     engine = AsyncMock()
     engine.list_tasks.return_value = ((), 0)
@@ -103,7 +111,6 @@ def fake_app_state() -> SimpleNamespace:
     engine.cancel_task.return_value = (dummy_task, None)
     engine.delete_task.return_value = True
     engine.transition_task.return_value = (dummy_task, None)
-    ns.task_engine = engine
 
     registry = AsyncMock()
     registry.list_active.return_value = ()
@@ -118,18 +125,15 @@ def fake_app_state() -> SimpleNamespace:
         current_level=AutonomyLevel.SUPERVISED,
         requested_level=AutonomyLevel.FULL,
     )
-    ns.agent_registry = registry
 
-    ns.performance_tracker = AsyncMock()
-    ns.performance_tracker.get_snapshot.return_value = None
-    ns.performance_tracker.get_collaboration_score.return_value = (
-        CollaborationScoreResult(
-            score=0.0,
-            strategy_name="test-strategy",
-            confidence=0.5,
-        )
+    performance_tracker = AsyncMock()
+    performance_tracker.get_snapshot.return_value = None
+    performance_tracker.get_collaboration_score.return_value = CollaborationScoreResult(
+        score=0.0,
+        strategy_name="test-strategy",
+        confidence=0.5,
     )
-    ns.performance_tracker.get_collaboration_calibration.return_value = (
+    performance_tracker.get_collaboration_calibration.return_value = (
         CollaborationCalibration(
             agent_id=NotBlankStr("agent-1"),
             strategy_name=NotBlankStr("test-strategy"),
@@ -137,32 +141,28 @@ def fake_app_state() -> SimpleNamespace:
         )
     )
 
-    ns.cost_tracker = AsyncMock()
-    ns.cost_tracker.get_records.return_value = ()
-    ns.cost_tracker.get_agent_cost.return_value = 0.0
-    ns.config_resolver = AsyncMock()
-    ns.config_resolver.get_budget_config.return_value = _sync_dumped(
+    cost_tracker = AsyncMock()
+    cost_tracker.get_records.return_value = ()
+    cost_tracker.get_agent_cost.return_value = 0.0
+
+    config_resolver = AsyncMock()
+    config_resolver.get_budget_config.return_value = _sync_dumped(
         {"currency": DEFAULT_CURRENCY},
     )
 
-    ns.approval_store = AsyncMock()
-    ns.approval_store.list_items.return_value = ()
-    ns.approval_store.get.return_value = None
+    approval_store = AsyncMock()
+    approval_store.list_items.return_value = ()
+    approval_store.get.return_value = None
 
-    ns.persistence.fine_tune_checkpoints.list_items_page.return_value = (
-        (),
-        0,
+    return make_app_state(
+        persistence=persistence,
+        task_engine=engine,
+        agent_registry=registry,
+        performance_tracker=performance_tracker,
+        cost_tracker=cost_tracker,
+        config_resolver=config_resolver,
+        approval_store=approval_store,
     )
-    ns.persistence.fine_tune_checkpoints.get.return_value = None
-
-    ns.has_task_engine = True
-    ns.has_cost_tracker = True
-    ns.has_agent_registry = True
-    ns.has_settings_service = False
-    ns.settings_service = None
-
-    ns._dummy_task = dummy_task
-    return ns
 
 
 @pytest.fixture
@@ -214,7 +214,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_invoking_every_tool_emits_no_service_fallback_event(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: Any,
         actor: AgentIdentity,
     ) -> None:
         handlers = build_handler_map()
@@ -236,7 +236,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_capability_gap_is_the_not_supported_source(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: Any,
         actor: AgentIdentity,
     ) -> None:
         """Tools returning ``not_supported`` must emit CAPABILITY_GAP (INFO).
@@ -309,7 +309,7 @@ class TestNoServiceFallbackEvents:
     )
     async def test_backend_unsupported_error_routes_to_not_supported(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: Any,
         actor: AgentIdentity,
         tool_name: str,
     ) -> None:
@@ -344,8 +344,9 @@ class TestNoServiceFallbackEvents:
             async def get_active_embedder(self) -> None:
                 raise MemoryBackendUnsupportedError(unsupported_reason)
 
-        fake_app_state.memory_service = _UnsupportedMemoryService()
-        fake_app_state.has_memory_service = True
+        from synthorg.memory.state import MemoryStateSlice
+
+        fake_app_state.wire(MemoryStateSlice, service=_UnsupportedMemoryService())
 
         handlers = build_handler_map()
         handler = handlers[tool_name]
@@ -373,7 +374,7 @@ class TestNoServiceFallbackEvents:
 
     async def test_every_tool_returns_well_formed_envelope(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: Any,
         actor: AgentIdentity,
     ) -> None:
         """Each tool returns ``status`` in {ok, error}, with mandatory keys."""

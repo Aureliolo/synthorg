@@ -12,11 +12,18 @@ from synthorg.api.app_builders import _bootstrap_app_logging
 from synthorg.api.app_helpers import _resolve_artifact_dir_env
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus.memory import InMemoryMessageBus
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.config.schema import RootConfig
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
+from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.state import ProvidersStateSlice
+from synthorg.settings.state import SettingsStateSlice
+from tests._shared import make_app_state
 
 
 @pytest.mark.unit
@@ -133,7 +140,8 @@ class TestCreateAppEnvAutoWire:
             monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
         app = create_app(config=root_config)
         state = app.state["app_state"]
-        assert state.has_persistence == expect_persistence
+        backend = state.slice(PersistenceStateSlice).backend
+        assert (backend is not None) == expect_persistence
 
 
 @pytest.mark.unit
@@ -240,7 +248,6 @@ class TestAppLifecycle:
         """Persistence ok, bus fails → persistence cleaned up."""
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_startup
-        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -248,7 +255,7 @@ class TestAppLifecycle:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -309,7 +316,7 @@ class TestAppLifecycle:
         from tests.unit.api.conftest import FakePersistenceBackend
 
         persistence = FakePersistenceBackend()
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -345,7 +352,6 @@ class TestAppLifecycle:
 
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_startup
-        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -357,7 +363,7 @@ class TestAppLifecycle:
         mock_te.start = MagicMock(side_effect=RuntimeError("engine boom"))
         mock_te.stop = MagicMock()
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -389,7 +395,6 @@ class TestAppLifecycle:
 
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_startup
-        from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
             FakePersistenceBackend,
@@ -403,7 +408,7 @@ class TestAppLifecycle:
         )
         mock_dispatcher.stop = AsyncMock()
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -447,7 +452,6 @@ class TestAppLifecycle:
 
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
-        from synthorg.api.state import AppState
         from synthorg.communication.meeting.scheduler import (
             MeetingScheduler,
         )
@@ -462,7 +466,7 @@ class TestAppLifecycle:
         mock_sched.start = AsyncMock(spec=MeetingScheduler.start)
         mock_sched.stop = AsyncMock(spec=MeetingScheduler.stop)
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -493,7 +497,6 @@ class TestAppLifecycle:
 
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
-        from synthorg.api.state import AppState
         from synthorg.security.timeout.scheduler import (
             ApprovalTimeoutScheduler,
         )
@@ -508,7 +511,7 @@ class TestAppLifecycle:
         mock_sched.start = AsyncMock(spec=ApprovalTimeoutScheduler.start)
         mock_sched.stop = AsyncMock(spec=ApprovalTimeoutScheduler.stop)
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -627,7 +630,7 @@ class TestAutoWirePhase1:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        assert state.has_message_bus
+        assert state.slice(CommunicationStateSlice).message_bus is not None
 
     def test_auto_wired_message_bus_is_in_memory(
         self,
@@ -638,7 +641,9 @@ class TestAutoWirePhase1:
         app = create_app()
         state: AppState = app.state["app_state"]
         # Access the private field to check the concrete type.
-        assert isinstance(state._message_bus, InMemoryMessageBus)
+        assert isinstance(
+            state.slice(CommunicationStateSlice).message_bus, InMemoryMessageBus
+        )
 
     def test_auto_wires_cost_tracker(
         self,
@@ -648,7 +653,7 @@ class TestAutoWirePhase1:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        assert isinstance(state._cost_tracker, CostTracker)
+        assert isinstance(state.slice(BudgetStateSlice).cost_tracker, CostTracker)
 
     def test_auto_wires_task_engine(
         self,
@@ -658,8 +663,8 @@ class TestAutoWirePhase1:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        assert state.has_task_engine
-        assert isinstance(state._task_engine, TaskEngine)
+        assert state.slice(EngineStateSlice).task_engine is not None
+        assert isinstance(state.slice(EngineStateSlice).task_engine, TaskEngine)
 
     def test_task_engine_not_wired_without_persistence(
         self,
@@ -669,7 +674,7 @@ class TestAutoWirePhase1:
         monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
         app = create_app()
         state: AppState = app.state["app_state"]
-        assert not state.has_task_engine
+        assert state.slice(EngineStateSlice).task_engine is None
 
     def test_explicit_services_not_overridden(
         self,
@@ -688,9 +693,9 @@ class TestAutoWirePhase1:
             task_engine=fake_task_engine,
         )
         state: AppState = app.state["app_state"]
-        assert state._message_bus is fake_message_bus
-        assert state._cost_tracker is cost_tracker
-        assert state._task_engine is fake_task_engine
+        assert state.slice(CommunicationStateSlice).message_bus is fake_message_bus
+        assert state.slice(BudgetStateSlice).cost_tracker is cost_tracker
+        assert state.slice(EngineStateSlice).task_engine is fake_task_engine
 
     def test_no_persistence_warns(
         self,
@@ -734,13 +739,13 @@ class TestAutoWirePhase2:
             _build_settings_dispatcher,
         )
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
             message_bus=fake_message_bus,
         )
-        assert not app_state.has_settings_service
+        assert app_state.slice(SettingsStateSlice).settings_service is None
 
         dispatcher = await auto_wire_settings(
             fake_persistence,
@@ -751,9 +756,9 @@ class TestAutoWirePhase2:
             _build_settings_dispatcher,
         )
 
-        assert app_state.has_settings_service
-        assert app_state.has_config_resolver  # type: ignore[unreachable]
-        assert app_state.has_provider_management
+        assert app_state.slice(SettingsStateSlice).settings_service is not None
+        assert app_state.slice(SettingsStateSlice).config_resolver is not None
+        assert app_state.slice(ProvidersStateSlice).management is not None
         # Dispatcher is created when bus is available
         assert dispatcher is not None
 
@@ -772,7 +777,7 @@ class TestAutoWirePhase2:
             _build_settings_dispatcher,
         )
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
@@ -786,7 +791,7 @@ class TestAutoWirePhase2:
             _build_settings_dispatcher,
         )
 
-        assert app_state.has_settings_service
+        assert app_state.slice(SettingsStateSlice).settings_service is not None
         # No dispatcher without a bus
         assert dispatcher is None
 
@@ -799,10 +804,10 @@ class TestAutoWirePhase2:
         app = create_app()
         state: AppState = app.state["app_state"]
         # Before startup, settings not yet wired (on_startup pending).
-        assert not state.has_settings_service
+        assert state.slice(SettingsStateSlice).settings_service is None
         # But construction-time services are wired.
-        assert state.has_message_bus
-        assert state.has_task_engine
+        assert state.slice(CommunicationStateSlice).message_bus is not None
+        assert state.slice(EngineStateSlice).task_engine is not None
 
     def test_phase2_skipped_when_settings_provided(
         self,
@@ -826,69 +831,47 @@ class TestAutoWirePhase2:
             settings_service=settings_svc,
         )
         state: AppState = app.state["app_state"]
-        assert state.has_settings_service
+        assert state.slice(SettingsStateSlice).settings_service is not None
         # Verify it's the same instance we passed
-        assert state._settings_service is settings_svc
+        assert state.slice(SettingsStateSlice).settings_service is settings_svc
 
 
 @pytest.mark.unit
-class TestAppStateSetSettingsService:
-    """Tests for AppState.set_settings_service()."""
+class TestComposeSettingsDependentServices:
+    """Wiring a settings service composes its dependent services."""
 
     def test_creates_resolver_and_management(
         self,
         fake_persistence: Any,
         root_config: Any,
     ) -> None:
-        """set_settings_service creates ConfigResolver + ProviderManagement."""
+        """Composing settings deps wires ConfigResolver + ProviderManagement."""
         import synthorg.settings.definitions  # noqa: F401
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle_helpers.settings_dependent_services import (
+            compose_settings_dependent_services,
+        )
         from synthorg.settings.registry import get_registry
         from synthorg.settings.service import SettingsService
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
         )
-        assert not app_state.has_settings_service
-        assert not app_state.has_config_resolver
-        assert not app_state.has_provider_management
+        assert app_state.slice(SettingsStateSlice).settings_service is None
+        assert app_state.slice(SettingsStateSlice).config_resolver is None
+        assert app_state.slice(ProvidersStateSlice).management is None
 
         settings_svc = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
         )
-        app_state.set_settings_service(settings_svc)
+        compose_settings_dependent_services(app_state, settings_svc)
 
-        assert app_state.has_settings_service
-        assert app_state.has_config_resolver  # type: ignore[unreachable]
-        assert app_state.has_provider_management
-
-    def test_raises_if_already_set(
-        self,
-        fake_persistence: Any,
-        root_config: Any,
-    ) -> None:
-        """set_settings_service raises RuntimeError if called twice."""
-        import synthorg.settings.definitions  # noqa: F401
-        from synthorg.api.approval_store import ApprovalStore
-        from synthorg.settings.registry import get_registry
-        from synthorg.settings.service import SettingsService
-
-        app_state = AppState(
-            config=root_config,
-            approval_store=ApprovalStore(),
-            persistence=fake_persistence,
-        )
-        settings_svc = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-        )
-        app_state.set_settings_service(settings_svc)
-
-        with pytest.raises(RuntimeError, match="already configured"):
-            app_state.set_settings_service(settings_svc)
+        assert app_state.slice(SettingsStateSlice).settings_service is not None
+        assert app_state.slice(SettingsStateSlice).config_resolver is not None
+        assert app_state.slice(ProvidersStateSlice).management is not None
 
 
 @pytest.mark.unit
@@ -905,7 +888,7 @@ class TestAutoWirePhase1Details:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        bus = state._message_bus
+        bus = state.slice(CommunicationStateSlice).message_bus
         assert isinstance(bus, InMemoryMessageBus)
         # The bus config should include all API channels
         for ch in ALL_CHANNELS:
@@ -919,7 +902,7 @@ class TestAutoWirePhase1Details:
         monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
         app = create_app()
         state: AppState = app.state["app_state"]
-        assert not state.has_provider_registry
+        assert state.slice(ProvidersStateSlice).registry is None
 
     def test_provider_registry_param_not_overridden(
         self,
@@ -934,7 +917,7 @@ class TestAutoWirePhase1Details:
             provider_registry=fake_registry,
         )
         state: AppState = app.state["app_state"]
-        assert state._provider_registry is fake_registry
+        assert state.slice(ProvidersStateSlice).registry is fake_registry
 
 
 @pytest.mark.unit
@@ -958,7 +941,7 @@ class TestAutoWirePhase2ErrorPaths:
 
         persistence = FakePersistenceBackend()
         bus = FakeMessageBus()
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=persistence,
@@ -1011,7 +994,7 @@ class TestAutoWirePhase2ErrorPaths:
             _build_settings_dispatcher,
         )
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
@@ -1042,7 +1025,7 @@ class TestAutoWirePhase2ErrorPaths:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
@@ -1067,7 +1050,7 @@ class TestAutoWirePhase2ErrorPaths:
             )
 
         # AppState must not have been mutated
-        assert not app_state.has_settings_service
+        assert app_state.slice(SettingsStateSlice).settings_service is None
 
     async def test_settings_service_creation_failure(
         self,
@@ -1079,7 +1062,7 @@ class TestAutoWirePhase2ErrorPaths:
         from synthorg.api.approval_store import ApprovalStore
         from synthorg.api.auto_wire import auto_wire_settings
 
-        app_state = AppState(
+        app_state = make_app_state(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
@@ -1101,7 +1084,7 @@ class TestAutoWirePhase2ErrorPaths:
             )
 
         # AppState must not have been mutated
-        assert not app_state.has_settings_service
+        assert app_state.slice(SettingsStateSlice).settings_service is None
 
 
 @pytest.mark.unit

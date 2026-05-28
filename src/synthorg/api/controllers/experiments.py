@@ -21,8 +21,9 @@ from synthorg.api.dto import (
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
-    CursorLimit,  # noqa: TC001 -- runtime parameter annotation
-    CursorParam,  # noqa: TC001 -- runtime parameter annotation
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -32,6 +33,7 @@ from synthorg.experiments.models import (  # noqa: TC001 -- runtime return-type 
     ExperimentAssignment,
     ExperimentVariant,
 )
+from synthorg.meta.state import experiment_service_of
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -58,7 +60,7 @@ class ExperimentsController(Controller):
             Result matching the declared return annotation.
         """
         app_state: AppState = state.app_state
-        variants = await app_state.experiment_service.list_variants(
+        variants = await experiment_service_of(app_state).list_variants(
             NotBlankStr(experiment),
         )
         return ApiResponse(data=variants)
@@ -83,7 +85,7 @@ class ExperimentsController(Controller):
             ``ApiResponse[ExperimentVariant]`` instance.
         """
         app_state: AppState = state.app_state
-        record = await app_state.experiment_service.register_variant(
+        record = await experiment_service_of(app_state).register_variant(
             experiment=NotBlankStr(experiment),
             variant=data.variant,
             weight=data.weight,
@@ -114,7 +116,7 @@ class ExperimentsController(Controller):
             ``ApiResponse[ExperimentAssignment]`` instance.
         """
         app_state: AppState = state.app_state
-        assignment = await app_state.experiment_service.assign(
+        assignment = await experiment_service_of(app_state).assign(
             experiment=NotBlankStr(experiment),
             subject_id=data.subject_id,
         )
@@ -139,8 +141,10 @@ class ExperimentsController(Controller):
             ``PaginatedResponse[ExperimentAssignment]`` instance.
         """
         app_state: AppState = state.app_state
-        offset = decode_cursor(cursor, secret=app_state.cursor_secret) if cursor else 0
-        page, total = await app_state.experiment_service.list_assignments(
+        offset = (
+            decode_cursor(cursor, secret=cursor_secret_of(app_state)) if cursor else 0
+        )
+        page, total = await experiment_service_of(app_state).list_assignments(
             NotBlankStr(experiment),
             limit=limit,
             offset=offset,
@@ -150,7 +154,7 @@ class ExperimentsController(Controller):
         meta = PaginationMeta(
             limit=limit,
             next_cursor=(
-                encode_cursor(next_offset, secret=app_state.cursor_secret)
+                encode_cursor(next_offset, secret=cursor_secret_of(app_state))
                 if has_more
                 else None
             ),

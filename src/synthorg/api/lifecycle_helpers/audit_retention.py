@@ -15,12 +15,14 @@ from typing import TYPE_CHECKING
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_AUDIT_RETENTION
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import (
     registered_default_bool,
     registered_default_float,
     registered_default_int,
 )
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -46,10 +48,10 @@ async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
     fallback = registered_default_bool(
         SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        return await app_state.config_resolver.get_bool(
+        return await config_resolver_of(app_state).get_bool(
             SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
         )
     except asyncio.CancelledError:
@@ -87,10 +89,10 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
     fallback = registered_default_int(
         SettingNamespace.SECURITY.value, "audit_retention_days"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        days = await app_state.config_resolver.get_int(
+        days = await config_resolver_of(app_state).get_int(
             SettingNamespace.SECURITY.value, "audit_retention_days"
         )
     except asyncio.CancelledError:
@@ -133,10 +135,10 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
     fallback = registered_default_float(
         SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        seconds = await app_state.config_resolver.get_float(
+        seconds = await config_resolver_of(app_state).get_float(
             SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
         )
     except asyncio.CancelledError:
@@ -173,11 +175,11 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     if days <= 0:
         logger.debug(API_AUDIT_RETENTION, note="audit retention purge disabled")
         return
-    if not app_state.has_persistence:
+    if app_state.slice(PersistenceStateSlice).backend is None:
         return
     cutoff = app_state.clock.now() - timedelta(days=days)
     try:
-        deleted = await app_state.persistence.audit_entries.purge_before(cutoff)
+        deleted = await persistence_of(app_state).audit_entries.purge_before(cutoff)
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

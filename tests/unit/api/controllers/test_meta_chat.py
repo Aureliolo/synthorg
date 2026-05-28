@@ -19,6 +19,7 @@ from synthorg.meta.models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.signals.service import SignalsService
+from synthorg.meta.state import MetaStateSlice
 from tests.unit.api.conftest import make_auth_headers
 
 _BASE = "/api/v1/meta/chat"
@@ -59,8 +60,8 @@ class TestMetaChat:
     ) -> None:
         """No chief_of_staff_chat wired => explicit ServiceUnavailableError."""
         app_state = test_client.app.state.app_state
-        original = app_state._chief_of_staff_chat
-        app_state._chief_of_staff_chat = None
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(MetaStateSlice, chief_of_staff_chat=None)
         try:
             resp = test_client.post(
                 _BASE,
@@ -72,7 +73,7 @@ class TestMetaChat:
             assert body["success"] is False
             assert body["error"] == "Service unavailable"
         finally:
-            app_state._chief_of_staff_chat = original
+            app_state.swap_slice(original_slice)
 
     async def test_returns_chat_payload_when_wired(
         self,
@@ -92,10 +93,12 @@ class TestMetaChat:
         signals_mock.get_org_snapshot.return_value = expected_snapshot
 
         app_state = test_client.app.state.app_state
-        chat_original = app_state._chief_of_staff_chat
-        signals_original = app_state._signals_service
-        app_state._chief_of_staff_chat = chat_mock
-        app_state._signals_service = signals_mock
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=signals_mock,
+        )
         try:
             resp = test_client.post(
                 _BASE,
@@ -124,8 +127,7 @@ class TestMetaChat:
             assert str(asked_query.alert_id) == alert_id
             assert asked_snapshot is expected_snapshot
         finally:
-            app_state._chief_of_staff_chat = chat_original
-            app_state._signals_service = signals_original
+            app_state.swap_slice(original_slice)
 
     def test_returns_503_when_signals_service_missing(
         self,
@@ -134,10 +136,12 @@ class TestMetaChat:
         """A wired chat backend still 503s if SignalsService is unavailable."""
         chat_mock = AsyncMock(spec=ChiefOfStaffChat)
         app_state = test_client.app.state.app_state
-        chat_original = app_state._chief_of_staff_chat
-        signals_original = app_state._signals_service
-        app_state._chief_of_staff_chat = chat_mock
-        app_state._signals_service = None
+        original_slice = app_state.slice(MetaStateSlice)
+        app_state.wire(
+            MetaStateSlice,
+            chief_of_staff_chat=chat_mock,
+            signals_service=None,
+        )
         try:
             resp = test_client.post(
                 _BASE,
@@ -149,5 +153,4 @@ class TestMetaChat:
             assert body["success"] is False
             assert body["error"] == "Service unavailable"
         finally:
-            app_state._chief_of_staff_chat = chat_original
-            app_state._signals_service = signals_original
+            app_state.swap_slice(original_slice)

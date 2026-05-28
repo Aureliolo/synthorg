@@ -23,12 +23,18 @@ from synthorg.api.dto import (
     UpdateTaskRequest,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
+from synthorg.client.state import client_simulation_state_of
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
 from synthorg.core.enums import TaskStatus  # noqa: TC001
@@ -40,6 +46,10 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
 )
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.pipeline.models import WorkSource
+from synthorg.engine.state import (
+    EngineStateSlice,
+    task_engine_of,
+)
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -58,6 +68,7 @@ from synthorg.observability.events.api import (
     API_TASK_UPDATED,
 )
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
+from synthorg.workers.state import worker_execution_service_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -204,7 +215,8 @@ class TaskController(Controller):
             Paginated task list.
         """
         app_state: AppState = state.app_state
-        tasks, total = await app_state.task_engine.list_tasks(
+        task_engine = task_engine_of(app_state)
+        tasks, total = await task_engine.list_tasks(
             status=status,
             assigned_to=assigned_to,
             project=project,
@@ -213,7 +225,7 @@ class TaskController(Controller):
             tasks,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         meta = meta.model_copy(update={"total": total})
         return PaginatedResponse(data=page, pagination=meta)
@@ -237,7 +249,8 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task = await app_state.task_engine.get_task(task_id)
+        task_engine = task_engine_of(app_state)
+        task = await task_engine.get_task(task_id)
         task = require_resource_or_404(
             task,
             resource_type="task",
@@ -282,7 +295,13 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
-        if not app_state.has_task_board_entry_adapter:
+        # Read the adapter once and reuse the same instance for the
+        # presence check and the spawn; otherwise a concurrent unwire/
+        # rewire between the check and the second ``*_of(app_state)``
+        # lookup could bypass the rejection path or surface an
+        # unexpected ``ServiceUnavailableError``.
+        adapter = app_state.slice(EngineStateSlice).task_board_entry_adapter
+        if adapter is None:
             logger.warning(
                 API_TASK_BOARD_REJECTED_NO_ADAPTER,
                 title=data.title,
@@ -306,9 +325,10 @@ class TaskController(Controller):
             requested_by=requester,
             estimated_complexity=data.estimated_complexity,
         )
+        sim_state = client_simulation_state_of(app_state)
         _spawn_task_board_pipeline(
-            sim_state=app_state.client_simulation_state,
-            adapter=app_state.task_board_entry_adapter,
+            sim_state=sim_state,
+            adapter=adapter,
             filing=filing,
         )
         logger.info(
@@ -357,7 +377,8 @@ class TaskController(Controller):
             exclude_none=True,
             exclude={"expected_version"},
         )
-        task = await app_state.task_engine.update_task(
+        task_engine = task_engine_of(app_state)
+        task = await task_engine.update_task(
             task_id,
             updates,
             requested_by=_extract_requester(state),
@@ -396,7 +417,8 @@ class TaskController(Controller):
         overrides: dict[str, object] = {}
         if data.assigned_to is not None:
             overrides["assigned_to"] = data.assigned_to
-        task, from_status = await app_state.task_engine.transition_task(
+        task_engine = task_engine_of(app_state)
+        task, from_status = await task_engine.transition_task(
             task_id,
             data.target_status,
             requested_by=requester,
@@ -435,7 +457,8 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        await app_state.task_engine.delete_task(
+        task_engine = task_engine_of(app_state)
+        await task_engine.delete_task(
             task_id,
             requested_by=_extract_requester(state),
         )
@@ -471,7 +494,7 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
-        task = await app_state.worker_execution_service.execute_once(
+        task = await worker_execution_service_of(app_state).execute_once(
             task_id=task_id,
             previous_status=data.previous_status,
             new_status=data.new_status,
@@ -514,7 +537,8 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        task, _prior_status = await app_state.task_engine.cancel_task(
+        task_engine = task_engine_of(app_state)
+        task, _prior_status = await task_engine.cancel_task(
             task_id,
             requested_by=_extract_requester(state),
             reason=data.reason,

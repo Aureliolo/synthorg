@@ -23,14 +23,18 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
+from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
 from synthorg.observability.events.mcp import (
     MCP_HANDLER_ARGUMENT_INVALID,
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_INVOKE_FAILED,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -45,18 +49,14 @@ def actor() -> AgentIdentity:
 
 
 @pytest.fixture
-def unwired_state() -> SimpleNamespace:
+def unwired_state() -> AppState:
     """App state with none of the coordination services attached.
 
     Every handler must route this to ``capability_gap`` / the
     ``not_supported`` envelope -- verifying that the
     ``has_<service>`` guards are wired correctly.
     """
-    return SimpleNamespace(
-        has_coordination_service=False,
-        has_scaling_decision_service=False,
-        has_ceremony_policy_service=False,
-    )
+    return make_app_state()
 
 
 def _parse(raw: str) -> dict[str, Any]:
@@ -80,7 +80,7 @@ class TestAllHandlersReturnValidEnvelope:
     async def test_unwired_returns_capability_gap(
         self,
         tool_name: str,
-        unwired_state: SimpleNamespace,
+        unwired_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = COORDINATION_HANDLERS[tool_name]
@@ -127,9 +127,8 @@ class TestGetTaskMetrics:
         )
         service = AsyncMock()
         service.get_task_metrics.return_value = record
-        state = SimpleNamespace(
-            has_coordination_service=True,
-            coordination_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
 
@@ -148,7 +147,9 @@ class TestGetTaskMetrics:
         self,
         actor: AgentIdentity,
     ) -> None:
-        state = SimpleNamespace(has_coordination_service=True)
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": AsyncMock()}},
+        )
         handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
 
         with structlog.testing.capture_logs() as events:
@@ -167,7 +168,9 @@ class TestGetTaskMetrics:
         self,
         actor: AgentIdentity,
     ) -> None:
-        state = SimpleNamespace(has_coordination_service=True)
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": AsyncMock()}},
+        )
         handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
 
         raw = await handler(
@@ -186,9 +189,8 @@ class TestGetTaskMetrics:
     ) -> None:
         service = AsyncMock()
         service.get_task_metrics.return_value = None
-        state = SimpleNamespace(
-            has_coordination_service=True,
-            coordination_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_coordination_get_task_metrics"]
 
@@ -223,9 +225,8 @@ class TestMetricsList:
         ]
         service = AsyncMock()
         service.list_metrics.return_value = (tuple(records), 42)
-        state = SimpleNamespace(
-            has_coordination_service=True,
-            coordination_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_coordination_metrics_list"]
 
@@ -249,9 +250,8 @@ class TestMetricsList:
     ) -> None:
         service = AsyncMock()
         service.list_metrics.side_effect = RuntimeError("store down")
-        state = SimpleNamespace(
-            has_coordination_service=True,
-            coordination_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"coordination_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_coordination_metrics_list"]
 
@@ -275,9 +275,8 @@ class TestScalingListDecisions:
         )
         service = AsyncMock()
         service.list_decisions.return_value = ((decision,), 1)
-        state = SimpleNamespace(
-            has_scaling_decision_service=True,
-            scaling_decision_service=service,
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_scaling_list_decisions"]
 
@@ -299,9 +298,8 @@ class TestScalingGetDecision:
         )
         service = AsyncMock()
         service.get_decision.return_value = decision
-        state = SimpleNamespace(
-            has_scaling_decision_service=True,
-            scaling_decision_service=service,
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_scaling_get_decision"]
 
@@ -321,9 +319,8 @@ class TestScalingGetDecision:
     ) -> None:
         service = AsyncMock()
         service.get_decision.return_value = None
-        state = SimpleNamespace(
-            has_scaling_decision_service=True,
-            scaling_decision_service=service,
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_scaling_get_decision"]
 
@@ -348,9 +345,8 @@ class TestScalingGetConfig:
         )
         service = AsyncMock()
         service.get_config.return_value = config
-        state = SimpleNamespace(
-            has_scaling_decision_service=True,
-            scaling_decision_service=service,
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_scaling_get_config"]
 
@@ -372,9 +368,8 @@ class TestScalingTrigger:
         )
         service = AsyncMock()
         service.trigger.return_value = (decision,)
-        state = SimpleNamespace(
-            has_scaling_decision_service=True,
-            scaling_decision_service=service,
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_scaling_trigger"]
 
@@ -409,7 +404,9 @@ class TestScalingTrigger:
         arguments: dict[str, Any],
         expected_match: str,
     ) -> None:
-        state = SimpleNamespace(has_scaling_decision_service=True)
+        state = make_app_state(
+            slices={HrStateSlice: {"scaling_decision_service": AsyncMock()}},
+        )
         handler = COORDINATION_HANDLERS["synthorg_scaling_trigger"]
 
         raw = await handler(
@@ -434,9 +431,8 @@ class TestCeremonyPolicyGet:
         )
         service = AsyncMock()
         service.get_policy.return_value = policy
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get"]
 
@@ -461,9 +457,8 @@ class TestCeremonyPolicyGetResolved:
         )
         service = AsyncMock()
         service.get_resolved_policy.return_value = resolved
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
 
@@ -486,9 +481,8 @@ class TestCeremonyPolicyGetResolved:
         )
         service = AsyncMock()
         service.get_resolved_policy.return_value = resolved
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
 
@@ -517,9 +511,8 @@ class TestCeremonyPolicyGetResolved:
         bad_value: Any,
     ) -> None:
         service = AsyncMock()
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
 
@@ -542,9 +535,8 @@ class TestCeremonyPolicyGetResolved:
         service.get_resolved_policy.side_effect = NotFoundError(
             "department 'eng' not found",
         )
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_resolved"]
 
@@ -568,9 +560,8 @@ class TestCeremonyPolicyGetActiveStrategy:
         )
         service = AsyncMock()
         service.get_active_strategy.return_value = active
-        state = SimpleNamespace(
-            has_ceremony_policy_service=True,
-            ceremony_policy_service=service,
+        state = make_app_state(
+            slices={CoordinationStateSlice: {"ceremony_policy_service": service}},
         )
         handler = COORDINATION_HANDLERS["synthorg_ceremony_policy_get_active_strategy"]
 

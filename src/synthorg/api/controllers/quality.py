@@ -8,6 +8,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -25,6 +26,7 @@ from synthorg.hr.performance.models import QualityOverride
 from synthorg.hr.performance.quality_override_store import (
     QualityOverrideStore,  # noqa: TC001
 )
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
@@ -117,7 +119,9 @@ class QualityController(Controller):
             ``QualityOverrideStore`` instance.
         """
         app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
+        tracker = require_service(
+            app_state.slice(HrStateSlice).performance_tracker, "Performance Tracker"
+        )
         store = tracker.quality_override_store
         if store is None:
             logger.warning(

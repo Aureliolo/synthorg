@@ -19,10 +19,12 @@ from synthorg.config.provider_schema import ProviderConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.errors import RuntimeServicesBuildError
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.state import has_active_provider
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
 )
+from synthorg.workers.state import RuntimeStateSlice
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -45,10 +47,11 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         app_state = client.app.state["app_state"]
 
         # Empty company at boot: no coordinator, backstop worker seam.
-        coordinator_at_boot = app_state.has_coordinator
+        runtime_slice_boot = app_state.slice(RuntimeStateSlice)
+        coordinator_at_boot = runtime_slice_boot.coordinator is not None
         assert coordinator_at_boot is False
         assert isinstance(
-            app_state.worker_execution_service,
+            runtime_slice_boot.worker_execution_service,
             NoProviderExecutionService,
         )
 
@@ -65,12 +68,11 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         await post_setup_reinit(app_state)
 
         # Both runtime services are now live, no restart.
-        active_provider = app_state.has_active_provider
-        coordinator_after_wake = app_state.has_coordinator
-        assert active_provider is True
-        assert coordinator_after_wake is True
-        coordinator = app_state.coordinator
-        worker = app_state.worker_execution_service
+        runtime_slice_after = app_state.slice(RuntimeStateSlice)
+        assert has_active_provider(app_state) is True
+        coordinator = runtime_slice_after.coordinator
+        worker = runtime_slice_after.worker_execution_service
+        assert coordinator is not None
         assert isinstance(coordinator, MultiAgentCoordinator)
         assert isinstance(worker, AgentEngineExecutionService)
 

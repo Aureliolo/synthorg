@@ -47,6 +47,7 @@ from synthorg.memory.service import (
     FineTuneRunNotResumableError,
     MemoryService,
 )
+from synthorg.memory.state import MemoryStateSlice, memory_service_of
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -77,6 +78,8 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -134,8 +137,8 @@ def _service(app_state: Any) -> MemoryService:
     Returns:
         ``MemoryService`` instance.
     """
-    if getattr(app_state, "has_memory_service", False):
-        attached: MemoryService = app_state.memory_service
+    if app_state.slice(MemoryStateSlice).service is not None:
+        attached: MemoryService = memory_service_of(app_state)
         return attached
     # Probe the raw instance dict so we do not trigger
     # ``AppState.memory_service`` (a property descriptor that raises
@@ -153,7 +156,7 @@ def _service(app_state: Any) -> MemoryService:
     )
     if isinstance(raw_cached, MemoryService):
         return raw_cached
-    backend = getattr(app_state, "persistence", None)
+    backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
         raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
     try:
@@ -169,17 +172,12 @@ def _service(app_state: Any) -> MemoryService:
         # would surface a generic 500 instead of the contract-stipulated
         # ``not_supported`` envelope.
         raise MemoryBackendUnsupportedError(_WHY_BACKEND_NO_FINE_TUNE) from exc
-    has_settings = getattr(app_state, "has_settings_service", False)
-    has_backend = getattr(app_state, "has_memory_backend", False)
+    settings_service = app_state.slice(SettingsStateSlice).settings_service
     return MemoryService(
         checkpoint_repo=checkpoint_repo,
         run_repo=run_repo,
-        settings_service=(
-            getattr(app_state, "settings_service", None) if has_settings else None
-        ),
-        memory_backend=(
-            getattr(app_state, "memory_backend", None) if has_backend else None
-        ),
+        settings_service=settings_service,
+        memory_backend=app_state.slice(MemoryStateSlice).backend,
     )
 
 
@@ -209,8 +207,8 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     Returns:
         ``MemoryService`` instance.
     """
-    if getattr(app_state, "has_memory_service", False):
-        attached: MemoryService = app_state.memory_service
+    if app_state.slice(MemoryStateSlice).service is not None:
+        attached: MemoryService = memory_service_of(app_state)
         return attached
     raw_cached = (
         vars(app_state).get("memory_service")
@@ -219,14 +217,13 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     )
     if isinstance(raw_cached, MemoryService):
         return raw_cached
-    if not getattr(app_state, "has_memory_backend", False):
+    backend = app_state.slice(MemoryStateSlice).backend
+    if backend is None:
         raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
-    has_settings = getattr(app_state, "has_settings_service", False)
+    settings_service = app_state.slice(SettingsStateSlice).settings_service
     return MemoryService(
-        memory_backend=getattr(app_state, "memory_backend", None),
-        settings_service=(
-            getattr(app_state, "settings_service", None) if has_settings else None
-        ),
+        memory_backend=backend,
+        settings_service=settings_service,
     )
 
 

@@ -28,6 +28,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -100,12 +101,12 @@ async def _state(
 ) -> tuple[AppState, ClientSimulationState]:
     sim_state = ClientSimulationState(intake_default_project="client-intake")
     await sim_state.request_store.save(seeded)
-    app_state = AppState(
+    app_state = make_app_state(
         config=RootConfig(company_name="t"),
         approval_store=ApprovalStore(),
         intake_entry_adapter=adapter,
+        client_simulation_state=sim_state,
     )
-    app_state.set_client_simulation_state(sim_state)
     return app_state, sim_state
 
 

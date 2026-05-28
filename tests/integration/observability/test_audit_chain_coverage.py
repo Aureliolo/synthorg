@@ -16,6 +16,7 @@ import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -31,7 +32,6 @@ from synthorg.api.controllers.custom_rules import (
     CustomRuleController,
     UpdateCustomRuleRequest,
 )
-from synthorg.api.state import AppState
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
@@ -154,21 +154,26 @@ def audit_sink(tmp_path: Path) -> Iterator[AuditChainSink]:
         root.removeHandler(sink)
 
 
-def _connection_state() -> dict[str, MagicMock]:
+def _connection_state() -> dict[str, Any]:
     """Build a controller state with a stubbed ConnectionCatalog.
 
     The catalog is spec'd to ``ConnectionCatalog`` so its methods are
     AsyncMocks that respect the protocol; ``return_value`` /
     ``side_effect`` assignments configure them in place rather than
     replacing the spec'd method with a bare AsyncMock.
+
+    The catalog is wired through ``make_app_state`` into the
+    :class:`IntegrationsStateSlice` so controllers reach it via
+    ``app_state.slice(IntegrationsStateSlice).connection_catalog``.
     """
+    from tests._shared import make_app_state
+
     catalog = MagicMock(spec=ConnectionCatalog)
     catalog.create.return_value = _make_conn()
     catalog.update.return_value = _make_conn()
     catalog.delete.return_value = None
     catalog.get_credentials.return_value = {"client_secret": "real-secret-value"}
-    app_state = MagicMock(spec=AppState)
-    app_state.connection_catalog = catalog
+    app_state = make_app_state(connection_catalog=catalog)
     return {"app_state": app_state}
 
 
@@ -185,15 +190,26 @@ def _tamper_previous_hash(snapshot: HashChain) -> None:
     )
 
 
-def _custom_rule_state(rule: CustomRuleDefinition) -> MagicMock:
-    """Build a controller state with a stubbed persistence layer."""
+def _custom_rule_state(rule: CustomRuleDefinition) -> Any:
+    """Build a controller state with a stubbed persistence layer.
+
+    The controller reads ``state.app_state`` via attribute access, so we
+    return a litestar ``State`` (which exposes both attribute and dict
+    access) rather than a bare dict.
+    """
     _ = rule
-    state = MagicMock(spec=["app_state"])
-    state.app_state = MagicMock(spec=AppState)
-    state.app_state.persistence = MagicMock(spec=PersistenceBackend)
-    state.app_state.persistence.custom_rules = MagicMock(spec=CustomRuleRepository)
-    state.app_state.cursor_secret = b"x" * 32
-    return state
+    from litestar.datastructures import State
+
+    from synthorg.api.cursor import CursorSecret
+    from tests._shared import make_app_state
+
+    persistence = MagicMock(spec=PersistenceBackend)
+    persistence.custom_rules = MagicMock(spec=CustomRuleRepository)
+    app_state = make_app_state(
+        persistence=persistence,
+        cursor_secret=CursorSecret.from_key("x" * 32),
+    )
+    return State({"app_state": app_state})
 
 
 @pytest.mark.integration
@@ -269,7 +285,10 @@ class TestConnectionAuditChainCoverage:
         )
 
         # reveal failure (missing field)
-        state["app_state"].connection_catalog.get_credentials.return_value = {}
+        from synthorg.integrations.state import IntegrationsStateSlice
+
+        slice_catalog = state["app_state"].slice(IntegrationsStateSlice)
+        slice_catalog.connection_catalog.get_credentials.return_value = {}
         with pytest.raises(NotFoundError):
             await ctrl.reveal_secret.fn(
                 ctrl,

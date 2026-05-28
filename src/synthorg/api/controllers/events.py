@@ -16,6 +16,7 @@ from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import _READ_ROLES, require_approval_roles, require_read_access
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -34,6 +35,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
@@ -54,6 +56,8 @@ from synthorg.observability.events.event_stream import (
     EVENT_STREAM_PROJECTION_FAILED,
 )
 from synthorg.observability.metrics_hub import record_client_disconnect
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -83,10 +87,11 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
     Raises:
         CancelledError: Raised on the corresponding failure path.
     """
-    if app_state is None or not getattr(app_state, "has_config_resolver", False):
+    if app_state is None or app_state.slice(SettingsStateSlice).config_resolver is None:
         return _SSE_KEEPALIVE_FALLBACK_SECONDS
     try:
-        return await app_state.config_resolver.get_float("api", "sse_keepalive_seconds")
+        resolver = config_resolver_of(app_state)
+        return await resolver.get_float("api", "sse_keepalive_seconds")
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -180,7 +185,7 @@ async def _user_revocation_reason(
         Tuple of ``(reason, ok)``, where ``reason`` may be ``None``.
     """
     try:
-        db_user = await app_state.persistence.users.get(user_id)
+        db_user = await persistence_of(app_state).users.get(user_id)
     except Exception as exc:
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
@@ -197,10 +202,11 @@ async def _user_revocation_reason(
         return "user_role_missing", True
     if role not in _READ_ROLES:
         return "role_demoted", True
+    session_store = app_state.slice(ApiCoreStateSlice).session_store
     if (
         session_id is not None
-        and app_state.has_session_store
-        and app_state.session_store.is_revoked(session_id)
+        and session_store is not None
+        and session_store.is_revoked(session_id)
     ):
         return "session_revoked", True
     return None, True
@@ -255,7 +261,7 @@ def _require_hub(app_state: AppState) -> EventStreamHub:
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    hub = app_state.event_stream_hub
+    hub = app_state.slice(CommunicationStateSlice).event_stream_hub
     if hub is None:
         msg = "Event stream not configured"
         raise NotFoundError(msg)
@@ -268,7 +274,7 @@ def _require_interrupt_store(app_state: AppState) -> InterruptStore:
     Raises:
         NotFoundError: Raised on the corresponding failure path.
     """
-    store = app_state.interrupt_store
+    store = app_state.slice(CommunicationStateSlice).interrupt_store
     if store is None:
         msg = "Interrupt store not configured"
         raise NotFoundError(msg)

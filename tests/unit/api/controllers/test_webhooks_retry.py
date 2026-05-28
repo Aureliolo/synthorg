@@ -16,6 +16,7 @@ import pytest
 import structlog.testing
 from litestar import Router
 
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers import webhooks as webhooks_module
 from synthorg.api.controllers.webhooks import WebhooksController
 from synthorg.api.services.idempotency_service import IdempotencyResult
@@ -25,6 +26,7 @@ from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
+from tests._shared import make_app_state
 
 
 class _PassThroughIdempotencyService:
@@ -116,12 +118,16 @@ def _build_state(
     class _Persistence:
         webhook_receipts = _WebhookReceipts()
 
-    class _AppState:
-        persistence = _Persistence()
-        message_bus = object()
-        idempotency_service = _PassThroughIdempotencyService()
-
-    state: dict[str, Any] = {"app_state": _AppState()}
+    app_state = make_app_state(
+        persistence=_Persistence(),
+        message_bus=object(),
+        slices={
+            ApiCoreStateSlice: {
+                "idempotency_service": _PassThroughIdempotencyService(),
+            },
+        },
+    )
+    state: dict[str, Any] = {"app_state": app_state}
     return state, get_mock, cas_mock, plain_mock
 
 

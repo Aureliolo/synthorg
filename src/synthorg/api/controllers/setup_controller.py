@@ -17,6 +17,7 @@ from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
 
+from synthorg._core.features import require_service
 from synthorg.api.controllers.setup.agent_helpers import (
     AGENT_LOCK as _AGENT_LOCK,
 )
@@ -99,7 +100,12 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.critical_errors import reraise_critical
@@ -124,6 +130,12 @@ from synthorg.observability.events.setup import (
     SETUP_STATUS_CHECKED,
     SETUP_TEMPLATES_LISTED,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.providers.state import (
+    ProvidersStateSlice,
+    provider_management_of,
+)
+from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
 
@@ -162,7 +174,8 @@ async def _validate_completion_prereqs(
     if not has_agents:
         logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
-    if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
+    provider_registry = app_state.slice(ProvidersStateSlice).registry
+    if provider_registry is None or len(provider_registry) == 0:
         msg = "At least one provider must be configured before completing setup"
         logger.warning(SETUP_NO_PROVIDERS)
         raise ValidationError(msg)
@@ -175,7 +188,7 @@ async def _validate_completion_prereqs(
     # production always has both populated together.
     if has_agents:
         persisted_agents = await get_existing_agents(settings_svc)
-        providers_map = await app_state.provider_management.list_providers()
+        providers_map = await provider_management_of(app_state).list_providers()
         if providers_map:
             validate_persisted_agents_against_providers(
                 providers_map,
@@ -199,7 +212,10 @@ async def _run_embedder_auto_select(
     Returns:
         The ``str`` value when present, ``None`` otherwise.
     """
-    provider_names = app_state.provider_registry.list_providers()
+    provider_registry = require_service(
+        app_state.slice(ProvidersStateSlice).registry, "Provider Registry"
+    )
+    provider_names = provider_registry.list_providers()
     provider_preset_name = provider_names[0] if provider_names else None
     has_gpu = await _read_has_gpu_setting(settings_svc)
     try:
@@ -278,13 +294,12 @@ class SetupController(Controller):
             Setup status envelope.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
-        needs_admin = await _check_needs_admin(app_state.persistence)
+        needs_admin = await _check_needs_admin(persistence_of(app_state))
         needs_setup = await _check_needs_setup(settings_svc)
-        has_providers = (
-            app_state.has_provider_registry and len(app_state.provider_registry) > 0
-        )
+        provider_registry = app_state.slice(ProvidersStateSlice).registry
+        has_providers = provider_registry is not None and len(provider_registry) > 0
         async with asyncio.TaskGroup() as tg:
             co_task = tg.create_task(_check_has_company(settings_svc))
             ag_task = tg.create_task(_check_has_agents(settings_svc))
@@ -393,7 +408,7 @@ class SetupController(Controller):
             ConflictError: If setup has already been completed.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         tmpl_res = _resolve_template(data.template_name)
         description = normalize_description(data.description)
@@ -481,16 +496,16 @@ class SetupController(Controller):
             ValidationError: If the model is not in the provider.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         from synthorg.templates.preset_service import (  # noqa: PLC0415
             fetch_custom_presets_map,
         )
 
-        providers = await app_state.provider_management.list_providers()
+        providers = await provider_management_of(app_state).list_providers()
         validate_provider_and_model(providers, data)
         custom_presets = await fetch_custom_presets_map(
-            app_state.persistence.custom_presets,
+            persistence_of(app_state).custom_presets,
         )
         agent_config = build_agent_config(
             data,
@@ -555,7 +570,7 @@ class SetupController(Controller):
             Paginated agent summaries.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         agents = await get_existing_agents(settings_svc)
         # Preserve persisted-array order so that PUT/POST handlers
@@ -569,7 +584,7 @@ class SetupController(Controller):
             summaries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.debug(SETUP_AGENTS_LISTED, count=len(page))
         return PaginatedResponse[SetupAgentSummary](data=page, pagination=meta)
@@ -601,10 +616,10 @@ class SetupController(Controller):
             ValidationError: If the provider/model is invalid.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         # Validate provider/model before acquiring the lock.
-        providers = await app_state.provider_management.list_providers()
+        providers = await provider_management_of(app_state).list_providers()
         validate_model_assignment(providers, data)
 
         # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
@@ -660,7 +675,7 @@ class SetupController(Controller):
             NotFoundError: If the agent index is out of range.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         # Lock order: _COMPLETE_LOCK -> _AGENT_LOCK (see create_agent).
         async with _COMPLETE_LOCK, _AGENT_LOCK:
@@ -721,7 +736,7 @@ class SetupController(Controller):
         )
 
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         locales = await _read_name_locales(settings_svc)
 
@@ -808,7 +823,7 @@ class SetupController(Controller):
         )
 
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
         locales = await _read_name_locales(settings_svc, resolve=False)
         stored = locales or [ALL_LOCALES_SENTINEL]
         logger.debug(SETUP_NAME_LOCALES_LISTED, count=len(stored))
@@ -841,7 +856,7 @@ class SetupController(Controller):
         )
 
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
         await _check_setup_not_complete(settings_svc)
         _validate_locale_selection(
             data.locales,
@@ -893,7 +908,7 @@ class SetupController(Controller):
             ValidationError: If company or providers are missing.
         """
         app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
+        settings_svc = settings_service_of(app_state)
 
         # Serialise the entire check / validate / reinit / persist flow
         # so two concurrent /setup/complete requests cannot both observe

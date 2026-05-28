@@ -15,7 +15,12 @@ from synthorg.api.dto import (
     PaginatedResponse,
 )
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.services.project_service import ProjectService
@@ -29,6 +34,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -40,7 +46,7 @@ def _service(state: State) -> ProjectService:
     Returns:
         ``ProjectService`` instance.
     """
-    return ProjectService(repo=state.app_state.persistence.projects)
+    return ProjectService(repo=persistence_of(state.app_state).projects)
 
 
 ProjectStatusFilter = Annotated[
@@ -120,7 +126,7 @@ class ProjectController(Controller):
             projects,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[Project](data=page, pagination=meta)
 

@@ -5,18 +5,20 @@ versions (2).
 """
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.handlers.organization import ORGANIZATION_HANDLERS
 from synthorg.organization.services import (
     DepartmentService,
     TeamService,
 )
+from synthorg.organization.state import OrganizationStateSlice
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -58,24 +60,28 @@ def fake_app_state(
     real_department: DepartmentService,
     real_team: TeamService,
     fake_role_version: AsyncMock,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        company_read_service=fake_company,
-        department_service=real_department,
-        team_service=real_team,
-        role_version_service=fake_role_version,
+) -> AppState:
+    return make_app_state(
+        slices={
+            OrganizationStateSlice: {
+                "company_read_service": fake_company,
+                "department_service": real_department,
+                "team_service": real_team,
+                "role_version_service": fake_role_version,
+            },
+        },
     )
 
 
 class TestCompany:
-    async def test_get(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_get"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_update_requires_payload(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_update"]
         response = await handler(
@@ -85,7 +91,7 @@ class TestCompany:
         )
         assert json.loads(response)["status"] == "error"
 
-    async def test_update_ok(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_update_ok(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_update"]
         response = await handler(
             app_state=fake_app_state,
@@ -94,14 +100,14 @@ class TestCompany:
         )
         assert json.loads(response)["status"] == "ok"
 
-    async def test_list_departments(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list_departments(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_list_departments"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_reorder_requires_list(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
         response = await handler(
@@ -111,7 +117,7 @@ class TestCompany:
         )
         assert json.loads(response)["status"] == "error"
 
-    async def test_reorder_ok(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_reorder_ok(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
         response = await handler(
             app_state=fake_app_state,
@@ -127,7 +133,7 @@ class TestCompany:
 
     async def test_reorder_rejects_non_uuid(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_reorder_departments"]
         response = await handler(
@@ -139,14 +145,14 @@ class TestCompany:
         assert payload["status"] == "error"
         assert payload["domain_code"] == "invalid_argument"
 
-    async def test_versions_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_versions_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_versions_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_versions_get_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_company_versions_get"]
         response = await handler(
@@ -157,7 +163,7 @@ class TestCompany:
 
     async def test_get_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_company: AsyncMock,
     ) -> None:
         fake_company.get_company = AsyncMock(
@@ -169,7 +175,7 @@ class TestCompany:
 
     async def test_list_departments_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_company: AsyncMock,
     ) -> None:
         fake_company.list_departments = AsyncMock(
@@ -181,7 +187,7 @@ class TestCompany:
 
     async def test_versions_list_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_company: AsyncMock,
     ) -> None:
         fake_company.list_versions = AsyncMock(
@@ -193,7 +199,7 @@ class TestCompany:
 
     async def test_versions_get_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_company: AsyncMock,
     ) -> None:
         fake_company.get_version = AsyncMock(
@@ -208,7 +214,7 @@ class TestCompany:
 
 
 class TestDepartments:
-    async def test_create_and_get(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_create_and_get(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_create"]
         response = await handler(
             app_state=fake_app_state,
@@ -226,14 +232,14 @@ class TestDepartments:
         )
         assert json.loads(response_get)["status"] == "ok"
 
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
     async def test_delete_requires_guardrails(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_delete"]
         response = await handler(
@@ -243,7 +249,7 @@ class TestDepartments:
         )
         assert json.loads(response)["domain_code"] == "guardrail_violated"
 
-    async def test_health(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_health(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_get_health"]
         response = await handler(
             app_state=fake_app_state,
@@ -253,7 +259,7 @@ class TestDepartments:
 
     async def test_update_patches_existing(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         create = ORGANIZATION_HANDLERS["synthorg_departments_create"]
         created = json.loads(
@@ -274,7 +280,7 @@ class TestDepartments:
         assert body["status"] == "ok"
         assert body["data"]["name"] == "renamed"
 
-    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_get"]
         response = await handler(
             app_state=fake_app_state,
@@ -284,7 +290,7 @@ class TestDepartments:
 
     async def test_update_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_departments_update"]
         response = await handler(
@@ -296,7 +302,7 @@ class TestDepartments:
 
 
 class TestTeams:
-    async def test_create_and_get(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_create_and_get(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_create"]
         response = await handler(
             app_state=fake_app_state,
@@ -313,12 +319,12 @@ class TestTeams:
         )
         assert json.loads(response_get)["status"] == "ok"
 
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
-    async def test_delete_guardrails(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_delete_guardrails(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_delete"]
         response = await handler(
             app_state=fake_app_state,
@@ -329,7 +335,7 @@ class TestTeams:
 
     async def test_update_patches_existing(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         create = ORGANIZATION_HANDLERS["synthorg_teams_create"]
         created = json.loads(
@@ -350,7 +356,7 @@ class TestTeams:
         assert body["status"] == "ok"
         assert body["data"]["name"] == "new-name"
 
-    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_get"]
         response = await handler(
             app_state=fake_app_state,
@@ -360,7 +366,7 @@ class TestTeams:
 
     async def test_update_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_teams_update"]
         response = await handler(
@@ -372,12 +378,12 @@ class TestTeams:
 
 
 class TestRoleVersions:
-    async def test_list(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_list(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_list"]
         response = await handler(app_state=fake_app_state, arguments={})
         assert json.loads(response)["status"] == "ok"
 
-    async def test_get_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_get_not_found(self, fake_app_state: AppState) -> None:
         handler = ORGANIZATION_HANDLERS["synthorg_role_versions_get"]
         response = await handler(
             app_state=fake_app_state,
@@ -387,7 +393,7 @@ class TestRoleVersions:
 
     async def test_list_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_role_version: AsyncMock,
     ) -> None:
         fake_role_version.list_versions = AsyncMock(
@@ -399,7 +405,7 @@ class TestRoleVersions:
 
     async def test_get_capability_gap(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         fake_role_version: AsyncMock,
     ) -> None:
         fake_role_version.get_version = AsyncMock(

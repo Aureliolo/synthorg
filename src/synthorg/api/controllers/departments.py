@@ -8,6 +8,8 @@ from litestar import Controller, Request, Response, delete, get, patch, post, pu
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import CHANNEL_DEPARTMENTS, publish_ws_event
 from synthorg.api.concurrency import compute_etag
@@ -26,7 +28,12 @@ from synthorg.api.guards import (
     require_org_mutation,
     require_read_access,
 )
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
@@ -52,6 +59,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_SERVICE_UNAVAILABLE,
 )
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -77,11 +85,11 @@ async def _require_department_exists(
         NotFoundError: If the department is not found.
         ServiceUnavailableError: If the config resolver is not available.
     """
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         msg = "Config resolver not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
-    departments = await app_state.config_resolver.get_departments()
+    departments = await config_resolver_of(app_state).get_departments()
     found = find_by_name_ci(departments, name)
     if found is not None:
         return found.name
@@ -112,14 +120,16 @@ async def _load_dept_policies_json(
         ServiceUnavailableError: If settings service is unavailable
             and ``raise_on_error`` is ``True``.
     """
-    if not app_state.has_settings_service:
+    if app_state.slice(SettingsStateSlice).settings_service is None:
         if raise_on_error:
             msg = "Settings service not available"
             logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
             raise ServiceUnavailableError(msg)
         return {}
     try:
-        entry = await app_state.settings_service.get(
+        entry = await require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get(
             "coordination",
             "dept_ceremony_policies",
         )
@@ -201,11 +211,11 @@ async def _get_dept_ceremony_override(
         return None
 
     # Fall back to config-based ceremony_policy
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         msg = "Config resolver not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
         raise ServiceUnavailableError(msg)
-    departments = await app_state.config_resolver.get_departments()
+    departments = await config_resolver_of(app_state).get_departments()
     for dept in departments:
         if dept.name == department_name:
             return dept.ceremony_policy
@@ -240,10 +250,10 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
     Returns:
         Resulting integer.
     """
-    if not getattr(app_state, "has_config_resolver", False):
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
     try:
-        return await app_state.config_resolver.get_int(
+        return await config_resolver_of(app_state).get_int(
             "coordination",
             "department_policy_cas_retry_attempts",
         )
@@ -275,12 +285,14 @@ async def _load_dept_policies_versioned(
     Returns:
         Tuple of the declared element types.
     """
-    if not app_state.has_settings_service:
+    if app_state.slice(SettingsStateSlice).settings_service is None:
         msg = "Settings service not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
         raise ServiceUnavailableError(msg)
     try:
-        value, updated_at = await app_state.settings_service.get_versioned(
+        value, updated_at = await require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_versioned(
             "coordination",
             "dept_ceremony_policies",
         )
@@ -331,11 +343,13 @@ async def _save_dept_policies_with_cas(
         VersionConflictError: If the persisted ``updated_at`` no longer
             matches ``expected_updated_at`` (concurrent writer won).
     """
-    if not app_state.has_settings_service:
+    if app_state.slice(SettingsStateSlice).settings_service is None:
         msg = "Settings service not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
         raise ServiceUnavailableError(msg)
-    await app_state.settings_service.set(
+    await require_service(
+        app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+    ).set(
         "coordination",
         "dept_ceremony_policies",
         json.dumps(policies, separators=(",", ":")),
@@ -408,12 +422,12 @@ class DepartmentController(Controller):
             Paginated department list.
         """
         app_state: AppState = state.app_state
-        departments = await app_state.config_resolver.get_departments()
+        departments = await config_resolver_of(app_state).get_departments()
         page, meta = paginate_cursor(
             departments,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -436,7 +450,7 @@ class DepartmentController(Controller):
             NotFoundError: If the department is not found.
         """
         app_state: AppState = state.app_state
-        departments = await app_state.config_resolver.get_departments()
+        departments = await config_resolver_of(app_state).get_departments()
         found = find_by_name_ci(departments, name)
         if found is not None:
             return ApiResponse(data=found)
@@ -469,7 +483,10 @@ class DepartmentController(Controller):
             Created department envelope (HTTP 201).
         """
         app_state: AppState = state.app_state
-        dept = await app_state.org_mutation_service.create_department(
+        dept = await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).create_department(
             data,
             saved_by=get_authenticated_user_id(),
         )
@@ -510,7 +527,10 @@ class DepartmentController(Controller):
         """
         app_state: AppState = state.app_state
         if_match = request.headers.get("if-match")
-        updated = await app_state.org_mutation_service.update_department(
+        updated = await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).update_department(
             name,
             data,
             saved_by=get_authenticated_user_id(),
@@ -558,7 +578,10 @@ class DepartmentController(Controller):
             name: Department name.
         """
         app_state: AppState = state.app_state
-        await app_state.org_mutation_service.delete_department(
+        await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).delete_department(
             name,
             saved_by=get_authenticated_user_id(),
         )
@@ -601,7 +624,10 @@ class DepartmentController(Controller):
             Reordered agents envelope.
         """
         app_state: AppState = state.app_state
-        reordered = await app_state.org_mutation_service.reorder_agents(
+        reordered = await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).reorder_agents(
             name,
             data,
         )
@@ -640,7 +666,7 @@ class DepartmentController(Controller):
         app_state: AppState = state.app_state
 
         # Fetch departments and agents (both are config reads)
-        departments = await app_state.config_resolver.get_departments()
+        departments = await config_resolver_of(app_state).get_departments()
         dept = find_by_name_ci(departments, name)
         if dept is None:
             msg = f"Department {name!r} not found"
@@ -652,9 +678,9 @@ class DepartmentController(Controller):
             raise NotFoundError(msg)
         canonical_name = dept.name
 
-        agents = await app_state.config_resolver.get_agents()
+        agents = await config_resolver_of(app_state).get_agents()
         dept_agents = filter_agents_by_department(agents, canonical_name)
-        budget_cfg = await app_state.config_resolver.get_budget_config()
+        budget_cfg = await config_resolver_of(app_state).get_budget_config()
         health = await assemble_department_health(
             app_state,
             canonical_name,

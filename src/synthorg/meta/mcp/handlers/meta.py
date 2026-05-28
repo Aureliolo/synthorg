@@ -48,12 +48,14 @@ from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_invoke_failed,
 )
 from synthorg.meta.rules.custom import CustomRuleResponse
+from synthorg.meta.state import MetaStateSlice, self_improvement_service_of
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
     MCP_HANDLER_LAZY_SERVICE_INIT,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -91,7 +93,7 @@ def _custom_rules_service(app_state: Any) -> CustomRulesService:
     )
     from synthorg.meta.rules.service import CustomRulesService  # noqa: PLC0415
 
-    return CustomRulesService(repo=app_state.persistence.custom_rules)
+    return CustomRulesService(repo=persistence_of(app_state).custom_rules)
 
 
 async def _meta_get_config(
@@ -106,10 +108,10 @@ async def _meta_get_config(
         JSON-encoded MCP envelope string.
     """
     tool = "synthorg_meta_get_config"
-    if not getattr(app_state, "has_self_improvement_service", False):
+    if app_state.slice(MetaStateSlice).self_improvement_service is None:
         return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
     try:
-        config_dump = app_state.self_improvement_service.get_config()
+        config_dump = self_improvement_service_of(app_state).get_config()
     except Exception as exc:
         reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
@@ -223,9 +225,9 @@ async def _meta_trigger_cycle(
     # ``capability_gap`` envelope when the service isn't wired.
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
-        if not getattr(app_state, "has_self_improvement_service", False):
+        if app_state.slice(MetaStateSlice).self_improvement_service is None:
             return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
-        result = await app_state.self_improvement_service.trigger_cycle()
+        result = await self_improvement_service_of(app_state).trigger_cycle()
     except GuardrailViolationError as exc:
         log_handler_guardrail_violated(tool, exc)
         return err(exc)

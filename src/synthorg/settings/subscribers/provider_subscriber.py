@@ -38,7 +38,7 @@ class ProviderSettingsSubscriber:
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next
-    subscriber.  The old ``ModelRouter`` remains in ``AppState``.
+    subscriber.  The previously wired ``ModelRouter`` stays in place.
 
     Args:
         config: Root company configuration (providers + routing).
@@ -117,6 +117,11 @@ class ProviderSettingsSubscriber:
                 new_routing,
                 dict(config.providers),
             )
+            from synthorg.providers.state import (  # noqa: PLC0415
+                ProvidersStateSlice,
+            )
+
+            self._app_state.wire(ProvidersStateSlice, model_router=new_router)
         except Exception as exc:
             reraise_critical(exc)
             logger.error(
@@ -127,4 +132,3 @@ class ProviderSettingsSubscriber:
                 error=safe_error_description(exc),
             )
             raise
-        self._app_state.swap_model_router(new_router)

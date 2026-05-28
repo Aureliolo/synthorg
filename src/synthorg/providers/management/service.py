@@ -866,8 +866,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             raise ProviderValidationError(msg) from exc
 
         # 3. Hot-reload: swap in AppState (both sync, no await gap)
+        from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
+
         self._app_state.swap_provider_registry(registry)
-        self._app_state.swap_model_router(router)
+        self._app_state.wire(ProvidersStateSlice, model_router=router)
 
     # ── Local model management ───────────────────────────────
 

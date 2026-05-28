@@ -24,7 +24,13 @@ from pydantic import ValidationError
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.communication.meeting.enums import MeetingStatus
 from synthorg.communication.message import Message
+from synthorg.communication.state import meeting_service_of, message_service_of
 from synthorg.integrations.connections.models import ConnectionType
+from synthorg.integrations.state import (
+    connection_service_of,
+    tunnel_service_of,
+    webhook_service_of,
+)
 from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -171,7 +177,7 @@ async def _messages_list(
     try:
         channel = get_optional_str(arguments, _ARG_CHANNEL)
         offset, limit = coerce_pagination(arguments)
-        messages, total = await app_state.message_service.list_messages(
+        messages, total = await message_service_of(app_state).list_messages(
             channel=channel,
             offset=offset,
             limit=limit,
@@ -200,7 +206,7 @@ async def _messages_get(
     try:
         channel = _require_str(arguments, _ARG_CHANNEL)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
-        message = await app_state.message_service.get_message(
+        message = await message_service_of(app_state).get_message(
             channel=channel,
             message_id=message_id,
         )
@@ -231,7 +237,7 @@ async def _messages_send(
     """
     try:
         message = _parse_message(arguments)
-        await app_state.message_service.send_message(
+        await message_service_of(app_state).send_message(
             message=message,
             actor_id=require_actor_id(actor),
         )
@@ -266,7 +272,7 @@ async def _messages_delete(
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
         actor_id = require_actor_id(resolved_actor)
         try:
-            removed = await app_state.message_service.delete_message(
+            removed = await message_service_of(app_state).delete_message(
                 message_id=message_id,
                 actor_id=actor_id,
                 reason=reason,
@@ -328,7 +334,7 @@ async def _meetings_list(
         status = _parse_meeting_status(arguments)
         meeting_type = get_optional_str(arguments, _ARG_MEETING_TYPE)
         offset, limit = coerce_pagination(arguments)
-        records, total = await app_state.meeting_service.list_meetings(
+        records, total = await meeting_service_of(app_state).list_meetings(
             status=status,
             meeting_type=meeting_type,
             offset=offset,
@@ -357,7 +363,7 @@ async def _meetings_get(
     """
     try:
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
-        record = await app_state.meeting_service.get_meeting(meeting_id)
+        record = await meeting_service_of(app_state).get_meeting(meeting_id)
         if record is None:
             return err(
                 LookupError(f"Meeting {meeting_id} not found"),
@@ -385,7 +391,7 @@ async def _meetings_create(
     """
     tool = "synthorg_meetings_create"
     try:
-        await app_state.meeting_service.create_meeting()
+        await meeting_service_of(app_state).create_meeting()
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:
@@ -407,7 +413,7 @@ async def _meetings_update(
     """
     tool = "synthorg_meetings_update"
     try:
-        await app_state.meeting_service.update_meeting()
+        await meeting_service_of(app_state).update_meeting()
     except CapabilityNotSupportedError as exc:
         return _map_capability_not_supported(tool, exc)
     except Exception as exc:
@@ -433,7 +439,7 @@ async def _meetings_delete(
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
         actor_id = require_actor_id(resolved_actor)
         try:
-            removed = await app_state.meeting_service.delete_meeting(
+            removed = await meeting_service_of(app_state).delete_meeting(
                 meeting_id=meeting_id,
                 actor_id=actor_id,
                 reason=reason,
@@ -486,7 +492,7 @@ async def _connections_list(
     """
     try:
         offset, limit = coerce_pagination(arguments)
-        connections, total = await app_state.connection_service.list_connections(
+        connections, total = await connection_service_of(app_state).list_connections(
             offset=offset,
             limit=limit,
         )
@@ -513,7 +519,7 @@ async def _connections_get(
     """
     try:
         name = _require_str(arguments, _ARG_NAME)
-        connection = await app_state.connection_service.get_connection(name)
+        connection = await connection_service_of(app_state).get_connection(name)
         if connection is None:
             return err(
                 LookupError(f"Connection {name} not found"),
@@ -549,7 +555,7 @@ async def _connections_create(
         base_url = get_optional_str(arguments, _ARG_BASE_URL)
         metadata = _get_dict(arguments, _ARG_METADATA)
         actor_id = require_actor_id(resolved_actor)
-        connection = await app_state.connection_service.create_connection(
+        connection = await connection_service_of(app_state).create_connection(
             name=name,
             connection_type=connection_type,
             auth_method=auth_method,
@@ -593,7 +599,7 @@ async def _connections_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         name = _require_str(arguments, _ARG_NAME)
         actor_id = require_actor_id(resolved_actor)
-        await app_state.connection_service.delete_connection(
+        await connection_service_of(app_state).delete_connection(
             name=name,
             actor_id=actor_id,
             reason=reason,
@@ -630,7 +636,7 @@ async def _connections_check_health(
     """
     try:
         name = _require_str(arguments, _ARG_NAME)
-        connection = await app_state.connection_service.check_health(name=name)
+        connection = await connection_service_of(app_state).check_health(name=name)
         if connection is None:
             return err(
                 LookupError(f"Connection {name} not found"),
@@ -683,7 +689,7 @@ async def _webhooks_list(
     """
     try:
         offset, limit = coerce_pagination(arguments)
-        definitions, total = await app_state.webhook_service.list_webhooks(
+        definitions, total = await webhook_service_of(app_state).list_webhooks(
             offset=offset,
             limit=limit,
         )
@@ -710,7 +716,7 @@ async def _webhooks_get(
     """
     try:
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
-        definition = await app_state.webhook_service.get_webhook(webhook_id)
+        definition = await webhook_service_of(app_state).get_webhook(webhook_id)
         if definition is None:
             return err(
                 LookupError(f"Webhook {webhook_id} not found"),
@@ -741,7 +747,7 @@ async def _webhooks_create(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         definition = _parse_webhook_definition(arguments, require_id=False)
         actor_id = require_actor_id(resolved_actor)
-        stored = await app_state.webhook_service.create_webhook(
+        stored = await webhook_service_of(app_state).create_webhook(
             definition=definition,
             actor_id=actor_id,
         )
@@ -817,7 +823,7 @@ async def _apply_webhook_update(
         Resulting string.
     """
     try:
-        stored = await app_state.webhook_service.update_webhook(
+        stored = await webhook_service_of(app_state).update_webhook(
             definition=definition,
             actor_id=actor_id,
         )
@@ -857,7 +863,7 @@ async def _webhooks_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.webhook_service.delete_webhook(
+        removed = await webhook_service_of(app_state).delete_webhook(
             definition_id=webhook_id,
             actor_id=actor_id,
             reason=reason,
@@ -902,7 +908,7 @@ async def _tunnel_get_status(
         Resulting string.
     """
     try:
-        status = await app_state.tunnel_service.get_status()
+        status = await tunnel_service_of(app_state).get_status()
         return ok(status.to_dict())
     except Exception as exc:
         log_handler_invoke_failed("synthorg_tunnel_get_status", exc)
@@ -924,7 +930,7 @@ async def _tunnel_connect(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         actor_id = require_actor_id(resolved_actor)
-        status = await app_state.tunnel_service.connect()
+        status = await tunnel_service_of(app_state).connect()
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,

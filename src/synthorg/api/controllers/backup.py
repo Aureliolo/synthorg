@@ -15,12 +15,15 @@ from litestar.exceptions import InternalServerException
 from litestar.params import HeaderParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import idempotency_service_of
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_roles
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -39,6 +42,8 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from synthorg.backup.service import BackupService  # noqa: TC001
+from synthorg.backup.state import BackupStateSlice
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     ConflictError,
@@ -59,6 +64,15 @@ from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGH
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
+
+
+def _backup_service(app_state: AppState) -> BackupService:
+    """Return the backup service from its slice or raise 503 when unwired.
+
+    Returns:
+        The wired ``BackupService``.
+    """
+    return require_service(app_state.slice(BackupStateSlice).service, "Backup Service")
 
 
 async def _do_backup_as_dict(
@@ -153,7 +167,7 @@ class BackupController(Controller):
             # ``InternalServerException`` paths and drop the
             # domain-specific ``BackupError`` type the handler
             # discriminates on.
-            return await app_state.backup_service.create_backup(
+            return await _backup_service(app_state).create_backup(
                 BackupTrigger.MANUAL,
             )
 
@@ -164,7 +178,7 @@ class BackupController(Controller):
         # already-validated header value satisfy the parameter contract
         # directly, so pass them as plain strings instead of fake-
         # wrapping them in a no-op call.
-        outcome = await app_state.idempotency_service.run_idempotent(
+        outcome = await idempotency_service_of(app_state).run_idempotent(
             scope="backup",
             key=idempotency_key,
             callback=lambda: _do_backup_as_dict(_do_backup),
@@ -227,7 +241,7 @@ class BackupController(Controller):
         offset = (
             0
             if cursor is None
-            else decode_cursor(cursor, secret=app_state.cursor_secret)
+            else decode_cursor(cursor, secret=cursor_secret_of(app_state))
         )
         # ``BackupError`` propagates to ``handle_backup_error`` so the
         # response carries the structured RFC 9457 envelope; an
@@ -235,7 +249,7 @@ class BackupController(Controller):
         # ``BackupError`` type and force an unstructured 500.
         # Fetch ``limit + 1`` so we can detect that another page
         # follows without a second full-directory scan.
-        backups = await app_state.backup_service.list_backups(
+        backups = await _backup_service(app_state).list_backups(
             limit=limit + 1,
             offset=offset,
         )
@@ -243,7 +257,7 @@ class BackupController(Controller):
             offset=offset,
             fetched_rows=len(backups),
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         window = backups[:limit]
         return PaginatedResponse[BackupInfo](data=window, pagination=meta)
@@ -270,7 +284,7 @@ class BackupController(Controller):
         # the type into ``RESOURCE_NOT_FOUND`` and clients lose
         # the ability to discriminate which resource was missing.
         app_state: AppState = state.app_state
-        manifest = await app_state.backup_service.get_backup(backup_id)
+        manifest = await _backup_service(app_state).get_backup(backup_id)
         return ApiResponse(data=manifest)
 
     @delete(
@@ -304,7 +318,7 @@ class BackupController(Controller):
         # ``BackupNotFoundError``, 409 + ``RESOURCE_CONFLICT`` for
         # ``BackupInProgressError``).
         app_state: AppState = state.app_state
-        await app_state.backup_service.delete_backup(backup_id)
+        await _backup_service(app_state).delete_backup(backup_id)
 
     @post(
         "/restore",
@@ -352,7 +366,7 @@ class BackupController(Controller):
 
         app_state: AppState = state.app_state
         try:
-            response = await app_state.backup_service.restore_from_backup(
+            response = await _backup_service(app_state).restore_from_backup(
                 data.backup_id,
                 components=data.components,
             )

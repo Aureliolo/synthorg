@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from synthorg._core.features import require_service
 from synthorg.budget.currency import (
     DEFAULT_CURRENCY,
     CurrencyCode,
     assert_currencies_match,
 )
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
@@ -23,6 +25,7 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import AgentStatus
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
@@ -132,10 +135,13 @@ async def _resolve_active_count(
     Returns:
         Resulting integer.
     """
-    if not app_state.has_agent_registry:
+    if app_state.slice(HrStateSlice).agent_registry is None:
         return 0
     try:
-        dept_agents = await app_state.agent_registry.list_by_department(
+        registry = require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        )
+        dept_agents = await registry.list_by_department(
             dept_name,
         )
         return sum(1 for a in dept_agents if a.status == AgentStatus.ACTIVE)
@@ -168,7 +174,15 @@ async def _resolve_snapshots(
     """
     if not agent_ids:
         return ()
-    snapshots = await app_state.performance_tracker.get_snapshots(
+    # Performance tracker is optional: ``assemble_department_health``
+    # only catches ``ExceptionGroup`` for snapshot resolution, so a
+    # ``ServiceUnavailableError`` from ``require_service`` would abort
+    # the endpoint instead of returning the documented empty-snapshot
+    # fallback.  Treat an unwired tracker as "no snapshots available".
+    tracker = app_state.slice(HrStateSlice).performance_tracker
+    if tracker is None:
+        return ()
+    snapshots = await tracker.get_snapshots(
         tuple(NotBlankStr(a) for a in agent_ids),
     )
     return tuple(s for s in snapshots if s is not None)
@@ -196,12 +210,15 @@ async def _resolve_agent_ids(
         RecursionError: Raised on the corresponding failure path.
         ServiceUnavailableError: Raised on the corresponding failure path.
     """
-    if not app_state.has_agent_registry:
+    if app_state.slice(HrStateSlice).agent_registry is None:
         return ()
     if not agent_names:
         return ()
     try:
-        identities = await app_state.agent_registry.get_by_names(
+        registry = require_service(
+            app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+        )
+        identities = await registry.get_by_names(
             tuple(NotBlankStr(n) for n in agent_names),
         )
     except MemoryError, RecursionError:
@@ -411,12 +428,20 @@ async def assemble_department_health(
     seven_days_ago = now - timedelta(days=7)
 
     try:
+        # Resolve ``cost_tracker`` inside the try so an unwired tracker
+        # takes the documented degraded-fallback path (zeroed metrics)
+        # rather than aborting the whole request.  Both the unwired-
+        # service case and the TaskGroup-fan-out failure case feed into
+        # the same degraded response below.
+        cost_tracker = require_service(
+            app_state.slice(BudgetStateSlice).cost_tracker, "Cost Tracker"
+        )
         async with asyncio.TaskGroup() as tg:
             t_active = tg.create_task(
                 _resolve_active_count(app_state, dept_name),
             )
             t_cost = tg.create_task(
-                app_state.cost_tracker.get_records(
+                cost_tracker.get_records(
                     start=seven_days_ago,
                     end=now,
                 ),
@@ -433,6 +458,14 @@ async def assemble_department_health(
             endpoint="departments.health",
             department=dept_name,
             error_count=len(eg.exceptions),
+        )
+        return _build_degraded_health(dept_name, agent_count, now, currency=currency)
+    except ServiceUnavailableError as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.health",
+            department=dept_name,
+            error_type=type(exc).__name__,
         )
         return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 

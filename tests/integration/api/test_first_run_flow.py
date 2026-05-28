@@ -101,13 +101,18 @@ def integration_client(
         provider_registry=provider_registry,
     )
 
-    # Wire mock provider management onto the app state after creation.
+    # Wire mock provider management onto the providers slice after
+    # ``create_app`` so the setup-agent controller's
+    # ``provider_management_of(app_state).list_providers()`` call
+    # returns our stub mapping.
+    from synthorg.providers.state import ProvidersStateSlice
+
     app_state = app.state["app_state"]
     mock_mgmt = MagicMock(spec=ProviderManagementService)
     mock_mgmt.list_providers = AsyncMock(
         return_value={"test-provider": mock_provider_config},
     )
-    app_state._provider_management = mock_mgmt
+    app_state.wire(ProvidersStateSlice, management=mock_mgmt)
 
     with TestClient(app) as client:
         yield client
@@ -221,11 +226,13 @@ class TestFirstRunFlow:
         assert complete_data["setup_complete"] is True
 
         # ── 8. Verify agents are registered in the runtime registry ──
+        from synthorg.hr.state import HrStateSlice
+
         app_state = client.app.state.app_state
         loop = asyncio.new_event_loop()
         try:
             agent_count = loop.run_until_complete(
-                app_state.agent_registry.agent_count(),
+                app_state.slice(HrStateSlice).agent_registry.agent_count(),
             )
         finally:
             loop.close()

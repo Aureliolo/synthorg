@@ -12,15 +12,18 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
@@ -29,6 +32,7 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -59,10 +63,10 @@ async def _resolve_metrics_cap(state: State) -> int:
     """
     global _metrics_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return _MAX_METRICS_QUERY
     try:
-        result: int = await app_state.config_resolver.get_int(
+        result: int = await config_resolver_of(app_state).get_int(
             SettingNamespace.API.value, "max_metrics_per_query"
         )
     except asyncio.CancelledError:
@@ -167,7 +171,11 @@ class CoordinationMetricsController(Controller):
             raise ValidationError(msg)
         app_state = state.app_state
         metrics_cap = await _resolve_metrics_cap(state)
-        entries, total_matches = app_state.coordination_metrics_store.query(
+        metrics_store = require_service(
+            app_state.slice(CoordinationStateSlice).metrics_store,
+            "Coordination Metrics Store",
+        )
+        entries, total_matches = metrics_store.query(
             task_id=task_id,
             agent_id=agent_id,
             since=since,
@@ -179,7 +187,7 @@ class CoordinationMetricsController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.info(
             API_COORDINATION_METRICS_QUERIED,

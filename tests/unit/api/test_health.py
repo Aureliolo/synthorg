@@ -1,6 +1,7 @@
 """Tests for the liveness (/healthz) and readiness (/readyz) endpoints."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -233,27 +234,29 @@ class TestResolveTelemetryStatus:
 
     def test_disabled_when_no_collector(self) -> None:
         app_state = MagicMock(spec=AppState)
-        app_state.has_telemetry_collector = False
+        app_state.slice.return_value = SimpleNamespace(collector=None)
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     def test_enabled_when_collector_is_functional(self) -> None:
         app_state = MagicMock(spec=AppState)
-        app_state.has_telemetry_collector = True
-        app_state.telemetry_collector.is_functional = True
+        app_state.slice.return_value = SimpleNamespace(
+            collector=SimpleNamespace(is_functional=True)
+        )
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
 
     def test_disabled_when_collector_opted_out(self) -> None:
         app_state = MagicMock(spec=AppState)
-        app_state.has_telemetry_collector = True
-        app_state.telemetry_collector.is_functional = False
+        app_state.slice.return_value = SimpleNamespace(
+            collector=SimpleNamespace(is_functional=False)
+        )
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
     def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
         """Enabled config + noop reporter must surface as ``disabled``."""
         app_state = MagicMock(spec=AppState)
-        app_state.has_telemetry_collector = True
-        app_state.telemetry_collector.enabled = True
-        app_state.telemetry_collector.is_functional = False
+        app_state.slice.return_value = SimpleNamespace(
+            collector=SimpleNamespace(enabled=True, is_functional=False)
+        )
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
 

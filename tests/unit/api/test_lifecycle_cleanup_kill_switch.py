@@ -12,12 +12,21 @@ exactly N ticks; no wall-clock races.
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import create_autospec
 
 import pytest
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    lockout_store_of,
+    session_store_of,
+    ticket_store_of,
+)
 from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
+from synthorg.api.state import AppState
+from synthorg.settings.state import config_resolver_of
+from tests._shared import make_app_state
 
 
 def _no_arg_sync() -> object:
@@ -44,7 +53,7 @@ async def _config_get_async(_namespace: str, _key: str, /) -> object:
     return None
 
 
-def _build_app_state(*, enabled: bool) -> SimpleNamespace:
+def _build_app_state(*, enabled: bool) -> AppState:
     """Build a minimal ``AppState`` stand-in with counting stub stores.
 
     Each cleanup callable is a ``create_autospec(..., spec_set=True)``
@@ -85,15 +94,15 @@ def _build_app_state(*, enabled: bool) -> SimpleNamespace:
             return_value=0.001,
         ),
     )
-    return SimpleNamespace(
-        ticket_store=ticket_store,
-        session_store=session_store,
-        lockout_store=lockout_store,
+    return make_app_state(
         config_resolver=config_resolver,
-        has_config_resolver=True,
-        has_session_store=True,
-        has_lockout_store=True,
-        has_persistence=False,
+        slices={
+            ApiCoreStateSlice: {
+                "ticket_store": ticket_store,
+                "session_store": session_store,
+                "lockout_store": lockout_store,
+            },
+        },
     )
 
 
@@ -141,11 +150,11 @@ class TestLifecycleCleanupKillSwitch:
 
         await _run_loop_ticks(app_state, ticks=2, monkeypatch=monkeypatch)
 
-        assert app_state.ticket_store.cleanup_expired.call_count == 2
-        assert app_state.session_store.cleanup_expired.await_count == 2
-        assert app_state.lockout_store.cleanup_expired.await_count == 2
+        assert cast(Any, ticket_store_of(app_state).cleanup_expired).call_count == 2
+        assert cast(Any, session_store_of(app_state).cleanup_expired).await_count == 2
+        assert cast(Any, lockout_store_of(app_state).cleanup_expired).await_count == 2
         # One resolver consult per tick -- the gate is live, not frozen.
-        assert app_state.config_resolver.get_bool.await_count == 2
+        assert cast(Any, config_resolver_of(app_state).get_bool).await_count == 2
 
     async def test_disabled_short_circuits_every_tick(
         self,
@@ -160,10 +169,10 @@ class TestLifecycleCleanupKillSwitch:
 
         await _run_loop_ticks(app_state, ticks=3, monkeypatch=monkeypatch)
 
-        assert app_state.ticket_store.cleanup_expired.call_count == 0
-        assert app_state.session_store.cleanup_expired.await_count == 0
-        assert app_state.lockout_store.cleanup_expired.await_count == 0
-        assert app_state.config_resolver.get_bool.await_count == 3
+        assert cast(Any, ticket_store_of(app_state).cleanup_expired).call_count == 0
+        assert cast(Any, session_store_of(app_state).cleanup_expired).await_count == 0
+        assert cast(Any, lockout_store_of(app_state).cleanup_expired).await_count == 0
+        assert cast(Any, config_resolver_of(app_state).get_bool).await_count == 3
 
 
 @pytest.mark.unit
@@ -172,11 +181,11 @@ class TestResolveLifecycleCleanupEnabled:
 
     async def test_no_resolver_returns_true(self) -> None:
         """Missing resolver keeps cleanup running (fail-safe)."""
-        app_state = SimpleNamespace(has_config_resolver=False)
+        app_state = make_app_state()
 
         assert (
             await lifecycle_helpers._resolve_lifecycle_cleanup_enabled(
-                app_state,  # type: ignore[arg-type]
+                app_state,
             )
             is True
         )
@@ -190,14 +199,11 @@ class TestResolveLifecycleCleanupEnabled:
                 side_effect=RuntimeError("settings backend down"),
             ),
         )
-        app_state = SimpleNamespace(
-            has_config_resolver=True,
-            config_resolver=config_resolver,
-        )
+        app_state = make_app_state(config_resolver=config_resolver)
 
         assert (
             await lifecycle_helpers._resolve_lifecycle_cleanup_enabled(
-                app_state,  # type: ignore[arg-type]
+                app_state,
             )
             is True
         )
@@ -232,17 +238,17 @@ class TestRunCleanupTickExceptionIsolation:
                 return_value=None,
             ),
         )
-        app_state = SimpleNamespace(
-            ticket_store=ticket_store,
-            session_store=session_store,
-            lockout_store=lockout_store,
-            has_session_store=True,
-            has_lockout_store=True,
-            has_persistence=False,
+        app_state = make_app_state(
+            slices={
+                ApiCoreStateSlice: {
+                    "ticket_store": ticket_store,
+                    "session_store": session_store,
+                    "lockout_store": lockout_store,
+                },
+            },
         )
 
-        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
-
+        await lifecycle_helpers._run_cleanup_tick(app_state)
         # Ticket raised -- but session and lockout still ran to completion.
         ticket_store.cleanup_expired.assert_called_once()
         session_store.cleanup_expired.assert_awaited_once()
@@ -271,17 +277,17 @@ class TestRunCleanupTickExceptionIsolation:
                 return_value=None,
             ),
         )
-        app_state = SimpleNamespace(
-            ticket_store=ticket_store,
-            session_store=session_store,
-            lockout_store=lockout_store,
-            has_session_store=True,
-            has_lockout_store=True,
-            has_persistence=False,
+        app_state = make_app_state(
+            slices={
+                ApiCoreStateSlice: {
+                    "ticket_store": ticket_store,
+                    "session_store": session_store,
+                    "lockout_store": lockout_store,
+                },
+            },
         )
 
-        await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
-
+        await lifecycle_helpers._run_cleanup_tick(app_state)
         ticket_store.cleanup_expired.assert_called_once()
         session_store.cleanup_expired.assert_awaited_once()
         lockout_store.cleanup_expired.assert_awaited_once()
@@ -295,12 +301,9 @@ class TestRunCleanupTickExceptionIsolation:
                 side_effect=MemoryError,
             ),
         )
-        app_state = SimpleNamespace(
-            ticket_store=ticket_store,
-            has_session_store=False,
-            has_lockout_store=False,
-            has_persistence=False,
+        app_state = make_app_state(
+            slices={ApiCoreStateSlice: {"ticket_store": ticket_store}},
         )
 
         with pytest.raises(MemoryError):
-            await lifecycle_helpers._run_cleanup_tick(app_state)  # type: ignore[arg-type]
+            await lifecycle_helpers._run_cleanup_tick(app_state)

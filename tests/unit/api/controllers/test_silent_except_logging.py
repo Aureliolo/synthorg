@@ -20,6 +20,7 @@ from structlog.testing import capture_logs
 
 from synthorg.api.controllers import activities
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -32,11 +33,6 @@ class _ExplodingResolver:
         raise RuntimeError(msg)
 
 
-class _FakeAppState:
-    def __init__(self) -> None:
-        self.config_resolver = _ExplodingResolver()
-
-
 @pytest.fixture(autouse=True)
 def _structlog_capture_setup() -> None:
     """structlog logger needs at least one bound processor for capture_logs."""
@@ -45,11 +41,11 @@ def _structlog_capture_setup() -> None:
 
 class TestSilentExceptStructuredLogging:
     async def test_activities_budget_config_failure_logs_error_fields(self) -> None:
-        app_state = _FakeAppState()
+        app_state = make_app_state(config_resolver=_ExplodingResolver())
         degraded: list[str] = []
         with capture_logs() as caplog:
             result = await activities._resolve_currency(
-                app_state,  # type: ignore[arg-type]
+                app_state,
                 degraded,
             )
         # Default currency fallback fires.

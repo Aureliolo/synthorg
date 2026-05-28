@@ -7,10 +7,16 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, QueryParameter
 
+from synthorg._core.features import require_service
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
@@ -31,6 +37,7 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
+from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -46,6 +53,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,
 )
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -63,8 +71,11 @@ def _service(state: State) -> ArtifactService:
         ``ArtifactService`` instance.
     """
     return ArtifactService(
-        repo=state.app_state.persistence.artifacts,
-        storage=state.app_state.artifact_storage,
+        repo=persistence_of(state.app_state).artifacts,
+        storage=require_service(
+            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
+            "Artifact Storage",
+        ),
     )
 
 
@@ -241,7 +252,7 @@ class ArtifactController(Controller):
             artifacts,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[Artifact](data=page, pagination=meta)
 
@@ -430,7 +441,10 @@ class ArtifactController(Controller):
             },
         )
 
-        storage = state.app_state.artifact_storage
+        storage = require_service(
+            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
+            "Artifact Storage",
+        )
         try:
             size = await storage.store(artifact_id, data)
         except ArtifactTooLargeError as exc:
@@ -529,7 +543,10 @@ class ArtifactController(Controller):
             extra_log_kwargs={"artifact_id": artifact_id},
         )
 
-        storage = state.app_state.artifact_storage
+        storage = require_service(
+            state.app_state.slice(WorkspaceStateSlice).artifact_storage,
+            "Artifact Storage",
+        )
         try:
             content = await storage.retrieve(artifact_id)
         except RecordNotFoundError as exc:

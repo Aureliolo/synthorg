@@ -14,6 +14,13 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Any
 
+from synthorg.api.api_core_state import (
+    ApiCoreStateSlice,
+    idempotency_service_of,
+    lockout_store_of,
+    session_store_of,
+    ticket_store_of,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -25,11 +32,13 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.persistence import (
     PERSISTENCE_OAUTH_STATE_CLEANUP,
 )
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import (
     registered_default_bool,
     registered_default_float,
 )
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -58,10 +67,10 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
     fallback = registered_default_float(
         SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        return await app_state.config_resolver.get_float(
+        return await config_resolver_of(app_state).get_float(
             SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
         )
     except asyncio.CancelledError:
@@ -96,10 +105,10 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
     fallback = registered_default_bool(
         SettingNamespace.API.value, "lifecycle_cleanup_enabled"
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        return await app_state.config_resolver.get_bool(
+        return await config_resolver_of(app_state).get_bool(
             SettingNamespace.API.value, "lifecycle_cleanup_enabled"
         )
     except asyncio.CancelledError:
@@ -170,10 +179,10 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
         SettingNamespace.INTEGRATIONS.value,
         "oauth_idempotency_retention_seconds",
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback
     try:
-        return await app_state.config_resolver.get_float(
+        return await config_resolver_of(app_state).get_float(
             SettingNamespace.INTEGRATIONS.value,
             "oauth_idempotency_retention_seconds",
         )
@@ -203,23 +212,23 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
     )
 
     await _run_cleanup_step(
-        app_state.ticket_store.cleanup_expired,
+        ticket_store_of(app_state).cleanup_expired,
         event=API_WS_TICKET_CLEANUP,
         failure_message="Periodic ticket cleanup failed",
     )
-    if app_state.has_session_store:
+    if app_state.slice(ApiCoreStateSlice).session_store is not None:
         await _run_cleanup_step(
-            app_state.session_store.cleanup_expired,
+            session_store_of(app_state).cleanup_expired,
             event=API_SESSION_CLEANUP,
             failure_message="Periodic session cleanup failed",
         )
-    if app_state.has_lockout_store:
+    if app_state.slice(ApiCoreStateSlice).lockout_store is not None:
         await _run_cleanup_step(
-            app_state.lockout_store.cleanup_expired,
+            lockout_store_of(app_state).cleanup_expired,
             event=API_AUTH_LOCKOUT_CLEANUP,
             failure_message="Periodic lockout cleanup failed",
         )
-    if app_state.has_persistence:
+    if app_state.slice(PersistenceStateSlice).backend is not None:
         # OAuth state cleanup is invoked directly (not via _run_cleanup_step)
         # so we can surface the per-tick removed-row count at the lifecycle
         # observability boundary -- the repo-level log only fires when
@@ -229,7 +238,8 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
             app_state,
         )
         try:
-            oauth_removed = await app_state.persistence.oauth_states.cleanup_expired(
+            oauth_states = persistence_of(app_state).oauth_states
+            oauth_removed = await oauth_states.cleanup_expired(
                 oauth_retention_seconds,
             )
         except Exception as exc:
@@ -246,7 +256,7 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
                 removed=oauth_removed,
             )
         await _run_cleanup_step(
-            app_state.idempotency_service.cleanup_expired,
+            idempotency_service_of(app_state).cleanup_expired,
             event=IDEMPOTENCY_CLEANUP,
             failure_message="Periodic idempotency cleanup failed",
         )
@@ -276,14 +286,14 @@ async def _resolve_event_stream_janitor_settings(
         SettingNamespace.COMMUNICATION.value,
         "event_stream_janitor_interval_seconds",
     )
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return fallback_idle, fallback_interval
     try:
-        idle = await app_state.config_resolver.get_float(
+        idle = await config_resolver_of(app_state).get_float(
             SettingNamespace.COMMUNICATION.value,
             "event_stream_subscriber_idle_ttl_seconds",
         )
-        interval = await app_state.config_resolver.get_float(
+        interval = await config_resolver_of(app_state).get_float(
             SettingNamespace.COMMUNICATION.value,
             "event_stream_janitor_interval_seconds",
         )

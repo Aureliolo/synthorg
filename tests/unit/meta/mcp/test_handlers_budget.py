@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +24,7 @@ def config() -> SimpleNamespace:
 
 
 @pytest.fixture
-def fake_app_state(config: SimpleNamespace) -> SimpleNamespace:
+def fake_app_state(config: SimpleNamespace) -> AppState:
     tracker = AsyncMock()
     tracker.get_records.return_value = ()
     tracker.get_agent_cost.return_value = 12.34
@@ -37,7 +39,7 @@ def fake_app_state(config: SimpleNamespace) -> SimpleNamespace:
 
     persistence = SimpleNamespace(budget_config_versions=versions_repo)
 
-    return SimpleNamespace(
+    return make_app_state(
         cost_tracker=tracker,
         config_resolver=config_resolver,
         persistence=persistence,
@@ -51,7 +53,7 @@ def _parse(result: str) -> dict[str, Any]:
 
 
 class TestBudgetGetConfig:
-    async def test_happy(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_happy(self, fake_app_state: AppState) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_get_config"](
                 app_state=fake_app_state,
@@ -64,7 +66,7 @@ class TestBudgetGetConfig:
 
 
 class TestBudgetListRecords:
-    async def test_empty(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_empty(self, fake_app_state: AppState) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_list_records"](
                 app_state=fake_app_state,
@@ -77,7 +79,7 @@ class TestBudgetListRecords:
 
     async def test_invalid_agent_id(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_list_records"](
@@ -91,7 +93,7 @@ class TestBudgetListRecords:
 
 
 class TestBudgetGetAgentSpending:
-    async def test_happy(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_happy(self, fake_app_state: AppState) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_get_agent_spending"](
                 app_state=fake_app_state,
@@ -108,7 +110,7 @@ class TestBudgetGetAgentSpending:
 
     async def test_missing_agent_id(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_get_agent_spending"](
@@ -122,7 +124,7 @@ class TestBudgetGetAgentSpending:
 
 
 class TestBudgetVersionsList:
-    async def test_empty(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_empty(self, fake_app_state: AppState) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_versions_list"](
                 app_state=fake_app_state,
@@ -134,7 +136,7 @@ class TestBudgetVersionsList:
 
 
 class TestBudgetVersionsGet:
-    async def test_not_found(self, fake_app_state: SimpleNamespace) -> None:
+    async def test_not_found(self, fake_app_state: AppState) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_versions_get"](
                 app_state=fake_app_state,
@@ -147,7 +149,7 @@ class TestBudgetVersionsGet:
 
     async def test_missing_version_num(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_versions_get"](
@@ -161,7 +163,7 @@ class TestBudgetVersionsGet:
 
     async def test_rejects_zero_version(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         body = _parse(
             await BUDGET_HANDLERS["synthorg_budget_versions_get"](

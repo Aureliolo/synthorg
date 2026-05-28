@@ -10,11 +10,11 @@ argument validation for the read handlers.
 
 import json
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.errors import DocNotFoundError
@@ -26,6 +26,7 @@ from synthorg.docs_engine.models import (
     LivingDocument,
     ProseBlock,
 )
+from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.meta.mcp.handlers.docs import (
     _docs_get,
     _docs_history,
@@ -33,6 +34,7 @@ from synthorg.meta.mcp.handlers.docs import (
     _docs_search,
     _docs_write,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -114,8 +116,8 @@ class _FakeDocsService:
         )
 
 
-def _state(svc: _FakeDocsService) -> SimpleNamespace:
-    return SimpleNamespace(docs_service=svc)
+def _state(svc: _FakeDocsService) -> AppState:
+    return make_app_state(slices={DocsStateSlice: {"service": svc}})
 
 
 class TestDocsWrite:

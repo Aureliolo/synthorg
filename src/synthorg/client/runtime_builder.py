@@ -20,18 +20,21 @@ import os
 from collections.abc import Mapping  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
+from synthorg.engine.state import task_engine_of
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
+from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 
@@ -58,9 +61,9 @@ def _select_provider(app_state: AppState) -> CompletionProvider | None:
     provider-present switch, and the first registered provider backs
     the boot agent-intake strategy when ``agent`` is selected.
     """
-    if not app_state.has_active_provider:
+    if not has_active_provider(app_state):
         return None
-    registry = app_state.provider_registry
+    registry = provider_registry_of(app_state)
     names = registry.list_providers()
     if not names:
         return None
@@ -162,10 +165,10 @@ def build_client_simulation_runtime(
     are consulted when present. ``env`` overrides ``os.environ`` for
     tests.
     """
-    task_engine = app_state.task_engine
+    task_engine = task_engine_of(app_state)
     requested_strategy, model, default_project = _resolve_intake_settings(env)
     provider = _select_provider(app_state)
-    cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
     strategy, effective_strategy = _build_intake_with_fallback(
         requested_strategy=requested_strategy,
         model=model,

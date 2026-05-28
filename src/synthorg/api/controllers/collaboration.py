@@ -14,6 +14,7 @@ from pydantic import (
     computed_field,
 )
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -34,6 +35,7 @@ from synthorg.hr.performance.models import (
     CollaborationScoreResult,
     LlmCalibrationRecord,
 )
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_REQUEST_ERROR
 
@@ -145,7 +147,10 @@ class CollaborationController(Controller):
             ``CollaborationOverrideStore`` instance.
         """
         app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
+        tracker = require_service(
+            app_state.slice(HrStateSlice).performance_tracker,
+            "Performance Tracker",
+        )
         store = tracker.override_store
         if store is None:
             logger.warning(
@@ -173,7 +178,10 @@ class CollaborationController(Controller):
             Collaboration score result.
         """
         app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
+        tracker = require_service(
+            app_state.slice(HrStateSlice).performance_tracker,
+            "Performance Tracker",
+        )
         return ApiResponse(
             data=await tracker.get_collaboration_score(
                 NotBlankStr(agent_id),
@@ -348,7 +356,10 @@ class CollaborationController(Controller):
             Calibration summary with records and drift.
         """
         app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
+        tracker = require_service(
+            app_state.slice(HrStateSlice).performance_tracker,
+            "Performance Tracker",
+        )
         agent_nb = NotBlankStr(agent_id)
 
         records: tuple[LlmCalibrationRecord, ...] = ()

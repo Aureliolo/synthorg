@@ -17,6 +17,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.bridge_configs import WorkersBridgeConfig
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -96,7 +97,7 @@ class WorkersBridgeSettingsSubscriber:
             )
             return
         try:
-            resolver = self._app_state.config_resolver
+            resolver = config_resolver_of(self._app_state)
             value: int | float
             if key in _WATCHED_INT:
                 value = await resolver.get_int(namespace, key)

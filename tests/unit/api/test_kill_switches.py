@@ -21,7 +21,6 @@ Setting                                        Default
 
 import asyncio
 from types import SimpleNamespace
-from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -40,6 +39,7 @@ from synthorg.notifications.models import (
 from synthorg.persistence.connection_protocol import ConnectionRepository
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.settings.resolver import ConfigResolver
+from tests._shared import make_app_state
 from tests._shared.fake_clock import FakeClock
 
 
@@ -261,12 +261,8 @@ class TestWebhookCleanupKillSwitch:
     ) -> AppState:
         """Lightweight stand-in for ``AppState`` carrying just the
         attributes the resolver helper reads."""
-        return cast(
-            AppState,
-            SimpleNamespace(
-                has_config_resolver=has_resolver,
-                config_resolver=resolver,
-            ),
+        return make_app_state(
+            config_resolver=resolver if has_resolver else None,
         )
 
     async def test_returns_resolver_value(self) -> None:
@@ -299,14 +295,9 @@ class TestWebhookCleanupKillSwitch:
         connections_repo = AsyncMock(spec=ConnectionRepository)
         connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
-        app_state = cast(
-            AppState,
-            SimpleNamespace(
-                has_config_resolver=True,
-                config_resolver=resolver,
-                has_persistence=True,
-                persistence=persistence,
-            ),
+        app_state = make_app_state(
+            config_resolver=resolver,
+            persistence=persistence,
         )
         clock = FakeClock()
 
@@ -335,14 +326,9 @@ class TestWebhookCleanupKillSwitch:
         connections_repo = AsyncMock(spec=ConnectionRepository)
         connections_repo.list_items.return_value = ()
         persistence = SimpleNamespace(connections=connections_repo)
-        app_state = cast(
-            AppState,
-            SimpleNamespace(
-                has_config_resolver=True,
-                config_resolver=resolver,
-                has_persistence=True,
-                persistence=persistence,
-            ),
+        app_state = make_app_state(
+            config_resolver=resolver,
+            persistence=persistence,
         )
         clock = FakeClock()
 

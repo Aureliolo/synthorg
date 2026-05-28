@@ -17,16 +17,18 @@ feed, etc.).  The unit suite here covers:
 """
 
 import json
-from types import SimpleNamespace
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
+from synthorg.api.state import AppState
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
+    AgentPerformanceSnapshot,
     CollaborationCalibration,
     CollaborationScoreResult,
 )
@@ -35,6 +37,7 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_GUARDRAIL_VIOLATED,
 )
+from tests._shared import make_app_state
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -53,16 +56,22 @@ def identity() -> AgentIdentity:
 
 
 @pytest.fixture
-def fake_app_state(identity: AgentIdentity) -> SimpleNamespace:
-    """App state stub with registry/performance mocks."""
+def fake_agent_registry(identity: AgentIdentity) -> AsyncMock:
     registry = AsyncMock()
     registry.list_active.return_value = (identity,)
     registry.get_by_name.return_value = identity
     registry.get.return_value = identity
     registry.unregister.return_value = identity
+    return registry
 
+
+@pytest.fixture
+def fake_performance_tracker(identity: AgentIdentity) -> AsyncMock:
     tracker = AsyncMock()
-    tracker.get_snapshot.return_value = None
+    tracker.get_snapshot.return_value = AgentPerformanceSnapshot(
+        agent_id=NotBlankStr(str(identity.id)),
+        computed_at=datetime.now(UTC),
+    )
     tracker.get_collaboration_score.return_value = CollaborationScoreResult(
         score=0.75,
         strategy_name="test-strategy",
@@ -73,10 +82,18 @@ def fake_app_state(identity: AgentIdentity) -> SimpleNamespace:
         strategy_name=NotBlankStr("test-strategy"),
         sample_size=0,
     )
+    return tracker
 
-    return SimpleNamespace(
-        agent_registry=registry,
-        performance_tracker=tracker,
+
+@pytest.fixture
+def fake_app_state(
+    fake_agent_registry: AsyncMock,
+    fake_performance_tracker: AsyncMock,
+) -> AppState:
+    """App state stub with registry/performance mocks."""
+    return make_app_state(
+        agent_registry=fake_agent_registry,
+        performance_tracker=fake_performance_tracker,
     )
 
 
@@ -103,7 +120,7 @@ class TestAllAgentHandlersReturnValidEnvelope:
     async def test_basic_envelope(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS[tool_name]
@@ -129,7 +146,7 @@ class TestAllAgentHandlersReturnValidEnvelope:
 class TestAgentsList:
     async def test_happy_path(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         identity: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_list"]
@@ -146,9 +163,10 @@ class TestAgentsList:
 class TestAgentsGet:
     async def test_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
+        fake_agent_registry: AsyncMock,
     ) -> None:
-        fake_app_state.agent_registry.get_by_name.return_value = None
+        fake_agent_registry.get_by_name.return_value = None
         handler = AGENT_HANDLERS["synthorg_agents_get"]
         body = _parse(
             await handler(
@@ -166,7 +184,7 @@ class TestAgentsDelete:
 
     async def test_happy_path_fires_audit_event(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         identity: AgentIdentity,
         actor: AgentIdentity,
     ) -> None:
@@ -189,7 +207,7 @@ class TestAgentsDelete:
 
     async def test_missing_confirm_blocked(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
@@ -209,7 +227,7 @@ class TestAgentsDelete:
 
     async def test_missing_actor_blocked(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
         body = _parse(
@@ -228,10 +246,11 @@ class TestAgentsDelete:
 
     async def test_not_found(
         self,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
         actor: AgentIdentity,
+        fake_agent_registry: AsyncMock,
     ) -> None:
-        fake_app_state.agent_registry.get_by_name.return_value = None
+        fake_agent_registry.get_by_name.return_value = None
         handler = AGENT_HANDLERS["synthorg_agents_delete"]
         body = _parse(
             await handler(
@@ -263,7 +282,7 @@ class TestWriteHandlersValidateInputs:
     async def test_empty_args_returns_invalid_argument(
         self,
         tool_name: str,
-        fake_app_state: SimpleNamespace,
+        fake_app_state: AppState,
     ) -> None:
         handler = AGENT_HANDLERS[tool_name]
         body = _parse(

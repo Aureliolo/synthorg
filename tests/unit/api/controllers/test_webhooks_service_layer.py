@@ -29,6 +29,7 @@ from synthorg.api.controllers.webhooks import (
 from synthorg.integrations.webhooks.activity_service import (
     WebhookActivityService,
 )
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -118,10 +119,7 @@ class TestListActivityRoutesThroughService:
         class _StubPersistence:
             webhook_receipts = _StubReceiptsRepo()
 
-        class _StubAppState:
-            persistence = _StubPersistence()
-
-        state = {"app_state": _StubAppState()}
+        state = {"app_state": make_app_state(persistence=_StubPersistence())}
         first = await _get_activity_service(state)  # type: ignore[arg-type]
         second = await _get_activity_service(state)  # type: ignore[arg-type]
         assert first is second

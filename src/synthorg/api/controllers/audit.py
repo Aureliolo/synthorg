@@ -16,11 +16,13 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
@@ -32,8 +34,11 @@ from synthorg.observability.events.api import (
     API_VALIDATION_FAILED,
 )
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
+from synthorg.persistence.state import persistence_of
 from synthorg.security.models import AuditEntry
+from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
 
 logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 50
@@ -64,10 +69,10 @@ async def _resolve_audit_cap(state: State) -> int:
     """
     global _audit_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
-    if not app_state.has_config_resolver:
+    if app_state.slice(SettingsStateSlice).config_resolver is None:
         return _MAX_AUDIT_QUERY
     try:
-        result: int = await app_state.config_resolver.get_int(
+        result: int = await config_resolver_of(app_state).get_int(
             SettingNamespace.API.value, "max_audit_records_per_query"
         )
     except asyncio.CancelledError:
@@ -211,7 +216,10 @@ class AuditController(Controller):
 
         app_state = state.app_state
         audit_cap = await _resolve_audit_cap(state)
-        entries = app_state.audit_log.query(
+        audit_log = require_service(
+            app_state.slice(SecurityStateSlice).audit_log, "Audit Log"
+        )
+        entries = audit_log.query(
             agent_id=agent_id,
             tool_name=tool_name,
             action_type=action_type,
@@ -224,7 +232,7 @@ class AuditController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.info(
             API_AUDIT_QUERIED,
@@ -296,7 +304,7 @@ class AuditController(Controller):
             ValidationError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
-        repo = app_state.persistence.audit_entries
+        repo = persistence_of(app_state).audit_entries
 
         if not isinstance(repo, JsonbQueryCapability):
             logger.warning(
@@ -373,7 +381,7 @@ class AuditController(Controller):
             filtered,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         logger.info(
             API_AUDIT_QUERIED,

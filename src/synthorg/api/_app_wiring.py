@@ -39,17 +39,19 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
         SQLiteCostForecastRepository,
     )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     budget_config = BudgetConfig()
     benchmark_provider = StubBenchmarkScoreProvider()
-    backend_name = app_state.persistence.backend_name
+    backend_name = persistence_of(app_state).backend_name
     if backend_name == "sqlite":
         forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
-            app_state.persistence.get_db(),
-            write_context=app_state.persistence.write_context,
+            persistence_of(app_state).get_db(),
+            write_context=persistence_of(app_state).write_context,
             currency_getter=lambda: budget_config.currency,
         )
     else:
@@ -58,7 +60,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         )
 
         forecast_repo = PostgresCostForecastRepository(
-            app_state.persistence.get_db(),
+            persistence_of(app_state).get_db(),
             currency_getter=lambda: budget_config.currency,
         )
     forecaster = CostForecaster(budget_config=budget_config)
@@ -66,16 +68,25 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
     )
-    app_state.swap_budget_config(budget_config)
-    app_state.swap_benchmark_provider(benchmark_provider)
-    app_state.swap_cost_forecast_repo(forecast_repo)
-    app_state.swap_cost_forecaster(forecaster)
-    app_state.swap_pareto_analyzer(analyzer)
+    app_state.wire(
+        BudgetStateSlice,
+        budget_config=budget_config,
+        benchmark_provider=benchmark_provider,
+        cost_forecast_repo=forecast_repo,
+        cost_forecaster=forecaster,
+        pareto_analyzer=analyzer,
+    )
 
 
 def _try_wire_cost_dial(app_state: AppState) -> None:
     """Wire the cost-dial services best-effort; never poison startup."""
-    if not app_state.has_persistence or app_state.cost_forecaster is not None:
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+    )
+
+    forecaster = app_state.slice(BudgetStateSlice).cost_forecaster
+    if app_state.slice(PersistenceStateSlice).backend is None or forecaster is not None:
         return
     try:
         _wire_cost_dial_services(app_state)
@@ -99,37 +110,62 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     a connected persistence backend (for the frame store) plus a task
     engine and interrupt store.
     """
-    interrupt_store = app_state.interrupt_store
+    from synthorg.communication.state import (  # noqa: PLC0415
+        CommunicationStateSlice,
+    )
+    from synthorg.engine.state import EngineStateSlice, task_engine_of  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    interrupt_store = app_state.slice(CommunicationStateSlice).interrupt_store
     if (
-        not app_state.has_persistence
-        or not app_state.has_task_engine
+        app_state.slice(PersistenceStateSlice).backend is None
+        or app_state.slice(EngineStateSlice).task_engine is None
         or interrupt_store is None
     ):
         return
     from synthorg.engine.cockpit import CockpitService  # noqa: PLC0415
+    from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
     from synthorg.engine.flight_recording import (  # noqa: PLC0415
         FlightRecorderService,
     )
     from synthorg.engine.intervention import build_steering_directive  # noqa: PLC0415
 
-    frames = app_state.persistence.flight_recorder_frames
-    app_state.set_cockpit_services(
-        cockpit_service=CockpitService(
-            app_state.task_engine,
-            frames,
-            clock=app_state.clock,
-        ),
-        flight_recorder_service=FlightRecorderService(frames),
-        steering_directive=build_steering_directive(
-            interrupt_store,
-            clock=app_state.clock,
-        ),
+    frames = persistence_of(app_state).flight_recorder_frames
+    cockpit_service = CockpitService(
+        task_engine_of(app_state),
+        frames,
+        clock=app_state.clock,
+    )
+    flight_recorder_service = FlightRecorderService(frames)
+    steering_directive = build_steering_directive(
+        interrupt_store,
+        clock=app_state.clock,
+    )
+    app_state.swap_slice(
+        CockpitStateSlice(
+            cockpit_service=cockpit_service,
+            flight_recorder_service=flight_recorder_service,
+            steering_directive=steering_directive,
+        )
     )
 
 
 def _try_wire_cockpit(app_state: AppState) -> None:
     """Wire the cockpit services best-effort; never poison startup."""
-    if not app_state.has_persistence or app_state.has_cockpit_service:
+    from synthorg.engine.cockpit.state import (  # noqa: PLC0415
+        CockpitStateSlice,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+    )
+
+    if (
+        app_state.slice(PersistenceStateSlice).backend is None
+        or app_state.slice(CockpitStateSlice).cockpit_service is not None
+    ):
         return
     try:
         _wire_cockpit_services(app_state)
@@ -153,7 +189,19 @@ def _wire_environment_service(app_state: AppState) -> None:
     Persistence-less boots skip wiring -- the service is optional and
     gated on ``has_environment_service`` downstream.
     """
-    if not app_state.has_persistence or app_state.environment_service is not None:
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        WorkspaceStateSlice,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+
+    environment_service = app_state.slice(WorkspaceStateSlice).environment_service
+    if (
+        app_state.slice(PersistenceStateSlice).backend is None
+        or environment_service is not None
+    ):
         return
     from synthorg.engine.workspace.environment import (  # noqa: PLC0415
         EnvironmentConfig,
@@ -166,9 +214,10 @@ def _wire_environment_service(app_state: AppState) -> None:
     )
 
     environment_config = EnvironmentConfig()
-    app_state.set_environment_service(
-        EnvironmentService(
-            repo=app_state.persistence.project_environments,
+    app_state.wire(
+        WorkspaceStateSlice,
+        environment_service=EnvironmentService(
+            repo=persistence_of(app_state).project_environments,
             strategy=build_environment_strategy(
                 environment_config,
                 EnvironmentDeps(clock=app_state.clock),

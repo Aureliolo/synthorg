@@ -11,9 +11,15 @@ from typing import Final
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.critical_errors import reraise_critical
@@ -21,6 +27,7 @@ from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa:
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
 from synthorg.integrations.health.service import check_connection_health
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import HEALTH_CHECK_FAILED
 
@@ -98,14 +105,17 @@ class IntegrationHealthController(Controller):
             connections.
         """
         app_state: AppState = state.app_state
-        catalog: ConnectionCatalog = app_state.connection_catalog
+        catalog: ConnectionCatalog = require_service(
+            app_state.slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         connections = await catalog.list_all()
         sorted_conns = tuple(sorted(connections, key=lambda c: c.name))
         page_conns, meta = paginate_cursor(
             sorted_conns,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         if not page_conns:
             return PaginatedResponse(data=(), pagination=meta)
@@ -136,7 +146,10 @@ class IntegrationHealthController(Controller):
         Returns:
             ``ApiResponse[HealthReport]`` instance.
         """
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         report = await check_connection_health(
             catalog,
             connection_name,

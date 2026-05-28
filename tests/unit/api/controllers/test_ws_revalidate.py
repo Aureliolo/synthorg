@@ -1,7 +1,7 @@
 """Tests for the WS periodic revalidation task."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,8 +10,11 @@ from synthorg.api.controllers.ws_revalidation import (
     _periodic_revalidate,
     _revocation_reason,
 )
+from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.persistence.state import persistence_of
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
@@ -42,14 +45,14 @@ def _make_app_state(
     *,
     has_session_store: bool = False,
     is_revoked: bool = False,
-) -> Any:
+) -> AppState:
     """Lightweight ``app_state`` stub for ``_revocation_reason``."""
-    session_store = type("Ss", (), {"is_revoked": lambda _self, _jti: is_revoked})()
-    return type(
-        "AS",
-        (),
-        {"has_session_store": has_session_store, "session_store": session_store},
-    )()
+    session_store = (
+        type("Ss", (), {"is_revoked": lambda _self, _jti: is_revoked})()
+        if has_session_store
+        else None
+    )
+    return make_app_state(session_store=session_store)
 
 
 def test_revocation_reason_user_deleted() -> None:
@@ -131,7 +134,9 @@ async def test_periodic_revalidate_failure_window_does_not_reset_on_success() ->
     between the failure cluster and the saturating failure.
     """
     socket = _FakeSocket(persisted_user=_make_user())
-    socket.app.state["app_state"].persistence.users.get.side_effect = [
+    cast(
+        AsyncMock, persistence_of(socket.app.state["app_state"]).users.get
+    ).side_effect = [
         RuntimeError("blip 1"),
         _make_user(),  # success
         RuntimeError("blip 2"),
@@ -181,17 +186,9 @@ class _FakeApp:
         else:
             users_repo.get.return_value = persisted_user
         persistence = type("Pst", (), {"users": users_repo})()
-        app_state = type(
-            "AS",
-            (),
-            {
-                "persistence": persistence,
-                "has_session_store": False,
-                # Tight revalidation-window bounds so the
-                # transient-failure regression test can saturate the
-                # window in a few iterations.
-                "auth_revalidate_window_seconds": 60,
-                "auth_revalidate_max_failures": 3,
-            },
-        )()
+        app_state = make_app_state(persistence=persistence)
+        # Tight revalidation-window bounds so the transient-failure
+        # regression test can saturate the window in a few iterations.
+        app_state._auth_revalidate_window_seconds = 60
+        app_state._auth_revalidate_max_failures = 3
         self.state: dict[str, Any] = {"app_state": app_state}

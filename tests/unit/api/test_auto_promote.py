@@ -10,6 +10,7 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.auth.models import OrgRole, User
 from synthorg.core.auth.roles import HumanRole
+from tests._shared import make_app_state
 from tests.unit.api.fakes import FakePersistenceBackend
 
 
@@ -18,7 +19,7 @@ async def _make_app_state(
     persistence: FakePersistenceBackend | None = None,
 ) -> AppState:
     """Build an AppState with optional fake persistence."""
-    return AppState(
+    return make_app_state(
         config=RootConfig(company_name="test-company"),
         approval_store=ApprovalStore(),
         persistence=persistence,

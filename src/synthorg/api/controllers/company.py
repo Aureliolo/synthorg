@@ -6,6 +6,8 @@ from typing import Any
 from litestar import Controller, Request, Response, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.channels import (
     CHANNEL_COMPANY,
@@ -27,6 +29,7 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
 
@@ -55,7 +58,7 @@ class CompanyController(Controller):
             Company configuration envelope.
         """
         app_state: AppState = state.app_state
-        resolver = app_state.config_resolver
+        resolver = config_resolver_of(app_state)
         try:
             async with asyncio.TaskGroup() as tg:
                 t_name = tg.create_task(resolver.get_str("company", "company_name"))
@@ -103,7 +106,10 @@ class CompanyController(Controller):
         """
         app_state: AppState = state.app_state
         if_match = request.headers.get("if-match")
-        updated, new_etag = await app_state.org_mutation_service.update_company(
+        updated, new_etag = await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).update_company(
             data,
             if_match=if_match,
             saved_by=get_authenticated_user_id(),
@@ -147,7 +153,10 @@ class CompanyController(Controller):
             Reordered departments envelope.
         """
         app_state: AppState = state.app_state
-        reordered = await app_state.org_mutation_service.reorder_departments(
+        reordered = await require_service(
+            app_state.slice(ApiCoreStateSlice).org_mutation_service,
+            "Org Mutation Service",
+        ).reorder_departments(
             data,
             saved_by=get_authenticated_user_id(),
         )
@@ -173,5 +182,5 @@ class CompanyController(Controller):
             Departments envelope.
         """
         app_state: AppState = state.app_state
-        departments = await app_state.config_resolver.get_departments()
+        departments = await config_resolver_of(app_state).get_departments()
         return ApiResponse(data=departments)

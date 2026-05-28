@@ -10,6 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING, cast
 
 from synthorg import __version__
+from synthorg.a2a.state import A2aStateSlice
 from synthorg.api.lifecycle import (
     _maybe_start_health_prober,
     _safe_shutdown,
@@ -25,6 +26,9 @@ from synthorg.api.lifecycle_helpers.config_apply import (
     _apply_bridge_config,
     _apply_security_timeout_interval,
 )
+from synthorg.api.lifecycle_helpers.persistence_autowire import (
+    wire_persistence_services,
+)
 from synthorg.api.lifecycle_helpers.settings_dispatcher import (
     _build_settings_dispatcher,
 )
@@ -33,7 +37,17 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _ticket_cleanup_loop,
 )
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
+from synthorg.approval.state import ApprovalStateSlice
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.hr.state import (
+    HrStateSlice,
+    agent_registry_of,
+    training_service_of,
+)
+from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.memory.state import MemoryStateSlice
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -51,7 +65,12 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
 )
+from synthorg.observability.state import ObservabilityStateSlice
+from synthorg.providers.state import has_active_provider
 from synthorg.settings.dispatcher import SettingsChangeDispatcher  # noqa: TC001
+from synthorg.settings.state import SettingsStateSlice, config_resolver_of
+from synthorg.tools.state import ToolsStateSlice, tool_invocation_tracker_of
+from synthorg.workers.state import RuntimeStateSlice
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -172,8 +191,8 @@ async def _wire_workflow_observer(
         for o in getattr(task_engine, "_observers", ())
     ):
         return
-    if app_state.has_config_resolver:
-        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    if app_state.slice(SettingsStateSlice).config_resolver is not None:
+        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
         max_depth = engine_bridge.max_subworkflow_depth
     else:
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
@@ -209,9 +228,9 @@ async def _wire_approval_gate(
     One gate, shared by both governance sides: the engine parks blocked
     contexts (the gate is injected into ``AgentEngine`` by
     ``runtime_builder``) and the ``/approvals`` controller resumes them
-    (read via ``app_state.approval_gate``). Park and resume must operate
-    on the same gate over the same ``ParkedContextRepository`` or a
-    parked context can never be found again on the decision side.
+    (read via the ``ApprovalStateSlice`` gate). Park and resume must
+    operate on the same gate over the same ``ParkedContextRepository`` or
+    a parked context can never be found again on the decision side.
 
     Idempotent: a re-entered lifespan (shared-app test fixtures) skips
     when a gate is already wired. When persistence is absent or not
@@ -219,7 +238,7 @@ async def _wire_approval_gate(
     single-gate invariant and the review-gate flow hold; resume of a
     persisted context is simply unavailable without a backend.
     """
-    if app_state.approval_gate is not None:
+    if app_state.slice(ApprovalStateSlice).gate is not None:
         return
     from synthorg.engine.approval_gate import ApprovalGate  # noqa: PLC0415
     from synthorg.security.timeout.park_service import (  # noqa: PLC0415
@@ -239,8 +258,8 @@ async def _wire_approval_gate(
     # the shared gate is in use. When the resolver is not yet wired
     # (early boot / minimal test states) fall back to the
     # EngineBridgeConfig seed default rather than failing gate wiring.
-    if app_state.has_config_resolver:
-        engine_bridge = await app_state.config_resolver.get_engine_bridge_config()
+    if app_state.slice(SettingsStateSlice).config_resolver is not None:
+        engine_bridge = await config_resolver_of(app_state).get_engine_bridge_config()
         interrupt_timeout = engine_bridge.approval_interrupt_timeout_seconds
     else:
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
@@ -248,19 +267,18 @@ async def _wire_approval_gate(
         )
 
         interrupt_timeout = EngineBridgeConfig().approval_interrupt_timeout_seconds
+    communication = app_state.slice(CommunicationStateSlice)
     gate = ApprovalGate(
         park_service=ParkService(),
         parked_context_repo=parked_repo,
-        notification_dispatcher=(
-            app_state.notification_dispatcher
-            if app_state.has_notification_dispatcher
-            else None
-        ),
-        event_hub=app_state.event_stream_hub,
-        interrupt_store=app_state.interrupt_store,
+        notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
+        event_hub=communication.event_stream_hub,
+        interrupt_store=communication.interrupt_store,
         interrupt_timeout_seconds=interrupt_timeout,
     )
-    app_state.set_approval_gate(gate)
+    app_state.swap_slice(
+        app_state.slice(ApprovalStateSlice).model_copy(update={"gate": gate})
+    )
     logger.info(
         API_SERVICE_AUTO_WIRED,
         service="approval_gate",
@@ -380,15 +398,15 @@ def _build_lifecycle(  # noqa: PLR0913
         # on a disconnected backend, which raises and drops the system
         # into a no-versioning state (lost audit trail on rollback/evolve).
         if (
-            app_state.has_agent_registry
+            app_state.slice(HrStateSlice).agent_registry is not None
             and persistence is not None
             and getattr(persistence, "is_connected", False)
-            and not app_state.agent_registry.has_versioning
+            and not agent_registry_of(app_state).has_versioning
         ):
             try:
                 from synthorg.versioning import VersioningService  # noqa: PLC0415
 
-                app_state.agent_registry.bind_versioning(
+                agent_registry_of(app_state).bind_versioning(
                     VersioningService(persistence.identity_versions),
                 )
                 logger.info(
@@ -406,13 +424,18 @@ def _build_lifecycle(  # noqa: PLR0913
 
         # Wire Prometheus collector (no dependencies, runs in-process).
         # Non-fatal: /metrics degrades to 503 if this fails.
-        if not app_state.has_prometheus_collector:
+        if app_state.slice(ObservabilityStateSlice).prometheus_collector is None:
             try:
                 from synthorg.observability.prometheus_collector import (  # noqa: PLC0415
                     PrometheusCollector,
                 )
 
-                app_state.set_prometheus_collector(PrometheusCollector())
+                collector = PrometheusCollector()
+                app_state.swap_slice(
+                    app_state.slice(ObservabilityStateSlice).model_copy(
+                        update={"prometheus_collector": collector}
+                    )
+                )
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -443,183 +466,17 @@ def _build_lifecycle(  # noqa: PLR0913
                 error=safe_error_description(exc),
             )
 
-        # Wire ``OAuthStateService`` once persistence + the
-        # ``oauth_states`` repository are available.  Owns the only
-        # durable write for OAuth-flow initiation so the
-        # ``SECURITY_OAUTH_STATE_PERSISTED`` event fires alongside
-        # every save.
-        if (
-            persistence is not None
-            and getattr(persistence, "is_connected", False)
-            and not app_state.has_oauth_state_service
-            and hasattr(persistence, "oauth_states")
-        ):
-            try:
-                from synthorg.integrations.oauth.state_service import (  # noqa: PLC0415
-                    OAuthStateService,
-                )
-
-                app_state.set_oauth_state_service(
-                    OAuthStateService(repo=persistence.oauth_states),
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="oauth_state_service",
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    API_SERVICE_AUTO_WIRE_FAILED,
-                    service="oauth_state_service",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        # Wire ``TrainingPlanService`` once persistence + the
-        # ``training_plans`` / ``training_results`` repositories are
-        # available.  Centralises every plan-CRUD write the
-        # controller previously made directly so audit logging
-        # cannot regress when a new write path is added.
-        if (
-            persistence is not None
-            and getattr(persistence, "is_connected", False)
-            and not app_state.has_training_plan_service
-            and hasattr(persistence, "training_plans")
-            and hasattr(persistence, "training_results")
-        ):
-            try:
-                from synthorg.hr.training.plan_service import (  # noqa: PLC0415
-                    TrainingPlanService,
-                )
-
-                app_state.set_training_plan_service(
-                    TrainingPlanService(
-                        plan_repo=persistence.training_plans,
-                        result_repo=persistence.training_results,
-                    ),
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="training_plan_service",
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    API_SERVICE_AUTO_WIRE_FAILED,
-                    service="training_plan_service",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        # Wire ``WorkflowRollbackService`` once persistence + the
-        # ``workflow_definitions`` / ``versions`` repositories are
-        # available.  Centralises the live save + post-rollback
-        # snapshot writes the controller previously made directly so
-        # audit logging cannot regress when a new write path lands in
-        # the rollback contract.
-        if (
-            persistence is not None
-            and getattr(persistence, "is_connected", False)
-            and not app_state.has_workflow_rollback_service
-            and hasattr(persistence, "workflow_definitions")
-            and hasattr(persistence, "workflow_versions")
-        ):
-            try:
-                from synthorg.api.services.workflow_rollback_service import (  # noqa: PLC0415
-                    WorkflowRollbackService,
-                )
-
-                app_state.set_workflow_rollback_service(
-                    WorkflowRollbackService(
-                        definition_repo=persistence.workflow_definitions,
-                        version_repo=persistence.workflow_versions,
-                    ),
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="workflow_rollback_service",
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    API_SERVICE_AUTO_WIRE_FAILED,
-                    service="workflow_rollback_service",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        # Wire ``WorkflowVersionService`` and ``AgentVersionService`` so
-        # the version-history controllers (workflow_versions.py and
-        # agent_identity_versions.py) can read snapshots through the
-        # service facade rather than reaching into
-        # ``app_state.persistence.*_versions`` directly. Mirrors the
-        # rollback wiring above and gates on the same persistence
-        # readiness pre-conditions so a missing repository never
-        # surfaces as a 500 when the controller pulls a service.
-        if (
-            persistence is not None
-            and getattr(persistence, "is_connected", False)
-            and not app_state.has_workflow_version_service
-            and hasattr(persistence, "workflow_versions")
-        ):
-            try:
-                from synthorg.engine.workflow.version_service import (  # noqa: PLC0415
-                    WorkflowVersionService,
-                )
-
-                app_state.set_workflow_version_service(
-                    WorkflowVersionService(
-                        version_repo=persistence.workflow_versions,
-                    ),
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="workflow_version_service",
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    API_SERVICE_AUTO_WIRE_FAILED,
-                    service="workflow_version_service",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        if (
-            persistence is not None
-            and getattr(persistence, "is_connected", False)
-            and not app_state.has_agent_version_service
-            and hasattr(persistence, "identity_versions")
-        ):
-            try:
-                from synthorg.hr.identity.version_service import (  # noqa: PLC0415
-                    AgentVersionService,
-                )
-
-                app_state.set_agent_version_service(
-                    AgentVersionService(
-                        version_repo=persistence.identity_versions,
-                    ),
-                )
-                logger.info(
-                    API_SERVICE_AUTO_WIRED,
-                    service="agent_version_service",
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    API_SERVICE_AUTO_WIRE_FAILED,
-                    service="agent_version_service",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+        # Persistence-gated service auto-wires (oauth-state, training-plan,
+        # workflow-rollback, workflow-version, agent-version). Each is
+        # best-effort + idempotent; extracted to keep this hook readable.
+        await wire_persistence_services(app_state, persistence)
 
         # On-startup auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings
             and persistence is not None
             and effective_config is not None
-            and not app_state.has_settings_service
+            and app_state.slice(SettingsStateSlice).settings_service is None
         ):
             try:
                 from synthorg.api.auto_wire import auto_wire_settings  # noqa: PLC0415
@@ -651,9 +508,15 @@ def _build_lifecycle(  # noqa: PLR0913
                     bridge,
                     message_bus,
                     persistence,
-                    performance_tracker=app_state._performance_tracker,  # noqa: SLF001
-                    distributed_task_queue=app_state.distributed_task_queue,
-                    distributed_backend_services=app_state.distributed_backend_services,
+                    performance_tracker=app_state.slice(
+                        HrStateSlice
+                    ).performance_tracker,
+                    distributed_task_queue=app_state.slice(
+                        RuntimeStateSlice
+                    ).distributed_task_queue,
+                    distributed_backend_services=app_state.slice(
+                        RuntimeStateSlice
+                    ).distributed_backend_services,
                 )
                 raise
         # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
@@ -680,15 +543,21 @@ def _build_lifecycle(  # noqa: PLR0913
                     bridge,
                     message_bus,
                     persistence,
-                    performance_tracker=app_state._performance_tracker,  # noqa: SLF001
-                    distributed_task_queue=app_state.distributed_task_queue,
-                    distributed_backend_services=app_state.distributed_backend_services,
+                    performance_tracker=app_state.slice(
+                        HrStateSlice
+                    ).performance_tracker,
+                    distributed_task_queue=app_state.slice(
+                        RuntimeStateSlice
+                    ).distributed_task_queue,
+                    distributed_backend_services=app_state.slice(
+                        RuntimeStateSlice
+                    ).distributed_backend_services,
                 )
                 raise
 
         # Single boot ApprovalGate: wired here (after persistence
         # connects, before the appended worker-execution-service install
-        # hook reads ``app_state.approval_gate``) so the engine parks
+        # hook reads the ``ApprovalStateSlice`` gate) so the engine parks
         # and the /approvals controller resumes on one gate. Non-fatal:
         # a failure degrades to the review-gate flow rather than aborting
         # boot, matching the other persistence-bound auto-wires.
@@ -710,7 +579,7 @@ def _build_lifecycle(  # noqa: PLR0913
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            if app_state.has_active_provider:
+            if has_active_provider(app_state):
                 raise
 
         # When an external caller already supplied a
@@ -721,14 +590,18 @@ def _build_lifecycle(  # noqa: PLR0913
         # path see ``has_memory_backend == True`` -- otherwise an
         # injected-service deployment would surface as 501 / unsupported
         # even though a connected backend is right there.
-        if app_state.has_training_service and not app_state.has_memory_backend:
+        hr_slice = app_state.slice(HrStateSlice)
+        if (
+            hr_slice.training_service is not None
+            and app_state.slice(MemoryStateSlice).backend is None
+        ):
             injected_backend = getattr(
-                app_state.training_service,
+                training_service_of(app_state),
                 "_memory_backend",
                 None,
             )
             if injected_backend is not None:
-                app_state.set_memory_backend(injected_backend)
+                app_state.wire(MemoryStateSlice, backend=injected_backend)
 
         # On-startup auto-wire: TrainingService.
         # Needs agent_registry, tool_invocation_tracker, and
@@ -736,11 +609,11 @@ def _build_lifecycle(  # noqa: PLR0913
         # InMemoryBackend for the memory layer; production callers
         # inject a real Mem0 backend via the training_service param.
         if (
-            not app_state.has_training_service
+            app_state.slice(HrStateSlice).training_service is None
             and effective_config is not None
             and effective_config.training.enabled
-            and app_state.has_agent_registry
-            and app_state.has_tool_invocation_tracker
+            and app_state.slice(HrStateSlice).agent_registry is not None
+            and app_state.slice(ToolsStateSlice).invocation_tracker is not None
         ):
             try:
                 from synthorg.hr.training.factory import (  # noqa: PLC0415
@@ -750,26 +623,33 @@ def _build_lifecycle(  # noqa: PLR0913
                     InMemoryBackend,
                 )
 
-                _perf = app_state._performance_tracker  # noqa: SLF001
+                _perf = app_state.slice(HrStateSlice).performance_tracker
                 if _perf is not None:
                     _mem = InMemoryBackend()
                     await _mem.connect()
+                    from synthorg._core.features import (  # noqa: PLC0415
+                        require_service,
+                    )
+
                     try:
                         _ts = build_training_service(
                             config=effective_config.training,
                             memory_backend=_mem,
                             tracker=_perf,
-                            registry=app_state.agent_registry,
-                            approval_store=app_state.approval_store,
-                            tool_tracker=app_state.tool_invocation_tracker,
+                            registry=agent_registry_of(app_state),
+                            approval_store=require_service(
+                                app_state.slice(ApprovalStateSlice).store,
+                                "Approval Store",
+                            ),
+                            tool_tracker=tool_invocation_tracker_of(app_state),
                         )
-                        app_state.set_training_service(_ts)
+                        app_state.wire(HrStateSlice, training_service=_ts)
                         # Expose the same backend to admin paths so
                         # ``DELETE /agents/{id}/memories/{id}`` and the
                         # ``delete_memory`` MCP tool can route through
                         # one connected backend instance per process.
-                        if not app_state.has_memory_backend:
-                            app_state.set_memory_backend(_mem)
+                        if app_state.slice(MemoryStateSlice).backend is None:
+                            app_state.wire(MemoryStateSlice, backend=_mem)
                     except MemoryError, RecursionError:
                         await _mem.disconnect()
                         raise
@@ -813,8 +693,11 @@ def _build_lifecycle(  # noqa: PLR0913
         # resolver is not yet available at that moment, so the bridge
         # is built with ``None`` and would otherwise read the
         # registered defaults forever.
-        if bridge is not None and app_state.has_config_resolver:
-            bridge.set_config_resolver(app_state.config_resolver)
+        if (
+            bridge is not None
+            and app_state.slice(SettingsStateSlice).config_resolver is not None
+        ):
+            bridge.set_config_resolver(config_resolver_of(app_state))
 
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
@@ -868,9 +751,12 @@ def _build_lifecycle(  # noqa: PLR0913
         _health_prober = await _maybe_start_health_prober(app_state)
 
         # Start integration background services (non-fatal).
-        if app_state.webhook_event_bridge is not None:
+        webhook_event_bridge = app_state.slice(
+            IntegrationsStateSlice
+        ).webhook_event_bridge
+        if webhook_event_bridge is not None:
             try:
-                await app_state.webhook_event_bridge.start()
+                await webhook_event_bridge.start()
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -880,9 +766,11 @@ def _build_lifecycle(  # noqa: PLR0913
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        if app_state.health_prober_service is not None:
+        integrations = app_state.slice(IntegrationsStateSlice)
+        communication = app_state.slice(CommunicationStateSlice)
+        if integrations.health_prober_service is not None:
             try:
-                await app_state.health_prober_service.start()
+                await integrations.health_prober_service.start()
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -892,9 +780,9 @@ def _build_lifecycle(  # noqa: PLR0913
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        if app_state.oauth_token_manager is not None:
+        if integrations.oauth_token_manager is not None:
             try:
-                await app_state.oauth_token_manager.start()
+                await integrations.oauth_token_manager.start()
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -904,9 +792,9 @@ def _build_lifecycle(  # noqa: PLR0913
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        if app_state.escalation_sweeper is not None:
+        if communication.escalation_sweeper is not None:
             try:
-                await app_state.escalation_sweeper.start()
+                await communication.escalation_sweeper.start()
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -916,9 +804,9 @@ def _build_lifecycle(  # noqa: PLR0913
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-        if app_state.escalation_notify_subscriber is not None:
+        if communication.escalation_notify_subscriber is not None:
             try:
-                await app_state.escalation_notify_subscriber.start()
+                await communication.escalation_notify_subscriber.start()
             except Exception as exc:
                 reraise_critical(exc)
                 logger.warning(
@@ -932,13 +820,13 @@ def _build_lifecycle(  # noqa: PLR0913
         # client that disconnects without unsubscribe (browser-tab kill,
         # network partition) leaks its queue + per-session dedup window
         # for the lifetime of the process.
-        if app_state.event_stream_hub is not None:
+        if communication.event_stream_hub is not None:
             try:
                 (
                     idle_ttl,
                     janitor_interval,
                 ) = await _resolve_event_stream_janitor_settings(app_state)
-                await app_state.event_stream_hub.start(
+                await communication.event_stream_hub.start(
                     idle_ttl_seconds=idle_ttl,
                     janitor_interval_seconds=janitor_interval,
                 )
@@ -965,10 +853,10 @@ def _build_lifecycle(  # noqa: PLR0913
         # Drain in-flight parked-context resumes (background tasks
         # spawned off the /approvals path) before teardown so an
         # approved resume is not silently dropped mid-flight. Read the
-        # private slot rather than the property so shutdown does not
-        # lazily construct the lifecycle-baseline default; only the
-        # agent-runtime service exposes ``drain_resume_tasks``.
-        _wes = getattr(app_state, "_worker_execution_service", None)
+        # runtime slice field directly; only the agent-runtime service
+        # exposes ``drain_resume_tasks`` (the no-provider backstop does
+        # not), so the ``getattr`` guard stays.
+        _wes = app_state.slice(RuntimeStateSlice).worker_execution_service
         _drain_resumes = getattr(_wes, "drain_resume_tasks", None)
         if callable(_drain_resumes):
             await _try_stop(
@@ -978,14 +866,18 @@ def _build_lifecycle(  # noqa: PLR0913
             )
         # Disconnect training memory backend if auto-wired.
         if _training_memory_backend is not None:
-            # If this backend was published to ``app_state.memory_backend``
-            # at startup, clear the slot before disconnecting so a
+            # If this backend was published to the memory slice at
+            # startup, clear the field before disconnecting so a
             # subsequent re-entry of the lifespan can wire a fresh
-            # connected backend without ``has_memory_backend`` reporting
-            # a stale handle.
-            shared = getattr(app_state, "_memory_backend", None)
+            # connected backend without a stale handle lingering on the
+            # slice.
+            shared = app_state.slice(MemoryStateSlice).backend
             if shared is _training_memory_backend:
-                app_state._memory_backend = None  # noqa: SLF001
+                app_state.swap_slice(
+                    app_state.slice(MemoryStateSlice).model_copy(
+                        update={"backend": None}
+                    )
+                )
             disconnect = getattr(_training_memory_backend, "disconnect", None)
             if callable(disconnect):
                 # getattr + callable narrow statically only to ``object``
@@ -1020,9 +912,11 @@ def _build_lifecycle(  # noqa: PLR0913
                 timeout=_WEBHOOK_CLEANUP_SHUTDOWN_SECONDS,
             )
             _webhook_cleanup_task = None
-        if app_state.event_stream_hub is not None:
+        communication = app_state.slice(CommunicationStateSlice)
+        integrations = app_state.slice(IntegrationsStateSlice)
+        if communication.event_stream_hub is not None:
             await _try_stop(
-                app_state.event_stream_hub.stop(),
+                communication.event_stream_hub.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop event stream hub",
             )
@@ -1034,48 +928,48 @@ def _build_lifecycle(  # noqa: PLR0913
             )
             _health_prober = None
         # Stop integration background services (reverse start order).
-        if app_state.escalation_notify_subscriber is not None:
+        if communication.escalation_notify_subscriber is not None:
             await _try_stop(
-                app_state.escalation_notify_subscriber.stop(),
+                communication.escalation_notify_subscriber.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop escalation notify subscriber",
             )
-        if app_state.escalation_sweeper is not None:
+        if communication.escalation_sweeper is not None:
             await _try_stop(
-                app_state.escalation_sweeper.stop(),
+                communication.escalation_sweeper.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop escalation sweeper",
             )
         # Cancel any unresolved pending futures so coroutines awaiting
         # operator decisions get a clean CancelledError (instead of
         # hanging past shutdown) and the registry map is emptied.
-        if app_state.escalation_registry is not None:
+        if communication.escalation_registry is not None:
             await _try_stop(
-                app_state.escalation_registry.close(),
+                communication.escalation_registry.close(),
                 API_APP_SHUTDOWN,
                 "Failed to close escalation pending-futures registry",
             )
-        if app_state.oauth_token_manager is not None:
+        if integrations.oauth_token_manager is not None:
             await _try_stop(
-                app_state.oauth_token_manager.stop(),
+                integrations.oauth_token_manager.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop OAuth token manager",
             )
-        if app_state.health_prober_service is not None:
+        if integrations.health_prober_service is not None:
             await _try_stop(
-                app_state.health_prober_service.stop(),
+                integrations.health_prober_service.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop integration health prober",
             )
-        if app_state.webhook_event_bridge is not None:
+        if integrations.webhook_event_bridge is not None:
             await _try_stop(
-                app_state.webhook_event_bridge.stop(),
+                integrations.webhook_event_bridge.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop webhook event bridge",
             )
-        if app_state.has_tunnel_provider:
+        if integrations.tunnel_provider is not None:
             await _try_stop(
-                app_state.tunnel_provider.stop(),
+                integrations.tunnel_provider.stop(),
                 API_APP_SHUTDOWN,
                 "Failed to stop tunnel provider",
             )
@@ -1114,19 +1008,24 @@ def _build_lifecycle(  # noqa: PLR0913
             bridge,
             message_bus,
             persistence,
-            performance_tracker=app_state._performance_tracker,  # noqa: SLF001
-            distributed_task_queue=app_state.distributed_task_queue,
-            distributed_backend_services=app_state.distributed_backend_services,
+            performance_tracker=app_state.slice(HrStateSlice).performance_tracker,
+            distributed_task_queue=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_task_queue,
+            distributed_backend_services=app_state.slice(
+                RuntimeStateSlice
+            ).distributed_backend_services,
         )
-        if app_state.has_notification_dispatcher:
+        notification_dispatcher = app_state.slice(NotificationsStateSlice).dispatcher
+        if notification_dispatcher is not None:
             await _try_stop(
-                app_state.notification_dispatcher.aclose(),
+                notification_dispatcher.aclose(),
                 API_APP_SHUTDOWN,
                 "Failed to stop notification dispatcher",
             )
         # Close A2A outbound HTTP client if wired.
         try:
-            a2a_client_obj = app_state._a2a_client  # noqa: SLF001
+            a2a_client_obj = app_state.slice(A2aStateSlice).client
             if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
                 await a2a_client_obj.aclose()
         except Exception as exc:

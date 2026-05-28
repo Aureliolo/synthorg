@@ -22,7 +22,6 @@ import pytest
 from structlog.testing import capture_logs
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import ToolPermissions
 from synthorg.core.clock import SystemClock
@@ -55,7 +54,7 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.execution_service import AgentEngineExecutionService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import mock_of
+from tests._shared import make_app_state
 from tests._shared.scripted_provider import (
     make_e2e_identity,
     make_tool_call_response,
@@ -120,31 +119,20 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         settings_service=settings_service,
         config=root_config,
     )
-    app_state = mock_of[AppState](
-        has_active_provider=True,
+    # No boot-shared gate / trust service is wired here, so the engine
+    # builds its own ApprovalGate from ``approval_store`` (the path this
+    # acceptance test exercises). The approval-gate and trust-service
+    # slice fields stay unset (``None``), so the store-backed fallback
+    # is what runs.
+    app_state = make_app_state(
         provider_registry=registry,
         config=root_config,
         config_resolver=config_resolver,
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=approval_store,
-        # No boot-shared gate / trust service is pre-wired here, so the
-        # engine builds its own ApprovalGate from ``approval_store``
-        # (the path this acceptance test exercises). Leaving these as
-        # ``mock_of`` defaults would inject a MagicMock gate that the
-        # ``_approval_gate`` factory returns unconditionally, defeating
-        # the store-backed fallback and crashing park serialization.
-        approval_gate=None,
-        has_trust_service=False,
-        trust_service=None,
         clock=SystemClock(),
-        event_stream_hub=None,
-        interrupt_store=None,
         agent_workspace_root=tmp_path,
-        has_cost_tracker=False,
-        has_audit_log=False,
-        has_memory_backend=False,
-        has_performance_tracker=False,
     )
 
     runtime = await build_runtime_services(

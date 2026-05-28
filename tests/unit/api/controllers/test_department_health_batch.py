@@ -7,7 +7,6 @@ contract: exactly one ``get_by_names`` / ``get_snapshots`` await per
 helper call.
 """
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -22,6 +21,7 @@ from synthorg.core.enums import AgentStatus, SeniorityLevel
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import make_app_state
 from tests.unit.hr.pruning.conftest import make_performance_snapshot
 
 
@@ -56,13 +56,10 @@ class TestResolveAgentIdsBatch:
         mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, bob)
 
-        app_state = SimpleNamespace(
-            agent_registry=mock_registry,
-            has_agent_registry=True,
-        )
+        app_state = make_app_state(agent_registry=mock_registry)
 
         result = await _resolve_agent_ids(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             ("alice", "bob"),
         )
 
@@ -80,13 +77,10 @@ class TestResolveAgentIdsBatch:
         mock_registry = AsyncMock(spec=AgentRegistryService)
         mock_registry.get_by_names.return_value = (alice, None)
 
-        app_state = SimpleNamespace(
-            agent_registry=mock_registry,
-            has_agent_registry=True,
-        )
+        app_state = make_app_state(agent_registry=mock_registry)
 
         result = await _resolve_agent_ids(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             ("alice", "nobody"),
         )
 
@@ -94,12 +88,9 @@ class TestResolveAgentIdsBatch:
         assert mock_registry.get_by_names.await_count == 1
 
     async def test_empty_registry_returns_empty(self) -> None:
-        app_state = SimpleNamespace(
-            agent_registry=None,
-            has_agent_registry=False,
-        )
+        app_state = make_app_state()
         result = await _resolve_agent_ids(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             ("alice", "bob"),
         )
         assert result == ()
@@ -115,10 +106,10 @@ class TestResolveSnapshotsBatch:
         mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = (snap_a, snap_b)
 
-        app_state = SimpleNamespace(performance_tracker=mock_tracker)
+        app_state = make_app_state(performance_tracker=mock_tracker)
 
         result = await _resolve_snapshots(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             ("agent-a", "agent-b"),
         )
 
@@ -136,10 +127,10 @@ class TestResolveSnapshotsBatch:
         mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = (snap_a, None)
 
-        app_state = SimpleNamespace(performance_tracker=mock_tracker)
+        app_state = make_app_state(performance_tracker=mock_tracker)
 
         result: tuple[AgentPerformanceSnapshot, ...] = await _resolve_snapshots(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             ("agent-a", "agent-missing"),
         )
 
@@ -150,9 +141,9 @@ class TestResolveSnapshotsBatch:
         mock_tracker = AsyncMock(spec=PerformanceTracker)
         mock_tracker.get_snapshots.return_value = ()
 
-        app_state = SimpleNamespace(performance_tracker=mock_tracker)
+        app_state = make_app_state(performance_tracker=mock_tracker)
         result = await _resolve_snapshots(
-            app_state,  # type: ignore[arg-type]
+            app_state,
             (),
         )
         assert result == ()

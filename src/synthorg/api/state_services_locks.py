@@ -1,34 +1,20 @@
-"""Request-lock registry and WS/auth-store accessors for ``AppState``.
+"""Request-lock registry and WS/auth-revalidation timeout primitives.
 
-Extracted from ``state_services.py`` to keep each module under the
-project's 800-line ceiling.  Hosts the per-request lifecycle-lock
-registry (with its bounded-size eviction sweep), the WebSocket /
-revalidation timeout accessors, and the session / lockout / refresh /
-auth-service accessors.  The mixin is combined into
-:class:`~synthorg.api.state_services.AppStateServicesMixin` via
-inheritance so the shared helpers (``_require_service``, ``_set_once``)
-resolve at runtime.
+Hosts the cross-cutting mutable primitives that a frozen feature slice
+cannot own: the per-request lifecycle-lock registry (with its
+bounded-size eviction sweep) and the WebSocket / revalidation timeout
+knobs. Mixed into ``AppState`` directly; the request stores and
+auth-service themselves live on ``ApiCoreStateSlice``.
 """
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from synthorg.api.auth.presence import UserPresence  # noqa: TC001
-from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_REJECTED,
     REQUEST_LOCK_RELEASE_SKIPPED_WHILE_HELD,
-)
-from synthorg.persistence.auth_protocol import (
-    LockoutRepository as LockoutStore,  # noqa: TC001
-)
-from synthorg.persistence.auth_protocol import (
-    RefreshTokenRepository as RefreshStore,  # noqa: TC001
-)
-from synthorg.persistence.auth_protocol import (
-    SessionRepository as SessionStore,  # noqa: TC001
 )
 
 if TYPE_CHECKING:
@@ -83,21 +69,13 @@ def _reject_non_int(value: object, *, field: str) -> None:
         raise TypeError(msg)
 
 
-class _RequestLockAuthMixin:
-    """Mixin hosting the request-lock registry and WS/auth accessors.
+class _RequestLockPrimitivesMixin:
+    """Mixin hosting the request-lock registry and WS/auth-timeout knobs.
 
-    Must be combined with the rest of ``AppStateServicesMixin`` via
-    multiple inheritance so the shared helper methods
-    (``_require_service``, ``_set_once``) resolve at runtime.
+    Mixed into ``AppState`` directly. The backing attributes are
+    allocated in ``AppState.__slots__`` and initialised in
+    ``AppState.__init__``.
     """
-
-    _set_once: Any
-
-    def _require_service[T](  # pragma: no cover
-        self, service: T | None, name: str
-    ) -> T:
-        """Return *service* or raise (implemented on concrete ``AppState``)."""
-        raise NotImplementedError
 
     # Slot attrs the mixin reads directly (populated on concrete class).
     _request_locks: OrderedDict[str, asyncio.Lock]
@@ -107,11 +85,6 @@ class _RequestLockAuthMixin:
     _ws_frame_timeout_seconds: int
     _auth_revalidate_window_seconds: int
     _auth_revalidate_max_failures: int
-    _session_store: SessionStore | None
-    _lockout_store: LockoutStore | None
-    _refresh_store: RefreshStore | None
-    _user_presence: UserPresence
-    _auth_service: AuthService | None
 
     def get_or_create_request_lock(self, request_id: str) -> asyncio.Lock:
         """Return the per-request lifecycle lock, creating it if absent.
@@ -461,91 +434,3 @@ class _RequestLockAuthMixin:
             )
             raise ValueError(msg)
         self._auth_revalidate_max_failures = value
-
-    @property
-    def has_session_store(self) -> bool:
-        """Check whether the session store is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._session_store is not None
-
-    @property
-    def session_store(self) -> SessionStore:
-        """Return the JWT session store.
-
-        Returns:
-            ``SessionStore`` instance.
-        """
-        return self._require_service(
-            self._session_store,
-            "session_store",
-        )
-
-    def set_session_store(self, store: SessionStore) -> None:
-        """Attach the session store (once-only)."""
-        self._set_once("_session_store", store, "Session store")
-
-    @property
-    def has_lockout_store(self) -> bool:
-        """Check whether the lockout store is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._lockout_store is not None
-
-    @property
-    def lockout_store(self) -> LockoutStore:
-        """Return the account lockout store.
-
-        Returns:
-            ``LockoutStore`` instance.
-        """
-        return self._require_service(
-            self._lockout_store,
-            "lockout_store",
-        )
-
-    def set_lockout_store(self, store: LockoutStore) -> None:
-        """Attach the lockout store (once-only)."""
-        self._set_once("_lockout_store", store, "Lockout store")
-
-    @property
-    def has_refresh_store(self) -> bool:
-        """Check whether the refresh-token store is configured.
-
-        Returns:
-            ``True`` or ``False`` reflecting the condition.
-        """
-        return self._refresh_store is not None
-
-    @property
-    def refresh_store(self) -> RefreshStore:
-        """Return the refresh-token store.
-
-        Returns:
-            ``RefreshStore`` instance.
-        """
-        return self._require_service(
-            self._refresh_store,
-            "refresh_store",
-        )
-
-    def set_refresh_store(self, store: RefreshStore) -> None:
-        """Attach the refresh-token store (once-only)."""
-        self._set_once("_refresh_store", store, "Refresh store")
-
-    @property
-    def user_presence(self) -> UserPresence:
-        """Return the user presence tracker (always available).
-
-        Returns:
-            ``UserPresence`` instance.
-        """
-        return self._user_presence
-
-    def set_auth_service(self, service: AuthService) -> None:
-        """Attach the auth service (once-only)."""
-        self._set_once("_auth_service", service, "Auth service")

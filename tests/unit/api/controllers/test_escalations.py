@@ -15,6 +15,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.enums import SeniorityLevel
 from tests.unit.api.conftest import make_auth_headers
 
@@ -80,7 +81,8 @@ class TestEscalationsController:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        store = test_client.app.state.app_state.escalation_store
+        comms = test_client.app.state.app_state.slice(CommunicationStateSlice)
+        store = comms.escalation_store
         assert store is not None
         await store.create(_make_escalation(escalation_id="escalation-list-01"))
         resp = test_client.get(_BASE, headers=_READ_HEADERS)
@@ -102,8 +104,8 @@ class TestEscalationsController:
         test_client: TestClient[Any],
     ) -> None:
         app_state = test_client.app.state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
         assert registry is not None
 
@@ -136,7 +138,7 @@ class TestEscalationsController:
     ) -> None:
         """Default decision_strategy='winner' -> reject decisions yield 422."""
         app_state = test_client.app.state.app_state
-        store = app_state.escalation_store
+        store = app_state.slice(CommunicationStateSlice).escalation_store
         assert store is not None
         escalation = _make_escalation(escalation_id="escalation-reject-01")
         await store.create(escalation)
@@ -163,8 +165,8 @@ class TestEscalationsController:
         test_client: TestClient[Any],
     ) -> None:
         app_state = test_client.app.state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-double-01")
@@ -198,8 +200,8 @@ class TestEscalationsController:
         test_client: TestClient[Any],
     ) -> None:
         app_state = test_client.app.state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
         assert registry is not None
         escalation = _make_escalation(escalation_id="escalation-cancel-01")
@@ -222,8 +224,8 @@ class TestEscalationsController:
     ) -> None:
         """After 30 decision attempts, the 31st is 429 + RFC 9457."""
         app_state = test_client.app.state.app_state
-        store = app_state.escalation_store
-        registry = app_state.escalation_registry
+        store = app_state.slice(CommunicationStateSlice).escalation_store
+        registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
         assert registry is not None
 

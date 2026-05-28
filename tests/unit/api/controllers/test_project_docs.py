@@ -24,6 +24,7 @@ from synthorg.docs_engine.models import (
     LivingDocument,
     ProseBlock,
 )
+from synthorg.docs_engine.state import DocsStateSlice
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 
@@ -81,14 +82,14 @@ class _FakeDocsService:
 
 
 @contextmanager
-def _with_docs_service(test_client: TestClient[Any], svc: object) -> Iterator[None]:
+def _with_docs_service(test_client: TestClient[Any], svc: Any) -> Iterator[None]:
     app_state = test_client.app.state.app_state
-    original = app_state._docs_service
-    app_state._docs_service = svc
+    original_slice = app_state.slice(DocsStateSlice)
+    app_state.swap_slice(DocsStateSlice.model_construct(service=svc))
     try:
         yield
     finally:
-        app_state._docs_service = original
+        app_state.swap_slice(original_slice)
 
 
 @pytest.mark.unit

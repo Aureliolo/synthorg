@@ -14,7 +14,7 @@ from synthorg.a2a.models import (
     A2A_PEER_NOT_ALLOWED,
     JSONRPC_METHOD_NOT_FOUND,
 )
-from synthorg.api.state import AppState
+from tests._shared import make_app_state
 
 
 class TestErrorResponse:
@@ -247,26 +247,18 @@ class TestRequireTaskEngine:
         from unittest.mock import MagicMock
 
         from synthorg.a2a.gateway import _require_task_engine
-        from synthorg.api.state import AppState
 
-        app_state = MagicMock(spec=AppState)
-        app_state.task_engine = MagicMock()
+        task_engine = MagicMock()
+        app_state = make_app_state(task_engine=task_engine)
         result = _require_task_engine(app_state)
-        assert result is app_state.task_engine
+        assert result is task_engine
 
     @pytest.mark.unit
     def test_raises_method_error_when_unavailable(self) -> None:
         """Raises _A2AMethodError when engine not wired."""
-        from unittest.mock import MagicMock, PropertyMock
-
         from synthorg.a2a.gateway import _A2AMethodError, _require_task_engine
-        from synthorg.api.state import AppState
-        from synthorg.core.domain_errors import ServiceUnavailableError
 
-        app_state = MagicMock(spec=AppState)
-        type(app_state).task_engine = PropertyMock(
-            side_effect=ServiceUnavailableError("task_engine"),
-        )
+        app_state = make_app_state()
         with pytest.raises(_A2AMethodError) as exc_info:
             _require_task_engine(app_state)
         assert exc_info.value.http_status == 503
@@ -282,8 +274,7 @@ class TestVerifyPeerCredentials:
 
         from synthorg.a2a.gateway import _verify_peer_credentials
 
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = None
+        app_state = make_app_state()
         request = MagicMock(spec=Request)
 
         result = await _verify_peer_credentials(
@@ -302,8 +293,7 @@ class TestVerifyPeerCredentials:
 
         catalog = AsyncMock()
         catalog.get_credentials = AsyncMock(return_value={})
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
 
         result = await _verify_peer_credentials(
@@ -324,8 +314,7 @@ class TestVerifyPeerCredentials:
         catalog.get_credentials = AsyncMock(
             return_value={"auth_scheme": "api_key", "api_key": "secret-123"},
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {"x-api-key": "secret-123"}
 
@@ -347,8 +336,7 @@ class TestVerifyPeerCredentials:
         catalog.get_credentials = AsyncMock(
             return_value={"auth_scheme": "api_key", "api_key": "correct"},
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {"x-api-key": "wrong"}
 
@@ -370,8 +358,7 @@ class TestVerifyPeerCredentials:
         catalog.get_credentials = AsyncMock(
             return_value={"auth_scheme": "api_key", "api_key": "stored"},
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {}
 
@@ -396,8 +383,7 @@ class TestVerifyPeerCredentials:
                 "access_token": "tok-abc",
             },
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {"authorization": "Bearer tok-abc"}
 
@@ -422,8 +408,7 @@ class TestVerifyPeerCredentials:
                 "access_token": "correct",
             },
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {"authorization": "Bearer wrong"}
 
@@ -445,8 +430,7 @@ class TestVerifyPeerCredentials:
         catalog.get_credentials = AsyncMock(
             return_value={"auth_scheme": "mtls"},
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
         request.headers = {}
 
@@ -468,8 +452,7 @@ class TestVerifyPeerCredentials:
         catalog.get_credentials = AsyncMock(
             side_effect=RuntimeError("db down"),
         )
-        app_state = MagicMock(spec=AppState)
-        app_state._connection_catalog = catalog
+        app_state = make_app_state(connection_catalog=catalog)
         request = MagicMock(spec=Request)
 
         result = await _verify_peer_credentials(

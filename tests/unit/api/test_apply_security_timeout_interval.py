@@ -21,17 +21,18 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.state import config_resolver_of
+from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
 
 
 def _make_state(*, config_resolver: ConfigResolver | None) -> AppState:
-    state = AppState(
+    return make_app_state(
         config=RootConfig(company_name="test"),
         approval_store=ApprovalStore(),
+        config_resolver=config_resolver,
     )
-    state._config_resolver = config_resolver
-    return state
 
 
 def _make_scheduler() -> ApprovalTimeoutScheduler:
@@ -51,7 +52,7 @@ class TestApplySecurityTimeoutInterval:
         await _apply_security_timeout_interval(state, scheduler=None)
 
         # Resolver must NOT be hit when there's no scheduler to reschedule.
-        cast("AsyncMock", state.config_resolver).get_float.assert_not_awaited()
+        cast("AsyncMock", config_resolver_of(state)).get_float.assert_not_awaited()
 
     async def test_no_resolver_is_noop(self) -> None:
         scheduler = _make_scheduler()

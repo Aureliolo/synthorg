@@ -609,7 +609,14 @@ def test_client(  # noqa: PLR0913
     # further async interaction with the queue.  Recreate the queues
     # and reset the running flag so the next startup creates fresh
     # processing tasks on the new loop.
-    task_engine = app_state._task_engine
+    from synthorg.api.api_core_state import ApiCoreStateSlice
+    from synthorg.communication.state import CommunicationStateSlice
+    from synthorg.engine.state import EngineStateSlice
+    from synthorg.engine.workspace.state import WorkspaceStateSlice
+    from synthorg.settings.state import SettingsStateSlice
+    from synthorg.workers.state import RuntimeStateSlice
+
+    task_engine = app_state.slice(EngineStateSlice).task_engine
     if task_engine is not None:
         import asyncio as _aio
 
@@ -633,28 +640,33 @@ def test_client(  # noqa: PLR0913
     #    prior test cannot bleed into the next one.  The
     #    has_session_store / has_lockout_store guards in
     #    _safe_startup() then correctly skip re-initialization.
-    if app_state._session_store is not None:
-        app_state._session_store._revoked.clear()
-    if app_state._lockout_store is not None:
+    api_core = app_state.slice(ApiCoreStateSlice)
+    if api_core.session_store is not None:
+        api_core.session_store._revoked.clear()
+    if api_core.lockout_store is not None:
         # _locked is an internal cache on the concrete store; the
         # LockoutStore Protocol exposes only the public API.
-        app_state._lockout_store._locked.clear()  # type: ignore[attr-defined]
-    app_state._ticket_store._tickets.clear()
-    app_state._user_presence._counts.clear()
-    if app_state._interrupt_store is not None:
-        app_state._interrupt_store._pending.clear()
-        app_state._interrupt_store._events.clear()
-        app_state._interrupt_store._results.clear()
-    if app_state._event_stream_hub is not None:
-        app_state._event_stream_hub._subscribers.clear()
-    if app_state._settings_service is not None:
-        app_state._settings_service._cache.clear()
+        api_core.lockout_store._locked.clear()  # type: ignore[attr-defined]
+    if api_core.ticket_store is not None:
+        api_core.ticket_store._tickets.clear()
+    if api_core.user_presence is not None:
+        api_core.user_presence._counts.clear()
+    communication = app_state.slice(CommunicationStateSlice)
+    if communication.interrupt_store is not None:
+        communication.interrupt_store._pending.clear()
+        communication.interrupt_store._events.clear()
+        communication.interrupt_store._results.clear()
+    if communication.event_stream_hub is not None:
+        communication.event_stream_hub._subscribers.clear()
+    settings_service = app_state.slice(SettingsStateSlice).settings_service
+    if settings_service is not None:
+        settings_service._cache.clear()
     # Clear the escalation queue + pending-future registry so a prior
     # test's in-flight escalations cannot bleed into the next one.
-    if app_state.escalation_store is not None:
-        app_state.escalation_store._rows.clear()  # type: ignore[attr-defined]
-    if app_state.escalation_registry is not None:
-        app_state.escalation_registry._futures.clear()
+    if communication.escalation_store is not None:
+        communication.escalation_store._rows.clear()  # type: ignore[attr-defined]
+    if communication.escalation_registry is not None:
+        communication.escalation_registry._futures.clear()
 
     # Clear the per-op rate-limit sliding-window store so a prior
     # test's 429 buckets (e.g. ``setup.complete`` at 5/3600s) cannot
@@ -671,12 +683,18 @@ def test_client(  # noqa: PLR0913
     # 4. Re-seed test users
     _seed_test_users(fake_persistence, auth_service)
 
-    # 5. Snapshot AppState service refs before the test
+    # 5. Snapshot AppState primitive refs + the per-feature slice store
+    #    before the test. Primitives live in ``__slots__``; every domain
+    #    service now lives on a frozen feature slice in ``_slices``, so a
+    #    shallow copy of that mapping is enough to revert a test's
+    #    ``wire`` / ``swap_slice`` mutations (the slice *values* are
+    #    immutable, so they need no deep copy).
     saved = {
         attr: getattr(app_state, attr)
         for attr in AppState.__slots__
         if attr.startswith("_")
     }
+    saved_slices = dict(app_state._slices)
 
     # 6. Clear Litestar-internal rate-limit stores to prevent 429s
     #    from accumulating request counters across tests.  Reaches
@@ -720,8 +738,9 @@ def test_client(  # noqa: PLR0913
     with TestClient(_shared_app) as client:
         fake_persistence.clear()
         fake_persistence._connected = True
-        if app_state._settings_service is not None:
-            app_state._settings_service._cache.clear()
+        post_startup_settings = app_state.slice(SettingsStateSlice).settings_service
+        if post_startup_settings is not None:
+            post_startup_settings._cache.clear()
         # ``create_app``'s ``_install_runtime_services`` startup hook is
         # once-only (a ``_runtime_services_installed`` closure flag), but
         # the session-scoped shared app re-runs lifespan startup every
@@ -734,29 +753,40 @@ def test_client(  # noqa: PLR0913
         # no-runtime-services baseline post-startup so every test sees
         # the same state (the worker-exec property lazily re-defaults);
         # tests that need a coordinator inject one via their own client.
-        app_state._coordinator = None
-        app_state._worker_execution_service = None
+        app_state.wire(
+            RuntimeStateSlice,
+            coordinator=None,
+            worker_execution_service=None,
+        )
         # Same once-only-install reset for the docs engine: the
         # ``_wire_docs_engine`` startup hook is gated by a closure flag,
-        # so only the FIRST test's startup wires ``docs_service`` /
-        # facade / tool factory. Reset to None for every test so tests
-        # that need a docs runtime inject their own via the client.
-        app_state._docs_service = None
-        app_state._project_doc_memory_facade = None
-        app_state._docs_tool_factory = None
+        # so only the FIRST test's startup composes a populated
+        # ``DocsStateSlice``. Reset it to an empty slice for every test
+        # so tests that need a docs runtime inject their own via the
+        # client.
+        from synthorg.docs_engine.state import DocsStateSlice
+
+        app_state.swap_slice(DocsStateSlice())
         # Symmetric with the coordinator / worker-exec resets above: the
         # persistence-gated boot wiring sets the per-project workspace
         # service once on the first test's startup, so clear it too or
         # later tests would observe a wired service the first did not.
-        app_state._project_workspace_service = None
+        app_state.wire(WorkspaceStateSlice, project_workspace_service=None)
         _seed_test_users(fake_persistence, auth_service)
         _promote_first_owner(fake_persistence)
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
-    # 8. Restore AppState refs (undo test mutations)
+    # 8. Restore AppState refs (undo test mutations): the primitive
+    #    slots, then the slice store. Restoring ``_slices`` to the
+    #    pre-test snapshot reverts any ``wire`` / ``swap_slice`` a test
+    #    performed (and the post-startup baseline resets above), so a
+    #    coordinator / docs runtime a test injected cannot bleed into
+    #    the next test sharing the session-scoped app.
     for attr, value in saved.items():
         setattr(app_state, attr, value)
+    app_state._slices.clear()
+    app_state._slices.update(saved_slices)
 
 
 def _promote_first_owner(backend: FakePersistenceBackend) -> None:

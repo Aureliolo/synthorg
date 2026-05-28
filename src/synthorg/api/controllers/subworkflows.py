@@ -22,6 +22,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_keyset_meta,
     paginate_cursor,
 )
@@ -47,6 +48,7 @@ from synthorg.engine.workflow.subworkflow_registry import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_CURSOR_INVALID
 from synthorg.persistence._shared import collect_all
+from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
 
@@ -105,7 +107,7 @@ def _registry(state: State) -> SubworkflowRegistry:
     Returns:
         ``SubworkflowRegistry`` instance.
     """
-    return SubworkflowRegistry(state.app_state.persistence.subworkflows)
+    return SubworkflowRegistry(persistence_of(state.app_state).subworkflows)
 
 
 class SubworkflowController(Controller):
@@ -157,7 +159,7 @@ class SubworkflowController(Controller):
         registry = _registry(state)
         try:
             after_key = (
-                decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+                decode_keyset_cursor(cursor, secret=cursor_secret_of(app_state))
                 if cursor is not None
                 else None
             )
@@ -202,7 +204,7 @@ class SubworkflowController(Controller):
             next_after_key=next_after_key,
             has_more=has_more,
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -249,7 +251,7 @@ class SubworkflowController(Controller):
             matches,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return Response(
             content=PaginatedResponse[SubworkflowSummary](data=page, pagination=meta),
@@ -274,7 +276,7 @@ class SubworkflowController(Controller):
             versions,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return Response(
             content=PaginatedResponse[str](data=page, pagination=meta),
@@ -359,7 +361,7 @@ class SubworkflowController(Controller):
             parents,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return Response(
             content=PaginatedResponse[ParentReference](data=page, pagination=meta),

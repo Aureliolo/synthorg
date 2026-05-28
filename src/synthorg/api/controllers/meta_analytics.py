@@ -15,6 +15,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     paginate_cursor,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -154,7 +155,7 @@ class MetaAnalyticsController(Controller):
             tuple(patterns),
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[AggregatedPattern](data=page, pagination=meta)
 
@@ -177,7 +178,7 @@ class MetaAnalyticsController(Controller):
                 empty_recs,
                 limit=limit,
                 cursor=cursor,
-                secret=state.app_state.cursor_secret,
+                secret=cursor_secret_of(state.app_state),
             )
             return PaginatedResponse[ThresholdRecommendation](
                 data=page,
@@ -190,7 +191,7 @@ class MetaAnalyticsController(Controller):
             tuple(recs),
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[ThresholdRecommendation](
             data=page,

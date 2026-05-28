@@ -6,6 +6,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import PathParameter, QueryParameter
 
+from synthorg._core.features import require_service
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import (
@@ -17,6 +18,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_repo_seek_meta,
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -30,6 +32,7 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.engine.identity.diff import AgentIdentityDiff, compute_diff
 from synthorg.hr.errors import AgentNotFoundError
+from synthorg.hr.state import HrStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_DIFF_COMPUTED,
@@ -81,9 +84,13 @@ class AgentIdentityVersionController(Controller):
         Returns:
             ``PaginatedResponse[SnapshotT]`` instance.
         """
-        secret = state.app_state.cursor_secret
+        secret = cursor_secret_of(state.app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
-        versions, total = await state.app_state.agent_version_service.list_versions(
+        version_service = require_service(
+            state.app_state.slice(HrStateSlice).agent_version_service,
+            "Agent Version Service",
+        )
+        versions, total = await version_service.list_versions(
             agent_id,
             limit=limit,
             offset=offset,
@@ -168,7 +175,10 @@ class AgentIdentityVersionController(Controller):
             )
             raise ValidationError(error)
 
-        version_service = state.app_state.agent_version_service
+        version_service = require_service(
+            state.app_state.slice(HrStateSlice).agent_version_service,
+            "Agent Version Service",
+        )
         old, new = await version_service.get_version_pair_for_diff(
             agent_id,
             from_version,
@@ -214,7 +224,11 @@ class AgentIdentityVersionController(Controller):
             NotFoundError: Raised on the corresponding failure path.
             ValidationError: Raised on the corresponding failure path.
         """
-        version = await state.app_state.agent_version_service.get_version(
+        version_service = require_service(
+            state.app_state.slice(HrStateSlice).agent_version_service,
+            "Agent Version Service",
+        )
+        version = await version_service.get_version(
             agent_id,
             version_num,
         )
@@ -276,7 +290,11 @@ class AgentIdentityVersionController(Controller):
         Returns:
             ``ApiResponse[AgentIdentity]`` instance.
         """
-        target = await state.app_state.agent_version_service.get_for_rollback(
+        version_service = require_service(
+            state.app_state.slice(HrStateSlice).agent_version_service,
+            "Agent Version Service",
+        )
+        target = await version_service.get_for_rollback(
             agent_id,
             data.target_version,
         )
@@ -286,7 +304,10 @@ class AgentIdentityVersionController(Controller):
         if data.reason is not None:
             rationale = f"{rationale}: {data.reason}"
         try:
-            rolled_back = await state.app_state.agent_registry.evolve_identity(
+            registry = require_service(
+                state.app_state.slice(HrStateSlice).agent_registry, "Agent Registry"
+            )
+            rolled_back = await registry.evolve_identity(
                 agent_id,
                 target.snapshot,
                 evolution_rationale=rationale,

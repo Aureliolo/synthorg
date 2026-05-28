@@ -11,8 +11,25 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.backup.models import BackupTrigger
+from synthorg.budget.state import BudgetStateSlice
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.engine.state import EngineStateSlice
+from synthorg.hr.state import HrStateSlice
+from synthorg.infrastructure.state import (
+    audit_read_service_of,
+    backup_facade_service_of,
+    events_read_service_of,
+    integration_health_facade_service_of,
+    project_facade_service_of,
+    provider_read_service_of,
+    requests_facade_service_of,
+    setup_facade_service_of,
+    simulation_facade_service_of,
+    template_pack_facade_service_of,
+    user_facade_service_of,
+)
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
@@ -44,6 +61,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_CAPABILITY_GAP,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
+from synthorg.settings.state import settings_read_service_of
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -137,10 +155,10 @@ async def _health_check(
     tool = "synthorg_health_check"
     try:
         data = {
-            "task_engine": app_state.has_task_engine,
-            "cost_tracker": app_state.has_cost_tracker,
-            "approval_store": getattr(app_state, "approval_store", None) is not None,
-            "agent_registry": app_state.has_agent_registry,
+            "task_engine": app_state.slice(EngineStateSlice).task_engine is not None,
+            "cost_tracker": app_state.slice(BudgetStateSlice).cost_tracker is not None,
+            "approval_store": app_state.slice(ApprovalStateSlice).store is not None,
+            "agent_registry": app_state.slice(HrStateSlice).agent_registry is not None,
         }
     except Exception as exc:
         # No argument validation in this body, so the canonical
@@ -169,7 +187,7 @@ async def _settings_list(
     """
     tool = "synthorg_settings_list"
     try:
-        result = await app_state.settings_read_service.list_settings()
+        result = await settings_read_service_of(app_state).list_settings()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -195,7 +213,7 @@ async def _settings_get(
     tool = "synthorg_settings_get"
     try:
         key = _require_str(arguments, "key")
-        result = await app_state.settings_read_service.get_setting(key)
+        result = await settings_read_service_of(app_state).get_setting(key)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -224,7 +242,7 @@ async def _settings_update(
         key = _require_str(arguments, "key")
         value = arguments.get("value")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.settings_read_service.update_setting(
+        await settings_read_service_of(app_state).update_setting(
             key=key,
             value=value,
             actor_id=actor_id,
@@ -266,7 +284,7 @@ async def _settings_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         key = _require_str(arguments, "key")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.settings_read_service.delete_setting(
+        await settings_read_service_of(app_state).delete_setting(
             key=key,
             actor_id=actor_id,
             reason=reason,
@@ -308,7 +326,7 @@ async def _providers_list(
     """
     tool = "synthorg_providers_list"
     try:
-        providers = await app_state.provider_read_service.list_providers()
+        providers = await provider_read_service_of(app_state).list_providers()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -334,7 +352,7 @@ async def _providers_get(
     tool = "synthorg_providers_get"
     try:
         provider_id = _require_str(arguments, "provider_id")
-        provider = await app_state.provider_read_service.get_provider(provider_id)
+        provider = await provider_read_service_of(app_state).get_provider(provider_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -365,7 +383,7 @@ async def _providers_get_health(
     tool = "synthorg_providers_get_health"
     try:
         provider_id = get_optional_str(arguments, "provider_id")
-        result = await app_state.provider_read_service.get_health(provider_id)
+        result = await provider_read_service_of(app_state).get_health(provider_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -392,7 +410,8 @@ async def _providers_test_connection(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         provider_name = _require_str(arguments, "provider_name")
-        result = await app_state.provider_read_service.test_connection(provider_name)
+        provider_read = provider_read_service_of(app_state)
+        result = await provider_read.test_connection(provider_name)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
@@ -447,7 +466,7 @@ async def _backup_list(
     tool = "synthorg_backup_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.backup_facade_service.list_backups(
+        page, total = await backup_facade_service_of(app_state).list_backups(
             offset=offset,
             limit=limit,
         )
@@ -477,7 +496,7 @@ async def _backup_get(
     tool = "synthorg_backup_get"
     try:
         backup_id = _require_str(arguments, "backup_id")
-        manifest = await app_state.backup_facade_service.get_backup(backup_id)
+        manifest = await backup_facade_service_of(app_state).get_backup(backup_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except LookupError as exc:
@@ -513,7 +532,7 @@ async def _backup_create(
             trigger = BackupTrigger(trigger_raw)
         except ValueError as exc:
             raise ArgumentValidationError(_ARG_TRIGGER, _TY_BACKUP_TRIGGER) from exc
-        manifest = await app_state.backup_facade_service.create_backup(
+        manifest = await backup_facade_service_of(app_state).create_backup(
             trigger=trigger,
         )
         logger.info(
@@ -553,7 +572,7 @@ async def _backup_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.backup_facade_service.delete_backup(
+        await backup_facade_service_of(app_state).delete_backup(
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
@@ -595,7 +614,7 @@ async def _backup_restore(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         backup_id = _require_str(arguments, "backup_id")
         actor_id = require_actor_id(resolved_actor)
-        result = await app_state.backup_facade_service.restore_backup(
+        result = await backup_facade_service_of(app_state).restore_backup(
             backup_id=backup_id,
             actor_id=actor_id,
             reason=reason,
@@ -638,7 +657,7 @@ async def _audit_list(
     tool = "synthorg_audit_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.audit_read_service.list_entries(
+        page, total = await audit_read_service_of(app_state).list_entries(
             offset=offset,
             limit=limit,
         )
@@ -668,7 +687,7 @@ async def _events_list(
     tool = "synthorg_events_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.events_read_service.list_events(
+        page, total = await events_read_service_of(app_state).list_events(
             offset=offset,
             limit=limit,
         )
@@ -700,7 +719,7 @@ async def _users_list(
     """
     tool = "synthorg_users_list"
     try:
-        users = await app_state.user_facade_service.list_users()
+        users = await user_facade_service_of(app_state).list_users()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -726,7 +745,7 @@ async def _users_get(
     tool = "synthorg_users_get"
     try:
         user_id = _require_str(arguments, "user_id")
-        user = await app_state.user_facade_service.get_user(user_id)
+        user = await user_facade_service_of(app_state).get_user(user_id)
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -760,7 +779,7 @@ async def _users_create(
         username = _require_str(arguments, "username")
         role = _require_str(arguments, "role")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.user_facade_service.create_user(
+        await user_facade_service_of(app_state).create_user(
             username=username,
             role=role,
             actor_id=actor_id,
@@ -804,7 +823,7 @@ async def _users_update(
         user_id = _require_str(arguments, "user_id")
         updates = require_dict(arguments, "updates")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.user_facade_service.update_user(
+        await user_facade_service_of(app_state).update_user(
             user_id=user_id,
             updates=updates,
             actor_id=actor_id,
@@ -847,7 +866,7 @@ async def _users_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         user_id = _require_str(arguments, "user_id")
         actor_id = require_actor_id(resolved_actor)
-        await app_state.user_facade_service.delete_user(
+        await user_facade_service_of(app_state).delete_user(
             user_id=user_id,
             actor_id=actor_id,
             reason=reason,
@@ -890,7 +909,7 @@ async def _projects_list(
     tool = "synthorg_projects_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.project_facade_service.list_projects(
+        page, total = await project_facade_service_of(app_state).list_projects(
             offset=offset,
             limit=limit,
         )
@@ -918,7 +937,7 @@ async def _projects_get(
     tool = "synthorg_projects_get"
     try:
         project_id = _require_uuid(arguments, "project_id")
-        project = await app_state.project_facade_service.get_project(project_id)
+        project = await project_facade_service_of(app_state).get_project(project_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -949,7 +968,7 @@ async def _projects_create(
         name = _require_str(arguments, "name")
         description = _require_str(arguments, "description")
         metadata = _get_dict(arguments, "metadata")
-        project = await app_state.project_facade_service.create_project(
+        project = await project_facade_service_of(app_state).create_project(
             name=name,
             description=description,
             actor_id=require_actor_id(actor),
@@ -981,7 +1000,7 @@ async def _projects_update(
         name = get_optional_str(arguments, "name")
         description = get_optional_str(arguments, "description")
         metadata = _get_dict(arguments, "metadata")
-        project = await app_state.project_facade_service.update_project(
+        project = await project_facade_service_of(app_state).update_project(
             project_id=project_id,
             actor_id=require_actor_id(actor),
             name=name,
@@ -1018,7 +1037,7 @@ async def _projects_delete(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         project_id = _require_uuid(arguments, "project_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.project_facade_service.delete_project(
+        removed = await project_facade_service_of(app_state).delete_project(
             project_id=project_id,
             actor_id=actor_id,
             reason=reason,
@@ -1061,7 +1080,7 @@ async def _requests_list(
     tool = "synthorg_requests_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.requests_facade_service.list_requests(
+        page, total = await requests_facade_service_of(app_state).list_requests(
             offset=offset,
             limit=limit,
         )
@@ -1089,7 +1108,7 @@ async def _requests_get(
     tool = "synthorg_requests_get"
     try:
         request_id = _require_uuid(arguments, "request_id")
-        record = await app_state.requests_facade_service.get_request(request_id)
+        record = await requests_facade_service_of(app_state).get_request(request_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1119,7 +1138,7 @@ async def _requests_create(
     try:
         title = _require_str(arguments, "title")
         body = _require_str(arguments, "body")
-        record = await app_state.requests_facade_service.create_request(
+        record = await requests_facade_service_of(app_state).create_request(
             title=title,
             body=body,
             requested_by=require_actor_id(actor),
@@ -1149,7 +1168,7 @@ async def _setup_get_status(
     """
     tool = "synthorg_setup_get_status"
     try:
-        status = await app_state.setup_facade_service.get_status()
+        status = await setup_facade_service_of(app_state).get_status()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1174,7 +1193,7 @@ async def _setup_initialize(
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         config = require_dict(arguments, "config")
-        await app_state.setup_facade_service.initialize(config=config)
+        await setup_facade_service_of(app_state).initialize(config=config)
         logger.info(
             MCP_ADMIN_OP_EXECUTED,
             tool_name=tool,
@@ -1213,7 +1232,7 @@ async def _simulations_list(
     tool = "synthorg_simulations_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.simulation_facade_service.list_simulations(
+        page, total = await simulation_facade_service_of(app_state).list_simulations(
             offset=offset,
             limit=limit,
         )
@@ -1241,7 +1260,7 @@ async def _simulations_get(
     tool = "synthorg_simulations_get"
     try:
         sim_id = _require_str(arguments, "simulation_id")
-        sim = await app_state.simulation_facade_service.get_simulation(sim_id)
+        sim = await simulation_facade_service_of(app_state).get_simulation(sim_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1269,7 +1288,7 @@ async def _simulations_create(
     """
     tool = "synthorg_simulations_create"
     try:
-        await app_state.simulation_facade_service.create_simulation()
+        await simulation_facade_service_of(app_state).create_simulation()
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except ArgumentValidationError as exc:
@@ -1298,7 +1317,7 @@ async def _template_packs_list(
     tool = "synthorg_template_packs_list"
     try:
         offset, limit = coerce_pagination(arguments)
-        page, total = await app_state.template_pack_facade_service.list_packs(
+        page, total = await template_pack_facade_service_of(app_state).list_packs(
             offset=offset,
             limit=limit,
         )
@@ -1326,7 +1345,7 @@ async def _template_packs_get(
     tool = "synthorg_template_packs_get"
     try:
         pack_id = _require_uuid(arguments, "pack_id")
-        pack = await app_state.template_pack_facade_service.get_pack(pack_id)
+        pack = await template_pack_facade_service_of(app_state).get_pack(pack_id)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1358,7 +1377,7 @@ async def _template_packs_install(
         name = _require_str(arguments, "name")
         version = _require_str(arguments, "version")
         actor_id = require_actor_id(resolved_actor)
-        pack = await app_state.template_pack_facade_service.install_pack(
+        pack = await template_pack_facade_service_of(app_state).install_pack(
             name=name,
             version=version,
             actor_id=actor_id,
@@ -1399,7 +1418,7 @@ async def _template_packs_uninstall(
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
         pack_id = _require_uuid(arguments, "pack_id")
         actor_id = require_actor_id(resolved_actor)
-        removed = await app_state.template_pack_facade_service.uninstall_pack(
+        removed = await template_pack_facade_service_of(app_state).uninstall_pack(
             pack_id=pack_id,
             actor_id=actor_id,
             reason=reason,
@@ -1441,7 +1460,7 @@ async def _integration_health_get_all(
     """
     tool = "synthorg_integration_health_get_all"
     try:
-        snapshot = await app_state.integration_health_facade_service.get_all()
+        snapshot = await integration_health_facade_service_of(app_state).get_all()
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -1465,7 +1484,7 @@ async def _integration_health_get(
     tool = "synthorg_integration_health_get"
     try:
         integration_id = _require_str(arguments, "integration_id")
-        status = await app_state.integration_health_facade_service.get_one(
+        status = await integration_health_facade_service_of(app_state).get_one(
             integration_id,
         )
     except ArgumentValidationError as exc:

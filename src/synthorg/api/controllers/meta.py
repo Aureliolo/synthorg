@@ -7,26 +7,37 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
-from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    cursor_secret_of,
+    paginate_cursor,
+)
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.state import EngineStateSlice
 from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
+from synthorg.meta.state import MetaStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_CHAT_DEPENDENCY_UNAVAILABLE,
     META_CUSTOM_RULE_LIST_FAILED,
 )
+from synthorg.persistence.state import persistence_of
+from synthorg.settings.state import SettingsStateSlice
 
 
 class ChatRequest(BaseModel):
@@ -64,7 +75,7 @@ def _settings_service_from_state(state: State) -> Any:
         ``Any`` instance.
     """
     app_state = state.app_state
-    return app_state.settings_service if app_state.has_settings_service else None
+    return app_state.slice(SettingsStateSlice).settings_service
 
 
 class MetaController(Controller):
@@ -135,7 +146,7 @@ class MetaController(Controller):
             for r in rules
         ]
         # Append custom rules from persistence.
-        repo = state.app_state.persistence.custom_rules
+        repo = persistence_of(state.app_state).custom_rules
         try:
             from synthorg.persistence.custom_rule_protocol import (  # noqa: PLC0415
                 CustomRuleFilterSpec,
@@ -154,7 +165,7 @@ class MetaController(Controller):
             tuple(rule_list),
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
@@ -183,7 +194,7 @@ class MetaController(Controller):
             entries,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, str]](data=page, pagination=meta)
 
@@ -227,7 +238,7 @@ class MetaController(Controller):
             empty,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
@@ -273,7 +284,9 @@ class MetaController(Controller):
         Returns:
             Paginated proposal summaries.
         """
-        store = state.app_state.approval_store
+        store = require_service(
+            state.app_state.slice(ApprovalStateSlice).store, "Approval Store"
+        )
         all_items = await store.list_items()
         proposals = tuple(
             {
@@ -292,7 +305,7 @@ class MetaController(Controller):
             proposals,
             limit=limit,
             cursor=cursor,
-            secret=state.app_state.cursor_secret,
+            secret=cursor_secret_of(state.app_state),
         )
         return PaginatedResponse[dict[str, Any]](data=page, pagination=meta)
 
@@ -363,9 +376,7 @@ class MetaController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
-        chat_backend = (
-            app_state.chief_of_staff_chat if app_state.has_chief_of_staff_chat else None
-        )
+        chat_backend = app_state.slice(MetaStateSlice).chief_of_staff_chat
         if chat_backend is None:
             logger.warning(
                 META_CHAT_DEPENDENCY_UNAVAILABLE,
@@ -380,9 +391,7 @@ class MetaController(Controller):
                 "ensure an LLM provider is registered."
             )
             raise ServiceUnavailableError(msg)
-        signals_service = (
-            app_state.signals_service if app_state.has_signals_service else None
-        )
+        signals_service = app_state.slice(MetaStateSlice).signals_service
         if signals_service is None:
             logger.warning(
                 META_CHAT_DEPENDENCY_UNAVAILABLE,
@@ -442,11 +451,7 @@ class MetaController(Controller):
             ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
-        proposer = (
-            app_state.chief_of_staff_proposer
-            if app_state.has_chief_of_staff_proposer
-            else None
-        )
+        proposer = app_state.slice(MetaStateSlice).chief_of_staff_proposer
         if proposer is None:
             logger.warning(
                 META_CHAT_DEPENDENCY_UNAVAILABLE,
@@ -462,7 +467,7 @@ class MetaController(Controller):
                 "register an LLM provider, and connect persistence."
             )
             raise ServiceUnavailableError(msg)
-        if not app_state.has_work_pipeline:
+        if app_state.slice(EngineStateSlice).work_pipeline is None:
             logger.warning(
                 META_CHAT_DEPENDENCY_UNAVAILABLE,
                 dependency="work_pipeline",

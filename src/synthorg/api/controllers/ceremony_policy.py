@@ -25,6 +25,7 @@ from synthorg.coordination.ceremony_policy.policy_resolver import (
     _fetch_project_policy,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_ACTIVE_QUERIED,
@@ -104,7 +105,7 @@ class CeremonyPolicyController(Controller):
             Result matching the declared return annotation.
         """
         app_state: AppState = state.app_state
-        scheduler = app_state.ceremony_scheduler
+        scheduler = app_state.slice(EngineStateSlice).ceremony_scheduler
         response = ActiveCeremonyStrategyResponse()
 
         if scheduler is not None and scheduler.running:

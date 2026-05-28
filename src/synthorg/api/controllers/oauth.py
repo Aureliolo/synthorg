@@ -11,6 +11,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
@@ -32,8 +33,10 @@ from synthorg.integrations.oauth.callback_handler import (
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
+from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import SECRET_RETRIEVAL_FAILED
+from synthorg.settings.state import SettingsStateSlice
 
 logger = get_logger(__name__)
 
@@ -100,13 +103,16 @@ class OAuthController(Controller):
         # mapping; controller-level translation collapses the type
         # into the generic ``NotFoundError``.
         connection_name = data.connection_name
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         conn = await catalog.get_or_raise(connection_name)
 
         credentials = await catalog.get_credentials(connection_name)
 
         app_state = state["app_state"]
-        resolver = app_state.config_resolver if app_state.has_config_resolver else None
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
         timeout = await resolve_oauth_http_timeout(resolver)
         if timeout is not None:
             flow = AuthorizationCodeFlow(http_timeout_seconds=timeout)
@@ -141,7 +147,11 @@ class OAuthController(Controller):
         # the audit-grade ``SECURITY_OAUTH_STATE_PERSISTED`` event
         # accompanies every save. Raises 503 when the service is not
         # yet wired (matches every other persistence-bound facade).
-        bound_state = await state["app_state"].oauth_state_service.persist_initiation(
+        oauth_state_service = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).oauth_state_service,
+            "OAuth State Service",
+        )
+        bound_state = await oauth_state_service.persist_initiation(
             oauth_state,
             connection_name=conn.name,
         )
@@ -197,14 +207,20 @@ class OAuthController(Controller):
         )
 
         app_state = state["app_state"]
-        catalog = app_state.connection_catalog
-        resolver = app_state.config_resolver if app_state.has_config_resolver else None
+        catalog = require_service(
+            app_state.slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
 
         try:
             connection_name = await handle_oauth_callback(
                 state_param=state_param,
                 code=code,
-                state_service=app_state.oauth_state_service,
+                state_service=require_service(
+                    app_state.slice(IntegrationsStateSlice).oauth_state_service,
+                    "OAuth State Service",
+                ),
                 catalog=catalog,
                 config_resolver=resolver,
             )
@@ -240,7 +256,10 @@ class OAuthController(Controller):
         """
         # ``ConnectionNotFoundError`` propagates with its class-level
         # 404 + ``CONNECTION_NOT_FOUND`` envelope.
-        catalog = state["app_state"].connection_catalog
+        catalog = require_service(
+            state["app_state"].slice(IntegrationsStateSlice).connection_catalog,
+            "Connection Catalog",
+        )
         conn = await catalog.get_or_raise(connection_name)
 
         # ``has_token`` is true only when the OAuth exchange has

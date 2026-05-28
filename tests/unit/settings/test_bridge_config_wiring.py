@@ -407,10 +407,10 @@ class TestAppStateBridgeConfigFlags:
     @pytest.mark.unit
     def test_flag_starts_false_and_flips_once(self) -> None:
         from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.state import AppState
         from synthorg.config.schema import RootConfig
+        from tests._shared import make_app_state
 
-        state = AppState(
+        state = make_app_state(
             config=RootConfig(company_name="test"),
             approval_store=ApprovalStore(),
         )
@@ -421,13 +421,14 @@ class TestAppStateBridgeConfigFlags:
     @pytest.mark.unit
     def test_swap_notification_dispatcher_returns_previous(self) -> None:
         from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.state import AppState
         from synthorg.config.schema import RootConfig
         from synthorg.notifications.dispatcher import (
             NotificationDispatcher,
         )
+        from synthorg.notifications.state import NotificationsStateSlice
+        from tests._shared import make_app_state
 
-        state = AppState(
+        state = make_app_state(
             config=RootConfig(company_name="test"),
             approval_store=ApprovalStore(),
         )
@@ -435,9 +436,9 @@ class TestAppStateBridgeConfigFlags:
         second = NotificationDispatcher(sinks=())
         # Empty AppState has no dispatcher; first swap returns None.
         assert state.swap_notification_dispatcher(first) is None
-        assert state.notification_dispatcher is first
+        assert state.slice(NotificationsStateSlice).dispatcher is first
         # Second swap returns the previously-installed dispatcher so
         # the caller can close its sinks without reaching back through
         # the accessor.
         assert state.swap_notification_dispatcher(second) is first
-        assert state.notification_dispatcher is second
+        assert state.slice(NotificationsStateSlice).dispatcher is second

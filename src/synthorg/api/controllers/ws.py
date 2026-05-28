@@ -29,6 +29,8 @@ from litestar.channels import ChannelsPlugin
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
+from synthorg._core.features import require_service
+from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.channels import ALL_CHANNELS, user_channel
 from synthorg.api.controllers.ws_protocol import (
     channel_allowed,
@@ -62,6 +64,7 @@ from synthorg.observability.events.api import (
     API_WS_TICKET_INVALID,
     API_WS_TRANSPORT_ERROR,
 )
+from synthorg.observability.state import ObservabilityStateSlice
 
 logger = get_logger(__name__)
 
@@ -118,7 +121,10 @@ async def _validate_ticket(
         return None
 
     app_state = socket.app.state["app_state"]
-    user: AuthenticatedUser | None = app_state.ticket_store.validate_and_consume(
+    ticket_store = require_service(
+        app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
+    )
+    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -227,7 +233,10 @@ async def _auth_from_first_message(
         return None
 
     app_state = socket.app.state["app_state"]
-    user: AuthenticatedUser | None = app_state.ticket_store.validate_and_consume(
+    ticket_store = require_service(
+        app_state.slice(ApiCoreStateSlice).ticket_store, "WS Ticket Store"
+    )
+    user: AuthenticatedUser | None = ticket_store.validate_and_consume(
         ticket,
     )
     if user is None:
@@ -668,7 +677,9 @@ async def _setup_connection(
     # connection that never finished establishing.
     app_state = socket.app.state["app_state"]
     try:
-        app_state.user_presence.connect(user.user_id)
+        require_service(
+            app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
+        ).connect(user.user_id)
     except Exception:
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -704,7 +715,9 @@ async def _setup_connection(
                 reason="unsubscribe_after_auth_ok_failure",
                 client=str(socket.client),
             )
-        app_state.user_presence.disconnect(user.user_id)
+        require_service(
+            app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
+        ).disconnect(user.user_id)
         return None
 
     logger.info(
@@ -726,9 +739,10 @@ def _record_ws_connection_opened(socket: WebSocket[Any, Any, Any]) -> None:
     scrape thread.
     """
     app_state = socket.app.state["app_state"]
-    if not app_state.has_prometheus_collector:
+    collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
+    if collector is None:
         return
-    app_state.prometheus_collector.inc_ws_active_connections()
+    collector.inc_ws_active_connections()
 
 
 def _record_ws_connection_closed(
@@ -738,9 +752,9 @@ def _record_ws_connection_closed(
 ) -> None:
     """Observe the WS lifetime histogram and decrement the active gauge."""
     app_state = socket.app.state["app_state"]
-    if not app_state.has_prometheus_collector:
+    collector = app_state.slice(ObservabilityStateSlice).prometheus_collector
+    if collector is None:
         return
-    collector = app_state.prometheus_collector
     collector.record_ws_connection_lifetime(
         transport="websocket",
         duration_sec=duration_sec,
@@ -798,7 +812,9 @@ async def _teardown_connection(
     # to emit ``API_WS_DISCONNECTED`` and re-raise any deferred
     # cancellation so the outer scheduler unwinds cleanly.
     try:
-        app_state.user_presence.disconnect(user.user_id)
+        require_service(
+            app_state.slice(ApiCoreStateSlice).user_presence, "User Presence"
+        ).disconnect(user.user_id)
     except Exception:
         logger.warning(
             API_WS_TRANSPORT_ERROR,

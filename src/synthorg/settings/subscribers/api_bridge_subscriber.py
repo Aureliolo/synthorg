@@ -23,6 +23,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.settings.bridge_configs import ApiBridgeConfig
+from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -112,7 +113,7 @@ class ApiBridgeSettingsSubscriber:
             )
             return
         try:
-            value = await self._app_state.config_resolver.get_int(namespace, key)
+            value = await config_resolver_of(self._app_state).get_int(namespace, key)
             self._app_state.mutate_api_bridge_config({key: value})
         except Exception as exc:
             reraise_critical(exc)

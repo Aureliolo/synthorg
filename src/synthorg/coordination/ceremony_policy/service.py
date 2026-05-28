@@ -22,6 +22,7 @@ from synthorg.coordination.ceremony_policy.policy_resolver import (
     _fetch_project_policy,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,  # noqa: TC001 -- runtime annotation
     CeremonyStrategyType,  # noqa: TC001 -- Pydantic runtime
@@ -157,7 +158,7 @@ class CeremonyPolicyService:
         When no ceremony scheduler is configured or no sprint is
         running, both fields are ``None``.
         """
-        scheduler = self._app_state.ceremony_scheduler
+        scheduler = self._app_state.slice(EngineStateSlice).ceremony_scheduler
         if scheduler is None or not scheduler.running:
             logger.debug(
                 API_CEREMONY_POLICY_ACTIVE_QUERIED,

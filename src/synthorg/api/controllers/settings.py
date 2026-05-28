@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg._core.features import require_service
 from synthorg.api.boundary import parse_typed
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.cursor import decode_keyset_cursor
@@ -25,6 +26,7 @@ from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
+    cursor_secret_of,
     encode_keyset_meta,
     paginate_cursor,
 )
@@ -71,6 +73,7 @@ from synthorg.settings.errors import (
     SinkConfigValidationError,
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry  # noqa: TC001
+from synthorg.settings.state import SettingsStateSlice
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -327,7 +330,9 @@ async def _check_setting_etag(
     if not if_match:
         return None
     try:
-        current = await app_state.settings_service.get_entry(
+        current = await require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_entry(
             namespace,
             key,
         )
@@ -368,7 +373,9 @@ class SettingsController(Controller):
             All setting definitions.
         """
         app_state: AppState = state.app_state
-        schema = app_state.settings_service.get_schema()
+        schema = require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_schema()
         return ApiResponse(data=schema)
 
     @get("/_schema/{namespace:str}")
@@ -388,7 +395,9 @@ class SettingsController(Controller):
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
-        schema = app_state.settings_service.get_schema(namespace=namespace)
+        schema = require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_schema(namespace=namespace)
         return ApiResponse(data=schema)
 
     @get()
@@ -423,11 +432,13 @@ class SettingsController(Controller):
         """
         app_state: AppState = state.app_state
         after_key = (
-            decode_keyset_cursor(cursor, secret=app_state.cursor_secret)
+            decode_keyset_cursor(cursor, secret=cursor_secret_of(app_state))
             if cursor is not None
             else None
         )
-        page, has_more = await app_state.settings_service.get_page(
+        page, has_more = await require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_page(
             after_key=after_key,
             limit=limit,
         )
@@ -440,7 +451,7 @@ class SettingsController(Controller):
             next_after_key=next_after_key,
             has_more=has_more,
             limit=limit,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse(data=page, pagination=meta)
 
@@ -461,7 +472,9 @@ class SettingsController(Controller):
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
-        entries = await app_state.settings_service.get_namespace(namespace)
+        entries = await require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        ).get_namespace(namespace)
         return ApiResponse(data=entries)
 
     @get("/{namespace:str}/{key:str}")
@@ -487,7 +500,9 @@ class SettingsController(Controller):
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
         try:
-            entry = await app_state.settings_service.get_entry(namespace, key)
+            entry = await require_service(
+                app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+            ).get_entry(namespace, key)
         except SettingNotFoundError as exc:
             logger.warning(
                 SETTINGS_NOT_FOUND,
@@ -546,7 +561,9 @@ class SettingsController(Controller):
         )
 
         try:
-            entry = await app_state.settings_service.set(
+            entry = await require_service(
+                app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+            ).set(
                 namespace,
                 key,
                 data.value,
@@ -619,7 +636,9 @@ class SettingsController(Controller):
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
         try:
-            await app_state.settings_service.delete(namespace, key)
+            await require_service(
+                app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+            ).delete(namespace, key)
         except SettingNotFoundError as exc:
             logger.warning(
                 SETTINGS_NOT_FOUND,
@@ -654,7 +673,9 @@ class SettingsController(Controller):
             Paginated typed sink-info responses.
         """
         app_state: AppState = state.app_state
-        svc = app_state.settings_service
+        svc = require_service(
+            app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+        )
 
         overrides_json, custom_json, raw_level, raw_correlation = await asyncio.gather(
             _get_setting_or_default(svc, "sink_overrides", "{}"),
@@ -697,7 +718,7 @@ class SettingsController(Controller):
             ordered,
             limit=limit,
             cursor=cursor,
-            secret=app_state.cursor_secret,
+            secret=cursor_secret_of(app_state),
         )
         return PaginatedResponse[SinkInfoResponse](data=page, pagination=meta)
 
@@ -833,7 +854,9 @@ class SettingsController(Controller):
             raise DomainValidationError(msg) from exc
 
         await _persist_security_settings(
-            app_state.settings_service,
+            require_service(
+                app_state.slice(SettingsStateSlice).settings_service, "Settings Service"
+            ),
             validated,
             import_source=SettingsImportSource.API_BODY,
         )

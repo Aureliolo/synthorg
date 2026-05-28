@@ -20,8 +20,10 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg import __version__
+from synthorg._core.features import require_service
 from synthorg.api.dto import ApiResponse
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -29,6 +31,9 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_HEALTH_CHECK
+from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.providers.state import ProvidersStateSlice
+from synthorg.telemetry.state import TelemetryStateSlice
 
 logger = get_logger(__name__)
 
@@ -147,12 +152,11 @@ def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
     Returns:
         ``TelemetryStatus`` instance.
     """
-    if not app_state.has_telemetry_collector:
+    collector = app_state.slice(TelemetryStateSlice).collector
+    if collector is None:
         return TelemetryStatus.DISABLED
     return (
-        TelemetryStatus.ENABLED
-        if app_state.telemetry_collector.is_functional
-        else TelemetryStatus.DISABLED
+        TelemetryStatus.ENABLED if collector.is_functional else TelemetryStatus.DISABLED
     )
 
 
@@ -254,25 +258,34 @@ class ReadinessController(Controller):
             async with asyncio.TaskGroup() as tg:
                 persistence_task = tg.create_task(
                     _probe_service(
-                        configured=app_state.has_persistence,
-                        probe=lambda: app_state.persistence.health_check(),  # noqa: PLW0108
+                        configured=app_state.slice(PersistenceStateSlice).backend
+                        is not None,
+                        probe=lambda: persistence_of(app_state).health_check(),
                         component="persistence",
                     ),
                 )
                 bus_task = tg.create_task(
                     _probe_service(
-                        configured=app_state.has_message_bus,
-                        probe=lambda: app_state.message_bus.health_check(),  # noqa: PLW0108
+                        configured=app_state.slice(CommunicationStateSlice).message_bus
+                        is not None,
+                        probe=lambda: require_service(
+                            app_state.slice(CommunicationStateSlice).message_bus,
+                            "Message Bus",
+                        ).health_check(),
                         component="message_bus",
                     ),
                 )
 
                 async def _probe_providers() -> bool:
-                    return await app_state.provider_health_tracker.are_all_reachable()
+                    return await require_service(
+                        app_state.slice(ProvidersStateSlice).health_tracker,
+                        "Provider Health Tracker",
+                    ).are_all_reachable()
 
                 providers_task = tg.create_task(
                     _probe_service(
-                        configured=app_state.has_provider_health_tracker,
+                        configured=app_state.slice(ProvidersStateSlice).health_tracker
+                        is not None,
                         probe=_probe_providers,
                         component="providers",
                     ),

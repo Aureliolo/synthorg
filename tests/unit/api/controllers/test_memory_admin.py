@@ -17,6 +17,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneStatus,
 )
 from synthorg.settings.definitions.memory import FINE_TUNE_DEFAULT_BATCH_SIZE
+from tests._shared import make_app_state
 
 
 @pytest.mark.unit
@@ -470,7 +471,7 @@ class TestDeleteMemoryEntryEndpoint:
         try:
             response = await controller.delete_memory_entry.fn(
                 controller,
-                state=State({"app_state": SimpleNamespace()}),
+                state=State({"app_state": make_app_state()}),
                 agent_id="agent-1",
                 memory_id="mem-1",
             )
@@ -515,7 +516,7 @@ class TestDeleteMemoryEntryEndpoint:
             with pytest.raises(NotFoundError):
                 await controller.delete_memory_entry.fn(
                     controller,
-                    state=State({"app_state": SimpleNamespace()}),
+                    state=State({"app_state": make_app_state()}),
                     agent_id="agent-1",
                     memory_id="missing",
                 )
@@ -562,7 +563,7 @@ class TestDeleteMemoryEntryEndpoint:
             with pytest.raises(FeatureNotImplementedError) as exc_info:
                 await controller.delete_memory_entry.fn(
                     controller,
-                    state=State({"app_state": SimpleNamespace()}),
+                    state=State({"app_state": make_app_state()}),
                     agent_id="agent-1",
                     memory_id="mem-1",
                 )
@@ -873,7 +874,7 @@ class TestListCheckpointsEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+            app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
             response = await controller.list_checkpoints.fn(
                 controller,
                 state=State({"app_state": app_state}),
@@ -922,7 +923,7 @@ class TestListCheckpointsEndpoint:
         try:
             await controller.list_checkpoints.fn(
                 controller,
-                state=State({"app_state": SimpleNamespace(cursor_secret=secret)}),
+                state=State({"app_state": make_app_state(cursor_secret=secret)}),
                 cursor=cursor,
                 limit=50,
             )
@@ -932,7 +933,6 @@ class TestListCheckpointsEndpoint:
         list_mock.assert_awaited_once_with(limit=50, offset=10)
 
     async def test_tampered_cursor_raises(self) -> None:
-        from types import SimpleNamespace
 
         from litestar.datastructures import State
 
@@ -940,7 +940,7 @@ class TestListCheckpointsEndpoint:
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+        app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
         with pytest.raises(InvalidCursorError):
             await controller.list_checkpoints.fn(
                 controller,
@@ -986,7 +986,7 @@ class TestListRunsEndpoint:
         original_build = memory_module._build_memory_service
         memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
         try:
-            app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+            app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
             response = await controller.list_runs.fn(
                 controller,
                 state=State({"app_state": app_state}),
@@ -1035,7 +1035,7 @@ class TestListRunsEndpoint:
         try:
             await controller.list_runs.fn(
                 controller,
-                state=State({"app_state": SimpleNamespace(cursor_secret=secret)}),
+                state=State({"app_state": make_app_state(cursor_secret=secret)}),
                 cursor=cursor,
                 limit=50,
             )
@@ -1045,7 +1045,6 @@ class TestListRunsEndpoint:
         list_mock.assert_awaited_once_with(limit=50, offset=15)
 
     async def test_tampered_cursor_raises(self) -> None:
-        from types import SimpleNamespace
 
         from litestar.datastructures import State
 
@@ -1053,7 +1052,7 @@ class TestListRunsEndpoint:
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        app_state = SimpleNamespace(cursor_secret=CursorSecret.ephemeral())
+        app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
         with pytest.raises(InvalidCursorError):
             await controller.list_runs.fn(
                 controller,
