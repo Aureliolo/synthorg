@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -116,10 +116,15 @@ export function WorkflowNodeDrawer({
   // Clearing drafts when the drawer switches nodes prevents partial input
   // from one node's field bleeding into another node's same-named field
   // (e.g. typing ``{`` into ``input_bindings`` on node A, then opening
-  // node B, would otherwise carry that draft over).
-  useEffect(() => {
+  // node B, would otherwise carry that draft over). Render-phase detection
+  // matches the project's prop-change pattern (see
+  // pages/agents/useQualityScoreOverride.ts::useResetOnAgentChange) and
+  // sidesteps the set-state-in-effect lint rule.
+  const prevNodeIdRef = useRef(nodeId)
+  if (prevNodeIdRef.current !== nodeId) {
+    prevNodeIdRef.current = nodeId
     setDrafts({})
-  }, [nodeId])
+  }
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {

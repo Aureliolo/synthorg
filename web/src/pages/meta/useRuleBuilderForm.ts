@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { createLogger } from '@/lib/logger'
 import { useCustomRulesStore } from '@/stores/custom-rules'
@@ -71,14 +71,18 @@ export function useRuleBuilderForm({
   const [errors, setErrors] = useState<RuleBuilderFormErrors>({})
   const [submitting, setSubmitting] = useState(false)
 
-  // Re-sync the form whenever the caller swaps to a different rule (or to
-  // create mode) without unmounting the drawer; without this the previous
-  // rule's fields stay rendered while the new identity is in editRule.
-  useEffect(() => {
+  // React's documented "reset state when a prop changes" idiom: detect the
+  // identity change in render so the new editRule's fields render in the
+  // same commit instead of a useEffect-driven double render. Avoids the
+  // set-state-in-effect lint rule and matches useResetOnAgentChange in
+  // pages/agents/useQualityScoreOverride.ts.
+  const prevEditRuleRef = useRef(editRule)
+  if (prevEditRuleRef.current !== editRule) {
+    prevEditRuleRef.current = editRule
     setForm(editRule ? formFromRule(editRule) : INITIAL_FORM)
     setErrors({})
     setSubmitting(false)
-  }, [editRule])
+  }
 
   const createRule = useCustomRulesStore((s) => s.createRule)
   const updateRule = useCustomRulesStore((s) => s.updateRule)
