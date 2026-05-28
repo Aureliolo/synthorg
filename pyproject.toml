@@ -298,6 +298,17 @@ ignore = [
     "D104",   # missing docstring in public package
     "D107",   # missing docstring in __init__
     "ISC001", # conflicts with ruff formatter
+    # TC001/2/3 ("move-to-TYPE_CHECKING") conflict with typeguard's
+    # eager ``inspect.signature`` annotation evaluation. The project
+    # wires typeguard via ``--typeguard-packages=synthorg`` (see ADR-0006
+    # Section F + issue #2068); every type that appears in a function
+    # signature, NamedTuple field, or Pydantic model annotation must be
+    # importable at runtime so typeguard can resolve it. Other TC checks
+    # (TC004 move-out-of-TYPE_CHECKING, TC005 empty block, TC006/7/8
+    # quoted-annotation hygiene) remain active.
+    "TC001",
+    "TC002",
+    "TC003",
     # TRY400: "use logger.exception instead of logger.error" -- conflicts
     # with the project-wide SEC-1 redaction rule (CLAUDE.md Logging
     # section). logger.exception attaches a traceback whose frame-locals
