@@ -1,5 +1,5 @@
 import { Link, useNavigate, type NavigateFunction } from 'react-router'
-import { Workflow, MoreHorizontal, Copy, Trash2, Pencil } from 'lucide-react'
+import { Workflow, MoreHorizontal, Copy, Download, Trash2, Pencil } from 'lucide-react'
 import { Menu } from '@base-ui/react/menu'
 import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
@@ -12,6 +12,7 @@ interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
   onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
+  onExport: (id: string) => void | Promise<void>
   onToggleSelect?: (id: string) => void
   selectedIds?: ReadonlySet<string>
 }
@@ -20,6 +21,7 @@ export function WorkflowTableView({
   workflows,
   onDelete,
   onDuplicate,
+  onExport,
   onToggleSelect,
   selectedIds,
 }: WorkflowTableViewProps) {
@@ -50,6 +52,7 @@ export function WorkflowTableView({
                 isSelected={selectedIds?.has(w.id) ?? false}
                 onToggleSelect={onToggleSelect}
                 onDuplicate={onDuplicate}
+                onExport={() => void onExport(w.id)}
                 onRequestDelete={() => setConfirmDeleteId(w.id)}
               />
             ))}
@@ -108,6 +111,7 @@ interface WorkflowTableRowProps {
   isSelected: boolean
   onToggleSelect?: (id: string) => void
   onDuplicate: (id: string) => void
+  onExport: () => void
   onRequestDelete: () => void
 }
 
@@ -117,6 +121,7 @@ function WorkflowTableRow({
   isSelected,
   onToggleSelect,
   onDuplicate,
+  onExport,
   onRequestDelete,
 }: WorkflowTableRowProps) {
   const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(workflow.id)}`
@@ -160,6 +165,7 @@ function WorkflowTableRow({
           editorUrl={editorUrl}
           onEdit={() => void navigate(editorUrl)}
           onDuplicate={() => onDuplicate(workflow.id)}
+          onExport={onExport}
           onRequestDelete={onRequestDelete}
         />
       </td>
@@ -178,6 +184,7 @@ interface WorkflowRowMenuProps {
   editorUrl: string
   onEdit: () => void
   onDuplicate: () => void
+  onExport: () => void
   onRequestDelete: () => void
 }
 
@@ -185,6 +192,7 @@ function WorkflowRowMenu({
   workflowName,
   onEdit,
   onDuplicate,
+  onExport,
   onRequestDelete,
 }: WorkflowRowMenuProps) {
   return (
@@ -210,6 +218,10 @@ function WorkflowRowMenu({
             <Menu.Item className={`${MENU_ITEM_CLASSES} text-foreground`} onClick={onDuplicate}>
               <Copy className="size-3.5" />
               Duplicate
+            </Menu.Item>
+            <Menu.Item className={`${MENU_ITEM_CLASSES} text-foreground`} onClick={onExport}>
+              <Download className="size-3.5" />
+              Export YAML
             </Menu.Item>
             <Menu.Item className={`${MENU_ITEM_CLASSES} text-danger`} onClick={onRequestDelete}>
               <Trash2 className="size-3.5" />

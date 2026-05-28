@@ -20,6 +20,7 @@ export interface WorkflowsPageController {
   setBulkDeleteOpen: (open: boolean) => void
   handleDelete: (id: string) => Promise<void>
   handleDuplicate: (id: string) => Promise<void>
+  handleExport: (id: string) => Promise<void>
   handleToggleSelect: (id: string) => void
   clearSelection: () => void
   handleBulkDelete: () => Promise<void>
@@ -77,6 +78,11 @@ export function useWorkflowsPageController(): WorkflowsPageController {
     [navigate],
   )
 
+  const handleExport = useCallback(async (id: string) => {
+    // Store owns the success/error toast UX for the download.
+    await useWorkflowsStore.getState().exportWorkflow(id)
+  }, [])
+
   const handleClearFilters = useCallback(() => {
     useWorkflowsStore.getState().setSearchQuery('')
     useWorkflowsStore.getState().setWorkflowTypeFilter(null)
@@ -97,6 +103,7 @@ export function useWorkflowsPageController(): WorkflowsPageController {
     setBulkDeleteOpen,
     handleDelete,
     handleDuplicate,
+    handleExport,
     handleToggleSelect,
     clearSelection,
     handleBulkDelete,

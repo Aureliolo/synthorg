@@ -8,6 +8,7 @@ interface WorkflowGridViewProps {
   workflows: readonly WorkflowDefinition[]
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
+  onExport: (id: string) => void | Promise<void>
   /** When defined, renders selection checkboxes on each card. */
   onToggleSelect?: (id: string) => void
   /** Which ids are currently selected. */
@@ -18,6 +19,7 @@ export function WorkflowGridView({
   workflows,
   onDelete,
   onDuplicate,
+  onExport,
   onToggleSelect,
   selectedIds,
 }: WorkflowGridViewProps) {
@@ -39,6 +41,7 @@ export function WorkflowGridView({
             workflow={workflow}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
+            onExport={onExport}
             onToggleSelect={onToggleSelect}
             selected={selectedIds?.has(workflow.id)}
           />

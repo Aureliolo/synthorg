@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router'
 import { Menu } from '@base-ui/react/menu'
-import { MoreHorizontal, Pencil, Copy, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Copy, Download, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
 import { StatPill } from '@/components/ui/stat-pill'
@@ -12,6 +12,8 @@ interface WorkflowCardProps {
   workflow: WorkflowDefinition
   onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
+  /** Export the persisted definition as YAML. */
+  onExport: (id: string) => void | Promise<void>
   /** When defined, renders a multi-select checkbox and marks the card as selectable. */
   onToggleSelect?: (id: string) => void
   /** Whether the row is currently included in a multi-select. */
@@ -22,6 +24,7 @@ export function WorkflowCard({
   workflow,
   onDelete,
   onDuplicate,
+  onExport,
   onToggleSelect,
   selected = false,
 }: WorkflowCardProps) {
@@ -50,6 +53,7 @@ export function WorkflowCard({
           editorUrl={editorUrl}
           onNavigate={navigate}
           onDuplicate={() => onDuplicate(workflow.id)}
+          onExport={() => void onExport(workflow.id)}
           onRequestDelete={() => setConfirmDelete(true)}
         />
       </div>
@@ -141,6 +145,7 @@ interface WorkflowCardMenuProps {
   editorUrl: string
   onNavigate: (url: string) => unknown
   onDuplicate: () => void
+  onExport: () => void
   onRequestDelete: () => void
 }
 
@@ -148,6 +153,7 @@ function WorkflowCardMenu({
   editorUrl,
   onNavigate,
   onDuplicate,
+  onExport,
   onRequestDelete,
 }: WorkflowCardMenuProps) {
   return (
@@ -185,6 +191,13 @@ function WorkflowCardMenu({
             >
               <Copy className="size-3.5" />
               Duplicate
+            </Menu.Item>
+            <Menu.Item
+              className={`${MENU_ITEM_CLASSES} text-foreground`}
+              onClick={onExport}
+            >
+              <Download className="size-3.5" />
+              Export YAML
             </Menu.Item>
             <Menu.Item
               className={`${MENU_ITEM_CLASSES} text-danger`}

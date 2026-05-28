@@ -136,6 +136,7 @@ function WorkflowsListBody({ ctrl }: WorkflowsListBodyProps) {
         workflows={ctrl.data.filteredWorkflows}
         onDelete={ctrl.handleDelete}
         onDuplicate={ctrl.handleDuplicate}
+        onExport={ctrl.handleExport}
         onToggleSelect={ctrl.handleToggleSelect}
         selectedIds={ctrl.visibleSelected}
       />
@@ -146,6 +147,7 @@ function WorkflowsListBody({ ctrl }: WorkflowsListBodyProps) {
       workflows={ctrl.data.filteredWorkflows}
       onDelete={ctrl.handleDelete}
       onDuplicate={ctrl.handleDuplicate}
+      onExport={ctrl.handleExport}
       onToggleSelect={ctrl.handleToggleSelect}
       selectedIds={ctrl.visibleSelected}
     />

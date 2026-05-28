@@ -42,6 +42,8 @@ export interface WorkflowsState {
     data: CreateFromBlueprintRequest,
   ) => Promise<WorkflowDefinition | null>
   deleteWorkflow: (id: string) => Promise<boolean>
+  /** Export the persisted definition as YAML and trigger a download. */
+  exportWorkflow: (id: string) => Promise<boolean>
   batchDeleteWorkflows: (
     ids: readonly string[],
   ) => Promise<BatchDeleteOutcome | false>

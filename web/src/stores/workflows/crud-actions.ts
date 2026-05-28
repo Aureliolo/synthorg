@@ -2,8 +2,10 @@ import {
   createFromBlueprint as createFromBlueprintApi,
   createWorkflow as createWorkflowApi,
   deleteWorkflow as deleteWorkflowApi,
+  exportWorkflowYaml as exportWorkflowYamlApi,
 } from '@/api/endpoints/workflows'
 import { useToastStore } from '@/stores/toast'
+import { downloadTextFile } from '@/utils/download'
 import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
@@ -121,6 +123,30 @@ async function deleteWorkflowImpl(
     useToastStore.getState().add({
       variant: 'error',
       title: 'Failed to delete workflow',
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
+async function exportWorkflowImpl(
+  get: WorkflowsGet,
+  id: string,
+): Promise<boolean> {
+  const name = get().workflows.find((w) => w.id === id)?.name ?? 'workflow'
+  try {
+    const yaml = await exportWorkflowYamlApi(id)
+    downloadTextFile(yaml, `${name}.yaml`, 'text/yaml')
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Workflow YAML exported',
+    })
+    return true
+  } catch (err) {
+    log.error('Export workflow YAML failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to export workflow',
       description: getErrorMessage(err),
     })
     return false
@@ -281,6 +307,7 @@ export function createCrudActions(set: WorkflowsSet, get: WorkflowsGet) {
     createFromBlueprint: (data: CreateFromBlueprintRequest) =>
       createFromBlueprintImpl(set, data),
     deleteWorkflow: (id: string) => deleteWorkflowImpl(set, get, id),
+    exportWorkflow: (id: string) => exportWorkflowImpl(get, id),
     batchDeleteWorkflows: (ids: readonly string[]) =>
       batchDeleteWorkflowsImpl(set, ids),
   }
