@@ -173,7 +173,10 @@ function copyIfPresent(
   keys: readonly string[],
 ): void {
   for (const key of keys) {
-    if (config[key]) step[key] = config[key]
+    const val = config[key]
+    if (val !== undefined && val !== null && val !== '') {
+      step[key] = val
+    }
   }
 }
 

@@ -24,9 +24,11 @@ export function useArtifactImagePreview(
   useEffect(() => {
     if (!isImage || artifact.size_bytes === 0) return
     const ctrl = { revoked: false }
-    downloadArtifactContent(artifact.id)
+    const artifactId = artifact.id
+    const contentType = artifact.content_type
+    downloadArtifactContent(artifactId)
       .then((blob) => onPreviewBlobLoaded(blob, ctrl, imageSrcRef, setImageSrc))
-      .catch((err: unknown) => onPreviewBlobFailed(err, ctrl, artifact, setImageError))
+      .catch((err: unknown) => onPreviewBlobFailed(err, ctrl, artifactId, contentType, setImageError))
     return () => {
       ctrl.revoked = true
       setImageSrc(null)
@@ -36,7 +38,7 @@ export function useArtifactImagePreview(
         imageSrcRef.current = null
       }
     }
-  }, [artifact.id, isImage, artifact.size_bytes, artifact.content_type, artifact])
+  }, [artifact.id, isImage, artifact.size_bytes, artifact.content_type])
 
   return { imageSrc, imageError }
 }
@@ -56,21 +58,17 @@ function onPreviewBlobLoaded(
 function onPreviewBlobFailed(
   err: unknown,
   ctrl: { revoked: boolean },
-  artifact: Artifact,
+  artifactId: string,
+  contentType: string | null | undefined,
   setImageError: (msg: string | null) => void,
 ): void {
   if (ctrl.revoked) return
   const message = getErrorMessage(err)
-  // Structured log so an operator chasing missing previews can tell whether
-  // this is a 404 (artifact gone), a 5xx (storage backend issue), or a
-  // network failure. Don't include the artifact path; it can carry
-  // user-content that might be sensitive in logs.
-  // SEC-1: every dynamic string passed into the structured log payload goes
-  // through sanitizeForLog. artifact.id / artifact.content_type can carry
-  // user-controlled bytes; statusCode is bounded to a number or null.
+  // SEC-1: artifactId / contentType can carry user-controlled bytes; route
+  // through sanitizeForLog. statusCode is bounded to a number or null.
   log.error('artifact image preview failed to load', {
-    artifactId: sanitizeForLog(artifact.id),
-    contentType: sanitizeForLog(artifact.content_type),
+    artifactId: sanitizeForLog(artifactId),
+    contentType: sanitizeForLog(contentType),
     statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
     error: sanitizeForLog(message),
   })
