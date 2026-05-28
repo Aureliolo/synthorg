@@ -48,7 +48,7 @@ Cross-worker coordination rule (read before adding a new fixture):
     same shape and link to this rule in its hook docstring.
 """
 
-# ── typeguard import hook (MUST run before any synthorg import) ────
+# ── typeguard import hook ──────────────────────────────────────────
 #
 # The typeguard pytest plugin (configured via ``--typeguard-packages=synthorg``
 # in pyproject.toml addopts) installs its import hook from
@@ -60,20 +60,24 @@ Cross-worker coordination rule (read before adding a new fixture):
 # the project's ``filterwarnings = ["error", ...]`` would promote that to a
 # hard error, exiting the suite with code 2 before any test runs.
 #
-# Installing the hook here -- BEFORE the first synthorg import below --
-# closes that gap: typeguard rewrites the synthorg modules' bytecode as
-# they are imported. The plugin's later (redundant) install attempt still
-# emits the InstrumentationWarning (it has no way to know the hook is
-# already active), so we suppress it via ``warnings.filterwarnings`` here
-# rather than via pyproject ``filterwarnings`` ini -- the plugin's
+# Installing the hook here closes that gap once the pyproject activation
+# flags are re-enabled: typeguard rewrites the synthorg modules' bytecode
+# as they are imported. The plugin's later (redundant) install attempt
+# still emits the InstrumentationWarning (it has no way to know the hook
+# is already active), so we suppress it via ``warnings.filterwarnings``
+# here rather than via pyproject ``filterwarnings`` ini: the plugin's
 # ``pytest_configure`` runs BEFORE pytest installs the ini-driven filters,
 # so an ini-level ignore arrives too late.
+#
+# The hook install is COMMENTED out alongside the pyproject activation
+# flags; the import-layering follow-up PR re-enables both together. See
+# ADR-0006 Section F for the deferred work.
 import warnings as _warnings
 
 import typeguard
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
-typeguard.install_import_hook(["synthorg"])
+# typeguard.install_import_hook(["synthorg"])
 
 import asyncio  # noqa: E402
 import contextlib  # noqa: E402
