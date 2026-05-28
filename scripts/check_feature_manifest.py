@@ -22,6 +22,7 @@ Run from the repo root::
 
 import argparse
 import ast
+import re
 import sys
 from pathlib import Path
 from typing import Final
@@ -35,6 +36,9 @@ _SLICE_BASE_NAME: Final[str] = "BaseFeatureStateSlice"
 _FEATURE_FILE: Final[str] = "feature.py"
 _FEATURE_TIER_HEADER: Final[str] = "# module-kind: feature"
 _FEATURE_TIER_LOC_CAP: Final[int] = 100
+_ENCODING_COOKIE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^#.*coding[:=]\s*[-\w.]+"
+)
 
 
 def _declares_state_slice(state_py: Path) -> bool:
@@ -43,11 +47,15 @@ def _declares_state_slice(state_py: Path) -> bool:
     AST-only scan: matches `class X(BaseFeatureStateSlice)` and
     `class X(synthorg._core.features.BaseFeatureStateSlice)` shapes; does not
     follow aliasing (intentional: the substrate's name is THE name).
+
+    Fails closed: an unreadable or unparseable *state_py* returns ``True`` so
+    the directory still demands a ``feature.py``. Silently returning ``False``
+    would let a corrupt state module skip the manifest check entirely.
     """
     try:
         tree = ast.parse(state_py.read_text(encoding="utf-8"), filename=str(state_py))
     except OSError, SyntaxError, UnicodeDecodeError:
-        return False
+        return True
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
@@ -129,12 +137,19 @@ def _check_feature_py(feature_py: Path) -> list[str]:
 
 
 def _first_non_blank_non_shebang_line(text: str) -> str:
-    """Return the first line that isn't blank or a shebang."""
+    """Return the first line that isn't blank, a shebang, or an encoding cookie.
+
+    PEP 263 allows the encoding declaration on line 1 or 2 (after a shebang),
+    so a ``# module-kind: feature`` header that follows a coding cookie must
+    still be detected as the meaningful first line.
+    """
     for raw in text.splitlines():
         stripped = raw.strip()
         if not stripped:
             continue
         if stripped.startswith("#!"):
+            continue
+        if _ENCODING_COOKIE_PATTERN.match(stripped):
             continue
         return stripped
     return ""

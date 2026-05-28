@@ -247,12 +247,32 @@ def _claimed_symbols_from_features(repo_root: Path) -> frozenset[str]:
 
 
 def _ghost_wired_kwarg_values(tree: ast.AST) -> list[list[str]]:
-    """Return every ``ghost_wired_symbols=(...)`` literal tuple in *tree*."""
+    """Return ``ghost_wired_symbols`` from the module-level ``FEATURE`` manifest.
+
+    Only inspects ``FEATURE = FeatureManifest(...)`` (or annotated form) at the
+    module top level: walking every call would let an unrelated helper call
+    inside ``feature.py`` smuggle symbols into the parity check and silently
+    bypass it.
+    """
+    if not isinstance(tree, ast.Module):
+        return []
     values: list[list[str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
             continue
-        for keyword in node.keywords:
+        if value is None or not _targets_module_feature(targets):
+            continue
+        if not isinstance(value, ast.Call) or not _is_feature_manifest_call(value):
+            continue
+        for keyword in value.keywords:
             if keyword.arg != "ghost_wired_symbols":
                 continue
             arg = keyword.value
@@ -266,6 +286,24 @@ def _ghost_wired_kwarg_values(tree: ast.AST) -> list[list[str]]:
                     ]
                 )
     return values
+
+
+def _targets_module_feature(targets: list[ast.expr]) -> bool:
+    """Return ``True`` when *targets* assign the module-level ``FEATURE`` name."""
+    for target in targets:
+        if isinstance(target, ast.Name) and target.id == "FEATURE":
+            return True
+    return False
+
+
+def _is_feature_manifest_call(call: ast.Call) -> bool:
+    """Return ``True`` when *call* invokes ``FeatureManifest`` (bare or attr)."""
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id == "FeatureManifest"
+    if isinstance(func, ast.Attribute):
+        return func.attr == "FeatureManifest"
+    return False
 
 
 def _check_parity(

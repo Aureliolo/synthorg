@@ -288,6 +288,34 @@ def test_non_utf8_src_fails_closed(
     assert "fail-closed" in capsys.readouterr().out
 
 
+def test_extractor_ignores_ghost_wired_kwarg_outside_feature_manifest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A non-FEATURE call carrying ``ghost_wired_symbols=`` cannot satisfy parity.
+
+    Guards against spoofing: a helper / unrelated builder inside ``feature.py``
+    that happens to pass ``ghost_wired_symbols=(...)`` MUST NOT be harvested as
+    a claim, because doing so would silently bypass the ENFORCED↔feature parity
+    check.
+    """
+    _seed(
+        tmp_path,
+        manifest="ENFORCED Foo #1 -- wired\n",
+        files={
+            "src/synthorg/engine/foo.py": "class Foo:\n    pass\n",
+            "src/synthorg/api/app.py": "from x import Foo\n\nFoo()\n",
+            # `dict(ghost_wired_symbols=...)` is NOT a FeatureManifest call, so
+            # the extractor must not harvest "Foo" from it. main() then derives
+            # an empty claim set and the parity check must fail.
+            "src/synthorg/engine/feature.py": (
+                'NOT_FEATURE = dict(ghost_wired_symbols=("Foo",))\n'
+            ),
+        },
+    )
+    assert _MODULE._run(tmp_path) == 1
+    assert "parity" in capsys.readouterr().out.lower()
+
+
 def test_main_uses_repo_root_argument(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -299,8 +327,10 @@ def test_main_uses_repo_root_argument(
             "src/synthorg/api/app.py": "from x import Foo\n\nFoo()\n",
             # Feature manifest required so the parity check passes; main()
             # now derives claimed_symbols from feature.py ghost_wired_symbols.
+            # Extractor only honours module-level FEATURE = FeatureManifest(...),
+            # so the fixture must match that exact shape.
             "src/synthorg/engine/feature.py": (
-                'FEATURE = dict(ghost_wired_symbols=("Foo",))\n'
+                'FEATURE = FeatureManifest(ghost_wired_symbols=("Foo",))\n'
             ),
         },
     )

@@ -199,7 +199,7 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has exactly the documented 231-tool surface.
+        """Registry has exactly the documented 232-tool surface.
 
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the

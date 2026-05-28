@@ -7,7 +7,7 @@ Protocols, REST controllers, MCP tool names, ghost-wired symbols, and the
 fields its typed state slice declares. The index is built once per
 generator run from the feature-manifest substrate
 (:mod:`synthorg._core.features`), persisted to ``data/feature_index.json``,
-and queried by AI agents through the ``synthorg_query_feature_map`` MCP
+and queried by AI agents through the ``synthorg_meta_query_feature_map`` MCP
 tool so an agent reads ONE document to learn the whole feature surface.
 
 The peer :class:`~synthorg.core.codebase_structure_map.CodebaseStructureMap`

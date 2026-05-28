@@ -57,7 +57,13 @@ def test_gate_fails_when_feature_index_missing(tmp_path: Path) -> None:
 
 
 def test_gate_fails_on_stale_feature_index(tmp_path: Path) -> None:
-    """A drifted committed index fails the gate."""
+    """A drifted committed index fails the gate with a stale-specific finding.
+
+    Injects a stub generator that returns a non-empty index so the gate runs
+    past the loader and into the diff branch, then asserts the finding string
+    names the stale artefact rather than just being non-empty (which could
+    pass on an unrelated loader or parser failure).
+    """
     fake = tmp_path / "fake_repo"
     (fake / "data").mkdir(parents=True)
     (fake / "data" / "feature_index.json").write_text(
@@ -67,8 +73,32 @@ def test_gate_fails_on_stale_feature_index(tmp_path: Path) -> None:
     (fake / "data" / "codebase_map.json").write_text(
         json.dumps({"modules": []}), encoding="utf-8"
     )
+    (fake / "scripts").mkdir(parents=True)
+    (fake / "scripts" / "generate_feature_index.py").write_text(
+        # Stub generator returns a feature list that does NOT match the
+        # committed empty-features artefact, so the diff branch must fire.
+        """
+class _StubIndex:
+    @staticmethod
+    def model_dump(mode="json"):
+        return {
+            "schema_version": 1,
+            "features": [{"name": "drift"}],
+            "generated_at": "x",
+        }
+
+
+def build_feature_index():
+    return _StubIndex()
+
+
+def build_codebase_map():
+    return []
+""",
+        encoding="utf-8",
+    )
     findings = _GATE.check(repo_root=fake)
-    assert findings, "stale committed index must fail"
+    assert any("stale" in finding for finding in findings), findings
 
 
 def test_gate_fails_when_committed_index_is_not_a_json_object(tmp_path: Path) -> None:

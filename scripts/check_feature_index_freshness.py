@@ -107,17 +107,33 @@ def check(*, repo_root: Path) -> list[str]:
         findings.append(f"{CODEBASE_MAP_REL.as_posix()} is not a JSON object (corrupt)")
         return findings
 
-    if _strip_generated_at(committed_index_raw) != _strip_generated_at(expected_index):
+    committed_index_norm = _canonical_json(_strip_generated_at(committed_index_raw))
+    expected_index_norm = _canonical_json(_strip_generated_at(expected_index))
+    if committed_index_norm != expected_index_norm:
         findings.append(
             f"{FEATURE_INDEX_REL.as_posix()} is stale; regenerate via "
             "`uv run python scripts/generate_feature_index.py`"
         )
-    if committed_map_raw != expected_map:
+    committed_map_norm = _canonical_json(committed_map_raw)
+    expected_map_norm = _canonical_json(expected_map)
+    if committed_map_norm != expected_map_norm:
         findings.append(
             f"{CODEBASE_MAP_REL.as_posix()} is stale; regenerate via "
             "`uv run python scripts/generate_feature_index.py`"
         )
     return findings
+
+
+def _canonical_json(payload: object) -> str:
+    """Return *payload* serialised to canonical bytes for byte-level diffing.
+
+    Sorted keys and compact separators guarantee that two semantically-equal
+    payloads produce identical byte strings, so freshness is enforced at the
+    byte level regardless of formatter drift in the committed artefact.
+    """
+    return json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
