@@ -98,6 +98,13 @@ class TestDatasetGeneratorJsonl:
         for req in result:
             assert req.title == "Valid"
 
+    async def test_non_str_title_coerced(self, tmp_path: Path) -> None:
+        path = _write_jsonl(tmp_path, [{"title": 42, "description": "D"}])
+        gen = DatasetGenerator(dataset_path=path, seed=1)
+        result = await gen.generate(_ctx(count=1))
+        assert len(result) == 1
+        assert result[0].title == "42"
+
 
 class TestDatasetGeneratorCsv:
     async def test_loads_csv(self, tmp_path: Path) -> None:

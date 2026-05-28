@@ -224,6 +224,7 @@ async def test_real_request_executes_through_pipeline(
     final = await sim_state.request_store.get(request.request_id)
     assert final.status is RequestStatus.TASK_CREATED
     task_id = final.metadata["task_id"]
+    assert isinstance(task_id, str)
     persisted = await task_engine.get_task(task_id)
     assert persisted is not None
     # CREATED would mean no agent ran; the worker execution service
@@ -264,6 +265,8 @@ async def test_scoped_request_with_notes_executes(
 
     final = await sim_state.request_store.get(request.request_id)
     assert final.status is RequestStatus.TASK_CREATED
-    persisted = await task_engine.get_task(final.metadata["task_id"])
+    task_id = final.metadata["task_id"]
+    assert isinstance(task_id, str)
+    persisted = await task_engine.get_task(task_id)
     assert persisted is not None
     assert persisted.status is not TaskStatus.CREATED

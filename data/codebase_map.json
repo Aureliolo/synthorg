@@ -2102,7 +2102,7 @@
     },
     {
       "kind": "code",
-      "loc": 177,
+      "loc": 185,
       "loc_cap": 500,
       "module": "src/synthorg/client/generators/dataset.py",
       "owning_feature": "client"
@@ -2116,7 +2116,7 @@
     },
     {
       "kind": "code",
-      "loc": 182,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/client/generators/llm.py",
       "owning_feature": "client"
@@ -2130,7 +2130,7 @@
     },
     {
       "kind": "code",
-      "loc": 135,
+      "loc": 149,
       "loc_cap": 500,
       "module": "src/synthorg/client/generators/template.py",
       "owning_feature": "client"
@@ -2158,7 +2158,7 @@
     },
     {
       "kind": "code",
-      "loc": 413,
+      "loc": 441,
       "loc_cap": 500,
       "module": "src/synthorg/client/models.py",
       "owning_feature": "client"
@@ -2172,7 +2172,7 @@
     },
     {
       "kind": "code",
-      "loc": 136,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/client/protocols.py",
       "owning_feature": "client"
@@ -2186,14 +2186,14 @@
     },
     {
       "kind": "code",
-      "loc": 40,
+      "loc": 50,
       "loc_cap": 500,
       "module": "src/synthorg/client/report/detailed.py",
       "owning_feature": "client"
     },
     {
       "kind": "code",
-      "loc": 22,
+      "loc": 23,
       "loc_cap": 500,
       "module": "src/synthorg/client/report/json_export.py",
       "owning_feature": "client"
@@ -2214,7 +2214,7 @@
     },
     {
       "kind": "code",
-      "loc": 324,
+      "loc": 325,
       "loc_cap": 500,
       "module": "src/synthorg/client/runner.py",
       "owning_feature": "client"

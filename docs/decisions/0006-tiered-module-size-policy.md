@@ -349,7 +349,7 @@ and closed for the project to reach 100% strict enforcement.
 | Ruff `BLE001` (1007 sites) on `src/synthorg/**` | Issue #2062: "Typed-except remediation: replace blind-except across src/synthorg/" | Large (multi-PR program by package) |
 | Mypy `explicit-override` (648 sites; per-package disabled) | Issue #2057: "@override decorator backfill across synthorg.*" | Medium (mechanical) |
 | Mypy `unused-awaitable` (108 sites) | Issue #2058: "Async cleanup: await or store every Task" | Medium |
-| Mypy `disallow_any_explicit` (4136 sites; 22 packages overridden) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
+| Mypy `disallow_any_explicit` (4136 sites across 29 synthorg packages at introduction: 22 individual blocks plus a 7-package grouped block; drained per-package, live status in EPIC #2056) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
 | Mypy `possibly-undefined` (4 sites) | Issue #2059: "Mypy possibly-undefined cleanup" | Trivial |
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
 | Mypy strict++ overrides on `tests.*` | Issue #2061 partially landed; remaining work tracked under sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the full breakdown by lifted error code) | Small to Very Large per sub-issue (see F.1) |

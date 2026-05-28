@@ -7,10 +7,17 @@ Pydantic models following project conventions.
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Final, Self
+from typing import Final, Self, TypedDict, Unpack
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.state_machine import StateMachine
@@ -284,6 +291,19 @@ class ClientFeedback(BaseModel):
         return self
 
 
+class _ClientRequestOverrides(TypedDict, total=False):
+    """Field overrides accepted by :meth:`ClientRequest.with_status`.
+
+    Enumerates the ``ClientRequest`` fields a status transition may
+    legitimately carry forward. ``status`` is deliberately absent: the
+    transition target is passed positionally and a ``status`` override
+    is rejected at runtime (it would bypass the state-machine check).
+    """
+
+    metadata: dict[str, JsonValue]
+    requirement: TaskRequirement
+
+
 class ClientRequest(BaseModel):
     """A client's request submitted to the intake pipeline.
 
@@ -316,7 +336,7 @@ class ClientRequest(BaseModel):
         default_factory=lambda: datetime.now(UTC),
         description="Timestamp of request creation",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Additional request metadata",
     )
@@ -324,7 +344,7 @@ class ClientRequest(BaseModel):
     def with_status(
         self,
         target: RequestStatus,
-        **overrides: Any,
+        **overrides: Unpack[_ClientRequestOverrides],
     ) -> ClientRequest:
         """Create a new request with a validated status transition.
 
@@ -338,6 +358,8 @@ class ClientRequest(BaseModel):
         Raises:
             ValueError: If the transition is not valid or overrides
                 contain ``status``.
+            ValidationError: If the merged overrides violate
+                ``ClientRequest`` field constraints.
         """
         if "status" in overrides:
             msg = "status override is not allowed; pass transition target explicitly"
@@ -348,9 +370,11 @@ class ClientRequest(BaseModel):
             )
             raise ValueError(msg)
         validate_request_transition(self.status, target)
-        payload = self.model_dump()
-        payload.update(overrides)
-        payload["status"] = target
+        # ``model_copy(update=...)`` applies overrides without validation, so
+        # malformed values would silently break model invariants. Round-trip
+        # through ``model_validate`` so the new instance is fully validated.
+        payload = self.model_dump(mode="python")
+        payload.update({"status": target, **overrides})
         return ClientRequest.model_validate(payload)
 
 
@@ -437,6 +461,21 @@ class SimulationConfig(BaseModel):
     )
 
 
+class RoundMetrics(TypedDict):
+    """Per-round metric snapshot produced by the simulation runner.
+
+    Fixed five-key shape built in ``SimulationRunner._run_round`` and
+    aggregated by ``_RunningTotals``. Carried verbatim into
+    :attr:`SimulationMetrics.round_metrics`, where Pydantic validates it.
+    """
+
+    round_number: int
+    total_requirements: int
+    tasks_created: int
+    accepted: int
+    rejected: int
+
+
 class SimulationMetrics(BaseModel):
     """Aggregated metrics from a simulation run.
 
@@ -460,7 +499,7 @@ class SimulationMetrics(BaseModel):
     tasks_rejected: int = Field(default=0, ge=0)
     tasks_reworked: int = Field(default=0, ge=0)
     avg_review_rounds: float = Field(default=0.0, ge=0.0)
-    round_metrics: tuple[dict[str, Any], ...] = Field(
+    round_metrics: tuple[RoundMetrics, ...] = Field(
         default=(),
         description="Per-round metric snapshots",
     )

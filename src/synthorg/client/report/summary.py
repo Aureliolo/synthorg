@@ -1,6 +1,6 @@
 """Summary report strategy."""
 
-from typing import Any
+from pydantic import JsonValue
 
 from synthorg.client.models import SimulationMetrics
 
@@ -15,7 +15,7 @@ class SummaryReport:
     async def generate_report(
         self,
         metrics: SimulationMetrics,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Return a dashboard-friendly metrics summary."""
         return {
             "format": "summary",

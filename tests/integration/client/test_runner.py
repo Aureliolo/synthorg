@@ -47,7 +47,9 @@ def _make_client(*, client_id: str, strictness: float = 0.5) -> AIClient:
             persona=f"Persona {client_id}",
             strictness_level=strictness,
         ),
-        generator=ProceduralGenerator(seed=hash(client_id) & 0xFFFF),
+        generator=ProceduralGenerator(
+            seed=sum(ord(c) for c in client_id) & 0xFFFF,
+        ),
         feedback=BinaryFeedback(client_id=client_id),
     )
 
@@ -89,7 +91,9 @@ class TestSimulationRunnerBasic:
         assert metrics.total_tasks_created >= 1
         assert report is not None
         assert report["format"] == "detailed"
-        assert len(report["per_round"]) == 2
+        per_round = report["per_round"]
+        assert isinstance(per_round, list)
+        assert len(per_round) == 2
 
     async def test_run_without_report_strategy(self) -> None:
         intake = IntakeEngine(strategy=_CountingStrategy(accept_pattern=(True,)))
