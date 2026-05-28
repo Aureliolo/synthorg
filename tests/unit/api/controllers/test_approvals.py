@@ -5,13 +5,12 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import make_app_state, mock_of
+from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
 _BASE = "/api/v1/approvals"
@@ -45,8 +44,8 @@ async def _seed_item(
 
 @pytest.mark.unit
 class TestListApprovals:
-    def test_list_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+    async def test_list_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -54,17 +53,17 @@ class TestListApprovals:
 
     async def test_list_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, approval_id="a1")
         await _seed_item(approval_store, approval_id="a2")
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
 
     async def test_list_filter_by_status(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, approval_id="a1")
@@ -82,7 +81,7 @@ class TestListApprovals:
             decided_by="ceo",
         )
         await approval_store.add(approved)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"status": "pending"},
             headers=_READ_HEADERS,
@@ -92,7 +91,7 @@ class TestListApprovals:
 
     async def test_list_filter_by_risk_level(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(
@@ -105,7 +104,7 @@ class TestListApprovals:
             approval_id="a2",
             risk_level=ApprovalRiskLevel.CRITICAL,
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"risk_level": "critical"},
             headers=_READ_HEADERS,
@@ -115,13 +114,13 @@ class TestListApprovals:
 
     async def test_list_pagination(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         for i in range(5):
             await _seed_item(approval_store, approval_id=f"a{i}")
         # Walk first page to obtain a cursor, then fetch the next.
-        resp1 = test_client.get(
+        resp1 = await async_test_client.get(
             _BASE,
             params={"limit": 2},
             headers=_READ_HEADERS,
@@ -133,7 +132,7 @@ class TestListApprovals:
         cursor = body1["pagination"]["next_cursor"]
         assert cursor is not None
 
-        resp2 = test_client.get(
+        resp2 = await async_test_client.get(
             _BASE,
             params={"limit": 2, "cursor": cursor},
             headers=_READ_HEADERS,
@@ -150,7 +149,7 @@ class TestListApprovals:
         # ``has_more`` must clear together per the
         # ``_validate_cursor_consistency`` model validator on
         # ``PaginationMeta``.
-        resp3 = test_client.get(
+        resp3 = await async_test_client.get(
             _BASE,
             params={"limit": 2, "cursor": cursor2},
             headers=_READ_HEADERS,
@@ -161,8 +160,12 @@ class TestListApprovals:
         assert body3["pagination"]["has_more"] is False
         assert body3["pagination"]["next_cursor"] is None
 
-    def test_list_blocks_no_role(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(_BASE, headers={"Authorization": "Bearer invalid-token"})
+    async def test_list_blocks_no_role(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            _BASE, headers={"Authorization": "Bearer invalid-token"}
+        )
         assert resp.status_code == 401
 
 
@@ -170,34 +173,36 @@ class TestListApprovals:
 class TestGetApproval:
     async def test_get_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/approval-001",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
         assert resp.json()["data"]["id"] == "approval-001"
 
-    def test_get_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_get_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             f"{_BASE}/nonexistent",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 404
 
-    def test_get_allows_observer(self, test_client: TestClient[Any]) -> None:
+    async def test_get_allows_observer(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         # Observer should have read access (even if 404)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/nonexistent",
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 404  # 404 = authorized but not found
 
-    def test_get_blocks_no_role(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_get_blocks_no_role(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             f"{_BASE}/whatever",
             headers={"Authorization": "Bearer invalid-token"},
         )
@@ -206,8 +211,8 @@ class TestGetApproval:
 
 @pytest.mark.unit
 class TestCreateApproval:
-    def test_create_valid(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_valid(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=_WRITE_HEADERS,
@@ -218,8 +223,8 @@ class TestCreateApproval:
         assert body["data"]["status"] == "pending"
         assert body["data"]["id"].startswith("approval-")
 
-    def test_create_with_ttl(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_with_ttl(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(ttl_seconds=3600),
             headers=_WRITE_HEADERS,
@@ -227,8 +232,8 @@ class TestCreateApproval:
         assert resp.status_code == 201
         assert resp.json()["data"]["expires_at"] is not None
 
-    def test_create_without_ttl(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_without_ttl(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=_WRITE_HEADERS,
@@ -236,8 +241,10 @@ class TestCreateApproval:
         assert resp.status_code == 201
         assert resp.json()["data"]["expires_at"] is None
 
-    def test_create_with_task_id(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_with_task_id(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(task_id="task-001"),
             headers=_WRITE_HEADERS,
@@ -245,8 +252,10 @@ class TestCreateApproval:
         assert resp.status_code == 201
         assert resp.json()["data"]["task_id"] == "task-001"
 
-    def test_create_with_metadata(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_with_metadata(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(metadata={"pr": "42"}),
             headers=_WRITE_HEADERS,
@@ -254,16 +263,20 @@ class TestCreateApproval:
         assert resp.status_code == 201
         assert resp.json()["data"]["metadata"] == {"pr": "42"}
 
-    def test_create_blocks_observer(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_blocks_observer(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 403
 
-    def test_create_blocks_no_auth(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_create_blocks_no_auth(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers={"Authorization": "Bearer invalid-token"},
@@ -275,11 +288,11 @@ class TestCreateApproval:
 class TestApproveApproval:
     async def test_approve_pending(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/approval-001/approve",
             json={"comment": "Looks good"},
             headers=_WRITE_HEADERS,
@@ -292,11 +305,11 @@ class TestApproveApproval:
 
     async def test_approve_records_decided_by_from_header(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/approval-001/approve",
             json={},
             headers=make_auth_headers("manager"),
@@ -304,8 +317,8 @@ class TestApproveApproval:
         assert resp.status_code == 200
         assert resp.json()["data"]["decided_by"] == "test-manager"
 
-    def test_approve_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_approve_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             f"{_BASE}/nonexistent/approve",
             json={},
             headers=_WRITE_HEADERS,
@@ -314,7 +327,7 @@ class TestApproveApproval:
 
     async def test_approve_already_decided(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         now = datetime.now(UTC)
@@ -331,7 +344,7 @@ class TestApproveApproval:
             decided_by="ceo",
         )
         await approval_store.add(item)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/decided-001/approve",
             json={},
             headers=_WRITE_HEADERS,
@@ -340,7 +353,7 @@ class TestApproveApproval:
 
     async def test_approve_expired(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         now = datetime.now(UTC)
@@ -356,15 +369,17 @@ class TestApproveApproval:
         )
         # Directly insert to bypass expiry validation timing
         approval_store._items[item.id] = item
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/expired-001/approve",
             json={},
             headers=_WRITE_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_approve_blocks_observer(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_approve_blocks_observer(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             f"{_BASE}/whatever/approve",
             json={},
             headers=_READ_HEADERS,
@@ -376,11 +391,11 @@ class TestApproveApproval:
 class TestRejectApproval:
     async def test_reject_pending(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/approval-001/reject",
             json={"reason": "Too risky"},
             headers=_WRITE_HEADERS,
@@ -393,20 +408,20 @@ class TestRejectApproval:
 
     async def test_reject_requires_reason(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
         # Missing reason field should fail validation
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/approval-001/reject",
             json={},
             headers=_WRITE_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_reject_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_reject_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.post(
             f"{_BASE}/nonexistent/reject",
             json={"reason": "nope"},
             headers=_WRITE_HEADERS,
@@ -415,7 +430,7 @@ class TestRejectApproval:
 
     async def test_reject_already_decided(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         now = datetime.now(UTC)
@@ -433,15 +448,17 @@ class TestRejectApproval:
             decision_reason="Previous rejection",
         )
         await approval_store.add(item)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/decided-002/reject",
             json={"reason": "nope again"},
             headers=_WRITE_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_reject_blocks_observer(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_reject_blocks_observer(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             f"{_BASE}/whatever/reject",
             json={"reason": "nope"},
             headers=_READ_HEADERS,
@@ -455,11 +472,11 @@ class TestApprovalUrgencyFields:
 
     async def test_list_includes_urgency_fields(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, ttl_seconds=7200)
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         item = resp.json()["data"][0]
         assert "seconds_remaining" in item
@@ -467,11 +484,13 @@ class TestApprovalUrgencyFields:
 
     async def test_urgency_no_expiry(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.get(f"{_BASE}/approval-001", headers=_READ_HEADERS)
+        resp = await async_test_client.get(
+            f"{_BASE}/approval-001", headers=_READ_HEADERS
+        )
         data = resp.json()["data"]
         assert data["seconds_remaining"] is None
         assert data["urgency_level"] == "no_expiry"
@@ -486,7 +505,7 @@ class TestApprovalUrgencyFields:
     )
     async def test_urgency_level_by_ttl(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
         approval_id: str,
         ttl_seconds: int,
@@ -497,7 +516,7 @@ class TestApprovalUrgencyFields:
             approval_id=approval_id,
             ttl_seconds=ttl_seconds,
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/{approval_id}",
             headers=_READ_HEADERS,
         )
@@ -505,11 +524,11 @@ class TestApprovalUrgencyFields:
         assert data["urgency_level"] == expected_urgency
         assert data["seconds_remaining"] is not None
 
-    def test_create_approval_includes_urgency(
+    async def test_create_approval_includes_urgency(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(ttl_seconds=600),
             headers=_WRITE_HEADERS,
@@ -521,11 +540,11 @@ class TestApprovalUrgencyFields:
 
     async def test_approve_includes_urgency(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/approval-001/approve",
             json={"comment": "ok"},
             headers=_WRITE_HEADERS,
@@ -535,18 +554,18 @@ class TestApprovalUrgencyFields:
         assert data["urgency_level"] == "no_expiry"
         assert data["seconds_remaining"] is None
 
-    def test_get_approval_includes_urgency(
+    async def test_get_approval_includes_urgency(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # Create an approval first
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=_WRITE_HEADERS,
         )
         approval_id = resp.json()["data"]["id"]
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/{approval_id}",
             headers=_READ_HEADERS,
         )
@@ -557,11 +576,11 @@ class TestApprovalUrgencyFields:
 
     async def test_reject_includes_urgency(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, approval_id="rej-001")
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/rej-001/reject",
             json={"reason": "Too risky"},
             headers=_WRITE_HEADERS,
@@ -583,7 +602,7 @@ class TestApprovalUrgencyFields:
     )
     async def test_urgency_boundary(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
         approval_id: str,
         boundary_seconds: int,
@@ -606,7 +625,7 @@ class TestApprovalUrgencyFields:
         ) as mock_dt:
             mock_dt.now.return_value = frozen_now
             mock_dt.side_effect = datetime
-            resp = test_client.get(
+            resp = await async_test_client.get(
                 f"{_BASE}/{approval_id}",
                 headers=_READ_HEADERS,
             )
@@ -615,7 +634,7 @@ class TestApprovalUrgencyFields:
 
     async def test_expired_approval_shows_zero_seconds(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         now = datetime.now(UTC)
@@ -630,7 +649,7 @@ class TestApprovalUrgencyFields:
             expires_at=now - timedelta(hours=1),
         )
         approval_store._items[item.id] = item
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/exp-001",
             headers=_READ_HEADERS,
         )
@@ -646,11 +665,11 @@ class TestBoardMemberApprovalAccess:
 
     async def test_board_member_can_approve(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, approval_id="bm-approve-001")
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/bm-approve-001/approve",
             json={"comment": "Approved by board"},
             headers=make_auth_headers("board_member"),
@@ -661,11 +680,11 @@ class TestBoardMemberApprovalAccess:
 
     async def test_board_member_can_reject(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         approval_store: ApprovalStore,
     ) -> None:
         await _seed_item(approval_store, approval_id="bm-reject-001")
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/bm-reject-001/reject",
             json={"reason": "Board disagrees"},
             headers=make_auth_headers("board_member"),
@@ -673,11 +692,11 @@ class TestBoardMemberApprovalAccess:
         assert resp.status_code == 200
         assert resp.json()["data"]["status"] == "rejected"
 
-    def test_board_member_cannot_create(
+    async def test_board_member_cannot_create(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(),
             headers=make_auth_headers("board_member"),
@@ -687,19 +706,21 @@ class TestBoardMemberApprovalAccess:
 
 @pytest.mark.unit
 class TestApprovalPathParamValidation:
-    def test_oversized_approval_id_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_approval_id_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"{_BASE}/{long_id}",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 400
 
-    def test_oversized_action_type_query_rejected(
-        self, test_client: TestClient[Any]
+    async def test_oversized_action_type_query_rejected(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         long_action = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"action_type": long_action},
             headers=_READ_HEADERS,
