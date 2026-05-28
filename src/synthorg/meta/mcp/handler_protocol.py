@@ -13,7 +13,7 @@ module tries to import ``ToolHandler`` from the invoker.
 from typing import Any, Protocol
 
 from synthorg.core.agent import (
-    AgentIdentity,  # noqa: TC001 -- typeguard runtime resolution
+    AgentIdentity,
 )
 
 

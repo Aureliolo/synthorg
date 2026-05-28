@@ -9,14 +9,14 @@ Shims the 8 task tools onto ``task_engine_of(app_state)``
 """
 
 import copy
-from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
 from pydantic import ValidationError
 
 from synthorg.core.agent import (
-    AgentIdentity,  # noqa: TC001 -- typeguard runtime resolution
+    AgentIdentity,
 )
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
@@ -31,7 +31,7 @@ from synthorg.meta.mcp.errors import (
     GuardrailViolationError,
 )
 from synthorg.meta.mcp.handler_protocol import (
-    ToolHandler,  # noqa: TC001 -- PEP 649 annotation
+    ToolHandler,
 )
 from synthorg.meta.mcp.handlers.common import (
     PaginationMeta,
