@@ -98,7 +98,7 @@ class TemplateGenerator:
         for template in samples:
             try:
                 requirements.append(self._to_requirement(template))
-            except (KeyError, ValueError, ValidationError) as exc:
+            except (KeyError, TypeError, ValueError, ValidationError) as exc:
                 logger.warning(
                     CLIENT_REQUIREMENT_GENERATED,
                     strategy="template",
@@ -141,12 +141,17 @@ class TemplateGenerator:
 
     @staticmethod
     def _to_requirement(template: dict[str, JsonValue]) -> TaskRequirement:
+        title = template["title"]
+        description = template["description"]
+        if not isinstance(title, str) or not isinstance(description, str):
+            msg = "title and description must be strings"
+            raise TypeError(msg)
         criteria = template.get("acceptance_criteria", ())
         if not isinstance(criteria, list | tuple):
             criteria = ()
         return TaskRequirement(
-            title=str(template["title"]),
-            description=str(template["description"]),
+            title=title,
+            description=description,
             task_type=TaskType(str(template.get("task_type", "development"))),
             priority=Priority(str(template.get("priority", "medium"))),
             estimated_complexity=Complexity(

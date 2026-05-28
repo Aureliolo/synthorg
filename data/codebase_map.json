@@ -2116,7 +2116,7 @@
     },
     {
       "kind": "code",
-      "loc": 182,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/client/generators/llm.py",
       "owning_feature": "client"
@@ -2130,7 +2130,7 @@
     },
     {
       "kind": "code",
-      "loc": 135,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/client/generators/template.py",
       "owning_feature": "client"

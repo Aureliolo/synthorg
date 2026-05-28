@@ -192,9 +192,14 @@ class LLMGenerator:
 
     @staticmethod
     def _to_requirement(item: dict[str, JsonValue]) -> TaskRequirement:
+        title = item["title"]
+        description = item["description"]
+        if not isinstance(title, str) or not isinstance(description, str):
+            msg = "title and description must be strings"
+            raise TypeError(msg)
         return TaskRequirement(
-            title=str(item["title"]),
-            description=str(item["description"]),
+            title=title,
+            description=description,
             task_type=TaskType(str(item.get("task_type", "development"))),
             priority=Priority(str(item.get("priority", "medium"))),
             estimated_complexity=Complexity(
