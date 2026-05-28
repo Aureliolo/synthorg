@@ -27,9 +27,9 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg._core.features import FeatureModule  # noqa: TC001
-from synthorg.core.codebase_structure_map import RelPath  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg._core.features import FeatureModule
+from synthorg.core.codebase_structure_map import RelPath
+from synthorg.core.types import NotBlankStr
 
 FEATURE_INDEX_SCHEMA_VERSION: int = 1
 

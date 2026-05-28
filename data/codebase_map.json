@@ -170,7 +170,7 @@
     },
     {
       "kind": "code",
-      "loc": 1309,
+      "loc": 1307,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -9690,7 +9690,7 @@
     },
     {
       "kind": "code",
-      "loc": 56,
+      "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handler_protocol.py",
       "owning_feature": "meta"
@@ -9704,7 +9704,7 @@
     },
     {
       "kind": "code",
-      "loc": 651,
+      "loc": 650,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents.py",
       "owning_feature": "meta"
@@ -9725,14 +9725,14 @@
     },
     {
       "kind": "code",
-      "loc": 377,
+      "loc": 378,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/approvals.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 230,
+      "loc": 231,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/budget.py",
       "owning_feature": "meta"
@@ -9781,7 +9781,7 @@
     },
     {
       "kind": "code",
-      "loc": 341,
+      "loc": 342,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/coordination.py",
       "owning_feature": "meta"
@@ -9851,14 +9851,14 @@
     },
     {
       "kind": "code",
-      "loc": 217,
+      "loc": 221,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/signals.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 463,
+      "loc": 464,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/tasks.py",
       "owning_feature": "meta"
@@ -10579,7 +10579,7 @@
     },
     {
       "kind": "code",
-      "loc": 18,
+      "loc": 28,
       "loc_cap": 500,
       "module": "src/synthorg/observability/_logger.py",
       "owning_feature": "observability"
@@ -11671,7 +11671,7 @@
     },
     {
       "kind": "code",
-      "loc": 224,
+      "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/observability/redaction.py",
       "owning_feature": "observability"
