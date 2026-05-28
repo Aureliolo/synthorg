@@ -2158,7 +2158,7 @@
     },
     {
       "kind": "code",
-      "loc": 437,
+      "loc": 441,
       "loc_cap": 500,
       "module": "src/synthorg/client/models.py",
       "owning_feature": "client"
