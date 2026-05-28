@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from litestar import Litestar, get
-from litestar.testing import TestClient
 
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.auth.service import AuthService
@@ -15,7 +14,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import ApiKey, User
 from synthorg.core.auth.roles import HumanRole
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
 
@@ -96,8 +95,8 @@ class TestAuthMiddlewareJWT:
         app = _build_app(auth_service=svc, persistence=persistence)
         token, _, _ = svc.create_token(user)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -109,8 +108,8 @@ class TestAuthMiddlewareJWT:
         await persistence.connect()
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get("/protected")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/protected")
             assert resp.status_code == 401
 
     async def test_invalid_scheme_returns_401(self) -> None:
@@ -119,8 +118,8 @@ class TestAuthMiddlewareJWT:
         await persistence.connect()
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": "Basic dXNlcjpwYXNz"},
             )
@@ -132,8 +131,8 @@ class TestAuthMiddlewareJWT:
         await persistence.connect()
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": "Bearer bad.jwt.token"},
             )
@@ -162,8 +161,8 @@ class TestAuthMiddlewareJWT:
         await persistence.users.save(updated_user)
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -178,8 +177,8 @@ class TestAuthMiddlewareJWT:
         await persistence.connect()
         app = _build_app(auth_service=empty_svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": "Bearer some.jwt.token"},
             )
@@ -194,8 +193,8 @@ class TestAuthMiddlewareJWT:
         token, _, _ = svc.create_token(user)
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -237,8 +236,8 @@ class TestAuthMiddlewareRevocation:
             session_store=mock_store,
         )
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -271,8 +270,8 @@ class TestAuthMiddlewareApiKey:
 
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {raw_key}"},
             )
@@ -301,8 +300,8 @@ class TestAuthMiddlewareApiKey:
 
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {raw_key}"},
             )
@@ -331,8 +330,8 @@ class TestAuthMiddlewareApiKey:
 
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {raw_key}"},
             )
@@ -377,8 +376,8 @@ class TestAuthMiddlewareApiKeyEdgeCases:
 
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {raw_key}"},
             )
@@ -391,8 +390,8 @@ class TestAuthMiddlewareApiKeyEdgeCases:
         app = _build_app(auth_service=svc, persistence=persistence)
 
         # Send a token without dots (API key path) that is not registered
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": "Bearer unknownkey123456"},
             )
@@ -407,8 +406,8 @@ class TestAuthMiddlewareApiKeyEdgeCases:
         app = _build_app(auth_service=empty_svc, persistence=persistence)
 
         # hash_api_key raises SecretNotConfiguredError; middleware handles it
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": "Bearer sometokenwithnodots"},
             )
@@ -455,8 +454,8 @@ class TestAuthMiddlewareExcludePaths:
             exclude_paths=("/public",),
         )
 
-        with TestClient(app) as client:
-            resp = client.get("/public")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/public")
             assert resp.status_code == 200
 
 
@@ -502,8 +501,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -593,8 +592,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -637,8 +636,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -692,8 +691,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -727,8 +726,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -763,8 +762,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -798,8 +797,8 @@ class TestAuthMiddlewareSystemUser:
         )
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -821,8 +820,8 @@ class TestAuthMiddlewareCookieAuth:
         app = _build_app(auth_service=svc, persistence=persistence)
         token, _, _ = svc.create_token(user)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Cookie": f"session={token}"},
             )
@@ -839,8 +838,8 @@ class TestAuthMiddlewareCookieAuth:
         app = _build_app(auth_service=svc, persistence=persistence)
         token, _, _ = svc.create_token(user)
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={
                     "Cookie": "session=bad.jwt.token",
@@ -860,9 +859,9 @@ class TestAuthMiddlewareCookieAuth:
         app = _build_app(auth_service=svc, persistence=persistence)
         token, _, _ = svc.create_token(user)
 
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             # Cookie has valid token, header has garbage
-            resp = client.get(
+            resp = await client.get(
                 "/protected",
                 headers={
                     "Cookie": f"session={token}",
@@ -878,8 +877,8 @@ class TestAuthMiddlewareCookieAuth:
         await persistence.connect()
         app = _build_app(auth_service=svc, persistence=persistence)
 
-        with TestClient(app) as client:
-            resp = client.get("/protected")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/protected")
             assert resp.status_code == 401
 
     async def test_cookie_revoked_session_returns_401(self) -> None:
@@ -916,8 +915,8 @@ class TestAuthMiddlewareCookieAuth:
             config=RootConfig(company_name="test"),
         )
 
-        with TestClient(app) as client:
-            resp = client.get(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get(
                 "/protected",
                 headers={"Cookie": f"session={token}"},
             )
@@ -959,16 +958,16 @@ class TestAuthMiddlewareCookieAuth:
 
         token, _, _ = svc.create_token(user)
 
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             # Default cookie name should NOT work
-            resp = client.get(
+            resp = await client.get(
                 "/protected",
                 headers={"Cookie": f"session={token}"},
             )
             assert resp.status_code == 401
 
             # Custom cookie name should work
-            resp = client.get(
+            resp = await client.get(
                 "/protected",
                 headers={"Cookie": f"custom_session={token}"},
             )
