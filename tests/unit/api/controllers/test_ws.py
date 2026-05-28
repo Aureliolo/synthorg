@@ -276,10 +276,10 @@ class TestWsTicketAuth:
 
     def test_ws_ticket_endpoint_returns_ticket(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """POST /auth/ws-ticket returns a consumable ticket."""
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = ws_test_client.post("/api/v1/auth/ws-ticket")
         assert response.status_code == 200
         data = response.json()["data"]
         assert "ticket" in data
@@ -287,26 +287,26 @@ class TestWsTicketAuth:
 
     def test_ws_ticket_carries_ws_ticket_auth_method(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """The ticket user has auth_method=WS_TICKET."""
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = ws_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method == AuthMethod.WS_TICKET
 
     def test_ws_ticket_single_use_via_store(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """Ticket is consumed on first validate_and_consume."""
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = ws_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         first = ticket_store_of(app_state).validate_and_consume(ticket)
         second = ticket_store_of(app_state).validate_and_consume(ticket)
         assert first is not None
@@ -314,13 +314,13 @@ class TestWsTicketAuth:
 
     def test_ws_ticket_user_has_correct_identity(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """The ticket preserves the original user's identity."""
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = ws_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.role == HumanRole.CEO
@@ -369,14 +369,14 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_invalid_query_ticket(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """WS connection with invalid query-param ticket is rejected pre-accept."""
         from litestar.exceptions import WebSocketDisconnect
 
         with (
             pytest.raises(WebSocketDisconnect) as exc_info,
-            test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
+            ws_test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
         ):
             pass
         assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED, (
@@ -386,13 +386,13 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_bad_first_message_ticket(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """WS connection with invalid first-message ticket is rejected post-accept."""
         from litestar.exceptions import WebSocketDisconnect
 
         def attempt() -> None:
-            with test_client.websocket_connect("/api/v1/ws") as ws:
+            with ws_test_client.websocket_connect("/api/v1/ws") as ws:
                 ws.send_text(json.dumps({"action": "auth", "ticket": "bogus-ticket"}))
                 ws.receive_text()
 
@@ -402,13 +402,13 @@ class TestWsTicketAuth:
 
     def test_ws_rejects_missing_first_message_auth(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """WS connection sending non-auth first message is rejected."""
         from litestar.exceptions import WebSocketDisconnect
 
         def attempt() -> None:
-            with test_client.websocket_connect("/api/v1/ws") as ws:
+            with ws_test_client.websocket_connect("/api/v1/ws") as ws:
                 ws.send_text(json.dumps({"action": "subscribe", "channels": ["tasks"]}))
                 ws.receive_text()
 
@@ -418,7 +418,7 @@ class TestWsTicketAuth:
 
     def test_ws_accepts_valid_ticket(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """WS connection with a valid ticket is accepted.
 
@@ -427,7 +427,7 @@ class TestWsTicketAuth:
         """
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         user = AuthenticatedUser(
             user_id="test-ws-user",
             username="test-ceo",
@@ -437,7 +437,7 @@ class TestWsTicketAuth:
         )
         ticket = ticket_store_of(app_state).create(user)
 
-        with test_client.websocket_connect(
+        with ws_test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",
         ) as ws:
             ack = json.loads(ws.receive_text())
@@ -451,7 +451,7 @@ class TestWsTicketAuth:
 
     def test_ws_first_message_auth_sends_auth_ok(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """First-message-auth path sends ``auth_ok`` after ticket validation.
 
@@ -460,7 +460,7 @@ class TestWsTicketAuth:
         """
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         user = AuthenticatedUser(
             user_id="test-ws-user-fm",
             username="test-ceo",
@@ -470,19 +470,19 @@ class TestWsTicketAuth:
         )
         ticket = ticket_store_of(app_state).create(user)
 
-        with test_client.websocket_connect("/api/v1/ws") as ws:
+        with ws_test_client.websocket_connect("/api/v1/ws") as ws:
             ws.send_text(json.dumps({"action": "auth", "ticket": ticket}))
             ack = json.loads(ws.receive_text())
             assert ack == {"action": "auth_ok"}
 
     def test_ws_ping_pong_round_trip(
         self,
-        test_client: TestClient[Any],
+        ws_test_client: TestClient[Any],
     ) -> None:
         """Client ping receives a server pong without affecting state."""
         from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 
-        app_state = test_client.app.state["app_state"]
+        app_state = ws_test_client.app.state["app_state"]
         user = AuthenticatedUser(
             user_id="test-ws-ping",
             username="test-ceo",
@@ -492,7 +492,7 @@ class TestWsTicketAuth:
         )
         ticket = ticket_store_of(app_state).create(user)
 
-        with test_client.websocket_connect(
+        with ws_test_client.websocket_connect(
             f"/api/v1/ws?ticket={ticket}",
         ) as ws:
             assert json.loads(ws.receive_text())["action"] == "auth_ok"

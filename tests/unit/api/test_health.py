@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.controllers.health import (
@@ -18,6 +17,7 @@ from synthorg.providers.health import (
     ProviderHealthRecord,
     ProviderHealthTracker,
 )
+from tests._shared import LoopAsyncClient
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
@@ -25,8 +25,10 @@ from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 class TestLiveness:
     """``/healthz`` always reports ok while the event loop is responsive."""
 
-    def test_liveness_returns_ok(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/healthz")
+    async def test_liveness_returns_ok(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -34,33 +36,35 @@ class TestLiveness:
         assert "version" in body["data"]
         assert body["data"]["uptime_seconds"] >= 0
 
-    def test_liveness_ignores_bus_down(
+    async def test_liveness_ignores_bus_down(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_message_bus: Any,
     ) -> None:
         # Liveness is a proof-of-life for supervisors; it does not probe
         # dependencies, so a dead bus doesn't flip it to 503.
         fake_message_bus._running = False
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.status_code == 200
         assert response.json()["data"]["status"] == "ok"
 
-    def test_old_health_endpoint_is_gone(
+    async def test_old_health_endpoint_is_gone(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # Pre-alpha: /health was replaced by /healthz + /readyz without
         # a compatibility shim.  Old callers must migrate.
-        assert test_client.get("/api/v1/health").status_code == 404
+        assert (await async_test_client.get("/api/v1/health")).status_code == 404
 
 
 @pytest.mark.unit
 class TestReadinessHealthy:
     """``/readyz`` returns 200 when persistence + bus are both healthy."""
 
-    def test_returns_ok_when_all_healthy(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/readyz")
+    async def test_returns_ok_when_all_healthy(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -74,27 +78,27 @@ class TestReadinessHealthy:
 class TestReadinessUnhealthy:
     """``/readyz`` returns 503 when any configured dependency is unhealthy."""
 
-    def test_503_when_bus_down(
+    async def test_503_when_bus_down(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_message_bus: Any,
     ) -> None:
         fake_message_bus._running = False
-        response = test_client.get("/api/v1/readyz")
+        response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 503
         body = response.json()
         assert body["data"]["status"] == "unavailable"
         assert body["data"]["message_bus"] is False
 
-    def test_503_when_persistence_and_bus_down(
+    async def test_503_when_persistence_and_bus_down(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
         fake_message_bus: Any,
     ) -> None:
         fake_persistence._connected = False
         fake_message_bus._running = False
-        response = test_client.get("/api/v1/readyz")
+        response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 503
         assert response.json()["data"]["status"] == "unavailable"
 
@@ -156,7 +160,7 @@ class TestReadinessUnconfigured:
             bus = FakeMessageBus()
             await bus.start()
 
-        with TestClient(
+        async with LoopAsyncClient(
             create_app(persistence=backend, message_bus=bus),
         ) as client:
             if persistence_state == "unhealthy" and backend is not None:
@@ -164,7 +168,7 @@ class TestReadinessUnconfigured:
             if bus_state == "unhealthy" and bus is not None:
                 bus._running = False
 
-            response = client.get("/api/v1/readyz")
+            response = await client.get("/api/v1/readyz")
             assert response.status_code == expected_status_code
             body = response.json()
             assert body["data"]["status"] == expected_outcome
@@ -210,48 +214,46 @@ class TestReadinessExceptionPaths:
     ) -> None:
         service = service_spec["factory"]()
         await getattr(service, service_spec["init"])()
-        with (
-            TestClient(
-                create_app(**{service_spec["kwarg"]: service}),
-            ) as client,
-            patch.object(
+        async with LoopAsyncClient(
+            create_app(**{service_spec["kwarg"]: service}),
+        ) as client:
+            with patch.object(
                 type(service),
                 service_spec["attr"],
                 side_effect=RuntimeError("test error"),
                 **service_spec["patch_kw"],
-            ),
-        ):
-            response = client.get("/api/v1/readyz")
-            assert response.status_code == 503
-            body = response.json()
-            assert body["data"][response_key] is False
-            assert body["data"]["status"] == "unavailable"
+            ):
+                response = await client.get("/api/v1/readyz")
+                assert response.status_code == 503
+                body = response.json()
+                assert body["data"][response_key] is False
+                assert body["data"]["status"] == "unavailable"
 
 
 @pytest.mark.unit
 class TestResolveTelemetryStatus:
     """Branch coverage for the health controller helper."""
 
-    def test_disabled_when_no_collector(self) -> None:
+    async def test_disabled_when_no_collector(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(collector=None)
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
-    def test_enabled_when_collector_is_functional(self) -> None:
+    async def test_enabled_when_collector_is_functional(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(
             collector=SimpleNamespace(is_functional=True)
         )
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.ENABLED
 
-    def test_disabled_when_collector_opted_out(self) -> None:
+    async def test_disabled_when_collector_opted_out(self) -> None:
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(
             collector=SimpleNamespace(is_functional=False)
         )
         assert _resolve_telemetry_status(app_state) is TelemetryStatus.DISABLED
 
-    def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
+    async def test_disabled_when_enabled_but_reporter_is_noop(self) -> None:
         """Enabled config + noop reporter must surface as ``disabled``."""
         app_state = MagicMock(spec=AppState)
         app_state.slice.return_value = SimpleNamespace(
@@ -264,8 +266,10 @@ class TestResolveTelemetryStatus:
 class TestReadinessTelemetryField:
     """``/readyz`` always surfaces a telemetry status."""
 
-    def test_disabled_by_default(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/readyz")
+    async def test_disabled_by_default(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/api/v1/readyz")
         assert response.status_code == 200
         body = response.json()
         assert body["data"]["telemetry"] == "disabled"
@@ -281,12 +285,12 @@ class TestReadinessProviders:
     provider health summary.
     """
 
-    def test_empty_tracker_reports_providers_reachable(self) -> None:
+    async def test_empty_tracker_reports_providers_reachable(self) -> None:
         tracker = ProviderHealthTracker()
-        with TestClient(
+        async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
-            response = client.get("/api/v1/readyz")
+            response = await client.get("/api/v1/readyz")
             assert response.status_code == 200
             body = response.json()
             assert body["data"]["status"] == "ok"
@@ -307,10 +311,10 @@ class TestReadinessProviders:
                     error_message=f"simulated failure {i}",
                 ),
             )
-        with TestClient(
+        async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
-            response = client.get("/api/v1/readyz")
+            response = await client.get("/api/v1/readyz")
             assert response.status_code == 503
             body = response.json()
             assert body["data"]["status"] == "unavailable"
@@ -339,10 +343,10 @@ class TestReadinessProviders:
                     response_time_ms=80.0,
                 ),
             )
-        with TestClient(
+        async with LoopAsyncClient(
             create_app(provider_health_tracker=tracker),
         ) as client:
-            response = client.get("/api/v1/readyz")
+            response = await client.get("/api/v1/readyz")
             assert response.status_code == 200
             body = response.json()
             assert body["data"]["status"] == "ok"

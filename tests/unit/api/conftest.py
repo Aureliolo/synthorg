@@ -1,9 +1,11 @@
 """Shared fixtures for API unit tests."""
 
 import asyncio
+import contextlib
 import threading
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -54,7 +56,7 @@ from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
-from tests._shared import mock_of
+from tests._shared import LoopAsyncClient, mock_of
 from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.api.fakes import (
     FakeArtifactStorage,
@@ -551,40 +553,57 @@ def _restore_instance_patches(obj: object) -> None:
             delattr(obj, attr)
 
 
-@pytest.fixture
-def test_client(  # noqa: PLR0913
-    _shared_app: Litestar,  # noqa: PT019
-    fake_persistence: FakePersistenceBackend,
-    fake_message_bus: FakeMessageBus,
-    cost_tracker: CostTracker,
-    approval_store: ApprovalStore,
-    performance_tracker: PerformanceTracker,
-    agent_registry: AgentRegistryService,
-    provider_health_tracker: ProviderHealthTracker,
-    tool_invocation_tracker: ToolInvocationTracker,
-    delegation_record_store: DelegationRecordStore,
-    audit_log: AuditLog,
-    coordination_metrics_store: CoordinationMetricsStore,
-    auth_service: AuthService,
-) -> Iterator[TestClient[Any]]:
-    """Yield a TestClient wrapping the shared app with clean state.
+@dataclass(frozen=True)
+class _ResetServices:
+    """Session-scoped services the per-test reset clears and re-seeds."""
 
-    The expensive ``create_app()`` runs once per worker.  Each test
-    gets a function-scoped ``TestClient`` whose lifespan startup
-    re-runs (idempotent, ~90ms) but shutdown is skipped (saves
-    ~460ms per test).
+    fake_persistence: FakePersistenceBackend
+    fake_message_bus: FakeMessageBus
+    cost_tracker: CostTracker
+    approval_store: ApprovalStore
+    performance_tracker: PerformanceTracker
+    agent_registry: AgentRegistryService
+    provider_health_tracker: ProviderHealthTracker
+    tool_invocation_tracker: ToolInvocationTracker
+    delegation_record_store: DelegationRecordStore
+    audit_log: AuditLog
+    coordination_metrics_store: CoordinationMetricsStore
+    auth_service: AuthService
+
+
+def _pre_test_reset(
+    shared_app: Litestar,
+    services: _ResetServices,
+) -> tuple[dict[str, Any], dict[Any, Any]]:
+    """Clear shared mutable state and snapshot AppState (steps 1-6).
+
+    Returns the AppState primitive-slot snapshot and a copy of the slice
+    store so the caller can restore them after the test (see
+    :func:`_restore_app_state`). Shared by the sync and async client
+    context managers: the reset is identical regardless of client type
+    (it exists because the app + services are session-scoped, not
+    because of the client).
     """
+    from synthorg.api.api_core_state import ApiCoreStateSlice
+    from synthorg.communication.state import CommunicationStateSlice
+    from synthorg.engine.state import EngineStateSlice
+    from synthorg.settings.state import SettingsStateSlice
+
+    fake_persistence = services.fake_persistence
+    fake_message_bus = services.fake_message_bus
+    auth_service = services.auth_service
+
     # 1. Clear all mutable service state and undo method patches
     _services = (
-        cost_tracker,
-        approval_store,
-        performance_tracker,
-        agent_registry,
-        provider_health_tracker,
-        tool_invocation_tracker,
-        delegation_record_store,
-        audit_log,
-        coordination_metrics_store,
+        services.cost_tracker,
+        services.approval_store,
+        services.performance_tracker,
+        services.agent_registry,
+        services.provider_health_tracker,
+        services.tool_invocation_tracker,
+        services.delegation_record_store,
+        services.audit_log,
+        services.coordination_metrics_store,
     )
     for svc in _services:
         # Restore original methods BEFORE calling clear(): a prior
@@ -593,11 +612,10 @@ def test_client(  # noqa: PLR0913
         # state; we want the real ``clear`` implementation to run.
         _restore_instance_patches(svc)
         # AgentRegistryService.clear and ApprovalStore.clear are
-        # async; use the sync test-only entry points so this sync
-        # fixture keeps its shape. AgentRegistryService no longer has
-        # a sync reset method on its production surface; the
-        # registry_testing module exposes one specifically for this
-        # use case.
+        # async; use the sync test-only entry points so this reset
+        # stays synchronous. AgentRegistryService no longer has a sync
+        # reset method on its production surface; the registry_testing
+        # module exposes one specifically for this use case.
         if isinstance(svc, AgentRegistryService):
             from synthorg.hr.registry_testing import reset_registry_for_test_sync
 
@@ -613,37 +631,29 @@ def test_client(  # noqa: PLR0913
     #    A previous test may have disconnected persistence via its own
     #    app's lifespan shutdown.  The task engine's _running stays True
     #    because _skip_lifecycle_shutdown prevents stop(), but its
-    #    internal asyncio tasks die when the previous TestClient's
-    #    event loop closes.  Resetting _running lets the next startup
-    #    create fresh tasks on the new event loop.
+    #    internal asyncio tasks die when the previous test's event loop
+    #    closes.  Resetting _running lets the next startup create fresh
+    #    tasks on the new event loop.
     fake_persistence._connected = True
-    app_state: AppState = _shared_app.state.app_state
-    # Reset the task engine for the new event loop.  The session-
-    # scoped engine's queues accumulate pending-put/get futures bound
-    # to the *previous* TestClient's event loop; once that loop
-    # closes those futures are permanently unusable and block any
-    # further async interaction with the queue.  Recreate the queues
-    # and reset the running flag so the next startup creates fresh
-    # processing tasks on the new loop.
-    from synthorg.api.api_core_state import ApiCoreStateSlice
-    from synthorg.communication.state import CommunicationStateSlice
-    from synthorg.engine.state import EngineStateSlice
-    from synthorg.engine.workspace.state import WorkspaceStateSlice
-    from synthorg.settings.state import SettingsStateSlice
-    from synthorg.workers.state import RuntimeStateSlice
-
+    app_state: AppState = shared_app.state.app_state
+    # Reset the task engine for the new event loop.  The session-scoped
+    # engine's queues accumulate pending put/get futures bound to the
+    # *previous* test's event loop; once that loop closes those futures
+    # are permanently unusable and block any further async interaction
+    # with the queue.  Recreate the queues and reset the running flag so
+    # the next startup creates fresh processing tasks on the new loop.
+    #    This step is still required under the portal-free async client:
+    #    pytest-asyncio's per-test loop closes after every test (loop
+    #    scope is "function"), so the same dead-loop problem applies.
     task_engine = app_state.slice(EngineStateSlice).task_engine
     if task_engine is not None:
-        import asyncio as _aio
-
         task_engine._running = False
-        # asyncio.Queue (Python 3.10+) lazily binds to the running
-        # event loop on first ``put``/``get``; constructing it here
-        # in sync context does *not* bind it to this thread's loop,
-        # so the next async consumer inside the new TestClient picks
-        # up the fresh loop correctly.
-        task_engine._queue = _aio.Queue(maxsize=task_engine._config.max_queue_size)
-        task_engine._observer_queue = _aio.Queue(
+        # asyncio.Queue lazily binds to the running event loop on first
+        # ``put``/``get``.  These fresh queues are built here (before the
+        # client enters the app's lifespan), so they bind to the next
+        # test's loop when the engine's processing tasks first drive them.
+        task_engine._queue = asyncio.Queue(maxsize=task_engine._config.max_queue_size)
+        task_engine._observer_queue = asyncio.Queue(
             maxsize=task_engine._config.effective_observer_queue_size,
         )
         task_engine._versions = type(task_engine._versions)()
@@ -687,7 +697,7 @@ def test_client(  # noqa: PLR0913
     # Clear the per-op rate-limit sliding-window store so a prior
     # test's 429 buckets (e.g. ``setup.complete`` at 5/3600s) cannot
     # bleed into the next one.
-    per_op_store = getattr(_shared_app.state, "per_op_rate_limit_store", None)
+    per_op_store = getattr(shared_app.state, "per_op_rate_limit_store", None)
     if per_op_store is not None:
         buckets = getattr(per_op_store, "_buckets", None)
         if isinstance(buckets, dict):
@@ -705,12 +715,12 @@ def test_client(  # noqa: PLR0913
     #    shallow copy of that mapping is enough to revert a test's
     #    ``wire`` / ``swap_slice`` mutations (the slice *values* are
     #    immutable, so they need no deep copy).
-    saved = {
+    saved: dict[str, Any] = {
         attr: getattr(app_state, attr)
         for attr in AppState.__slots__
         if attr.startswith("_")
     }
-    saved_slices = dict(app_state._slices)
+    saved_slices: dict[Any, Any] = dict(app_state._slices)
 
     # 6. Clear Litestar-internal rate-limit stores to prevent 429s
     #    from accumulating request counters across tests.  Reaches
@@ -719,7 +729,7 @@ def test_client(  # noqa: PLR0913
     #    bulk-clear API.  Guarded with ``hasattr`` so a Litestar
     #    upgrade fails with a clear, actionable error instead of
     #    a cryptic ``AttributeError`` deep in fixture setup.
-    _shared_stores = _shared_app.stores
+    _shared_stores = shared_app.stores
     if not hasattr(_shared_stores, "_stores"):
         msg = (
             "Test fixture expected Litestar app.stores to expose a "
@@ -743,66 +753,177 @@ def test_client(  # noqa: PLR0913
             raise RuntimeError(msg)
         inner.clear()
 
-    # 7. Enter TestClient -- startup re-runs (idempotent),
-    #    shutdown is skipped (_skip_lifecycle_shutdown=True).
-    #    Startup may create a system user (ensure_system_user) and
-    #    modify settings, so re-clear persistence + settings cache
-    #    and re-seed users AFTER entering. On Windows the TestClient's
-    #    anyio portal inherits the SelectorEventLoop policy set
-    #    process-wide in ``tests/unit/conftest.py`` (see the comment
-    #    above the import block there).
-    with TestClient(_shared_app) as client:
-        fake_persistence.clear()
-        fake_persistence._connected = True
-        post_startup_settings = app_state.slice(SettingsStateSlice).settings_service
-        if post_startup_settings is not None:
-            post_startup_settings._cache.clear()
-        # ``create_app``'s ``_install_runtime_services`` startup hook is
-        # once-only (a ``_runtime_services_installed`` closure flag), but
-        # the session-scoped shared app re-runs lifespan startup every
-        # test. The hook therefore wires the coordinator / worker-exec
-        # seams only during the FIRST test's startup; the snapshot in
-        # step 5 then restores them to ``None`` for every later test.
-        # Left alone, the first test per xdist worker would observe a
-        # wired coordinator while all others observe ``None``, making any
-        # coordinator-dependent assertion order-dependent. Force the
-        # no-runtime-services baseline post-startup so every test sees
-        # the same state (the worker-exec property lazily re-defaults);
-        # tests that need a coordinator inject one via their own client.
-        app_state.wire(
-            RuntimeStateSlice,
-            coordinator=None,
-            worker_execution_service=None,
-        )
-        # Same once-only-install reset for the docs engine: the
-        # ``_wire_docs_engine`` startup hook is gated by a closure flag,
-        # so only the FIRST test's startup composes a populated
-        # ``DocsStateSlice``. Reset it to an empty slice for every test
-        # so tests that need a docs runtime inject their own via the
-        # client.
-        from synthorg.docs_engine.state import DocsStateSlice
+    return saved, saved_slices
 
-        app_state.swap_slice(DocsStateSlice())
-        # Symmetric with the coordinator / worker-exec resets above: the
-        # persistence-gated boot wiring sets the per-project workspace
-        # service once on the first test's startup, so clear it too or
-        # later tests would observe a wired service the first did not.
-        app_state.wire(WorkspaceStateSlice, project_workspace_service=None)
-        _seed_test_users(fake_persistence, auth_service)
-        _promote_first_owner(fake_persistence)
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
 
-    # 8. Restore AppState refs (undo test mutations): the primitive
-    #    slots, then the slice store. Restoring ``_slices`` to the
-    #    pre-test snapshot reverts any ``wire`` / ``swap_slice`` a test
-    #    performed (and the post-startup baseline resets above), so a
-    #    coordinator / docs runtime a test injected cannot bleed into
-    #    the next test sharing the session-scoped app.
+def _post_startup_reset(shared_app: Litestar, services: _ResetServices) -> None:
+    """Re-baseline once-only startup wiring and re-seed (step 7, post-enter).
+
+    Run AFTER the client enters the app lifespan. ``create_app``'s
+    ``_install_runtime_services`` / ``_wire_docs_engine`` / workspace boot
+    hooks are once-only (closure flags), but the session-scoped shared app
+    re-runs lifespan startup every test, so only the FIRST test per worker
+    observes them wired. Force the no-runtime-services / empty-docs /
+    no-workspace baseline so every test sees identical state (tests that
+    need those inject their own via the client). Startup also creates a
+    system user and mutates settings, so re-clear persistence + the
+    settings cache and re-seed users here.
+    """
+    from synthorg.docs_engine.state import DocsStateSlice
+    from synthorg.engine.workspace.state import WorkspaceStateSlice
+    from synthorg.settings.state import SettingsStateSlice
+    from synthorg.workers.state import RuntimeStateSlice
+
+    fake_persistence = services.fake_persistence
+    auth_service = services.auth_service
+    app_state: AppState = shared_app.state.app_state
+
+    fake_persistence.clear()
+    fake_persistence._connected = True
+    post_startup_settings = app_state.slice(SettingsStateSlice).settings_service
+    if post_startup_settings is not None:
+        post_startup_settings._cache.clear()
+    app_state.wire(
+        RuntimeStateSlice,
+        coordinator=None,
+        worker_execution_service=None,
+    )
+    app_state.swap_slice(DocsStateSlice())
+    app_state.wire(WorkspaceStateSlice, project_workspace_service=None)
+    _seed_test_users(fake_persistence, auth_service)
+    _promote_first_owner(fake_persistence)
+
+
+def _restore_app_state(
+    shared_app: Litestar,
+    saved: dict[str, Any],
+    saved_slices: dict[Any, Any],
+) -> None:
+    """Restore AppState primitive slots + slice store after the test (step 8).
+
+    Reverts any ``wire`` / ``swap_slice`` a test performed (and the
+    post-startup baseline) so a coordinator / docs runtime a test injected
+    cannot bleed into the next test sharing the session-scoped app.
+    """
+    app_state: AppState = shared_app.state.app_state
     for attr, value in saved.items():
         setattr(app_state, attr, value)
     app_state._slices.clear()
     app_state._slices.update(saved_slices)
+
+
+@contextlib.contextmanager
+def _sync_shared_client(
+    shared_app: Litestar,
+    services: _ResetServices,
+) -> Iterator[TestClient[Any]]:
+    """Reset state, enter a sync ``TestClient`` on the shared app, restore."""
+    saved, saved_slices = _pre_test_reset(shared_app, services)
+    with TestClient(shared_app) as client:
+        _post_startup_reset(shared_app, services)
+        client.headers.update(make_auth_headers("ceo"))
+        yield client
+    _restore_app_state(shared_app, saved, saved_slices)
+
+
+@contextlib.asynccontextmanager
+async def _async_shared_client(
+    shared_app: Litestar,
+    services: _ResetServices,
+) -> AsyncIterator[LoopAsyncClient]:
+    """Reset state, enter a portal-free async client, restore.
+
+    The lifespan startup and every request run on the caller's
+    pytest-asyncio loop (no BlockingPortal), so a test creates exactly
+    one event loop and zero portals.
+    """
+    saved, saved_slices = _pre_test_reset(shared_app, services)
+    async with LoopAsyncClient(shared_app) as client:
+        _post_startup_reset(shared_app, services)
+        client.headers.update(make_auth_headers("ceo"))
+        yield client
+    _restore_app_state(shared_app, saved, saved_slices)
+
+
+@pytest.fixture
+def _reset_services(  # noqa: PLR0913
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+    cost_tracker: CostTracker,
+    approval_store: ApprovalStore,
+    performance_tracker: PerformanceTracker,
+    agent_registry: AgentRegistryService,
+    provider_health_tracker: ProviderHealthTracker,
+    tool_invocation_tracker: ToolInvocationTracker,
+    delegation_record_store: DelegationRecordStore,
+    audit_log: AuditLog,
+    coordination_metrics_store: CoordinationMetricsStore,
+    auth_service: AuthService,
+) -> _ResetServices:
+    """Bundle the session-scoped services the per-test reset operates on."""
+    return _ResetServices(
+        fake_persistence=fake_persistence,
+        fake_message_bus=fake_message_bus,
+        cost_tracker=cost_tracker,
+        approval_store=approval_store,
+        performance_tracker=performance_tracker,
+        agent_registry=agent_registry,
+        provider_health_tracker=provider_health_tracker,
+        tool_invocation_tracker=tool_invocation_tracker,
+        delegation_record_store=delegation_record_store,
+        audit_log=audit_log,
+        coordination_metrics_store=coordination_metrics_store,
+        auth_service=auth_service,
+    )
+
+
+@pytest.fixture
+async def async_test_client(
+    _shared_app: Litestar,
+    _reset_services: _ResetServices,
+) -> AsyncIterator[LoopAsyncClient]:
+    """Yield a portal-free async client wrapping the shared app.
+
+    The expensive ``create_app()`` runs once per worker. Each test
+    re-runs the idempotent lifespan startup (~90ms) and the per-test
+    state reset; shutdown is skipped (``_skip_lifecycle_shutdown``). The
+    lifespan and every request run on the test's own pytest-asyncio loop,
+    so there is no anyio ``BlockingPortal`` (no extra thread, event loop,
+    or ``socket.socketpair``).
+    """
+    async with _async_shared_client(_shared_app, _reset_services) as client:
+        yield client
+
+
+@pytest.fixture
+def ws_test_client(
+    _shared_app: Litestar,
+    _reset_services: _ResetServices,
+) -> Iterator[TestClient[Any]]:
+    """Yield a sync ``TestClient`` for websocket tests.
+
+    litestar 2.22's ``WebSocketTestSession`` is sync and portal-backed
+    (there is no async websocket test API), so websocket tests keep a
+    sync client. Only a handful of tests use this, so the per-test portal
+    it creates is a negligible ``socket.socketpair`` load.
+    """
+    with _sync_shared_client(_shared_app, _reset_services) as client:
+        yield client
+
+
+@pytest.fixture
+def test_client(
+    _shared_app: Litestar,  # noqa: PT019
+    _reset_services: _ResetServices,  # noqa: PT019
+) -> Iterator[TestClient[Any]]:
+    """Yield a sync ``TestClient`` wrapping the shared app (legacy).
+
+    Retained while the suite migrates to ``async_test_client``; removed
+    once every consumer is migrated. New and migrated tests must use
+    ``async_test_client`` instead.
+    """
+    with _sync_shared_client(_shared_app, _reset_services) as client:
+        yield client
 
 
 def _promote_first_owner(backend: FakePersistenceBackend) -> None:

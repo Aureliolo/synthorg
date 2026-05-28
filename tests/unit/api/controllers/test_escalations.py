@@ -1,10 +1,8 @@
 """Unit tests for the human escalation approval queue."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -17,6 +15,7 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.enums import SeniorityLevel
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -70,8 +69,8 @@ def _make_escalation(
 
 
 class TestEscalationsController:
-    async def test_list_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+    async def test_list_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -79,31 +78,33 @@ class TestEscalationsController:
 
     async def test_list_returns_pending_rows(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        comms = test_client.app.state.app_state.slice(CommunicationStateSlice)
+        comms = async_test_client.app.state.app_state.slice(CommunicationStateSlice)
         store = comms.escalation_store
         assert store is not None
         await store.create(_make_escalation(escalation_id="escalation-list-01"))
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["escalation"]["id"] == "escalation-list-01"
 
     async def test_get_missing_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(f"{_BASE}/escalation-missing", headers=_READ_HEADERS)
+        resp = await async_test_client.get(
+            f"{_BASE}/escalation-missing", headers=_READ_HEADERS
+        )
         assert resp.status_code == 404
         body = resp.json()
         assert body["error_detail"]["error_category"] == "not_found"
 
     async def test_winner_decision_transitions_row_and_resolves_future(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
         registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
@@ -113,7 +114,7 @@ class TestEscalationsController:
         await store.create(escalation)
         future = await registry.register(escalation.id)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/{escalation.id}/decision",
             json={
                 "decision": {
@@ -134,16 +135,16 @@ class TestEscalationsController:
 
     async def test_reject_decision_rejected_when_winner_only_strategy(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Default decision_strategy='winner' -> reject decisions yield 422."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
         assert store is not None
         escalation = _make_escalation(escalation_id="escalation-reject-01")
         await store.create(escalation)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/{escalation.id}/decision",
             json={
                 "decision": {
@@ -162,9 +163,9 @@ class TestEscalationsController:
 
     async def test_decision_on_already_decided_row_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
         registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
@@ -180,14 +181,14 @@ class TestEscalationsController:
                 "reasoning": "first",
             },
         }
-        first = test_client.post(
+        first = await async_test_client.post(
             f"{_BASE}/{escalation.id}/decision",
             json=body,
             headers=_WRITE_HEADERS,
         )
         assert first.status_code == 201
 
-        second = test_client.post(
+        second = await async_test_client.post(
             f"{_BASE}/{escalation.id}/decision",
             json=body,
             headers=_WRITE_HEADERS,
@@ -197,9 +198,9 @@ class TestEscalationsController:
 
     async def test_cancel_transitions_to_cancelled(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
         registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
@@ -208,7 +209,7 @@ class TestEscalationsController:
         await store.create(escalation)
         future = await registry.register(escalation.id)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/{escalation.id}/cancel",
             json={"reason": "duplicate report"},
             headers=_WRITE_HEADERS,
@@ -220,10 +221,10 @@ class TestEscalationsController:
 
     async def test_decision_rate_limit_returns_429(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """After 30 decision attempts, the 31st is 429 + RFC 9457."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         store = app_state.slice(CommunicationStateSlice).escalation_store
         registry = app_state.slice(CommunicationStateSlice).escalation_registry
         assert store is not None
@@ -236,7 +237,7 @@ class TestEscalationsController:
 
         saw_429 = False
         for i in range(31):
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 f"{_BASE}/escalation-rl-{i:02d}/decision",
                 json={
                     "decision": {
