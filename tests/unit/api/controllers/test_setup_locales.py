@@ -10,21 +10,21 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.state import settings_service_of
+from tests._shared import LoopAsyncClient
 
 
 @pytest.mark.unit
 class TestGetAvailableLocales:
     """GET /api/v1/setup/name-locales/available -- list available locales."""
 
-    def test_returns_regions_and_display_names(
+    async def test_returns_regions_and_display_names(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/setup/name-locales/available")
+        resp = await async_test_client.get("/api/v1/setup/name-locales/available")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -42,9 +42,9 @@ class TestGetAvailableLocales:
 class TestGetNameLocales:
     """GET /api/v1/setup/name-locales -- get current locale configuration."""
 
-    def test_returns_all_sentinel_when_not_configured(
+    async def test_returns_all_sentinel_when_not_configured(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns the ``__all__`` sentinel when no DB preference is stored.
 
@@ -52,19 +52,19 @@ class TestGetNameLocales:
         the "All (worldwide)" toggle as ON.  Resolution to concrete
         locale codes happens only in the name-generation path.
         """
-        resp = test_client.get("/api/v1/setup/name-locales")
+        resp = await async_test_client.get("/api/v1/setup/name-locales")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         data = body["data"]
         assert data["locales"] == ["__all__"]
 
-    def test_returns_stored_locales_when_configured(
+    async def test_returns_stored_locales_when_configured(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns stored locales when the setting is in the DB."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
@@ -72,16 +72,16 @@ class TestGetNameLocales:
             now,
         )
         try:
-            resp = test_client.get("/api/v1/setup/name-locales")
+            resp = await async_test_client.get("/api/v1/setup/name-locales")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["locales"] == ["en_US", "fr_FR"]
         finally:
             repo._store.pop(("company", "name_locales"), None)
 
-    def test_returns_all_sentinel_when_explicitly_stored(
+    async def test_returns_all_sentinel_when_explicitly_stored(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns ``__all__`` sentinel when it is explicitly stored in DB.
 
@@ -89,7 +89,7 @@ class TestGetNameLocales:
         back returns the sentinel, not the full expanded list of
         concrete locale codes.
         """
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "name_locales")] = (
@@ -97,7 +97,7 @@ class TestGetNameLocales:
             now,
         )
         try:
-            resp = test_client.get("/api/v1/setup/name-locales")
+            resp = await async_test_client.get("/api/v1/setup/name-locales")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["locales"] == ["__all__"]
@@ -109,11 +109,11 @@ class TestGetNameLocales:
 class TestSaveNameLocales:
     """PUT /api/v1/setup/name-locales -- save locale preferences."""
 
-    def test_saves_valid_locales(
+    async def test_saves_valid_locales(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["en_US", "de_DE"]},
         )
@@ -122,11 +122,11 @@ class TestSaveNameLocales:
         assert body["success"] is True
         assert body["data"]["locales"] == ["en_US", "de_DE"]
 
-    def test_saves_all_sentinel(
+    async def test_saves_all_sentinel(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["__all__"]},
         )
@@ -134,12 +134,12 @@ class TestSaveNameLocales:
         data = resp.json()["data"]
         assert data["locales"] == ["__all__"]
 
-    def test_rejects_mixed_sentinel_with_explicit_codes(
+    async def test_rejects_mixed_sentinel_with_explicit_codes(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Mixing __all__ with explicit locale codes returns 422."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["__all__", "en_US"]},
         )
@@ -147,11 +147,11 @@ class TestSaveNameLocales:
         body = resp.json()
         assert body["success"] is False
 
-    def test_rejects_invalid_locale_codes(
+    async def test_rejects_invalid_locale_codes(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": ["en_US", "invalid_XX"]},
         )
@@ -159,28 +159,28 @@ class TestSaveNameLocales:
         body = resp.json()
         assert body["success"] is False
 
-    def test_rejects_empty_list(
+    async def test_rejects_empty_list(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Empty list is rejected by Pydantic min_length=1."""
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/setup/name-locales",
             json={"locales": []},
         )
         assert resp.status_code == 400
 
-    def test_rejects_save_after_setup_complete(
+    async def test_rejects_save_after_setup_complete(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Saving locales after setup is complete returns 409."""
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("api", "setup_complete")] = ("true", now)
         try:
-            resp = test_client.put(
+            resp = await async_test_client.put(
                 "/api/v1/setup/name-locales",
                 json={"locales": ["en_US"]},
             )
@@ -195,14 +195,14 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_when_not_in_db(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Code default resolves as non-DATABASE source, returns False."""
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         # Ensure the key is absent from DB so code default kicks in.
         repo = cast(Any, persistence_of(app_state))._settings_repo
@@ -213,13 +213,13 @@ class TestCheckHasNameLocales:
 
     async def test_returns_true_when_db_sourced_and_nonempty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -235,14 +235,14 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_on_generic_exception(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns False when get_entry raises a generic exception."""
         from synthorg.api.controllers.setup.company_helpers import (
             check_has_name_locales as _check_has_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -258,7 +258,7 @@ class TestCheckHasNameLocales:
 
     async def test_returns_false_on_setting_not_found_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -266,7 +266,7 @@ class TestCheckHasNameLocales:
         )
         from synthorg.settings.errors import SettingNotFoundError
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -287,7 +287,7 @@ class TestReadNameLocales:
 
     async def test_returns_all_locales_when_db_absent_and_code_default(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """When DB key is absent, code default ["__all__"] resolves to all."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -295,7 +295,7 @@ class TestReadNameLocales:
         )
         from synthorg.templates.locales import ALL_LATIN_LOCALES
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         repo._store.pop(("company", "name_locales"), None)
@@ -306,7 +306,7 @@ class TestReadNameLocales:
 
     async def test_returns_none_when_setting_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
         from synthorg.api.controllers.setup.company_helpers import (
@@ -314,7 +314,7 @@ class TestReadNameLocales:
         )
         from synthorg.settings.errors import SettingNotFoundError
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
 
         original = settings_svc.get_entry
@@ -330,13 +330,13 @@ class TestReadNameLocales:
 
     async def test_returns_resolved_locales_when_valid(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -352,13 +352,13 @@ class TestReadNameLocales:
 
     async def test_returns_none_on_json_decode_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -374,13 +374,13 @@ class TestReadNameLocales:
 
     async def test_returns_none_on_non_list_json(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -396,13 +396,13 @@ class TestReadNameLocales:
 
     async def test_filters_invalid_locales(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -418,14 +418,14 @@ class TestReadNameLocales:
 
     async def test_resolve_false_returns_sentinel_as_is(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """With resolve=False, the __all__ sentinel passes through raw."""
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -444,14 +444,14 @@ class TestReadNameLocales:
 
     async def test_resolve_false_skips_validation_filtering(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """With resolve=False, invalid codes are not filtered out."""
         from synthorg.api.controllers.setup.company_helpers import (
             read_name_locales as _read_name_locales,
         )
 
-        app_state = test_client.app.state.app_state
+        app_state = async_test_client.app.state.app_state
         settings_svc = settings_service_of(app_state)
         repo = cast(Any, persistence_of(app_state))._settings_repo
         now = datetime.now(UTC).isoformat()

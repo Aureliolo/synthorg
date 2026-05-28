@@ -5,7 +5,6 @@ from typing import Any, cast
 
 import pytest
 import structlog.testing
-from litestar.testing import TestClient
 
 from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.engine.workflow.definition import (
@@ -15,6 +14,7 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from synthorg.persistence.state import persistence_of
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Minimal valid graph data (dicts for HTTP payloads) ───────────
@@ -100,7 +100,7 @@ _EDGE_T2E = WorkflowEdge(
 
 
 def _seed(
-    client: TestClient[Any],
+    client: LoopAsyncClient,
     definition_id: str,
     *,
     name: str = "test-workflow",
@@ -147,13 +147,13 @@ def _make_create_payload(
     }
 
 
-def _create_workflow(
-    client: TestClient[Any],
+async def _create_workflow(
+    client: LoopAsyncClient,
     **overrides: object,
 ) -> dict[str, Any]:
     """Create a workflow via POST and return the response JSON."""
     payload = _make_create_payload(**overrides)  # type: ignore[arg-type]
-    resp = client.post(
+    resp = await client.post(
         "/api/v1/workflows",
         json=payload,
         headers=make_auth_headers("ceo"),
@@ -169,47 +169,55 @@ class TestWorkflowController:
 
     # ── List ─────────────────────────────────────────────────────
 
-    def test_list_workflows_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/workflows")
+    async def test_list_workflows_empty(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/workflows")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_list_workflows_after_create(self, test_client: TestClient[Any]) -> None:
-        _create_workflow(test_client, name="wf-alpha")
-        _create_workflow(test_client, name="wf-beta")
+    async def test_list_workflows_after_create(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _create_workflow(async_test_client, name="wf-alpha")
+        await _create_workflow(async_test_client, name="wf-beta")
 
-        resp = test_client.get("/api/v1/workflows")
+        resp = await async_test_client.get("/api/v1/workflows")
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["data"], list)
         names = {item.get("name") for item in body["data"]}
         assert {"wf-alpha", "wf-beta"} <= names
 
-    def test_list_workflows_filter_by_type(self, test_client: TestClient[Any]) -> None:
-        _create_workflow(
-            test_client,
+    async def test_list_workflows_filter_by_type(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        await _create_workflow(
+            async_test_client,
             name="wf-seq",
             workflow_type="sequential_pipeline",
         )
-        _create_workflow(
-            test_client,
+        await _create_workflow(
+            async_test_client,
             name="wf-par",
             workflow_type="parallel_execution",
         )
 
-        resp = test_client.get("/api/v1/workflows?workflow_type=parallel_execution")
+        resp = await async_test_client.get(
+            "/api/v1/workflows?workflow_type=parallel_execution"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["name"] == "wf-par"
 
-    def test_list_workflows_has_more_with_overflow(
-        self, test_client: TestClient[Any]
+    async def test_list_workflows_has_more_with_overflow(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         for i in range(4):
-            _create_workflow(test_client, name=f"wf-page-{i:02d}")
+            await _create_workflow(async_test_client, name=f"wf-page-{i:02d}")
 
-        resp = test_client.get("/api/v1/workflows?limit=2")
+        resp = await async_test_client.get("/api/v1/workflows?limit=2")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 2
@@ -220,12 +228,14 @@ class TestWorkflowController:
         "bad_type",
         ["bogus", "not_a_type", "KANBAN"],
     )
-    def test_list_workflows_invalid_type_filter(
+    async def test_list_workflows_invalid_type_filter(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         bad_type: str,
     ) -> None:
-        resp = test_client.get(f"/api/v1/workflows?workflow_type={bad_type}")
+        resp = await async_test_client.get(
+            f"/api/v1/workflows?workflow_type={bad_type}"
+        )
         assert resp.status_code == 400
         body = resp.json()
         assert body["success"] is False
@@ -233,8 +243,8 @@ class TestWorkflowController:
 
     # ── Create ───────────────────────────────────────────────────
 
-    def test_create_workflow(self, test_client: TestClient[Any]) -> None:
-        body = _create_workflow(test_client, name="new-workflow")
+    async def test_create_workflow(self, async_test_client: LoopAsyncClient) -> None:
+        body = await _create_workflow(async_test_client, name="new-workflow")
         assert body["success"] is True
         data = body["data"]
         assert data["id"].startswith("wfdef-")
@@ -246,15 +256,15 @@ class TestWorkflowController:
         assert len(data["nodes"]) == 3
         assert len(data["edges"]) == 2
 
-    def test_create_workflow_emits_audit_event(
+    async def test_create_workflow_emits_audit_event(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """create_workflow fires WORKFLOW_DEFINITION_CHANGED with action
         ``create`` so the audit chain captures schema-level mutations
         upstream of the well-instrumented execution layer."""
         with structlog.testing.capture_logs() as events:
-            _create_workflow(test_client, name="audited-workflow")
+            await _create_workflow(async_test_client, name="audited-workflow")
         # Use the event constant (resolved to its current string) so
         # renaming the constant in events/api.py automatically updates
         # this assertion -- protects against silent drift between the
@@ -268,10 +278,12 @@ class TestWorkflowController:
         assert entry["actor"]
         assert entry["definition_id"].startswith("wfdef-")
 
-    def test_create_workflow_minimal_graph(self, test_client: TestClient[Any]) -> None:
+    async def test_create_workflow_minimal_graph(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """START + END only, no edges."""
-        body = _create_workflow(
-            test_client,
+        body = await _create_workflow(
+            async_test_client,
             name="minimal",
             nodes=_MINIMAL_NODES,
             edges=_MINIMAL_EDGES,
@@ -282,21 +294,23 @@ class TestWorkflowController:
 
     # ── Get ──────────────────────────────────────────────────────
 
-    def test_get_workflow(self, test_client: TestClient[Any]) -> None:
-        created = _create_workflow(test_client)
+    async def test_get_workflow(self, async_test_client: LoopAsyncClient) -> None:
+        created = await _create_workflow(async_test_client)
         wf_id = created["data"]["id"]
 
-        resp = test_client.get(f"/api/v1/workflows/{wf_id}")
+        resp = await async_test_client.get(f"/api/v1/workflows/{wf_id}")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["id"] == wf_id
         assert body["data"]["name"] == "test-workflow"
 
-    def test_get_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+    async def test_get_workflow_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         from synthorg.core.error_taxonomy import ErrorCode
 
-        resp = test_client.get("/api/v1/workflows/nonexistent")
+        resp = await async_test_client.get("/api/v1/workflows/nonexistent")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
@@ -308,11 +322,11 @@ class TestWorkflowController:
 
     # ── Update ───────────────────────────────────────────────────
 
-    def test_update_workflow(self, test_client: TestClient[Any]) -> None:
-        created = _create_workflow(test_client)
+    async def test_update_workflow(self, async_test_client: LoopAsyncClient) -> None:
+        created = await _create_workflow(async_test_client)
         wf_id = created["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={"name": "updated-name", "description": "new desc"},
             headers=make_auth_headers("ceo"),
@@ -324,8 +338,10 @@ class TestWorkflowController:
         assert body["data"]["description"] == "new desc"
         assert body["data"]["revision"] == 2
 
-    def test_update_workflow_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.patch(
+    async def test_update_workflow_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.patch(
             "/api/v1/workflows/nonexistent",
             json={"name": "no-such-workflow"},
             headers=make_auth_headers("ceo"),
@@ -335,13 +351,13 @@ class TestWorkflowController:
         assert body["success"] is False
         assert "not found" in body["error"].lower()
 
-    def test_update_workflow_revision_conflict(
-        self, test_client: TestClient[Any]
+    async def test_update_workflow_revision_conflict(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        created = _create_workflow(test_client)
+        created = await _create_workflow(async_test_client)
         wf_id = created["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={"name": "conflict-name", "expected_revision": 999},
             headers=make_auth_headers("ceo"),
@@ -351,13 +367,13 @@ class TestWorkflowController:
         assert body["success"] is False
         assert "revision conflict" in body["error"].lower()
 
-    def test_update_workflow_with_correct_expected_revision(
-        self, test_client: TestClient[Any]
+    async def test_update_workflow_with_correct_expected_revision(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        created = _create_workflow(test_client)
+        created = await _create_workflow(async_test_client)
         wf_id = created["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={
                 "name": "versioned-update",
@@ -370,22 +386,24 @@ class TestWorkflowController:
 
     # ── Delete ───────────────────────────────────────────────────
 
-    def test_delete_workflow(self, test_client: TestClient[Any]) -> None:
-        created = _create_workflow(test_client)
+    async def test_delete_workflow(self, async_test_client: LoopAsyncClient) -> None:
+        created = await _create_workflow(async_test_client)
         wf_id = created["data"]["id"]
 
-        del_resp = test_client.delete(
+        del_resp = await async_test_client.delete(
             f"/api/v1/workflows/{wf_id}",
             headers=make_auth_headers("ceo"),
         )
         assert del_resp.status_code == 204
 
         # Confirm it's gone.
-        get_resp = test_client.get(f"/api/v1/workflows/{wf_id}")
+        get_resp = await async_test_client.get(f"/api/v1/workflows/{wf_id}")
         assert get_resp.status_code == 404
 
-    def test_delete_workflow_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_delete_workflow_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/workflows/nonexistent",
             headers=make_auth_headers("ceo"),
         )
@@ -401,10 +419,12 @@ class TestWorkflowController:
     # POST round-trip.  The validation/export logic itself is tested
     # exhaustively in tests/unit/engine/workflow/.
 
-    def test_validate_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+    async def test_validate_workflow_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         from synthorg.core.error_taxonomy import ErrorCode
 
-        resp = test_client.post("/api/v1/workflows/nonexistent/validate")
+        resp = await async_test_client.post("/api/v1/workflows/nonexistent/validate")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
@@ -414,11 +434,11 @@ class TestWorkflowController:
             == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
         )
 
-    def test_validate_workflow(self, test_client: TestClient[Any]) -> None:
+    async def test_validate_workflow(self, async_test_client: LoopAsyncClient) -> None:
         """A valid 3-node graph should pass validation."""
-        wf_id = _seed(test_client, "wfdef-val001")
+        wf_id = _seed(async_test_client, "wfdef-val001")
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/validate",
         )
         assert resp.status_code == 200
@@ -427,17 +447,19 @@ class TestWorkflowController:
         assert body["data"]["valid"] is True
         assert body["data"]["errors"] == []
 
-    def test_validate_workflow_with_errors(self, test_client: TestClient[Any]) -> None:
+    async def test_validate_workflow_with_errors(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         """START + END with no edge -- END is unreachable."""
         wf_id = _seed(
-            test_client,
+            async_test_client,
             "wfdef-val002",
             name="disconnected",
             nodes=(_START_NODE, _END_NODE),
             edges=(),
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/validate",
         )
         assert resp.status_code == 200
@@ -450,10 +472,12 @@ class TestWorkflowController:
 
     # ── Export ───────────────────────────────────────────────────
 
-    def test_export_workflow_not_found(self, test_client: TestClient[Any]) -> None:
+    async def test_export_workflow_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         from synthorg.core.error_taxonomy import ErrorCode
 
-        resp = test_client.post("/api/v1/workflows/nonexistent/export")
+        resp = await async_test_client.post("/api/v1/workflows/nonexistent/export")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
@@ -463,10 +487,10 @@ class TestWorkflowController:
             == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
         )
 
-    def test_export_workflow(self, test_client: TestClient[Any]) -> None:
-        wf_id = _seed(test_client, "wfdef-exp001")
+    async def test_export_workflow(self, async_test_client: LoopAsyncClient) -> None:
+        wf_id = _seed(async_test_client, "wfdef-exp001")
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/export",
         )
         assert resp.status_code == 200
@@ -485,12 +509,12 @@ class TestWorkflowControllerErrorEnvelope:
     ``error_detail`` block is consistent with the rest of the API.
     """
 
-    def test_list_invalid_workflow_type_envelope(
-        self, test_client: TestClient[Any]
+    async def test_list_invalid_workflow_type_envelope(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        resp = test_client.get("/api/v1/workflows?workflow_type=bogus")
+        resp = await async_test_client.get("/api/v1/workflows?workflow_type=bogus")
         assert resp.status_code == 400
         body = resp.json()
         assert body["success"] is False
@@ -499,8 +523,8 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
-    def test_create_workflow_invalid_definition_envelope(
-        self, test_client: TestClient[Any]
+    async def test_create_workflow_invalid_definition_envelope(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """Pydantic validation failure surfaces a 422 with a safe message.
 
@@ -522,7 +546,7 @@ class TestWorkflowControllerErrorEnvelope:
                 _END_NODE_DICT,
             ],
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows",
             json=bad_payload,
             headers=make_auth_headers("ceo"),
@@ -537,12 +561,12 @@ class TestWorkflowControllerErrorEnvelope:
         assert "Invalid workflow definition." in body["error"]
         assert "ValidationError" not in body["error"]
 
-    def test_update_workflow_not_found_envelope(
-        self, test_client: TestClient[Any]
+    async def test_update_workflow_not_found_envelope(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             "/api/v1/workflows/wfdef-missing",
             json={"name": "no-such-workflow"},
             headers=make_auth_headers("ceo"),
@@ -555,15 +579,15 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.NOT_FOUND
         assert detail["retryable"] is False
 
-    def test_update_workflow_revision_conflict_envelope(
-        self, test_client: TestClient[Any]
+    async def test_update_workflow_revision_conflict_envelope(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        created = _create_workflow(test_client, name="conflict-target")
+        created = await _create_workflow(async_test_client, name="conflict-target")
         wf_id = created["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={"name": "racing-update", "expected_revision": 999},
             headers=make_auth_headers("ceo"),
@@ -576,8 +600,8 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.CONFLICT
         assert detail["retryable"] is False
 
-    def test_validate_workflow_invalid_definition_envelope(
-        self, test_client: TestClient[Any]
+    async def test_validate_workflow_invalid_definition_envelope(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         """The /validate endpoint also routes invalid bodies through
         the centralised handler with a 422 envelope."""
@@ -595,7 +619,7 @@ class TestWorkflowControllerErrorEnvelope:
                 _END_NODE_DICT,
             ],
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/validate-draft",
             json=bad_payload,
             headers=make_auth_headers("ceo"),
@@ -608,9 +632,9 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
-    def test_export_workflow_yaml_serialization_error_envelope(
+    async def test_export_workflow_yaml_serialization_error_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """ValueError from the YAML exporter surfaces a 422 envelope.
@@ -621,7 +645,7 @@ class TestWorkflowControllerErrorEnvelope:
         """
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        wf_id = _seed(test_client, "wfdef-export-err")
+        wf_id = _seed(async_test_client, "wfdef-export-err")
 
         def _raise_value_error(_definition: object) -> str:
             msg = "yaml round-trip failed"
@@ -632,7 +656,7 @@ class TestWorkflowControllerErrorEnvelope:
             _raise_value_error,
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/export",
             headers=make_auth_headers("ceo"),
         )
@@ -645,9 +669,9 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["retryable"] is False
         assert "Export failed" in body["error"]
 
-    def test_create_from_blueprint_not_found_envelope(
+    async def test_create_from_blueprint_not_found_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Missing blueprint surfaces a 404 RFC 9457 envelope via the
@@ -666,7 +690,7 @@ class TestWorkflowControllerErrorEnvelope:
             _raise_not_found,
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "nonexistent"},
             headers=make_auth_headers("ceo"),
@@ -679,9 +703,9 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.NOT_FOUND
         assert detail["retryable"] is False
 
-    def test_create_from_blueprint_validation_envelope(
+    async def test_create_from_blueprint_validation_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Blueprint schema-validation failure surfaces a 422 envelope."""
@@ -699,7 +723,7 @@ class TestWorkflowControllerErrorEnvelope:
             _raise_validation,
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/workflows/from-blueprint",
             json={"blueprint_name": "broken"},
             headers=make_auth_headers("ceo"),
@@ -712,9 +736,9 @@ class TestWorkflowControllerErrorEnvelope:
         assert detail["error_category"] == ErrorCategory.VALIDATION
         assert detail["retryable"] is False
 
-    def test_update_workflow_invalid_payload_envelope(
+    async def test_update_workflow_invalid_payload_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Invalid update collection surfaces a 422 RFC 9457 envelope.
 
@@ -725,10 +749,12 @@ class TestWorkflowControllerErrorEnvelope:
         """
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        created = _create_workflow(test_client, name="invalid-update-target")
+        created = await _create_workflow(
+            async_test_client, name="invalid-update-target"
+        )
         wf_id = created["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={
                 "nodes": [
@@ -754,9 +780,9 @@ class TestWorkflowControllerErrorEnvelope:
         assert "Invalid nodes field in request." in body["error"]
         assert "ValidationError" not in body["error"]
 
-    def test_update_workflow_merged_invariant_envelope(
+    async def test_update_workflow_merged_invariant_envelope(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Merged-definition validation failures surface as 422.
 
@@ -770,7 +796,9 @@ class TestWorkflowControllerErrorEnvelope:
         """
         from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
-        created = _create_workflow(test_client, name="merged-invariant-target")
+        created = await _create_workflow(
+            async_test_client, name="merged-invariant-target"
+        )
         wf_id = created["data"]["id"]
 
         duplicate_id_node: dict[str, object] = {
@@ -781,7 +809,7 @@ class TestWorkflowControllerErrorEnvelope:
             "position_y": 0.0,
             "config": {"title": "Will collide with the start node"},
         }
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"/api/v1/workflows/{wf_id}",
             json={
                 "nodes": [_START_NODE_DICT, duplicate_id_node, _END_NODE_DICT],

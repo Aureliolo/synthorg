@@ -5,12 +5,12 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
@@ -60,14 +60,14 @@ class TestListVersions:
     @pytest.mark.unit
     async def test_single_version_after_register(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -79,14 +79,14 @@ class TestListVersions:
     @pytest.mark.unit
     async def test_multiple_versions_after_updates(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=2)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -97,9 +97,9 @@ class TestListVersions:
     @pytest.mark.unit
     async def test_empty_for_unknown_agent(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{uuid4()}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -115,14 +115,14 @@ class TestGetVersion:
     @pytest.mark.unit
     async def test_returns_snapshot(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -134,14 +134,14 @@ class TestGetVersion:
     @pytest.mark.unit
     async def test_missing_version_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions/42",
             headers=make_auth_headers("ceo"),
         )
@@ -155,14 +155,14 @@ class TestDiff:
     @pytest.mark.unit
     async def test_computes_level_diff(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions/diff",
             params={"from_version": 1, "to_version": 2},
             headers=make_auth_headers("ceo"),
@@ -186,7 +186,7 @@ class TestDiff:
     )
     async def test_diff_validation(  # noqa: PLR0913
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
         from_version: int,
@@ -196,7 +196,7 @@ class TestDiff:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions/diff",
             params={"from_version": from_version, "to_version": to_version},
             headers=make_auth_headers("ceo"),
@@ -214,14 +214,14 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rolls_back_level(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=2)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
@@ -236,19 +236,19 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rollback_creates_new_snapshot(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry, updates=1)
-        test_client.post(
+        await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{identity.id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -258,7 +258,7 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rollback_unknown_agent_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
@@ -273,7 +273,7 @@ class TestRollback:
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
         await agent_registry.clear()
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
@@ -284,14 +284,14 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rollback_missing_target_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
         fake_persistence.identity_versions.clear()
         await agent_registry.clear()
         identity = await _seed_versions(agent_registry)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 99},
             headers=make_auth_headers("ceo"),
@@ -301,7 +301,7 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rollback_with_reason_records_audit_trail(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
         monkeypatch: pytest.MonkeyPatch,
@@ -332,7 +332,7 @@ class TestRollback:
             )
 
         monkeypatch.setattr(agent_registry, "evolve_identity", _capture)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1, "reason": "undo accidental promotion"},
             headers=make_auth_headers("ceo"),
@@ -344,7 +344,7 @@ class TestRollback:
     @pytest.mark.unit
     async def test_rollback_evolve_value_error_returns_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
         monkeypatch: pytest.MonkeyPatch,
@@ -369,7 +369,7 @@ class TestRollback:
             raise ValueError(msg)
 
         monkeypatch.setattr(agent_registry, "evolve_identity", _raise_value_error)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{identity.id}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers("ceo"),
@@ -438,7 +438,7 @@ class TestReadEndpointsOwnership:
     )
     async def test_cross_entity_snapshot_rejected(  # noqa: PLR0913
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
         method: str,
@@ -460,9 +460,9 @@ class TestReadEndpointsOwnership:
         url = f"/api/v1/agents/{bob.id}{path_suffix}"
         headers = make_auth_headers("ceo")
         resp = (
-            test_client.get(url, params=params, headers=headers)
+            await async_test_client.get(url, params=params, headers=headers)
             if method == "get"
-            else test_client.post(url, json=json_body, headers=headers)
+            else await async_test_client.post(url, json=json_body, headers=headers)
         )
         # Cross-entity snapshots are validation failures (the snapshot's
         # encoded owner disagrees with the path agent_id) -- 422 with the
@@ -476,7 +476,7 @@ class TestReadEndpointsOwnership:
     @pytest.mark.unit
     async def test_list_versions_drops_cross_entity_rows(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
         agent_registry: AgentRegistryService,
     ) -> None:
@@ -492,7 +492,7 @@ class TestReadEndpointsOwnership:
             version=42,
             content_hash="d" * 64,
         )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{bob.id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -533,9 +533,9 @@ class TestAuthGuards:
             ),
         ],
     )
-    def test_invalid_auth_returns_401(
+    async def test_invalid_auth_returns_401(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         method: str,
         path_suffix: str,
         body: dict[str, Any] | None,
@@ -543,20 +543,20 @@ class TestAuthGuards:
         url = f"/api/v1/agents/{uuid4()}{path_suffix}"
         headers = {"Authorization": "Bearer invalid-token"}
         resp = (
-            test_client.get(url, headers=headers)
+            await async_test_client.get(url, headers=headers)
             if method == "get"
-            else test_client.post(url, json=body, headers=headers)
+            else await async_test_client.post(url, json=body, headers=headers)
         )
         assert resp.status_code == 401
 
     @pytest.mark.unit
     @pytest.mark.parametrize("role", ["observer", "board_member"])
-    def test_rollback_write_guard_rejects_read_only_roles(
+    async def test_rollback_write_guard_rejects_read_only_roles(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         role: str,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/agents/{uuid4()}/versions/rollback",
             json={"target_version": 1},
             headers=make_auth_headers(role),
@@ -568,12 +568,12 @@ class TestAuthGuards:
         "role",
         ["ceo", "manager", "pair_programmer", "observer", "board_member"],
     )
-    def test_list_read_guard_accepts_all_human_roles(
+    async def test_list_read_guard_accepts_all_human_roles(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         role: str,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/agents/{uuid4()}/versions",
             headers=make_auth_headers(role),
         )
