@@ -13,9 +13,9 @@ import { emptyPage, paginatedFor, successFor } from './helpers'
 type RoleVersionsClient = ReadOnlyVersionHistoryClient<Record<string, unknown>>
 type RoleSnapshot = VersionSnapshot<Record<string, unknown>>
 
-function buildRoleSnapshot(version: number): RoleSnapshot {
+function buildRoleSnapshot(role: string, version: number): RoleSnapshot {
   return {
-    entity_id: 'role-example',
+    entity_id: role,
     version,
     content_hash: 'sha256:0',
     saved_at: '2026-04-19T00:00:00Z',
@@ -33,7 +33,7 @@ export const rolesHandlers = [
   http.get('/api/v1/roles/:role/versions/:version', ({ params }) =>
     HttpResponse.json(
       successFor<RoleVersionsClient['get']>(
-        buildRoleSnapshot(Number(params.version)),
+        buildRoleSnapshot(String(params.role), Number(params.version)),
       ),
     ),
   ),

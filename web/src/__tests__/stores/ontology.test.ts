@@ -118,9 +118,9 @@ describe('useOntologyStore', () => {
   it('rolls back state and surfaces an error toast on delete failure', async () => {
     const entity = buildEntity({ name: 'Task' })
     useOntologyStore.setState({ entities: [entity], totalEntities: 1 })
-    // The bare DELETE wrapper does not inspect the envelope (the backend
-    // replies 204 No Content on success), so a failure must arrive as an
-    // HTTP error status for axios to reject.
+    // deleteEntity validates the envelope via unwrapVoid, but the backend
+    // replies 204 No Content on success (no body to inspect), so a failure
+    // must arrive as an HTTP error status for axios to reject.
     server.use(
       http.delete('/api/v1/ontology/entities/:name', () =>
         HttpResponse.json(apiError('boom'), { status: 500 }),

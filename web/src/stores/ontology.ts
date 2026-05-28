@@ -65,6 +65,7 @@ async function deleteEntityImpl(
   // Capture only the row we optimistically remove so a failure
   // rollback cannot clobber entities a concurrent fetch refreshed.
   const removed = get().entities.find((e) => e.name === name) ?? null
+  const previousSelected = get().selectedEntity
   set((s) => ({
     mutating: true,
     entities: s.entities.filter((e) => e.name !== name),
@@ -87,6 +88,7 @@ async function deleteEntityImpl(
         mutating: false,
         entities: shouldRestore ? [removed, ...s.entities] : s.entities,
         totalEntities: shouldRestore ? s.totalEntities + 1 : s.totalEntities,
+        selectedEntity: shouldRestore ? previousSelected : s.selectedEntity,
       }
     })
     log.error('Delete entity failed:', getErrorMessage(err))

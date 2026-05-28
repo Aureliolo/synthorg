@@ -35,6 +35,21 @@ function singlePage(backups: BackupInfo[]): PaginatedResult<BackupInfo> {
   }
 }
 
+function cursorPage(
+  backups: BackupInfo[],
+  nextCursor: string | null,
+): PaginatedResult<BackupInfo> {
+  const limit = 200
+  const hasMore = nextCursor !== null
+  return {
+    data: [...backups],
+    limit,
+    nextCursor,
+    hasMore,
+    pagination: { limit, next_cursor: nextCursor, has_more: hasMore },
+  }
+}
+
 function seedList(backups: BackupInfo[]) {
   server.use(
     http.get('/api/v1/admin/backups', () =>
@@ -140,5 +155,30 @@ describe('AdminBackupsPage', () => {
         useToastStore.getState().toasts.some((t) => t.title === 'Backup created'),
       ).toBe(true)
     })
+  })
+
+  it('loads a second page via Load more and hides the control once the cursor is exhausted', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get('/api/v1/admin/backups', ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor')
+        const page = cursor
+          ? cursorPage([buildBackup({ backup_id: 'backup-2' })], null)
+          : cursorPage([buildBackup({ backup_id: 'backup-1' })], 'cursor-2')
+        return HttpResponse.json(paginatedFor<typeof listBackups>(page))
+      }),
+    )
+    renderPage()
+
+    await screen.findByText('backup-1')
+    expect(screen.queryByText('backup-2')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /load more/i }))
+
+    await screen.findByText('backup-2')
+    expect(screen.getByText('backup-1')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /load more/i }),
+    ).not.toBeInTheDocument()
   })
 })

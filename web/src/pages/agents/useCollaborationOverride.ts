@@ -54,7 +54,11 @@ export function useCollaborationOverride(
       if (result.kind === 'ok') setOverride(result.data)
       else if (result.kind === 'error') setLoadError(true)
     } finally {
-      setLoading(false)
+      // Only the latest request may clear loading: a slow response for a
+      // previous agent must not unset loading while the current fetch runs.
+      if (activeAgentRef.current === agentId) {
+        setLoading(false)
+      }
     }
   }, [agentId])
 

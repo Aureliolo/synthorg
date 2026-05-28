@@ -63,7 +63,7 @@ async function fetchBackupsImpl(set: BackupsSet): Promise<void> {
 async function fetchMoreBackupsImpl(set: BackupsSet, get: BackupsGet): Promise<void> {
   const { hasMore, nextCursor, loadingMore } = get()
   if (!hasMore || !nextCursor || loadingMore) return
-  set({ loadingMore: true })
+  set({ loadingMore: true, error: null })
   try {
     const page = await apiList({ cursor: nextCursor })
     set((s) => ({
@@ -71,6 +71,7 @@ async function fetchMoreBackupsImpl(set: BackupsSet, get: BackupsGet): Promise<v
       nextCursor: page.nextCursor,
       hasMore: page.hasMore,
       loadingMore: false,
+      error: null,
     }))
   } catch (err) {
     log.error('Failed to fetch more backups:', getErrorMessage(err))

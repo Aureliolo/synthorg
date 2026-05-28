@@ -71,9 +71,9 @@ Lower-frequency destinations in a collapsible "Workspace" section.
 
 #### Agents (`/agents`)
 
-Agent profiles as card grid. Each card shows name, role, department, status dot, hire date. Filtering by department, level, status. Search by name/role. Sort by name, department, level, status, hire date. Click navigates to the Agent Detail page at `/agents/{agentName}`.
+Agent profiles as card grid. Each card shows name, role, department, status dot, hire date. Filtering by department, level, status. Search by name/role. Sort by name, department, level, status, hire date. Click navigates to the Agent Detail page at `/agents/{agentId}`.
 
-**Agent Detail page** (`/agents/{agentName}`): single scrollable page with these sections:
+**Agent Detail page** (`/agents/{agentId}`): single scrollable page with these sections:
 
 - **Identity header**: Large avatar, name, role, department badge, level badge, status with pulse, autonomy level badge, hire date
 - **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
@@ -306,7 +306,7 @@ Slide-in drawer aggregating system notifications: budget alerts, approval arriva
 #### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
-Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Collaboration override, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
+Navigates to a dedicated full page at `/agents/{agentId}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Collaboration override, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
 
 ---
 
@@ -382,7 +382,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/approvals?search=:query` | Approvals (filtered) | Search by title/description |
 | `/approvals?selected=:id` | Approvals (detail) | Side panel overlay for approval detail |
 | `/agents` | Agents | Profile list |
-| `/agents/:agentName` | Agent detail | Full page with scrollable sections |
+| `/agents/:agentId` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
 | `/projects/:projectId/docs` | Living docs | Per-project wiki: doc list + viewer (status reports, deliverables, knowledge notes) |

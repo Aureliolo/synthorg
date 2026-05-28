@@ -1,7 +1,7 @@
 /**
  * Ontology API endpoints -- entity CRUD, versioning, drift.
  */
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -110,7 +110,10 @@ export async function updateEntity(
 }
 
 export async function deleteEntity(name: string): Promise<void> {
-  await apiClient.delete(`/ontology/entities/${encodeURIComponent(name)}`)
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/ontology/entities/${encodeURIComponent(name)}`,
+  )
+  unwrapVoid(response)
 }
 
 export async function listEntityVersions(
