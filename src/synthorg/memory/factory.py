@@ -6,15 +6,13 @@ dispatches to concrete backend implementations based on
 """
 
 import builtins
-from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
+from synthorg.memory.backends.mem0.config import (
+    Mem0EmbedderConfig,  # noqa: TC001 -- typeguard resolves the registry-factory annotations at runtime
+)
 from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
-from synthorg.observability.redaction import safe_error_description
-
-if TYPE_CHECKING:
-    from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.memory.registry import MemoryBackendRegistry
@@ -25,6 +23,7 @@ from synthorg.observability.events.memory import (
     MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_BACKEND_UNKNOWN,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 

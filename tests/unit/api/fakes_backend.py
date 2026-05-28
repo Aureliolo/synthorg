@@ -6,16 +6,25 @@ the 800-line budget.  Imports point directly at the extracted modules
 """
 
 import contextlib
-from typing import TYPE_CHECKING, Literal, override
-from unittest.mock import Mock
+from contextlib import AbstractAsyncContextManager
+from typing import Literal, override
+from unittest.mock import AsyncMock, Mock
 
 from pydantic import AwareDatetime, BaseModel
 
+from synthorg.budget.config import BudgetConfig
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.company import Company
 from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.training.models import TrainingPlan, TrainingPlanStatus, TrainingResult
 from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.circuit_breaker_protocol import (
+    CircuitBreakerStateRecord,
+)
 from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 from synthorg.persistence.integration_stubs import (
     InMemoryConnectionRepository,
@@ -25,6 +34,7 @@ from synthorg.persistence.integration_stubs import (
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
+from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
     ProviderAuditEvent,
@@ -32,20 +42,6 @@ from synthorg.providers.management.capability_dtos import (
 from synthorg.security.rules.risk_override import RiskTierOverride
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from synthorg.versioning.models import VersionSnapshot
-
-if TYPE_CHECKING:
-    from contextlib import AbstractAsyncContextManager
-    from unittest.mock import AsyncMock
-
-    from synthorg.budget.config import BudgetConfig
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.core.company import Company
-    from synthorg.core.role import Role
-    from synthorg.hr.evaluation.config import EvaluationConfig
-    from synthorg.persistence.circuit_breaker_protocol import (
-        CircuitBreakerStateRecord,
-    )
-    from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from tests.unit.api.fake_user_repository import FakeUserRepository
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,

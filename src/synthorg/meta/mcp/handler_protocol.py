@@ -10,10 +10,11 @@ the circular-import risk that otherwise surfaces when every handler
 module tries to import ``ToolHandler`` from the invoker.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import Any, Protocol
 
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
+from synthorg.core.agent import (
+    AgentIdentity,  # noqa: TC001 -- typeguard runtime resolution
+)
 
 
 class ToolHandler(Protocol):

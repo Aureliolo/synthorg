@@ -22,10 +22,13 @@ import copy
 from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import ValidationError
 
+from synthorg.core.agent import (
+    AgentIdentity,  # noqa: TC001 -- typeguard runtime resolution
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
@@ -90,9 +93,6 @@ from synthorg.observability.events.mcp import (
     MCP_ADMIN_OP_EXECUTED,
     MCP_HANDLER_INVOKE_SUCCESS,
 )
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
 
 logger = get_logger(__name__)
 

@@ -60,10 +60,8 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, override
-
-if TYPE_CHECKING:
-    from unittest.mock import AsyncMock
+from typing import Any, Final, override
+from unittest.mock import AsyncMock
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -85,8 +83,6 @@ from hypothesis.database import (
     ExampleDatabase,
     MultiplexedDatabase,
 )
-
-from synthorg.persistence import migrations
 
 # ``socket.getfqdn()`` does a reverse-DNS lookup that on GHA Linux runners
 # without configured reverse-DNS can block for 10-30+ seconds on the first
@@ -1131,6 +1127,19 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if lock is not None:
             break
 
+    # Local import: deferring ``synthorg.persistence.migrations`` out of the
+    # conftest module body keeps the typeguard pytest plugin's
+    # ``pytest_configure`` hook -- which installs typeguard's bytecode-
+    # instrumentation import hook -- ahead of our first synthorg import.
+    # If conftest body imported synthorg, typeguard's plugin would emit
+    # ``InstrumentationWarning: typeguard cannot check these packages
+    # because they are already imported: synthorg`` and the ini-level
+    # ``filterwarnings = ["error", ...]`` would promote it before our
+    # ``ignore::typeguard.InstrumentationWarning`` filter can run.
+    # ``pytest_sessionstart`` (the only caller chain into this function)
+    # runs after ``pytest_configure``, so the import is safely instrumented.
+    from synthorg.persistence import migrations
+
     global _template_build_secs  # noqa: PLW0603
     try:
         # Re-check existence under the lock: another worker may have
@@ -1171,8 +1180,6 @@ def mock_dispatcher() -> AsyncMock:
     AsyncMock()`` pattern that defeated the spec by overwriting one
     method with a bare ``AsyncMock()``.
     """
-    from unittest.mock import AsyncMock
-
     from synthorg.notifications.dispatcher import (
         NotificationDispatcher,
     )
