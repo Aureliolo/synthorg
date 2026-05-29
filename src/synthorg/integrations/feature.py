@@ -21,7 +21,9 @@ from synthorg.api.controllers.integration_health import IntegrationHealthControl
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.oauth import OAuthController
 from synthorg.api.controllers.tunnel import TunnelController
-from synthorg.api.controllers.webhooks import WebhooksController
+from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
+from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
+from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
 from synthorg.api.route_predicates import (
     connections_controller_ready,
     integration_health_controller_ready,
@@ -50,7 +52,16 @@ FEATURE: FeatureModule = FeatureManifest(
             controller=OAuthController, predicate=oauth_controller_ready
         ),
         ControllerRegistration(
-            controller=WebhooksController, predicate=webhooks_controller_ready
+            controller=WebhooksIngestController,
+            predicate=webhooks_controller_ready,
+        ),
+        ControllerRegistration(
+            controller=WebhooksActivityController,
+            predicate=webhooks_controller_ready,
+        ),
+        ControllerRegistration(
+            controller=WebhooksRetryController,
+            predicate=webhooks_controller_ready,
         ),
         ControllerRegistration(
             controller=MCPCatalogController,

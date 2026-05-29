@@ -129,7 +129,9 @@ from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.tunnel import TunnelController
 from synthorg.api.controllers.users import UserController
-from synthorg.api.controllers.webhooks import WebhooksController
+from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
+from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
+from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
 from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
 )
@@ -287,7 +289,9 @@ INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = (
     ConnectionsController,
     IntegrationHealthController,
     OAuthController,
-    WebhooksController,
+    WebhooksIngestController,
+    WebhooksActivityController,
+    WebhooksRetryController,
     MCPCatalogController,
     TunnelController,
 )
@@ -390,7 +394,9 @@ __all__ = [
     "TrainingController",
     "TunnelController",
     "UserController",
-    "WebhooksController",
+    "WebhooksActivityController",
+    "WebhooksIngestController",
+    "WebhooksRetryController",
     "WorkflowController",
     "WorkflowExecutionController",
     "WorkflowVersionController",

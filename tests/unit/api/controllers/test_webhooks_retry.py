@@ -17,8 +17,8 @@ import structlog.testing
 from litestar import Router
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.controllers import webhooks as webhooks_module
-from synthorg.api.controllers.webhooks import WebhooksController
+from synthorg.api.controllers.webhooks import _shared as webhooks_shared
+from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
 from synthorg.api.services.idempotency_service import IdempotencyResult
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
@@ -56,7 +56,7 @@ class _PassThroughIdempotencyService:
 # ``.fn`` and takes ``self`` as the first arg. Calling it directly
 # bypasses Litestar's request parsing -- these tests exercise the
 # orchestrator branch logic, not the framework wiring.
-_retry_receipt_fn = WebhooksController.retry_receipt.fn
+_retry_receipt_fn = WebhooksRetryController.retry_receipt.fn
 
 
 def _make_receipt(  # noqa: PLR0913 -- kw-only test fixture builder
@@ -158,7 +158,7 @@ class TestRetryReceiptHappyPath:
             return {"status": "accepted", "event_type": "issues.opened"}
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -223,7 +223,7 @@ class TestRetryReceiptHappyPath:
             return {"status": "accepted", "event_type": "issues.opened"}
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -249,7 +249,7 @@ class TestRetryReceiptHappyPath:
             return {"status": "accepted", "event_type": "issues.opened"}
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -283,7 +283,7 @@ class TestRetryReceiptHappyPath:
             return {"status": "accepted", "event_type": "issues.opened"}
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -335,7 +335,7 @@ class TestRetryReceiptErrorPaths:
             raise AssertionError(msg)
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -375,7 +375,7 @@ class TestRetryReceiptErrorPaths:
             raise publish_error
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -446,7 +446,7 @@ class TestRetryReceiptErrorPaths:
             raise AssertionError(msg)
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )
@@ -487,7 +487,7 @@ class TestRetryReceiptErrorPaths:
             raise AssertionError(msg)
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             fake_publish,
         )

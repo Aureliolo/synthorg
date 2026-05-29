@@ -19,7 +19,9 @@ import pytest
 import structlog.testing
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.controllers import webhooks as webhooks_module
+from synthorg.api.controllers import _webhooks_wiring
+from synthorg.api.controllers.webhooks import _shared as webhooks_shared
+from synthorg.api.controllers.webhooks import ingest as webhooks_ingest
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.observability.events.integrations import WEBHOOK_ACCEPTED
 from tests._shared import make_app_state
@@ -56,13 +58,13 @@ class TestPublishWebhookEventAndLog:
             )
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "publish_webhook_event",
             fake_publish,
         )
 
         with structlog.testing.capture_logs() as logs:
-            result = await webhooks_module._publish_webhook_event_and_log(
+            result = await webhooks_shared._publish_webhook_event_and_log(
                 bus=_FakeBus(),
                 connection_name="conn-a",
                 event_type="issues.opened",
@@ -114,7 +116,7 @@ class TestPublishWithDurableIdempotency:
             return {"status": "accepted", "event_type": event_type}
 
         monkeypatch.setattr(
-            webhooks_module,
+            webhooks_shared,
             "_publish_webhook_event_and_log",
             spy,
         )
@@ -141,7 +143,7 @@ class TestPublishWithDurableIdempotency:
         )
         state: dict[str, Any] = {"app_state": app_state}
 
-        cached = await webhooks_module._publish_with_durable_idempotency(
+        cached = await webhooks_shared._publish_with_durable_idempotency(
             state=state,  # type: ignore[arg-type]
             connection_name="conn-b",
             event_type="push",
@@ -173,12 +175,12 @@ class TestNoncelessWebhookKeyShape:
         """
         digest = "a" * 64  # SHA-256 hex is 64 chars
         synthesised = f"sha256:{digest}"
-        key = webhooks_module._build_idem_key(
+        key = _webhooks_wiring._build_idem_key(
             connection_name="some-connection",
             event_type="some.event",
             nonce=synthesised,
         )
-        assert len(key) <= webhooks_module._IDEMPOTENCY_KEY_MAX_LEN
+        assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
         # The prefix or a hash-of-prefix appears in the key (operator
         # visibility); the entire key is non-empty.
         assert key
@@ -200,12 +202,12 @@ class TestNoncelessWebhookKeyShape:
         sha256_hex_length = 64
         assert len(digest) == sha256_hex_length
 
-        key = webhooks_module._build_idem_key(
+        key = _webhooks_wiring._build_idem_key(
             connection_name="github-prod",
             event_type="issues.opened",
             nonce=f"sha256:{digest}",
         )
-        assert len(key) <= webhooks_module._IDEMPOTENCY_KEY_MAX_LEN
+        assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
         # The digest survives in the key (either inline or reduced via
         # the helper's two-stage SHA-256 collapse for oversized
         # composites). Either way the key is deterministic and
@@ -213,7 +215,7 @@ class TestNoncelessWebhookKeyShape:
         assert key
         # Re-hashing the same body produces the same key; this is the
         # core idempotency invariant.
-        repeat_key = webhooks_module._build_idem_key(
+        repeat_key = _webhooks_wiring._build_idem_key(
             connection_name="github-prod",
             event_type="issues.opened",
             nonce=f"sha256:{digest}",
@@ -234,15 +236,17 @@ class TestNoncelessWebhookKeyShape:
         # ``_IDEMPOTENCY_KEY_MAX_LEN`` is 255; reserve event_type=8 chars.
         event_type = "evt.test"
         room = (
-            webhooks_module._IDEMPOTENCY_KEY_MAX_LEN - prefix_overhead - len(event_type)
+            _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
+            - prefix_overhead
+            - len(event_type)
         )
         connection_name = "x" * max(1, room)
-        key = webhooks_module._build_idem_key(
+        key = _webhooks_wiring._build_idem_key(
             connection_name=connection_name,
             event_type=event_type,
             nonce=f"sha256:{digest}",
         )
-        assert len(key) <= webhooks_module._IDEMPOTENCY_KEY_MAX_LEN
+        assert len(key) <= _webhooks_wiring._IDEMPOTENCY_KEY_MAX_LEN
         assert key
 
 
@@ -255,7 +259,7 @@ class TestReceiveWebhookEndToEnd:
     not catch a regression where the orchestrator drops the
     ``dedup_source`` plumbing or skips the body-SHA256 derivation
     entirely. These tests invoke
-    :meth:`WebhooksController.receive_webhook` directly with a
+    :meth:`WebhooksIngestController.receive_webhook` directly with a
     mocked :class:`State` so the full branch logic runs.
     """
 
@@ -332,7 +336,7 @@ class TestReceiveWebhookEndToEnd:
             ("_check_replay_or_freshness", fake_check_replay_or_freshness),
             ("_publish_with_durable_idempotency", spy_publish_with_durable_idempotency),
         ):
-            monkeypatch.setattr(webhooks_module, name, fn)
+            monkeypatch.setattr(webhooks_ingest, name, fn)
 
     @staticmethod
     def _build_state(request_headers: dict[str, str]) -> tuple[Any, Any]:
@@ -379,7 +383,7 @@ class TestReceiveWebhookEndToEnd:
         ``_publish_with_durable_idempotency`` arguments the
         orchestrator assembled.
         """
-        from synthorg.api.controllers.webhooks import WebhooksController
+        from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 
         captured: dict[str, Any] = {}
         self._install_webhook_fakes(
@@ -395,7 +399,7 @@ class TestReceiveWebhookEndToEnd:
         # arg. Calling it directly bypasses Litestar's request
         # parsing -- this test exercises the orchestrator's branch
         # logic, not the framework wiring.
-        receive_webhook_fn = WebhooksController.receive_webhook.fn
+        receive_webhook_fn = WebhooksIngestController.receive_webhook.fn
         from litestar import Router
 
         await receive_webhook_fn(

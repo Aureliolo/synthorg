@@ -20,12 +20,12 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.controllers import webhooks as webhooks_module
-from synthorg.api.controllers.webhooks import (
+from synthorg.api.controllers._webhooks_wiring import (
     WebhookEventPayload,
-    WebhooksController,
     _get_activity_service,
 )
+from synthorg.api.controllers.webhooks import activity as webhooks_activity
+from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
 from synthorg.integrations.webhooks.activity_service import (
     WebhookActivityService,
 )
@@ -97,7 +97,7 @@ class TestListActivityRoutesThroughService:
         # match would hit (e.g. a comment that mentions "persistence").
         # Litestar's ``@get`` decorator wraps the method into a route
         # handler; the original function is accessible via ``.fn``.
-        handler = WebhooksController.list_activity
+        handler = WebhooksActivityController.list_activity
         source = inspect.getsource(handler.fn)
         tree = ast.parse(inspect.cleandoc(source))
         for node in ast.walk(tree):
@@ -125,10 +125,10 @@ class TestListActivityRoutesThroughService:
         assert first is second
         assert isinstance(first, WebhookActivityService)
 
-    def test_module_re_exports_activity_service_accessor(self) -> None:
-        """The controller module exposes the lazy service accessor."""
-        # The webhooks controller module re-exports the lazy accessor
-        # from ``_webhooks_wiring`` so the controller body has a single
+    def test_activity_controller_imports_service_accessor(self) -> None:
+        """The activity sub-controller binds the lazy service accessor."""
+        # ``activity`` imports the lazy accessor from ``_webhooks_wiring``
+        # as a bare module global, so the controller body has a single
         # canonical import. Pin the wire so an accidental rename in the
         # wiring module is caught here.
-        assert hasattr(webhooks_module, "_get_activity_service")
+        assert hasattr(webhooks_activity, "_get_activity_service")

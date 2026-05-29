@@ -509,7 +509,7 @@ def _credentials_match(stored: str, presented: str) -> bool:
 
     ``errors="replace"`` is used on both encodes (matching the
     pattern used elsewhere in this codebase, e.g.
-    :func:`synthorg.api.controllers.webhooks._build_idem_key`) so a
+    :func:`synthorg.api.controllers._webhooks_wiring._build_idem_key`) so a
     presented credential that contains broken UTF-8 (mojibake,
     unpaired surrogates from a misbehaving transport) does not
     raise ``UnicodeEncodeError`` mid-comparison. The replacement

@@ -446,7 +446,9 @@
         "ConnectionsController",
         "IntegrationHealthController",
         "OAuthController",
-        "WebhooksController",
+        "WebhooksIngestController",
+        "WebhooksActivityController",
+        "WebhooksRetryController",
         "MCPCatalogController",
         "TunnelController"
       ],
@@ -908,6 +910,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T19:01:47.557945Z",
+  "generated_at": "2026-05-29T19:19:45.519556Z",
   "schema_version": 1
 }
