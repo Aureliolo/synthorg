@@ -619,6 +619,16 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # integration work (real subprocess, real network, real heavy I/O)
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
+# Architecture / layering meta-tests under ``tests/unit/architecture/``
+# legitimately AST-parse the entire src tree (the ``@cache``d sweep in
+# test_layering.py); the one-time fill lands on whichever such test runs
+# first under ``--dist=loadfile`` and is inherently near the budget.
+# That is the meta-test's job, not misplaced integration work, so the
+# per-test guard exempts the directory (the suite-level timing
+# regression guard still covers real slowdowns). pytest nodeids always
+# use ``/`` separators on every platform, so the fragment matches on
+# Windows too.
+_WALL_CLOCK_GUARD_EXEMPT_FRAGMENT: Final = "unit/architecture/"
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is used exclusively by
 # ``scripts/run_affected_tests.py``'s isolation regression gate (a
@@ -701,6 +711,7 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
         not _FUZZ_PROFILE_ACTIVE
         and not _COUNT_ISOLATION_RUN
         and item.get_closest_marker("unit")
+        and _WALL_CLOCK_GUARD_EXEMPT_FRAGMENT not in item.nodeid
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
         pytest.fail(
