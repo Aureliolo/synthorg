@@ -16,7 +16,7 @@
     },
     {
       "kind": "code",
-      "loc": 335,
+      "loc": 391,
       "loc_cap": 500,
       "module": "src/synthorg/_core/features.py",
       "owning_feature": null
@@ -3222,7 +3222,7 @@
     },
     {
       "kind": "code",
-      "loc": 168,
+      "loc": 186,
       "loc_cap": 500,
       "module": "src/synthorg/core/feature_map.py",
       "owning_feature": null

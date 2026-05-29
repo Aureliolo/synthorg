@@ -2,7 +2,8 @@
 
 Covers the slice base contract, the ``FeatureModule`` Protocol and its
 concrete ``FeatureManifest`` implementation, the structural support
-Protocols (``LifecycleHook`` / ``McpHandlerModule``), and the pure
+Protocols (``ServiceLifecycleHook`` / ``McpHandlerModule``), the
+``ControllerRegistration`` wrapper, and the pure
 dependency-ordering resolver. The filesystem discovery walk
 (``discover_features``) is exercised by the create-app smoke and the
 ``check_feature_manifest`` gate; here we test the contract logic that
@@ -16,11 +17,12 @@ from pydantic import ValidationError
 
 from synthorg._core.features import (
     BaseFeatureStateSlice,
+    ControllerRegistration,
     FeatureDependencyError,
     FeatureManifest,
     FeatureModule,
-    LifecycleHook,
     McpHandlerModule,
+    ServiceLifecycleHook,
     discover_features,
     feature_directories,
     require_service,
@@ -75,6 +77,7 @@ class TestFeatureManifestProtocol:
             settings_namespace=None,
             state_slice=None,
             controllers=(),
+            websocket_handlers=(),
             mcp_handlers=(),
             lifecycle_hooks=(),
             ghost_wired_symbols=(),
@@ -84,15 +87,60 @@ class TestFeatureManifestProtocol:
 
 
 class TestSupportProtocols:
-    def test_lifecycle_hook_structural_match(self) -> None:
-        async def _run() -> None: ...
+    def test_service_lifecycle_hook_structural_match(self) -> None:
+        async def _noop() -> None: ...
 
-        hook = SimpleNamespace(name="boot", __call__=_run)
-        assert isinstance(hook, LifecycleHook)
+        hook = SimpleNamespace(
+            name="boot",
+            start_timeout_seconds=None,
+            stop_timeout_seconds=None,
+            fatal_on_start_error=False,
+            start=_noop,
+            stop=_noop,
+        )
+        assert isinstance(hook, ServiceLifecycleHook)
+
+    def test_object_missing_stop_is_not_a_service_lifecycle_hook(self) -> None:
+        async def _noop() -> None: ...
+
+        hook = SimpleNamespace(
+            name="boot",
+            start_timeout_seconds=None,
+            stop_timeout_seconds=None,
+            fatal_on_start_error=False,
+            start=_noop,
+            # stop intentionally missing
+        )
+        assert not isinstance(hook, ServiceLifecycleHook)
 
     def test_mcp_handler_module_structural_match(self) -> None:
         descriptor = SimpleNamespace(domain="charter", tool_names=("synthorg_x",))
         assert isinstance(descriptor, McpHandlerModule)
+
+
+class TestControllerRegistration:
+    def test_bare_defaults(self) -> None:
+        from litestar import Controller
+
+        class _Ctl(Controller):
+            path = "/x"
+
+        reg = ControllerRegistration(controller=_Ctl)
+        assert reg.controller is _Ctl
+        assert reg.predicate is None
+        assert reg.mount == "api"
+
+    def test_is_frozen_and_forbids_extra(self) -> None:
+        from litestar import Controller
+
+        class _Ctl(Controller):
+            path = "/x"
+
+        reg = ControllerRegistration(controller=_Ctl, mount="root")
+        with pytest.raises(ValidationError, match="frozen"):
+            reg.mount = "api"  # type: ignore[misc]
+        with pytest.raises(ValidationError, match="extra"):
+            ControllerRegistration(controller=_Ctl, bogus=1)  # type: ignore[call-arg]
 
 
 class TestResolveFeatureOrder:
