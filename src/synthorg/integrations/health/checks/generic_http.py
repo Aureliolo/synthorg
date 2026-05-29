@@ -66,9 +66,9 @@ class GenericHttpHealthCheck:
 
         Returns:
             A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
-            ``UNHEALTHY`` for status >= 400 or a network error, or
-            ``UNKNOWN`` when no ``base_url`` is configured or the SSRF
-            policy rejects the URL.
+            ``UNHEALTHY`` for status >= 400, a network error, or an
+            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
+            is configured.
         """
         if not connection.base_url:
             return HealthReport(

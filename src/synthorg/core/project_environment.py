@@ -70,7 +70,7 @@ class ProjectEnvironment(BaseModel):
         Raises:
             ValueError: If a ``DEVCONTAINER`` environment lacks an
                 ``image_ref``, a non-devcontainer environment sets one,
-                or ``updated_at`` predates ``created_at``.
+                or ``updated_at`` predates ``provisioned_at``.
         """
         if self.environment_type == EnvironmentType.DEVCONTAINER:
             if self.image_ref is None:
