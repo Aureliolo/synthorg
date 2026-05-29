@@ -149,6 +149,14 @@ def _validate_http_url(v: str | None, *, field: str) -> str | None:
     raise here instead of surfacing as a generic socket error at use
     time.  ``urlparse(...).port`` raises ``ValueError`` lazily on bad
     input, so accessing the property is the canonical pre-flight check.
+
+    Returns:
+        The unchanged URL string when valid, or ``None`` when *v* is
+        ``None``.
+
+    Raises:
+        ValueError: If the URL lacks an http/https scheme or host, or
+            has a malformed port.
     """
     if v is None:
         return v
@@ -168,12 +176,21 @@ def _validate_http_url(v: str | None, *, field: str) -> str | None:
 
 
 def _validate_base_url(v: str | None) -> str | None:
-    """Validate that a base URL uses http or https scheme."""
+    """Validate that a base URL uses http or https scheme.
+
+    Returns:
+        The validated base URL string, or ``None`` when *v* is ``None``.
+    """
     return _validate_http_url(v, field="base_url")
 
 
 def _validate_oauth_token_url(v: str | None) -> str | None:
-    """Validate that an OAuth token URL uses http or https scheme."""
+    """Validate that an OAuth token URL uses http or https scheme.
+
+    Returns:
+        The validated OAuth token URL string, or ``None`` when *v* is
+        ``None``.
+    """
     return _validate_http_url(v, field="oauth_token_url")
 
 
@@ -186,6 +203,13 @@ def _reject_blank_secret(v: SecretStr | None, *, field: str) -> SecretStr | None
     DTO boundary keeps callers from having to ``get_secret_value()``
     just to test presence.  ``None`` (the explicit "not provided" /
     "do not change" signal) is allowed.
+
+    Returns:
+        The unchanged ``SecretStr`` when non-empty, or ``None`` when *v*
+        is ``None``.
+
+    Raises:
+        ValueError: If the unwrapped secret is empty or whitespace-only.
     """
     if v is None:
         return v
@@ -236,36 +260,71 @@ class CreateProviderRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
+        """Validate the provider name field.
+
+        Returns:
+            The validated provider name.
+        """
         return _validate_provider_name(v)
 
     @field_validator("base_url")
     @classmethod
     def _validate_base_url(cls, v: str | None) -> str | None:
+        """Validate the base URL field.
+
+        Returns:
+            The validated base URL, or ``None``.
+        """
         return _validate_base_url(v)
 
     @field_validator("oauth_token_url")
     @classmethod
     def _validate_oauth_token_url(cls, v: str | None) -> str | None:
+        """Validate the OAuth token URL field.
+
+        Returns:
+            The validated OAuth token URL, or ``None``.
+        """
         return _validate_oauth_token_url(v)
 
     @field_validator("api_key")
     @classmethod
     def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``api_key``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="api_key")
 
     @field_validator("subscription_token")
     @classmethod
     def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``subscription_token``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="subscription_token")
 
     @field_validator("oauth_client_secret")
     @classmethod
     def _check_oauth_client_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``oauth_client_secret``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="oauth_client_secret")
 
     @field_validator("custom_header_value")
     @classmethod
     def _check_custom_header_value(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``custom_header_value``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="custom_header_value")
 
 
@@ -303,36 +362,75 @@ class UpdateProviderRequest(BaseModel):
     @field_validator("base_url")
     @classmethod
     def _validate_base_url(cls, v: str | None) -> str | None:
+        """Validate the base URL field.
+
+        Returns:
+            The validated base URL, or ``None``.
+        """
         return _validate_base_url(v)
 
     @field_validator("oauth_token_url")
     @classmethod
     def _validate_oauth_token_url(cls, v: str | None) -> str | None:
+        """Validate the OAuth token URL field.
+
+        Returns:
+            The validated OAuth token URL, or ``None``.
+        """
         return _validate_oauth_token_url(v)
 
     @field_validator("api_key")
     @classmethod
     def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``api_key``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="api_key")
 
     @field_validator("subscription_token")
     @classmethod
     def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``subscription_token``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="subscription_token")
 
     @field_validator("oauth_client_secret")
     @classmethod
     def _check_oauth_client_secret(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``oauth_client_secret``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="oauth_client_secret")
 
     @field_validator("custom_header_value")
     @classmethod
     def _check_custom_header_value(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``custom_header_value``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="custom_header_value")
 
     @model_validator(mode="after")
     def _validate_credential_clear_consistency(self) -> Self:
-        """Reject simultaneous set and clear for credential fields."""
+        """Reject simultaneous set and clear for credential fields.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``api_key`` and ``clear_api_key``, or
+                ``subscription_token`` and ``clear_subscription_token``,
+                are both set.
+        """
         if self.api_key is not None and self.clear_api_key:
             msg = "api_key and clear_api_key are mutually exclusive"
             raise ValueError(msg)
@@ -379,7 +477,15 @@ class TestConnectionResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_error_consistency(self) -> Self:
-        """Ensure success and error fields are consistent."""
+        """Ensure success and error fields are consistent.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a successful response has an error message, or
+                a failed response has no error message.
+        """
         if self.success and self.error is not None:
             msg = "successful test must not have an error"
             raise ValueError(msg)
@@ -473,21 +579,41 @@ class CreateFromPresetRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
+        """Validate the provider name field.
+
+        Returns:
+            The validated provider name.
+        """
         return _validate_provider_name(v)
 
     @field_validator("base_url")
     @classmethod
     def _validate_base_url(cls, v: str | None) -> str | None:
+        """Validate the base URL field.
+
+        Returns:
+            The validated base URL, or ``None``.
+        """
         return _validate_base_url(v)
 
     @field_validator("api_key")
     @classmethod
     def _check_api_key(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``api_key``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="api_key")
 
     @field_validator("subscription_token")
     @classmethod
     def _check_subscription_token(cls, v: SecretStr | None) -> SecretStr | None:
+        """Reject a blank ``subscription_token``.
+
+        Returns:
+            The validated secret, or ``None``.
+        """
         return _reject_blank_secret(v, field="subscription_token")
 
 
@@ -564,6 +690,14 @@ class ProbeLocalResponse(BaseModel):
         The ``_serialize_mappings`` field-serializer below unwraps back
         to plain dicts at JSON-encode time so msgspec / pydantic-core
         serialization still succeeds.
+
+        Returns:
+            The validated instance with ``results`` and ``errors`` both
+            wrapped in ``MappingProxyType``.
+
+        Raises:
+            ValueError: If ``results`` and ``errors`` share any preset
+                key (a preset cannot both succeed and fail).
         """
         overlap = set(self.results) & set(self.errors)
         if overlap:
@@ -593,6 +727,9 @@ class ProbeLocalResponse(BaseModel):
         Pydantic-core / msgspec cannot encode ``mappingproxy`` directly;
         the unwrap copy keeps the on-wire payload independent of the
         in-memory proxy.
+
+        Returns:
+            A plain ``dict`` copy of the mapping for JSON encoding.
         """
         return dict(value)
 
@@ -743,6 +880,15 @@ class PullModelRequest(BaseModel):
     @field_validator("model_name")
     @classmethod
     def _validate_model_name(cls, v: str) -> str:
+        """Validate the model-name character set.
+
+        Returns:
+            The validated model name.
+
+        Raises:
+            ValueError: If *v* contains characters outside the allowed
+                set (alphanumerics, ``._:/@-``).
+        """
         if not _MODEL_NAME_RE.match(v):
             msg = (
                 "model_name must contain only alphanumeric characters, "

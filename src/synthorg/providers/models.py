@@ -119,7 +119,15 @@ class ToolDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_l1_name_matches(self) -> ToolDefinition:
-        """Ensure l1_metadata.name matches the tool name."""
+        """Ensure l1_metadata.name matches the tool name.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``l1_metadata`` is set but its ``name`` does
+                not match the tool's ``name``.
+        """
         if self.l1_metadata is not None and self.l1_metadata.name != self.name:
             msg = (
                 f"l1_metadata.name ({self.l1_metadata.name!r}) must "
@@ -187,6 +195,13 @@ class ToolResult(BaseModel):
         timeout to a distinct outcome label, but a non-error timeout
         is contradictory and would split outcome semantics across
         observability consumers.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``is_timeout=True`` is paired with
+                ``is_error=False``.
         """
         if self.is_timeout and not self.is_error:
             msg = (
@@ -272,6 +287,9 @@ class ChatMessage(BaseModel):
             Empty-string content (``content=""``) is intentionally
             permitted -- some providers return it legitimately.
 
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
         Raises:
             ValueError: If any role-specific constraint is violated.
         """
@@ -317,6 +335,13 @@ class ChatMessage(BaseModel):
         multimodal shape; a non-user message carrying ``image_parts``
         would be silently dropped at the mapper boundary, so reject it
         at construction instead.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``image_parts`` is non-empty on a non-user
+                message.
         """
         if self.image_parts and self.role is not MessageRole.USER:
             msg = f"{self.role} messages must not include image_parts"
@@ -414,6 +439,9 @@ class CompletionResponse(BaseModel):
         Responses with ``content_filter`` or ``error`` finish reasons
         may legitimately have no output.
 
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
         Raises:
             ValueError: If a non-filtered/non-error response lacks output.
         """
@@ -469,6 +497,9 @@ class StreamChunk(BaseModel):
 
         Each event type requires specific fields and rejects extraneous
         payload fields to maintain strict discriminated-union semantics.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
 
         Raises:
             ValueError: If required fields are missing or extraneous

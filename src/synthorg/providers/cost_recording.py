@@ -85,6 +85,14 @@ class CostRecordingContext(BaseModel):
     @field_validator("cost_tracker")
     @classmethod
     def _validate_cost_tracker(cls, value: object) -> object:
+        """Validate that ``cost_tracker`` is a ``CostTracker`` instance.
+
+        Returns:
+            The validated ``CostTracker`` value.
+
+        Raises:
+            TypeError: If *value* is not a ``CostTracker`` instance.
+        """
         from synthorg.budget.tracker import CostTracker  # noqa: PLC0415
 
         if not isinstance(value, CostTracker):

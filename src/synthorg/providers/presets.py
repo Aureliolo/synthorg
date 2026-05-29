@@ -108,7 +108,14 @@ class CloudPreset(_BasePreset):
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:
-        """Ensure default ``auth_type`` is in the supported set."""
+        """Ensure default ``auth_type`` is in the supported set.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``auth_type`` is not in ``supported_auth_types``.
+        """
         if self.auth_type not in self.supported_auth_types:
             msg = (
                 f"auth_type {self.auth_type!r} not in "
@@ -135,6 +142,14 @@ class CloudPreset(_BasePreset):
         :func:`_make_soft_preset` constructs ``is_featured=False``
         instances, but encoding the invariant on the type prevents a
         future caller from minting a misconfigured soft preset.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a soft preset (``is_featured=False``) uses a
+                non-``API_KEY`` ``auth_type`` or its
+                ``supported_auth_types`` is not exactly ``(API_KEY,)``.
         """
         if self.is_featured:
             return self
@@ -557,7 +572,11 @@ soft-list module's denylist.  Computed once at module load because
 def _audit_duplicate_names(
     presets: tuple[CloudPreset | LocalPreset, ...],
 ) -> None:
-    """Reject duplicate ``name`` values across the merged preset tuple."""
+    """Reject duplicate ``name`` values across the merged preset tuple.
+
+    Raises:
+        ValueError: If two or more presets share the same ``name``.
+    """
     seen: dict[str, CloudPreset | LocalPreset] = {}
     for preset in presets:
         if preset.name in seen:
@@ -585,6 +604,10 @@ def _audit_namespace_collisions(
     A collision is only rejected when both sides are CloudPresets and
     at least one is a soft preset, because that means the auto-derive
     layer leaked a duplicate of a featured entry.
+
+    Raises:
+        ValueError: If a soft ``CloudPreset`` duplicates a featured
+            ``CloudPreset``'s ``litellm_provider``.
     """
     seen: dict[str, CloudPreset | LocalPreset] = {}
     for preset in presets:
@@ -619,6 +642,10 @@ def _audit_featured_order(
 
     The API contract surfaces featured entries first (driving the
     wizard's primary-grid / more-providers split).
+
+    Raises:
+        ValueError: If any featured preset appears after a soft preset
+            in the tuple.
     """
     saw_soft = False
     for preset in presets:

@@ -62,6 +62,10 @@ class RateLimiter:
 
         Blocks until both the RPM window and concurrency semaphore
         allow a new request.  Also respects any active pause.
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled while
+                waiting during a pause or the RPM-window sleep.
         """
         if not self.is_enabled and self._pause_until <= self._clock.monotonic():
             return
@@ -139,6 +143,12 @@ class RateLimiter:
 
     async def _wait_for_rpm_slot(self) -> None:
         """Wait until a slot is available in the RPM window.
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled while
+                sleeping for an RPM slot.
+            RuntimeError: If the computed RPM wait is zero or negative
+                (an internal invariant violation).
 
         Uses a lock to prevent concurrent coroutines from both seeing
         an available slot and over-committing the window.

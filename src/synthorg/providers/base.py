@@ -142,6 +142,11 @@ class BaseCompletionProvider(ABC):
         )
 
         async def _attempt() -> CompletionResponse:
+            """Run one rate-limited ``_do_complete`` attempt for the retry handler.
+
+            Returns:
+                The driver's ``CompletionResponse`` for this attempt.
+            """
             return await self._rate_limited_call(
                 self._do_complete,
                 messages,
@@ -305,6 +310,11 @@ class BaseCompletionProvider(ABC):
         )
 
         async def _attempt() -> AsyncIterator[StreamChunk]:
+            """Run one rate-limited ``_do_stream`` attempt for the retry handler.
+
+            Returns:
+                The driver's ``StreamChunk`` async iterator for this attempt.
+            """
             return await self._rate_limited_call(
                 self._do_stream,
                 messages,
@@ -353,6 +363,11 @@ class BaseCompletionProvider(ABC):
         self._validate_model(model)
 
         async def _attempt() -> ModelCapabilities:
+            """Run one rate-limited capability lookup for the retry handler.
+
+            Returns:
+                The driver's ``ModelCapabilities`` for this attempt.
+            """
             return await self._rate_limited_call(
                 self._do_get_model_capabilities,
                 model,
@@ -416,6 +431,18 @@ class BaseCompletionProvider(ABC):
             return {}
 
         async def _one(m: str) -> tuple[str, ModelCapabilities | None]:
+            """Resolve one model's capabilities, degrading errors to ``None``.
+
+            Returns:
+                A ``(model, capabilities)`` pair; the capabilities are
+                ``None`` when the per-model lookup failed.
+
+            Raises:
+                MemoryError: Propagated so the task group can abort.
+                RecursionError: Propagated so the task group can abort.
+                RetryExhaustedError: Propagated when retries are exhausted
+                    rather than degraded to ``None``.
+            """
             try:
                 return m, await self.get_model_capabilities(m)
             except MemoryError, RecursionError, RetryExhaustedError:
@@ -562,6 +589,7 @@ class BaseCompletionProvider(ABC):
                 async def _hold_slot_for_stream(
                     inner: AsyncIterator[Any],
                 ) -> AsyncIterator[Any]:
+                    """Re-yield the inner stream, releasing the slot when exhausted."""
                     try:
                         async for chunk in inner:
                             yield chunk

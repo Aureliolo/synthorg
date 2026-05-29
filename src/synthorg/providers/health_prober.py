@@ -269,6 +269,7 @@ class ProviderHealthProber:
             task.cancel()
 
             async def _drain() -> None:
+                """Await the cancelled probe task, swallowing its cancellation."""
                 try:
                     await task
                 except asyncio.CancelledError:

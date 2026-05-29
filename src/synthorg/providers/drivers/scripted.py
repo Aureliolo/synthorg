@@ -88,6 +88,11 @@ def _last_user_text(messages: list[ChatMessage]) -> str:
 
 
 def _scripted_usage() -> TokenUsage:
+    """Build the fixed token-usage record stamped on scripted responses.
+
+    Returns:
+        A ``TokenUsage`` with the deterministic scripted token counts.
+    """
     return TokenUsage(
         input_tokens=_SCRIPTED_INPUT_TOKENS,
         output_tokens=_SCRIPTED_OUTPUT_TOKENS,
@@ -266,6 +271,7 @@ class ScriptedDriver(BaseCompletionProvider):
         response = self._strategy.next_response(messages, model, tools, config)
 
         async def _chunks() -> AsyncIterator[StreamChunk]:
+            """Yield the scripted response decomposed into stream chunks."""
             if response.content is not None:
                 yield StreamChunk(
                     event_type=StreamEventType.CONTENT_DELTA,

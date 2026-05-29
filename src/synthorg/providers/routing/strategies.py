@@ -106,6 +106,10 @@ class ManualStrategy:
     ) -> RoutingDecision:
         """Select the explicitly requested model.
 
+        Returns:
+            A ``RoutingDecision`` resolving the explicit
+            ``model_override``.
+
         Raises:
             ModelResolutionError: If ``model_override`` is not set or
                 the model cannot be resolved.
@@ -151,6 +155,10 @@ class RoleBasedStrategy:
     ) -> RoutingDecision:
         """Select model based on role level.
 
+        Returns:
+            A ``RoutingDecision`` from role rules, the seniority catalog
+            default, or the fallback chain.
+
         Raises:
             ModelResolutionError: If no agent_level is set.
             NoAvailableModelError: If all candidates are exhausted.
@@ -166,7 +174,14 @@ class RoleBasedStrategy:
         self,
         request: RoutingRequest,
     ) -> SeniorityLevel:
-        """Validate that agent_level is set."""
+        """Validate that agent_level is set.
+
+        Returns:
+            The ``SeniorityLevel`` from the request.
+
+        Raises:
+            ModelResolutionError: If ``request.agent_level`` is ``None``.
+        """
         if request.agent_level is None:
             logger.warning(
                 ROUTING_NO_RULE_MATCHED,
@@ -183,7 +198,12 @@ class RoleBasedStrategy:
         config: RoutingConfig,
         resolver: ModelResolver,
     ) -> RoutingDecision | None:
-        """Match routing rules by role level."""
+        """Match routing rules by role level.
+
+        Returns:
+            A ``RoutingDecision`` for the first matching role-level rule
+            that resolves, or ``None`` if none match or resolve.
+        """
         for rule in config.rules:
             if rule.role_level == level:
                 model, tried = _try_resolve_with_fallback(
@@ -213,7 +233,12 @@ class RoleBasedStrategy:
         config: RoutingConfig,
         resolver: ModelResolver,
     ) -> RoutingDecision | None:
-        """Fall back to seniority catalog default tier."""
+        """Fall back to seniority catalog default tier.
+
+        Returns:
+            A ``RoutingDecision`` from the seniority catalog's typical
+            tier if it resolves, or ``None`` otherwise.
+        """
         try:
             tier = get_seniority_info(level).typical_model_tier
         except LookupError:
@@ -245,7 +270,12 @@ class RoleBasedStrategy:
         level: SeniorityLevel,
         config: RoutingConfig,
     ) -> NoReturn:
-        """Raise when all candidates are exhausted."""
+        """Raise when all candidates are exhausted.
+
+        Raises:
+            NoAvailableModelError: Always; signals that no model could be
+                resolved for the request.
+        """
         tier: str = "unknown"
         try:
             tier = get_seniority_info(level).typical_model_tier
@@ -294,6 +324,10 @@ class CostAwareStrategy:
         resolver: ModelResolver,
     ) -> RoutingDecision:
         """Select the cheapest available model.
+
+        Returns:
+            A ``RoutingDecision`` for the cheapest model within budget
+            (or the cheapest overall if all exceed budget).
 
         Raises:
             NoAvailableModelError: If no models are registered.
@@ -355,6 +389,11 @@ class FastestStrategy:
         resolver: ModelResolver,
     ) -> RoutingDecision:
         """Select the fastest available model.
+
+        Returns:
+            A ``RoutingDecision`` for the lowest-latency model within
+            budget (cheapest if no latency data, or cheapest overall if
+            all exceed budget).
 
         Raises:
             NoAvailableModelError: If no models are registered.
@@ -426,6 +465,11 @@ class SmartStrategy:
     ) -> RoutingDecision:
         """Select a model using all available signals.
 
+        Returns:
+            A ``RoutingDecision`` from the highest-priority signal that
+            resolves (override > task_type > role > seniority > cheapest
+            > global fallback chain).
+
         Raises:
             NoAvailableModelError: If all candidates are exhausted.
         """
@@ -464,6 +508,11 @@ class SmartStrategy:
         SmartStrategy treats overrides as best-effort hints -- if the
         override cannot be resolved, the strategy falls through to the
         next signal in the priority chain rather than failing the request.
+
+        Returns:
+            A ``RoutingDecision`` resolving ``model_override`` if present
+            and resolvable, or ``None`` to fall through to the next
+            signal.
         """
         if request.model_override is None:
             return None
@@ -514,6 +563,12 @@ class SmartStrategy:
         config: RoutingConfig,
         resolver: ModelResolver,
     ) -> RoutingDecision | None:
+        """Resolve a model from the global fallback chain, if any.
+
+        Returns:
+            A ``RoutingDecision`` naming the resolved model and the chain
+            entries tried, or ``None`` if the chain yields no model.
+        """
         chain_result = _walk_fallback_chain(config, resolver)
         if chain_result is None:
             return None
@@ -526,6 +581,12 @@ class SmartStrategy:
         )
 
     def _raise_exhausted(self) -> NoReturn:
+        """Log and raise once every routing signal is exhausted.
+
+        Raises:
+            NoAvailableModelError: Always; no model could be resolved
+                from any signal.
+        """
         logger.warning(
             ROUTING_FALLBACK_EXHAUSTED,
             strategy=STRATEGY_NAME_SMART,

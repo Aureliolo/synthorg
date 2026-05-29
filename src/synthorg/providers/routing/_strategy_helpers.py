@@ -36,6 +36,10 @@ def _try_candidate(
 
     Skips refs already in *seen*. On miss, appends to *tried*/*seen*
     and logs at DEBUG.
+
+    Returns:
+        The resolved ``ResolvedModel`` if the ref resolves and was not
+        already tried, or ``None`` if skipped or unresolvable.
     """
     if ref in seen:
         return None
@@ -105,6 +109,10 @@ def _try_resolve_with_fallback_safe(
     """Like ``_try_resolve_with_fallback`` but returns ``None``.
 
     Returns ``None`` instead of raising ``NoAvailableModelError``.
+
+    Returns:
+        A ``(ResolvedModel, fallbacks_tried)`` tuple if any candidate
+        resolves, or ``None`` when all candidates are exhausted.
     """
     try:
         return _try_resolve_with_fallback(ref, rule, config, resolver)
@@ -148,7 +156,12 @@ def _within_budget(
     model: ResolvedModel,
     remaining_budget: float | None,
 ) -> bool:
-    """Check whether a model's cost is within the remaining budget."""
+    """Check whether a model's cost is within the remaining budget.
+
+    Returns:
+        ``True`` if the model's cost is within *remaining_budget* (or the
+        budget is ``None``); ``False`` otherwise.
+    """
     if remaining_budget is None:
         return True
     return model.total_cost_per_1k <= remaining_budget
@@ -251,7 +264,12 @@ def _try_task_type_rules(
     resolver: ModelResolver,
     strategy_name: str,
 ) -> RoutingDecision | None:
-    """Match task_type rules; return decision or None."""
+    """Match task_type rules; return decision or None.
+
+    Returns:
+        A ``RoutingDecision`` for the first task_type rule that resolves
+        a model, or ``None`` if no rule matches or resolves.
+    """
     if request.task_type is None:
         return None
     for rule in config.rules:
@@ -288,7 +306,12 @@ def _try_role_rules(
     resolver: ModelResolver,
     strategy_name: str,
 ) -> RoutingDecision | None:
-    """Match role_level rules; return decision or None."""
+    """Match role_level rules; return decision or None.
+
+    Returns:
+        A ``RoutingDecision`` for the first role_level rule that resolves
+        a model, or ``None`` if no rule matches or resolves.
+    """
     if request.agent_level is None:
         return None
     for rule in config.rules:
@@ -325,7 +348,12 @@ def _try_seniority_default(
     resolver: ModelResolver,
     strategy_name: str,
 ) -> RoutingDecision | None:
-    """Try seniority catalog tier; return decision or None."""
+    """Try seniority catalog tier; return decision or None.
+
+    Returns:
+        A ``RoutingDecision`` using the seniority catalog's
+        ``typical_model_tier`` if it resolves, or ``None`` otherwise.
+    """
     if request.agent_level is None:
         return None
     try:

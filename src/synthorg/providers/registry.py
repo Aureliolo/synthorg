@@ -117,11 +117,20 @@ class ProviderRegistry:
         return driver
 
     def list_providers(self) -> tuple[str, ...]:
-        """Return sorted tuple of registered provider names."""
+        """Return sorted tuple of registered provider names.
+
+        Returns:
+            A sorted tuple of all registered provider name strings.
+        """
         return tuple(sorted(self._drivers))
 
     def __contains__(self, name: object) -> bool:
-        """Check whether a provider name is registered."""
+        """Check whether a provider name is registered.
+
+        Returns:
+            ``True`` if *name* is a registered provider; ``False``
+            otherwise.
+        """
         try:
             return name in self._drivers
         except TypeError:
@@ -228,6 +237,14 @@ class ProviderRegistry:
 
         Replay never builds an inner driver (``inner=None``); record
         builds the real driver and delegates to it.
+
+        Returns:
+            A new registry whose drivers are each wrapped in a
+            ``CassetteCompletionProvider`` sharing one session.
+
+        Raises:
+            DriverFactoryNotFoundError: If the active cassette config has
+                no path, or a provider's ``driver`` matches no factory.
         """
         from .cassette import (  # noqa: PLC0415
             CassetteCompletionProvider,
@@ -277,6 +294,10 @@ def _build_driver(
     overrides: dict[str, object],
 ) -> BaseCompletionProvider:
     """Instantiate a single driver from config and factories.
+
+    Returns:
+        A concrete ``BaseCompletionProvider`` driver instance for the
+        named provider.
 
     Raises:
         DriverFactoryNotFoundError: On unknown driver type or
@@ -335,6 +356,10 @@ def _resolve_factory(
     overrides: dict[str, object],
 ) -> object:
     """Look up and validate a callable factory for the driver type.
+
+    Returns:
+        A callable factory for the given ``driver_type``, resolved from
+        overrides first, then defaults.
 
     Raises:
         DriverFactoryNotFoundError: If no factory found or not callable.

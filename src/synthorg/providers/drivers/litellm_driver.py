@@ -634,6 +634,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         provider = self._provider_name
 
         async def _generate() -> AsyncGenerator[StreamChunk]:
+            """Map raw LiteLLM chunks, appending DONE + pending tool calls."""
             pending: dict[int, _ToolCallAccumulator] = {}
             try:
                 async for chunk in raw_stream:

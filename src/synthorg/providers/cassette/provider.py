@@ -305,6 +305,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         )
 
         async def _open_inner_stream() -> AsyncIterator[StreamChunk]:
+            """Open the inner driver's stream for recording.
+
+            Returns:
+                The inner driver's ``StreamChunk`` async iterator.
+            """
             return await self._require_inner().stream(
                 messages,
                 model,

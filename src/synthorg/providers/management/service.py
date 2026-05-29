@@ -139,6 +139,11 @@ def _assert_sensitive_fields_complete() -> None:
     ``password``) must be added to ``_SENSITIVE_PROVIDER_FIELDS``.
     Catching the omission here, at import time, prevents the field
     from ever reaching an audit row in production.
+
+    Raises:
+        RuntimeError: If a credential-named ``ProviderConfig`` field
+            (``*_key`` / ``*_token`` / ``*_secret`` / contains
+            ``password``) is missing from ``_SENSITIVE_PROVIDER_FIELDS``.
     """
     credential_suffixes = ("_key", "_token", "_secret", "_password")
     suspected = {
@@ -174,6 +179,11 @@ def _diff_provider_update(
     fields collapse to ``"<redacted>"`` sentinels, and the legacy
     ``fields_changed`` list is kept for downstream audit-log
     consumers that already filter on it.
+
+    Returns:
+        An audit payload with a ``"fields_changed"`` list and a
+        ``"diff"`` sub-dict of ``{field: {"old": ..., "new": ...}}``,
+        with sensitive fields collapsed to ``"<redacted>"``.
     """
     before = existing.model_dump(mode="json")
     after = updated.model_dump(mode="json")
@@ -204,6 +214,10 @@ def _safe_task_id_segment(value: str) -> str:
     C0/C1 control range, ASCII delete, whitespace, and ``:`` itself
     get replaced with ``_``. Returns ``"_"`` if every character was
     filtered (preserves ``NotBlankStr``).
+
+    Returns:
+        The sanitised segment with control/whitespace/colon characters
+        replaced by ``_`` (``"_"`` if every character was filtered).
     """
     cleaned = "".join(
         ch if ch.isprintable() and not ch.isspace() and ch != ":" else "_"
@@ -279,11 +293,18 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         Returns an immutable :class:`types.MappingProxyType` view;
         build a fresh dict with ``{**providers, name: config}`` to
         apply updates.
+
+        Returns:
+            An immutable ``MappingProxyType`` of all configured providers
+            keyed by name.
         """
         return await self._config_resolver.get_provider_configs()
 
     async def get_provider(self, name: str) -> ProviderConfig:
         """Get a single provider by name.
+
+        Returns:
+            The ``ProviderConfig`` for the named provider.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -303,6 +324,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a new provider.
+
+        Returns:
+            The newly created and persisted ``ProviderConfig``.
 
         Raises:
             ProviderAlreadyExistsError: If name is taken.
@@ -350,6 +374,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Update an existing provider.
+
+        Returns:
+            The updated and persisted ``ProviderConfig`` after merging
+            the request fields.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -435,6 +463,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
     ) -> TestConnectionResponse:
         """Test connectivity to a provider.
 
+        Returns:
+            A ``TestConnectionResponse`` with the probe outcome (success,
+            latency, model tested, and any error message).
+
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
@@ -460,7 +492,16 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         config: ProviderConfig,
         model_id: str,
     ) -> TestConnectionResponse:
-        """Execute the actual connection test probe."""
+        """Execute the actual connection test probe.
+
+        Returns:
+            A ``TestConnectionResponse`` reflecting the probe outcome
+            (success with latency, or failure with an error message).
+
+        Raises:
+            asyncio.CancelledError: Propagated immediately if the task is
+                cancelled during the probe.
+        """
         from synthorg.providers.resilience.errors import (  # noqa: PLC0415
             RetryExhaustedError,
         )
@@ -531,7 +572,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         config: ProviderConfig,
         model_id: str,
     ) -> TestConnectionResponse:
-        """Send a minimal completion request to verify connectivity."""
+        """Send a minimal completion request to verify connectivity.
+
+        Returns:
+            A ``TestConnectionResponse`` with the probe result (success,
+            latency, model tested, and any error message).
+        """
         from synthorg.providers.cost_recording import (  # noqa: PLC0415
             cost_recording_scope,
         )
@@ -582,6 +628,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         actor: ProviderAuditActor | None = None,
     ) -> ProviderConfig:
         """Create a provider from a preset template.
+
+        Returns:
+            The newly created and persisted ``ProviderConfig`` built from
+            the preset template and request overrides.
 
         Raises:
             ProviderValidationError: If the preset is unknown.
@@ -684,7 +734,9 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             preset_hint: Optional preset name for endpoint selection.
 
         Returns:
-            Tuple of discovered model configs (may be empty).
+            A tuple of discovered ``ProviderModelConfig`` instances (may
+            be empty if the provider has no base URL, targets the backend
+            itself, or discovery returns nothing).
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -729,7 +781,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         return discovered
 
     def _is_self_connection(self, base_url: str) -> bool:
-        """Check if a URL points at this backend; log warning if so."""
+        """Check if a URL points at this backend; log warning if so.
+
+        Returns:
+            ``True`` when *base_url* resolves to this backend's own host
+            and port; ``False`` otherwise.
+        """
         backend_port = self._backend_port
         if is_self_url(base_url, backend_port=backend_port):
             logger.warning(
@@ -741,14 +798,24 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         return False
 
     async def get_discovery_policy(self) -> ProviderDiscoveryPolicy:
-        """Return the current discovery allowlist policy."""
+        """Return the current discovery allowlist policy.
+
+        Returns:
+            The current ``ProviderDiscoveryPolicy`` from the allowlist
+            manager.
+        """
         return await self._allowlist.load()
 
     async def add_custom_allowlist_entry(
         self,
         host_port: str,
     ) -> ProviderDiscoveryPolicy:
-        """Add a custom host:port to the discovery allowlist."""
+        """Add a custom host:port to the discovery allowlist.
+
+        Returns:
+            The updated ``ProviderDiscoveryPolicy`` after adding the new
+            ``host:port`` entry.
+        """
         async with self._lock:
             return await self._allowlist.add_entry(host_port)
 
@@ -756,7 +823,12 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         self,
         host_port: str,
     ) -> ProviderDiscoveryPolicy:
-        """Remove a host:port from the discovery allowlist."""
+        """Remove a host:port from the discovery allowlist.
+
+        Returns:
+            The updated ``ProviderDiscoveryPolicy`` after removing the
+            specified ``host:port`` entry.
+        """
         async with self._lock:
             return await self._allowlist.remove_entry(host_port)
 
@@ -879,7 +951,16 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         *,
         capability: str,
     ) -> tuple[ProviderConfig, LocalModelManager]:
-        """Resolve provider config and local model manager."""
+        """Resolve provider config and local model manager.
+
+        Returns:
+            A ``(ProviderConfig, LocalModelManager)`` tuple for the named
+            local provider.
+
+        Raises:
+            ProviderValidationError: If the provider's preset does not
+                support local model management or has no base URL.
+        """
         from synthorg.providers.management.local_models import (  # noqa: PLC0415
             get_local_model_manager,
         )

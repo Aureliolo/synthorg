@@ -22,7 +22,12 @@ logger = get_logger(__name__)
 
 
 def _cost_key(m: ResolvedModel) -> tuple[float, str]:
-    """Sort key: cheapest first, then provider name for stable tie-breaking."""
+    """Sort key: cheapest first, then provider name for stable tie-breaking.
+
+    Returns:
+        A ``(total_cost_per_1k, provider_name)`` tuple usable as a sort
+        key (cheapest first, provider name breaking ties).
+    """
     return (m.total_cost_per_1k, m.provider_name)
 
 
@@ -119,6 +124,12 @@ class QuotaAwareSelector:
         return chosen
 
     def _has_quota(self, provider_name: str) -> bool:
+        """Report whether a provider still has quota (unknown defaults true).
+
+        Returns:
+            ``True`` if the provider has quota or is unknown to the
+            tracker, ``False`` if it has been marked exhausted.
+        """
         return self._quota.get(provider_name, True)
 
 
@@ -134,7 +145,14 @@ class CheapestSelector:
         self,
         candidates: tuple[ResolvedModel, ...],
     ) -> ResolvedModel:
-        """Select the cheapest candidate by total cost per 1k tokens."""
+        """Select the cheapest candidate by total cost per 1k tokens.
+
+        Returns:
+            The lowest-cost ``ResolvedModel`` from the candidates.
+
+        Raises:
+            ModelResolutionError: If the ``candidates`` tuple is empty.
+        """
         if not candidates:
             msg = "Cannot select from empty candidate list"
             raise ModelResolutionError(msg, context={"selector": "cheapest"})
