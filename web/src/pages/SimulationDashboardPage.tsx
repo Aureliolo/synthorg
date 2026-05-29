@@ -20,20 +20,22 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('SimulationDashboardPage')
 
-/**
- * Simulation run overview.
- *
- * Aggregates metrics across every known simulation record so
- * operators get a single-glance view of throughput and
- * acceptance rates. Surfaces cancel and summary-report actions
- * per run.
- */
-export default function SimulationDashboardPage() {
-  const {
-    capabilities,
-    loading: capLoading,
-    error: capError,
-  } = useCapabilities()
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['completed', 'cancelled', 'failed'])
+
+interface SimulationDashboardState {
+  capabilities: ReturnType<typeof useCapabilities>['capabilities']
+  capLoading: boolean
+  capError: string | null
+  runs: readonly SimulationStatusResponse[]
+  loading: boolean
+  error: string | null
+  report: SimulationReport | null
+  handleCancel: (simulationId: string) => Promise<void>
+  handleShowReport: (simulationId: string) => Promise<void>
+}
+
+function useSimulationDashboard(): SimulationDashboardState {
+  const { capabilities, loading: capLoading, error: capError } = useCapabilities()
   const [runs, setRuns] = useState<readonly SimulationStatusResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,43 +80,63 @@ export default function SimulationDashboardPage() {
   }, [])
 
   // Capability-gated effect: skip the network call entirely when the
-  // simulations subsystem is not configured for this deployment. The
-  // backend route is also not registered (returns 404), so calling
-  // listSimulations() would log a 404 in the audit trail per the
-  // issue #1666 B-3 contract. The early-return path that renders the
-  // EmptyState is below all hooks so React's hook-order rules stay
-  // satisfied across renders. While ``capLoading`` is true the
-  // skeleton branch below covers the in-flight window so the page
-  // never flashes "No simulation runs yet" against an unconfigured
-  // deployment.
+  // simulations subsystem is not configured. The backend route is also
+  // unregistered (404), so calling listSimulations() would log a 404 in
+  // the audit trail per the issue #1666 B-3 contract.
   useEffect(() => {
-    if (capLoading) {
-      return
-    }
+    if (capLoading) return
     if (!capabilities.simulations) {
-      // Defer the loading flip out of the same synchronous render
-      // frame so eslint-react's set-state-in-effect rule stays
-      // satisfied and React batches one render instead of two.
+      // Defer the loading flip out of the same synchronous render frame
+      // so eslint-react's set-state-in-effect rule stays satisfied.
       queueMicrotask(() => setLoading(false))
       return
     }
     void refresh()
   }, [refresh, capLoading, capabilities.simulations])
 
-  if (!capLoading && capError !== null) {
+  return {
+    capabilities, capLoading, capError, runs, loading, error, report, handleCancel, handleShowReport,
+  }
+}
+
+type SimulationFallback = 'cap-error' | 'not-configured' | 'loading' | null
+
+function simulationFallback(
+  capLoading: boolean,
+  capError: string | null,
+  simulationsEnabled: boolean,
+  loading: boolean,
+  runsLength: number,
+): SimulationFallback {
+  if (!capLoading && capError !== null) return 'cap-error'
+  if (!capLoading && !simulationsEnabled) return 'not-configured'
+  // Hold the skeleton until capabilities resolve AND the first refresh
+  // either lands data or sets loading=false, preventing a one-frame
+  // "No simulation runs yet" flash on an unconfigured deployment.
+  if (capLoading || (loading && runsLength === 0)) return 'loading'
+  return null
+}
+
+function SimulationFallbackView({
+  state,
+  capError,
+}: {
+  state: Exclude<SimulationFallback, null>
+  capError: string | null
+}) {
+  if (state === 'cap-error') {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Simulations" />
         <ErrorBanner
           severity="error"
           title="Could not determine available features"
-          description={capError}
+          description={capError ?? undefined}
         />
       </div>
     )
   }
-
-  if (!capLoading && !capabilities.simulations) {
+  if (state === 'not-configured') {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Simulations" />
@@ -122,129 +144,152 @@ export default function SimulationDashboardPage() {
           icon={Activity}
           title="Simulations not configured"
           description={
-            'This deployment did not enable the client simulation ' +
-            'runtime. Configure it in your backend setup to start ' +
-            'tracking simulation runs.'
+            'This deployment did not enable the client simulation runtime. Configure it in ' +
+            'your backend setup to start tracking simulation runs.'
           }
         />
       </div>
     )
   }
+  return (
+    <div className="space-y-section-gap">
+      <ListHeader title="Simulations" />
+      <SkeletonCard />
+    </div>
+  )
+}
 
-  // Hold the skeleton until capabilities resolve AND the first refresh
-  // either lands data or sets loading=false. This prevents a one-frame
-  // "No simulation runs yet" flash on an unconfigured-but-not-yet-
-  // resolved deployment.
-  if (capLoading || (loading && runs.length === 0)) {
-    return (
-      <div className="space-y-section-gap">
-        <ListHeader title="Simulations" />
-        <SkeletonCard />
+function SimulationMetrics({ runs }: { runs: readonly SimulationStatusResponse[] }) {
+  const totalTasksCreated = runs.reduce((sum, run) => sum + run.metrics.total_tasks_created, 0)
+  const totalAccepted = runs.reduce((sum, run) => sum + run.metrics.tasks_accepted, 0)
+  const totalRejected = runs.reduce((sum, run) => sum + run.metrics.tasks_rejected, 0)
+  const runningCount = runs.filter((run) => run.status === 'running').length
+  return (
+    <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-4">
+      <MetricCard label="Active runs" value={runningCount.toString()} />
+      <MetricCard label="Tasks created" value={totalTasksCreated.toString()} />
+      <MetricCard label="Accepted" value={totalAccepted.toString()} />
+      <MetricCard label="Rejected" value={totalRejected.toString()} />
+    </div>
+  )
+}
+
+function SimulationRunItem({
+  run,
+  onShowReport,
+  onCancel,
+}: {
+  run: SimulationStatusResponse
+  onShowReport: (id: string) => void
+  onCancel: (id: string) => void
+}) {
+  const terminal = TERMINAL_STATUSES.has(run.status)
+  return (
+    <li className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-medium text-foreground">{run.simulation_id}</div>
+          <div className="text-xs text-text-secondary">
+            {run.config.project_id} · {run.config.rounds} round(s)
+          </div>
+        </div>
+        <span
+          className="rounded-full border border-border px-2 py-1 text-xs text-foreground"
+          aria-label={`Status: ${run.status}`}
+        >
+          {run.status}
+        </span>
       </div>
+      {run.status === 'failed' && run.error && <p className="text-xs text-danger">{run.error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={() => onShowReport(run.simulation_id)}>
+          Report
+        </Button>
+        {!terminal && (
+          <Button size="sm" variant="outline" onClick={() => onCancel(run.simulation_id)}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function SimulationRunsList({
+  runs,
+  onShowReport,
+  onCancel,
+}: {
+  runs: readonly SimulationStatusResponse[]
+  onShowReport: (id: string) => void
+  onCancel: (id: string) => void
+}) {
+  if (runs.length === 0) {
+    return (
+      <EmptyState
+        icon={Activity}
+        title="No simulation runs yet"
+        description="Start a simulation via POST /simulations to populate this dashboard."
+      />
     )
   }
+  return (
+    <SectionCard title="Recent runs" icon={Activity}>
+      <ul className="space-y-2">
+        {runs.map((run) => (
+          <SimulationRunItem
+            key={run.simulation_id}
+            run={run}
+            onShowReport={onShowReport}
+            onCancel={onCancel}
+          />
+        ))}
+      </ul>
+    </SectionCard>
+  )
+}
 
-  const totalTasksCreated = runs.reduce(
-    (sum, run) => sum + run.metrics.total_tasks_created,
-    0,
+/**
+ * Simulation run overview.
+ *
+ * Aggregates metrics across every known simulation record so operators
+ * get a single-glance view of throughput and acceptance rates. Surfaces
+ * cancel and summary-report actions per run.
+ */
+export default function SimulationDashboardPage() {
+  const s = useSimulationDashboard()
+  const fallback = simulationFallback(
+    s.capLoading,
+    s.capError,
+    s.capabilities.simulations,
+    s.loading,
+    s.runs.length,
   )
-  const totalAccepted = runs.reduce(
-    (sum, run) => sum + run.metrics.tasks_accepted,
-    0,
-  )
-  const totalRejected = runs.reduce(
-    (sum, run) => sum + run.metrics.tasks_rejected,
-    0,
-  )
-  const runningCount = runs.filter((run) => run.status === 'running').length
+
+  if (fallback) {
+    return <SimulationFallbackView state={fallback} capError={s.capError} />
+  }
 
   return (
     <div className="space-y-section-gap">
-      <ListHeader title="Simulations" count={runs.length} countLabel={`${runs.length} runs`} />
+      <ListHeader title="Simulations" count={s.runs.length} countLabel={`${s.runs.length} runs`} />
 
-      {error && (
-        <ErrorBanner severity="error" title="Simulation error" description={error} />
+      {s.error && (
+        <ErrorBanner severity="error" title="Simulation error" description={s.error} />
       )}
 
-      <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-4">
-        <MetricCard label="Active runs" value={runningCount.toString()} />
-        <MetricCard
-          label="Tasks created"
-          value={totalTasksCreated.toString()}
-        />
-        <MetricCard label="Accepted" value={totalAccepted.toString()} />
-        <MetricCard label="Rejected" value={totalRejected.toString()} />
-      </div>
+      <SimulationMetrics runs={s.runs} />
 
-      {runs.length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title="No simulation runs yet"
-          description="Start a simulation via POST /simulations to populate this dashboard."
-        />
-      ) : (
-        <SectionCard title="Recent runs" icon={Activity}>
-          <ul className="space-y-2">
-            {runs.map((run) => {
-              const terminal = ['completed', 'cancelled', 'failed'].includes(
-                run.status,
-              )
-              return (
-                <li
-                  key={run.simulation_id}
-                  className="space-y-2 rounded-md border border-border bg-card-hover p-card text-sm"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium text-foreground">
-                        {run.simulation_id}
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {run.config.project_id} · {run.config.rounds} round(s)
-                      </div>
-                    </div>
-                    <span
-                      className="rounded-full border border-border px-2 py-1 text-xs text-foreground"
-                      aria-label={`Status: ${run.status}`}
-                    >
-                      {run.status}
-                    </span>
-                  </div>
-                  {run.status === 'failed' && run.error && (
-                    <p className="text-xs text-danger">{run.error}</p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void handleShowReport(run.simulation_id)}
-                    >
-                      Report
-                    </Button>
-                    {!terminal && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleCancel(run.simulation_id)}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </SectionCard>
-      )}
+      <SimulationRunsList
+        runs={s.runs}
+        onShowReport={(id) => void s.handleShowReport(id)}
+        onCancel={(id) => void s.handleCancel(id)}
+      />
 
-      {report && (
-        <SectionCard
-          title={`Report: ${report.simulation_id}`}
-          icon={Activity}
-        >
+      {s.report && (
+        <SectionCard title={`Report: ${s.report.simulation_id}`} icon={Activity}>
           <pre className="overflow-auto rounded-md border border-border bg-card-hover p-card text-xs text-foreground">
-            {JSON.stringify(report, null, 2)}
+            {JSON.stringify(s.report, null, 2)}
           </pre>
         </SectionCard>
       )}

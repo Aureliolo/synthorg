@@ -23,11 +23,9 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('ReviewPipelinePage')
 
-function VerdictIcon({
-  verdict,
-}: {
-  verdict: ReviewStageResult['verdict']
-}) {
+type DecideStage = (stageName: string, verdict: StageVerdict) => Promise<void>
+
+function VerdictIcon({ verdict }: { verdict: ReviewStageResult['verdict'] }) {
   if (verdict === 'pass') {
     return <CheckCircle className="size-4 text-success" aria-label="Pass" />
   }
@@ -37,14 +35,17 @@ function VerdictIcon({
   return <MinusCircle className="size-4 text-warning" aria-label="Skip" />
 }
 
-/**
- * Review pipeline visualization for a single task.
- *
- * Resolves the task via the review controller and renders the
- * per-stage breakdown with verdict icons, reasons, and timing.
- */
-export default function ReviewPipelinePage() {
-  const { taskId } = useParams<{ taskId: string }>()
+interface ReviewPipelineState {
+  pipeline: PipelineResult | null
+  loading: boolean
+  error: string | null
+  actionError: string | null
+  decisionNotice: string | null
+  submitting: boolean
+  handleDecide: DecideStage
+}
+
+function useReviewPipeline(taskId: string | undefined): ReviewPipelineState {
   const [pipeline, setPipeline] = useState<PipelineResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -52,8 +53,8 @@ export default function ReviewPipelinePage() {
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const handleDecide = useCallback(
-    async (stageName: string, verdict: StageVerdict) => {
+  const handleDecide = useCallback<DecideStage>(
+    async (stageName, verdict) => {
       if (!taskId || submitting) return
       setSubmitting(true)
       setActionError(null)
@@ -62,9 +63,7 @@ export default function ReviewPipelinePage() {
           verdict,
           reason: `Manual ${verdict} from dashboard`,
         })
-        setDecisionNotice(
-          `Recorded ${verdict.toUpperCase()} for ${stageName}`,
-        )
+        setDecisionNotice(`Recorded ${verdict.toUpperCase()} for ${stageName}`)
         setPipeline(result.pipeline_result)
       } catch (err) {
         log.error('decide_stage_failed', err)
@@ -109,6 +108,102 @@ export default function ReviewPipelinePage() {
     }
   }, [taskId])
 
+  return { pipeline, loading, error, actionError, decisionNotice, submitting, handleDecide }
+}
+
+function StageResultItem({
+  stage,
+  submitting,
+  onDecide,
+}: {
+  stage: ReviewStageResult
+  submitting: boolean
+  onDecide: DecideStage
+}) {
+  return (
+    <li className="rounded-md border border-border bg-card-hover p-card text-sm">
+      <div className="flex items-center gap-2">
+        <VerdictIcon verdict={stage.verdict} />
+        <span className="font-medium text-foreground">{stage.stage_name}</span>
+        <span className="ml-auto text-xs text-text-secondary">{stage.duration_ms} ms</span>
+      </div>
+      {stage.reason && <p className="mt-2 text-text-secondary">{stage.reason}</p>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={submitting}
+          onClick={() => void onDecide(stage.stage_name, 'pass')}
+        >
+          Override pass
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={submitting}
+          onClick={() => void onDecide(stage.stage_name, 'fail')}
+        >
+          Override fail
+        </Button>
+      </div>
+    </li>
+  )
+}
+
+function StageBreakdownCard({
+  stages,
+  actionError,
+  decisionNotice,
+  submitting,
+  onDecide,
+}: {
+  stages: readonly ReviewStageResult[]
+  actionError: string | null
+  decisionNotice: string | null
+  submitting: boolean
+  onDecide: DecideStage
+}) {
+  return (
+    <SectionCard title="Stage breakdown" icon={ShieldCheck}>
+      {actionError && (
+        <div className="mb-card">
+          <ErrorBanner variant="section" severity="error" title="Stage action failed" description={actionError} />
+        </div>
+      )}
+      {decisionNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mb-card rounded-md border border-success/30 bg-success/5 p-card text-sm text-success"
+        >
+          {decisionNotice}
+        </div>
+      )}
+      <ul className="space-y-3">
+        {stages.map((stage) => (
+          <StageResultItem
+            key={stage.stage_name}
+            stage={stage}
+            submitting={submitting}
+            onDecide={onDecide}
+          />
+        ))}
+      </ul>
+    </SectionCard>
+  )
+}
+
+/**
+ * Review pipeline visualization for a single task.
+ *
+ * Resolves the task via the review controller and renders the
+ * per-stage breakdown with verdict icons, reasons, and timing.
+ */
+export default function ReviewPipelinePage() {
+  const { taskId } = useParams<{ taskId: string }>()
+  const { pipeline, loading, error, actionError, decisionNotice, submitting, handleDecide } =
+    useReviewPipeline(taskId)
+
   if (loading) {
     return (
       <div className="space-y-section-gap">
@@ -137,67 +232,17 @@ export default function ReviewPipelinePage() {
           <span className="font-medium text-foreground">
             {pipeline.final_verdict.toUpperCase()}
           </span>
-          <span className="text-text-secondary">
-            · {pipeline.total_duration_ms} ms
-          </span>
+          <span className="text-text-secondary">· {pipeline.total_duration_ms} ms</span>
         </div>
       </SectionCard>
 
-      <SectionCard title="Stage breakdown" icon={ShieldCheck}>
-        {actionError && (
-          <div className="mb-card">
-            <ErrorBanner variant="section" severity="error" title="Stage action failed" description={actionError} />
-          </div>
-        )}
-        {decisionNotice && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mb-card rounded-md border border-success/30 bg-success/5 p-card text-sm text-success"
-          >
-            {decisionNotice}
-          </div>
-        )}
-        <ul className="space-y-3">
-          {pipeline.stage_results.map((stage) => (
-            <li
-              key={stage.stage_name}
-              className="rounded-md border border-border bg-card-hover p-card text-sm"
-            >
-              <div className="flex items-center gap-2">
-                <VerdictIcon verdict={stage.verdict} />
-                <span className="font-medium text-foreground">
-                  {stage.stage_name}
-                </span>
-                <span className="ml-auto text-xs text-text-secondary">
-                  {stage.duration_ms} ms
-                </span>
-              </div>
-              {stage.reason && (
-                <p className="mt-2 text-text-secondary">{stage.reason}</p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={submitting}
-                  onClick={() => void handleDecide(stage.stage_name, 'pass')}
-                >
-                  Override pass
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={submitting}
-                  onClick={() => void handleDecide(stage.stage_name, 'fail')}
-                >
-                  Override fail
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </SectionCard>
+      <StageBreakdownCard
+        stages={pipeline.stage_results}
+        actionError={actionError}
+        decisionNotice={decisionNotice}
+        submitting={submitting}
+        onDecide={handleDecide}
+      />
     </div>
   )
 }

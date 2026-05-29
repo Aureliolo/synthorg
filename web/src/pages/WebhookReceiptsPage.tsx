@@ -37,20 +37,21 @@ import {
 
 const log = createLogger('WebhookReceiptsPage')
 
+type AddToast = ReturnType<typeof useToastStore.getState>['add']
+type WebhookSelection = ReturnType<typeof useBulkSelection>
+type ConnectionList = ReturnType<typeof useConnectionsData>['connections']
+
 /**
  * Cap on how many retry POSTs run concurrently. Webhook retries
- * re-publish to the bus and can trip per-connection rate limits on
- * the way back through the consumer pipeline; an unbounded
- * `Promise.all` over 100+ receipts could amplify a single
- * operator click into a thundering herd. The cap is generous
- * enough that small selections still feel instant.
+ * re-publish to the bus and can trip per-connection rate limits; an
+ * unbounded `Promise.all` over 100+ receipts could amplify a single
+ * operator click into a thundering herd.
  */
 const RETRY_CONCURRENCY = 4
 
 // Backend ``WebhookReceipt.status`` is a free-form string; map known
 // values onto the four-tone AgentRuntimeStatus the StatusBadge
-// understands. Anything unrecognised falls back to ``idle`` so the
-// dot still renders without a misleading colour.
+// understands. Anything unrecognised falls back to ``idle``.
 function mapWebhookStatus(status: string): AgentRuntimeStatus {
   const lower = status.toLowerCase()
   if (lower === 'delivered' || lower === 'processed' || lower === 'success') {
@@ -68,13 +69,52 @@ function isRetryable(receipt: WebhookReceipt): boolean {
   return RETRYABLE_STATUSES.has(receipt.status.toLowerCase())
 }
 
-export default function WebhookReceiptsPage() {
-  const { connections } = useConnectionsData()
+function plural(n: number): string {
+  return n === 1 ? '' : 's'
+}
+
+async function runBulkRetry(ids: readonly string[]): Promise<{ succeeded: number; failed: number }> {
+  let succeeded = 0
+  let failed = 0
+  // Run retries in bounded-concurrency batches so a large selection
+  // cannot saturate the API.
+  for (let i = 0; i < ids.length; i += RETRY_CONCURRENCY) {
+    const batch = ids.slice(i, i + RETRY_CONCURRENCY)
+    const results = await Promise.allSettled(batch.map((id) => retryWebhookReceipt(id)))
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        succeeded += 1
+      } else {
+        failed += 1
+        log.warn('Retry failed', { reason: sanitizeForLog(result.reason) })
+      }
+    }
+  }
+  return { succeeded, failed }
+}
+
+function bulkRetryToast(succeeded: number, failed: number, toast: AddToast): void {
+  if (succeeded > 0 && failed === 0) {
+    toast({ variant: 'success', title: `Retried ${succeeded} receipt${plural(succeeded)}` })
+  } else if (succeeded > 0 && failed > 0) {
+    toast({
+      variant: 'warning',
+      title: `Retried ${succeeded} of ${succeeded + failed}`,
+      description: `${failed} retry attempt${plural(failed)} failed; check logs.`,
+    })
+  } else {
+    toast({ variant: 'error', title: `Failed to retry ${failed} receipt${plural(failed)}` })
+  }
+}
+
+function useWebhookConnectionSelect(connections: ConnectionList): {
+  selected: string
+  setSelected: (value: string) => void
+  options: { value: string; label: string }[]
+} {
   const [searchParams] = useSearchParams()
   const urlConnection = searchParams.get('connection') ?? ''
   const [selected, setSelected] = useState<string>('')
-  const toast = useToastStore((s) => s.add)
-  const selection = useBulkSelection()
 
   useEffect(() => {
     if (!urlConnection) return
@@ -89,10 +129,6 @@ export default function WebhookReceiptsPage() {
       cancelled = true
     }
   }, [urlConnection, connections])
-  const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     const exists = selected !== '' && connections.some((c) => c.name === selected)
@@ -103,8 +139,31 @@ export default function WebhookReceiptsPage() {
       if (cancelled) return
       setSelected(connections[0]?.name ?? '')
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [connections, selected, urlConnection])
+
+  const options = useMemo(
+    () => connections.map((c) => ({ value: c.name, label: c.name })),
+    [connections],
+  )
+
+  return { selected, setSelected, options }
+}
+
+interface WebhookActivity {
+  entries: readonly WebhookReceipt[]
+  loading: boolean
+  error: string | null
+  reload: () => Promise<void>
+  retryableIds: string[]
+}
+
+function useWebhookActivity(selected: string, selection: WebhookSelection): WebhookActivity {
+  const [entries, setEntries] = useState<readonly WebhookReceipt[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const requestSeqRef = useRef(0)
   const latestSelectedRef = useRef<string>(selected)
@@ -118,10 +177,7 @@ export default function WebhookReceiptsPage() {
     setLoading(true)
     setError(null)
     function isStale(): boolean {
-      return (
-        requestId !== requestSeqRef.current
-        || latestSelectedRef.current !== requestedFor
-      )
+      return requestId !== requestSeqRef.current || latestSelectedRef.current !== requestedFor
     }
     try {
       const rows = await listWebhookActivity(requestedFor)
@@ -147,11 +203,13 @@ export default function WebhookReceiptsPage() {
       setEntries([])
       selection.clear()
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
     // The effect intentionally clears state only when ``selected``
-    // changes; ``useBulkSelection`` memoises the ``selection`` object
-    // (it changes whenever ``selectedIds`` mutates), so listing it
-    // here would re-run the clear loop after every selection toggle.
+    // changes; ``useBulkSelection`` memoises ``selection`` (it changes
+    // whenever ``selectedIds`` mutates), so listing it here would re-run
+    // the clear loop after every selection toggle.
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [selected])
 
@@ -159,63 +217,195 @@ export default function WebhookReceiptsPage() {
     void reload()
   }, [reload])
 
-  const options = useMemo(
-    () => connections.map((c) => ({ value: c.name, label: c.name })),
-    [connections],
-  )
-
-  // Only retryable rows are selectable; passing the same set to the
-  // header checkbox + bulk action handler keeps "select all" honest
-  // about what will actually be retried.
   const retryableIds = useMemo(
     () => entries.filter(isRetryable).map((row) => row.id),
     [entries],
   )
+
+  return { entries, loading, error, reload, retryableIds }
+}
+
+function useWebhookRetry({
+  retryableIds,
+  selection,
+  reload,
+  toast,
+}: {
+  retryableIds: string[]
+  selection: WebhookSelection
+  reload: () => Promise<void>
+  toast: AddToast
+}): { retrying: boolean; handleBulkRetry: () => Promise<void> } {
+  const [retrying, setRetrying] = useState(false)
 
   const handleBulkRetry = useCallback(async () => {
     const retryableSet = new Set(retryableIds)
     const ids = [...selection.selectedIds].filter((id) => retryableSet.has(id))
     if (ids.length === 0) return
     setRetrying(true)
-    let succeeded = 0
-    let failed = 0
-    // Run retries in bounded-concurrency batches so a large
-    // selection cannot saturate the API.
-    for (let i = 0; i < ids.length; i += RETRY_CONCURRENCY) {
-      const batch = ids.slice(i, i + RETRY_CONCURRENCY)
-      const results = await Promise.allSettled(
-        batch.map((id) => retryWebhookReceipt(id)),
-      )
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          succeeded += 1
-        } else {
-          failed += 1
-          log.warn('Retry failed', { reason: sanitizeForLog(result.reason) })
-        }
-      }
-    }
+    const { succeeded, failed } = await runBulkRetry(ids)
     setRetrying(false)
     selection.clear()
-    if (succeeded > 0 && failed === 0) {
-      toast({
-        variant: 'success',
-        title: `Retried ${succeeded} receipt${succeeded === 1 ? '' : 's'}`,
-      })
-    } else if (succeeded > 0 && failed > 0) {
-      toast({
-        variant: 'warning',
-        title: `Retried ${succeeded} of ${succeeded + failed}`,
-        description: `${failed} retry attempt${failed === 1 ? '' : 's'} failed; check logs.`,
-      })
-    } else {
-      toast({
-        variant: 'error',
-        title: `Failed to retry ${failed} receipt${failed === 1 ? '' : 's'}`,
-      })
-    }
+    bulkRetryToast(succeeded, failed, toast)
     await reload()
   }, [retryableIds, reload, selection, toast])
+
+  return { retrying, handleBulkRetry }
+}
+
+function WebhookReceiptRow({ row, selection }: { row: WebhookReceipt; selection: WebhookSelection }) {
+  const retryable = isRetryable(row)
+  return (
+    <tr>
+      <td className="py-2 pr-4">
+        <input
+          type="checkbox"
+          aria-label={`Select receipt ${row.id}`}
+          checked={selection.selectedIds.has(row.id)}
+          onChange={() => selection.toggle(row.id)}
+          disabled={!retryable}
+        />
+      </td>
+      <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
+      <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
+      <td className="py-2 pr-4">
+        <span className="inline-flex items-center gap-1.5">
+          <StatusBadge status={mapWebhookStatus(row.status)} decorative />
+          <span className="text-xs uppercase text-text-secondary">{row.status}</span>
+        </span>
+      </td>
+      <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
+        {row.processed_at ? formatDateTime(row.processed_at) : '-'}
+      </td>
+      <td className="py-2 pr-4 truncate max-w-xs text-xs text-danger" title={row.error ?? undefined}>
+        {row.error}
+      </td>
+    </tr>
+  )
+}
+
+function WebhookReceiptsTable({
+  entries,
+  selection,
+  retryableIds,
+}: {
+  entries: readonly WebhookReceipt[]
+  selection: WebhookSelection
+  retryableIds: string[]
+}) {
+  return (
+    <SectionCard title="Recent receipts">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-text-secondary">
+              <th className="py-2 pr-4">
+                <input
+                  type="checkbox"
+                  aria-label="Select all retryable receipts"
+                  checked={selection.isAllSelected(retryableIds)}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selection.isPartiallySelected(retryableIds)
+                  }}
+                  onChange={() => selection.toggleAll(retryableIds)}
+                  disabled={retryableIds.length === 0}
+                />
+              </th>
+              <th className="py-2 pr-4">Received</th>
+              <th className="py-2 pr-4">Event</th>
+              <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-4">Processed</th>
+              <th className="py-2 pr-4">Error</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {entries.map((row) => (
+              <WebhookReceiptRow key={row.id} row={row} selection={selection} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  )
+}
+
+interface WebhookReceiptsContentProps {
+  loading: boolean
+  entries: readonly WebhookReceipt[]
+  connectionsCount: number
+  selected: string
+  selection: WebhookSelection
+  retryableIds: string[]
+}
+
+function WebhookReceiptsContent({
+  loading,
+  entries,
+  connectionsCount,
+  selected,
+  selection,
+  retryableIds,
+}: WebhookReceiptsContentProps) {
+  if (loading && entries.length === 0) {
+    return (
+      <ProgressIndicator
+        variant="indeterminate"
+        label="Loading webhook activity"
+        description={selected ? `Fetching receipts for ${selected}` : undefined}
+      />
+    )
+  }
+  if (entries.length === 0) {
+    if (connectionsCount === 0) {
+      return (
+        <EmptyState
+          title="No connections configured"
+          description="Configure a connection in the Integrations area before inspecting webhook deliveries."
+        />
+      )
+    }
+    return (
+      <EmptyState
+        title={selected ? 'No webhook deliveries yet' : 'Select a connection'}
+        description={
+          selected
+            ? 'Inbound webhook events for this connection will appear here.'
+            : 'Pick a connection from the dropdown above to inspect its receipt log.'
+        }
+      />
+    )
+  }
+  return <WebhookReceiptsTable entries={entries} selection={selection} retryableIds={retryableIds} />
+}
+
+function WebhookRetryBar({
+  count,
+  retrying,
+  onClear,
+  onRetry,
+}: {
+  count: number
+  retrying: boolean
+  onClear: () => void
+  onRetry: () => void
+}) {
+  return (
+    <BulkActionBar selectedCount={count} onClear={onClear} loading={retrying}>
+      <Button size="sm" variant="default" onClick={onRetry} disabled={retrying} className="gap-1">
+        <RefreshCw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
+        {retrying ? 'Retrying…' : 'Retry selected'}
+      </Button>
+    </BulkActionBar>
+  )
+}
+
+export default function WebhookReceiptsPage() {
+  const { connections } = useConnectionsData()
+  const toast = useToastStore((s) => s.add)
+  const selection = useBulkSelection()
+  const { selected, setSelected, options } = useWebhookConnectionSelect(connections)
+  const { entries, loading, error, reload, retryableIds } = useWebhookActivity(selected, selection)
+  const { retrying, handleBulkRetry } = useWebhookRetry({ retryableIds, selection, reload, toast })
 
   return (
     <div className="space-y-section-gap">
@@ -233,123 +423,26 @@ export default function WebhookReceiptsPage() {
 
       <SearchFilterSort
         filters={
-          <SelectField
-            label="Connection"
-            value={selected}
-            onChange={setSelected}
-            options={options}
-          />
+          <SelectField label="Connection" value={selected} onChange={setSelected} options={options} />
         }
       />
 
-      {loading && entries.length === 0 ? (
-        <ProgressIndicator
-          variant="indeterminate"
-          label="Loading webhook activity"
-          description={selected ? `Fetching receipts for ${selected}` : undefined}
-        />
-      ) : entries.length === 0 ? (
-        connections.length === 0 ? (
-          <EmptyState
-            title="No connections configured"
-            description="Configure a connection in the Integrations area before inspecting webhook deliveries."
-          />
-        ) : (
-          <EmptyState
-            title={selected ? 'No webhook deliveries yet' : 'Select a connection'}
-            description={
-              selected
-                ? 'Inbound webhook events for this connection will appear here.'
-                : 'Pick a connection from the dropdown above to inspect its receipt log.'
-            }
-          />
-        )
-      ) : (
-        <SectionCard title="Recent receipts">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-text-secondary">
-                  <th className="py-2 pr-4">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all retryable receipts"
-                      checked={selection.isAllSelected(retryableIds)}
-                      ref={(el) => {
-                        if (el) {
-                          el.indeterminate = selection.isPartiallySelected(retryableIds)
-                        }
-                      }}
-                      onChange={() => selection.toggleAll(retryableIds)}
-                      disabled={retryableIds.length === 0}
-                    />
-                  </th>
-                  <th className="py-2 pr-4">Received</th>
-                  <th className="py-2 pr-4">Event</th>
-                  <th className="py-2 pr-4">Status</th>
-                  <th className="py-2 pr-4">Processed</th>
-                  <th className="py-2 pr-4">Error</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {entries.map((row) => {
-                  const retryable = isRetryable(row)
-                  return (
-                    <tr key={row.id}>
-                      <td className="py-2 pr-4">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select receipt ${row.id}`}
-                          checked={selection.selectedIds.has(row.id)}
-                          onChange={() => selection.toggle(row.id)}
-                          disabled={!retryable}
-                        />
-                      </td>
-                      <td className="py-2 pr-4 font-mono text-xs">{formatDateTime(row.received_at)}</td>
-                      <td className="py-2 pr-4 text-foreground">{row.event_type || '-'}</td>
-                      <td className="py-2 pr-4">
-                        <span className="inline-flex items-center gap-1.5">
-                          <StatusBadge
-                            status={mapWebhookStatus(row.status)}
-                            decorative
-                          />
-                          <span className="text-xs uppercase text-text-secondary">
-                            {row.status}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="py-2 pr-4 font-mono text-xs text-text-secondary">
-                        {row.processed_at ? formatDateTime(row.processed_at) : '-'}
-                      </td>
-                      <td className="py-2 pr-4 truncate max-w-xs text-xs text-danger" title={row.error ?? undefined}>
-                        {row.error}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
-      )}
+      <WebhookReceiptsContent
+        loading={loading}
+        entries={entries}
+        connectionsCount={connections.length}
+        selected={selected}
+        selection={selection}
+        retryableIds={retryableIds}
+      />
 
       {selection.count > 0 && (
-        <BulkActionBar
-          selectedCount={selection.count}
+        <WebhookRetryBar
+          count={selection.count}
+          retrying={retrying}
           onClear={selection.clear}
-          loading={retrying}
-        >
-          <Button
-            size="sm"
-            variant="default"
-            onClick={() => void handleBulkRetry()}
-            disabled={retrying}
-            className="gap-1"
-          >
-            <RefreshCw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {retrying ? 'Retrying…' : 'Retry selected'}
-          </Button>
-        </BulkActionBar>
+          onRetry={() => void handleBulkRetry()}
+        />
       )}
     </div>
   )

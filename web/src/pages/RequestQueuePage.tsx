@@ -41,23 +41,112 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-/**
- * Lightweight Kanban-style view of the client request lifecycle.
- *
- * Groups stored ``ClientRequest``s by status so operators can watch
- * the independent request state machine (SUBMITTED → TRIAGING → ...
- * → TASK_CREATED | CANCELLED) at a glance.
- */
-export default function RequestQueuePage() {
-  const {
-    capabilities,
-    loading: capLoading,
-    error: capError,
-  } = useCapabilities()
+// ``typeof null === 'object'`` in JS, so the null guard must come first
+// or the ``'description' in requirement`` check throws at runtime.
+function requirementMatchesQuery(requirement: unknown, query: string): boolean {
+  return (
+    requirement !== null
+    && typeof requirement === 'object'
+    && 'description' in requirement
+    && typeof requirement.description === 'string'
+    && requirement.description.toLowerCase().includes(query)
+  )
+}
+
+function matchesRequest(
+  r: ClientRequest,
+  statusFilter: RequestStatus | 'all',
+  query: string,
+): boolean {
+  if (statusFilter !== 'all' && r.status !== statusFilter) return false
+  if (query === '') return true
+  return (
+    r.request_id.toLowerCase().includes(query)
+    || r.client_id.toLowerCase().includes(query)
+    || requirementMatchesQuery(r.requirement, query)
+  )
+}
+
+interface RequestActions {
+  pending: Record<string, boolean>
+  handleScope: (id: string) => void
+  handleApprove: (id: string) => void
+  handleReject: (id: string) => void
+}
+
+function useRequestActions(
+  refresh: () => Promise<void>,
+  setError: (error: string | null) => void,
+): RequestActions {
+  const [pending, setPending] = useState<Record<string, boolean>>({})
+
+  const run = useCallback(
+    async (
+      requestId: string,
+      action: () => Promise<unknown>,
+      errorMsg: string,
+      logEvent: string,
+    ) => {
+      if (pending[requestId]) return
+      setPending((prev) => ({ ...prev, [requestId]: true }))
+      try {
+        await action()
+        await refresh()
+      } catch (err) {
+        log.error(logEvent, err)
+        setError(errorMsg)
+      } finally {
+        setPending((prev) => ({ ...prev, [requestId]: false }))
+      }
+    },
+    [refresh, pending, setError],
+  )
+
+  const handleScope = useCallback(
+    (id: string) => {
+      void run(id, () => scopeRequest(id, { notes: 'Scoped from dashboard' }), 'Failed to scope request.', 'scope_request_failed')
+    },
+    [run],
+  )
+  const handleApprove = useCallback(
+    (id: string) => {
+      void run(id, () => approveRequest(id), 'Failed to approve request.', 'approve_request_failed')
+    },
+    [run],
+  )
+  const handleReject = useCallback(
+    (id: string) => {
+      void run(id, () => rejectRequest(id, 'Rejected from dashboard'), 'Failed to reject request.', 'reject_request_failed')
+    },
+    [run],
+  )
+
+  return { pending, handleScope, handleApprove, handleReject }
+}
+
+interface RequestQueueState {
+  capabilities: ReturnType<typeof useCapabilities>['capabilities']
+  capLoading: boolean
+  capError: string | null
+  requests: readonly ClientRequest[]
+  loading: boolean
+  error: string | null
+  searchQuery: string
+  setSearchQuery: (value: string) => void
+  statusFilter: RequestStatus | 'all'
+  setStatusFilter: (value: RequestStatus | 'all') => void
+  filteredRequests: readonly ClientRequest[]
+  pending: Record<string, boolean>
+  handleScope: (id: string) => void
+  handleApprove: (id: string) => void
+  handleReject: (id: string) => void
+}
+
+function useRequestQueue(): RequestQueueState {
+  const { capabilities, loading: capLoading, error: capError } = useCapabilities()
   const [requests, setRequests] = useState<readonly ClientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all')
 
@@ -74,115 +163,65 @@ export default function RequestQueuePage() {
     }
   }, [])
 
-  const handleScope = useCallback(
-    async (requestId: string) => {
-      if (pending[requestId]) return
-      setPending((prev) => ({ ...prev, [requestId]: true }))
-      try {
-        await scopeRequest(requestId, { notes: 'Scoped from dashboard' })
-        await refresh()
-      } catch (err) {
-        log.error('scope_request_failed', err)
-        setError('Failed to scope request.')
-      } finally {
-        setPending((prev) => ({ ...prev, [requestId]: false }))
-      }
-    },
-    [refresh, pending],
-  )
-
-  const handleApprove = useCallback(
-    async (requestId: string) => {
-      if (pending[requestId]) return
-      setPending((prev) => ({ ...prev, [requestId]: true }))
-      try {
-        await approveRequest(requestId)
-        await refresh()
-      } catch (err) {
-        log.error('approve_request_failed', err)
-        setError('Failed to approve request.')
-      } finally {
-        setPending((prev) => ({ ...prev, [requestId]: false }))
-      }
-    },
-    [refresh, pending],
-  )
-
-  const handleReject = useCallback(
-    async (requestId: string) => {
-      if (pending[requestId]) return
-      setPending((prev) => ({ ...prev, [requestId]: true }))
-      try {
-        await rejectRequest(requestId, 'Rejected from dashboard')
-        await refresh()
-      } catch (err) {
-        log.error('reject_request_failed', err)
-        setError('Failed to reject request.')
-      } finally {
-        setPending((prev) => ({ ...prev, [requestId]: false }))
-      }
-    },
-    [refresh, pending],
-  )
+  const actions = useRequestActions(refresh, setError)
 
   // Capability-gated effect: skip the network call entirely when the
-  // requests subsystem is not configured. Backend route is also not
-  // registered (returns 404). The early-return path that renders the
-  // EmptyState lives below all hooks so React's hook-order rules
-  // stay satisfied across renders. While ``capLoading`` is true we
-  // do nothing -- the skeleton branch below covers the in-flight
-  // window so the page never flashes "No requests yet" against an
-  // unconfigured deployment.
+  // requests subsystem is not configured (backend route 404s otherwise).
   useEffect(() => {
-    if (capLoading) {
-      return
-    }
+    if (capLoading) return
     if (!capabilities.requests) {
-      // Defer the loading flip out of the same synchronous render
-      // frame so eslint-react's set-state-in-effect rule stays
-      // satisfied and React batches one render instead of two.
       queueMicrotask(() => setLoading(false))
       return
     }
     void refresh()
   }, [refresh, capLoading, capabilities.requests])
 
-  // useMemo must run on every render (rules-of-hooks); compute the
-  // filtered list before any early-return branch below.
   const filteredRequests = useMemo(() => {
     const trimmed = searchQuery.trim().toLowerCase()
-    return requests.filter((r) => {
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false
-      if (trimmed === '') return true
-      return (
-        r.request_id.toLowerCase().includes(trimmed)
-        || r.client_id.toLowerCase().includes(trimmed)
-        // ``typeof null === 'object'`` in JS, so the null guard must
-        // come first or the ``'description' in r.requirement`` check
-        // below throws at runtime.
-        || (r.requirement !== null
-          && typeof r.requirement === 'object'
-          && 'description' in r.requirement
-          && typeof r.requirement.description === 'string'
-          && r.requirement.description.toLowerCase().includes(trimmed))
-      )
-    })
+    return requests.filter((r) => matchesRequest(r, statusFilter, trimmed))
   }, [requests, searchQuery, statusFilter])
 
-  if (!capLoading && capError !== null) {
+  return {
+    capabilities, capLoading, capError, requests, loading, error, searchQuery, setSearchQuery,
+    statusFilter, setStatusFilter, filteredRequests, ...actions,
+  }
+}
+
+type RequestQueueFallback = 'cap-error' | 'not-configured' | 'loading' | null
+
+function requestQueueFallback(
+  capLoading: boolean,
+  capError: string | null,
+  requestsEnabled: boolean,
+  loading: boolean,
+  requestsLength: number,
+): RequestQueueFallback {
+  if (!capLoading && capError !== null) return 'cap-error'
+  if (!capLoading && !requestsEnabled) return 'not-configured'
+  if (capLoading || (loading && requestsLength === 0)) return 'loading'
+  return null
+}
+
+function RequestQueueFallbackView({
+  state,
+  capError,
+}: {
+  state: Exclude<RequestQueueFallback, null>
+  capError: string | null
+}) {
+  if (state === 'cap-error') {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Request Queue" />
         <ErrorBanner
           severity="error"
           title="Could not determine available features"
-          description={capError}
+          description={capError ?? undefined}
         />
       </div>
     )
   }
-
-  if (!capLoading && !capabilities.requests) {
+  if (state === 'not-configured') {
     return (
       <div className="space-y-section-gap">
         <ListHeader title="Requests" />
@@ -190,111 +229,165 @@ export default function RequestQueuePage() {
           icon={Inbox}
           title="Requests not configured"
           description={
-            'This deployment did not enable the client request facade. ' +
-            'Configure it in your backend setup to start tracking ' +
-            'incoming requests.'
+            'This deployment did not enable the client request facade. Configure it in your ' +
+            'backend setup to start tracking incoming requests.'
           }
         />
       </div>
     )
   }
-
-  // Hold the skeleton until capabilities resolve AND the first refresh
-  // either lands data or sets loading=false. This prevents a one-frame
-  // "No requests yet" flash on an unconfigured-but-not-yet-resolved
-  // deployment.
-  if (capLoading || (loading && requests.length === 0)) {
-    return (
-      <div className="space-y-section-gap">
-        <ListHeader title="Request Queue" />
-        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </div>
+  return (
+    <div className="space-y-section-gap">
+      <ListHeader title="Request Queue" />
+      <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-3">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
-    )
-  }
+    </div>
+  )
+}
 
+function RequestQueueFilters({
+  searchQuery,
+  setSearchQuery,
+  statusFilter,
+  setStatusFilter,
+}: {
+  searchQuery: string
+  setSearchQuery: (value: string) => void
+  statusFilter: RequestStatus | 'all'
+  setStatusFilter: (value: RequestStatus | 'all') => void
+}) {
+  return (
+    <SearchFilterSort
+      search={
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search by request id, summary, or client"
+          ariaLabel="Search requests"
+        />
+      }
+      filters={
+        <SelectField
+          label="Status"
+          value={statusFilter}
+          onChange={(value) => setStatusFilter(value as RequestStatus | 'all')}
+          options={[
+            { value: 'all', label: 'All statuses' },
+            ...STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+          ]}
+        />
+      }
+    />
+  )
+}
+
+function RequestQueueBoard({
+  filteredRequests,
+  pending,
+  onScope,
+  onApprove,
+  onReject,
+}: {
+  filteredRequests: readonly ClientRequest[]
+  pending: Record<string, boolean>
+  onScope: (id: string) => void
+  onApprove: (id: string) => void
+  onReject: (id: string) => void
+}) {
   const grouped = STATUS_ORDER.map((status) => ({
     status,
     entries: filteredRequests.filter((r) => r.status === status),
   }))
+  return (
+    <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 xl:grid-cols-3">
+      {grouped.map(({ status, entries }) => (
+        <SectionCard key={status} title={STATUS_LABELS[status]} icon={Inbox}>
+          {entries.length === 0 ? (
+            <EmptyState
+              title="No entries"
+              description={`Nothing in ${STATUS_LABELS[status].toLowerCase()} yet.`}
+            />
+          ) : (
+            <ul className="space-y-2">
+              {entries.map((request) => (
+                <RequestCard
+                  key={request.request_id}
+                  request={request}
+                  pending={pending}
+                  onScope={onScope}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                />
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Lightweight Kanban-style view of the client request lifecycle.
+ *
+ * Groups stored ``ClientRequest``s by status so operators can watch the
+ * independent request state machine (SUBMITTED → TRIAGING → ... →
+ * TASK_CREATED | CANCELLED) at a glance. Per-card actions only expose
+ * the legal next transition for each status; the state machine is
+ * stage-gated to prevent operators from skipping triage.
+ */
+export default function RequestQueuePage() {
+  const q = useRequestQueue()
+  const fallback = requestQueueFallback(
+    q.capLoading,
+    q.capError,
+    q.capabilities.requests,
+    q.loading,
+    q.requests.length,
+  )
+
+  if (fallback) {
+    return <RequestQueueFallbackView state={fallback} capError={q.capError} />
+  }
 
   return (
     <div className="space-y-section-gap">
-      {/* Per-card actions (scope / approve / reject) only expose the
-          legal next transition for each status. A generic "move to
-          arbitrary status" menu would require backend support for
-          unrestricted transitions, which the request lifecycle
-          deliberately does not provide -- the state machine is
-          stage-gated to prevent operators from skipping triage. */}
       <ListHeader
         title="Request Queue"
         description="Submitted → Triaging → Scoping → Approved → Task created."
-        count={requests.length}
+        count={q.requests.length}
       />
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load request queue" description={error} />
+      {q.error && (
+        <ErrorBanner severity="error" title="Could not load request queue" description={q.error} />
       )}
 
-      {requests.length > 0 && (
-        <SearchFilterSort
-          search={
-            <SearchInput
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search by request id, summary, or client"
-              ariaLabel="Search requests"
-            />
-          }
-          filters={
-            <SelectField
-              label="Status"
-              value={statusFilter}
-              onChange={(value) => setStatusFilter(value as RequestStatus | 'all')}
-              options={[
-                { value: 'all', label: 'All statuses' },
-                ...STATUS_ORDER.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
-              ]}
-            />
-          }
+      {q.requests.length > 0 && (
+        <RequestQueueFilters
+          searchQuery={q.searchQuery}
+          setSearchQuery={q.setSearchQuery}
+          statusFilter={q.statusFilter}
+          setStatusFilter={q.setStatusFilter}
         />
       )}
 
-      {requests.length === 0 ? (
+      {q.requests.length === 0 ? (
         <EmptyState
           icon={Inbox}
           title="No requests yet"
           description="Submit a client request via POST /requests to start exercising the intake pipeline."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 xl:grid-cols-3">
-          {grouped.map(({ status, entries }) => (
-            <SectionCard key={status} title={STATUS_LABELS[status]} icon={Inbox}>
-              {entries.length === 0 ? (
-                <EmptyState
-                  title="No entries"
-                  description={`Nothing in ${STATUS_LABELS[status].toLowerCase()} yet.`}
-                />
-              ) : (
-                <ul className="space-y-2">
-                  {entries.map((request) => (
-                    <RequestCard
-                      key={request.request_id}
-                      request={request}
-                      pending={pending}
-                      onScope={(id) => void handleScope(id)}
-                      onApprove={(id) => void handleApprove(id)}
-                      onReject={(id) => void handleReject(id)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </SectionCard>
-          ))}
-        </div>
+        <RequestQueueBoard
+          filteredRequests={q.filteredRequests}
+          pending={q.pending}
+          onScope={q.handleScope}
+          onApprove={q.handleApprove}
+          onReject={q.handleReject}
+        />
       )}
     </div>
   )
