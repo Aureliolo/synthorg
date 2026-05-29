@@ -15,6 +15,7 @@ from itertools import chain
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ResearchRunStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -107,6 +108,8 @@ class ResearchService:
                 wall-clock ceiling; the run row is persisted ``FAILED``.
             ResearchError: If any pipeline stage fails; the run row is
                 persisted in ``FAILED`` state before the error propagates.
+            ResearchRunError: Wrapping any other unexpected failure after
+                the run row is persisted ``FAILED``.
         """
         started_at = self._clock.now()
         run = ResearchRun(
@@ -123,8 +126,6 @@ class ResearchService:
         try:
             async with asyncio.timeout(brief.max_wall_clock_seconds):
                 return await self._execute(run, brief, started_at)
-        except MemoryError, RecursionError:
-            raise
         except TimeoutError as exc:
             budget = ResearchBudgetExceededError(
                 f"research run exceeded wall-clock budget of "
@@ -136,6 +137,7 @@ class ResearchService:
             await self._fail(run, exc)
             raise
         except Exception as exc:
+            reraise_critical(exc)
             await self._fail(run, exc)
             msg = "Research run failed"
             raise ResearchRunError(msg) from exc
@@ -160,7 +162,12 @@ class ResearchService:
         brief: ResearchBrief,
         started_at: datetime,
     ) -> ResearchRun:
-        """Run the pipeline stages and persist the completed run."""
+        """Run the pipeline stages and persist the completed run.
+
+        Returns:
+            The persisted ``ResearchRun`` in ``COMPLETED`` state, carrying
+            the plan, retrieved items, verdicts, report, and accrued cost.
+        """
         total_cost = 0.0
         plan, plan_cost = await self._planner.plan(brief)
         total_cost += plan_cost
@@ -231,7 +238,12 @@ class ResearchService:
         brief: ResearchBrief,
         sub_queries: tuple[SubQuery, ...],
     ) -> tuple[RetrievedItem, ...]:
-        """Fan out retrieval across sources, isolating per-source failures."""
+        """Fan out retrieval across sources, isolating per-source failures.
+
+        Returns:
+            All retrieved items across the sub-queries, flattened in
+            completion order.
+        """
         try:
             async with asyncio.TaskGroup() as group:
                 tasks = [
@@ -250,7 +262,12 @@ class ResearchService:
         brief: ResearchBrief,
         sub_query: SubQuery,
     ) -> tuple[RetrievedItem, ...]:
-        """Retrieve for one sub-query; never raise to the TaskGroup."""
+        """Retrieve for one sub-query; never raise to the TaskGroup.
+
+        Returns:
+            The items retrieved for the sub-query, or an empty tuple when
+            the source is unconfigured or its retrieve call fails.
+        """
         source = self._sources.get(sub_query.source_type)
         if source is None:
             logger.warning(
@@ -265,9 +282,8 @@ class ResearchService:
                 project_id=brief.project_id,
                 limit=self._per_query_limit,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 RESEARCH_SOURCE_FAILED,
                 source_type=sub_query.source_type.value,
@@ -278,7 +294,12 @@ class ResearchService:
 
     @staticmethod
     def _enforce_cost_budget(total_cost: float, brief: ResearchBrief) -> None:
-        """Raise if accumulated LLM cost has breached the brief's ceiling."""
+        """Raise if accumulated LLM cost has breached the brief's ceiling.
+
+        Raises:
+            ResearchBudgetExceededError: When ``total_cost`` exceeds the
+                brief's ``max_cost``.
+        """
         if total_cost > brief.max_cost:
             msg = f"research run cost {total_cost} exceeded budget of {brief.max_cost}"
             raise ResearchBudgetExceededError(msg)
@@ -288,7 +309,11 @@ class ResearchService:
         items: tuple[RetrievedItem, ...],
         verdicts: tuple[SourceCredibility, ...],
     ) -> tuple[RetrievedItem, ...]:
-        """Keep only items whose credibility verdict passed the threshold."""
+        """Keep only items whose credibility verdict passed the threshold.
+
+        Returns:
+            The items whose credibility verdict passed, preserving order.
+        """
         passed = {v.ref_id for v in verdicts if v.passed}
         return tuple(item for item in items if item.ref_id in passed)
 

@@ -20,6 +20,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
@@ -132,9 +133,8 @@ class DocWriter:
             )
         except DocCommitError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = (
                 f"Failed to write living doc {project_id!r}/{doc.slug!r} "
                 f"on {DOCS_BRANCH_NAME!r}"
@@ -176,7 +176,12 @@ class DocWriter:
         repo_root: Path,
         default_branch: NotBlankStr,
     ) -> None:
-        """Switch to (or create) the docs branch in *repo_root*."""
+        """Switch to (or create) the docs branch in *repo_root*.
+
+        Raises:
+            DocCommitError: When the checkout or branch-create git command
+                fails.
+        """
         rc, stdout, _ = await run_git_subprocess(
             repo_root,
             "rev-parse",
@@ -223,7 +228,15 @@ class DocWriter:
         doc_path: Path,
         doc: LivingDocument,
     ) -> NotBlankStr:
-        """Stage and commit *doc_path*; return the new HEAD SHA."""
+        """Stage and commit *doc_path*; return the new HEAD SHA.
+
+        Returns:
+            The new HEAD commit SHA after staging and committing the doc.
+
+        Raises:
+            DocCommitError: When the ``git add`` or ``git commit`` step
+                fails.
+        """
         rel = doc_path.relative_to(repo_root).as_posix()
         rc_add, _, stderr_add = await run_git_subprocess(
             repo_root,

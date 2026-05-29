@@ -85,6 +85,10 @@ def _validate_slug(slug: NotBlankStr) -> None:
     Slugs flow into filesystem paths (``<type>/<slug>.json``) and git
     pathspecs, so an unvalidated value such as ``../../etc/passwd`` would
     be a path-traversal sink.
+
+    Raises:
+        DocValidationError: When ``slug`` is not a safe kebab-case
+            identifier.
     """
     if _SLUG_RE.match(slug) is None:
         msg = f"invalid slug format: {slug!r}"
@@ -302,7 +306,12 @@ class DocsService:
         limit: int = DOCS_LIST_DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[DocSummary, ...]:
-        """List docs for a project (newest first)."""
+        """List docs for a project (newest first).
+
+        Returns:
+            The matching document summaries, newest-first, for the
+            requested filter window.
+        """
         spec = DocsFilterSpec(
             project_id=project_id,
             doc_type=doc_type,
@@ -429,7 +438,12 @@ class DocsService:
         doc_type: DocType,
         supplied_slug: NotBlankStr | None,
     ) -> tuple[NotBlankStr, DocMetadata | None]:
-        """Return (slug, prior_metadata) for create / update branch."""
+        """Return (slug, prior_metadata) for create / update branch.
+
+        Raises:
+            DocNotFoundError: When an explicit ``supplied_slug`` targets a
+                document that does not exist (the update path).
+        """
         if supplied_slug is not None:
             _validate_slug(supplied_slug)
             prior = await self._repo.get((project_id, supplied_slug))
@@ -470,7 +484,18 @@ class DocsService:
         rel_path: str,
         version: NotBlankStr | None,
     ) -> bytes:
-        """Read JSON bytes from disk (current) or via git show (historical)."""
+        """Read JSON bytes from disk (current) or via git show (historical).
+
+        Returns:
+            The raw document JSON bytes for the requested version (current
+            working tree when ``version`` is ``None``).
+
+        Raises:
+            DocNotFoundError: When the file or the requested version is
+                absent / unreachable.
+            DocCommitError: When a current-tree read fails with an OS
+                error.
+        """
         if version is None:
             full_path = repo_root / rel_path
             try:
@@ -528,7 +553,12 @@ def _entry_to_hit(
     *,
     doc_types: frozenset[DocType] | None,
 ) -> DocSearchHit | None:
-    """Convert a memory entry to a search hit; filter by doc_type if given."""
+    """Convert a memory entry to a search hit; filter by doc_type if given.
+
+    Returns:
+        A ``DocSearchHit`` for the entry, or ``None`` when it lacks the
+        required tags or its doc type is filtered out.
+    """
     project_id = _extract_tag(entry, DOCS_PROJECT_TAG_PREFIX)
     slug = _extract_tag(entry, DOCS_SLUG_TAG_PREFIX)
     if project_id is None or slug is None:
@@ -557,7 +587,12 @@ def _extract_tag(entry: MemoryEntry, prefix: str) -> NotBlankStr | None:
 
 
 def _extract_doc_type(entry: MemoryEntry) -> DocType | None:
-    """Pull DocType out of the entry's ``doc_type:<value>`` tag."""
+    """Pull DocType out of the entry's ``doc_type:<value>`` tag.
+
+    Returns:
+        The parsed ``DocType``, or ``None`` when the tag is missing or
+        not a valid member.
+    """
     raw = _extract_tag(entry, DOCS_TYPE_TAG_PREFIX)
     if raw is None:
         return None
@@ -568,7 +603,12 @@ def _extract_doc_type(entry: MemoryEntry) -> DocType | None:
 
 
 def _parse_history_line(line: str) -> DocVersion | None:
-    r"""Parse one ``git log`` row in ``<sha>\\t<author_iso>\\t<subject>`` form."""
+    r"""Parse one ``git log`` row in ``<sha>\\t<author_iso>\\t<subject>`` form.
+
+    Returns:
+        The parsed ``DocVersion``, or ``None`` when the row has the wrong
+        field count or a naive / invalid timestamp.
+    """
     parts = line.split("\t", 2)
     if len(parts) != _HISTORY_FIELDS_PER_LINE:
         return None

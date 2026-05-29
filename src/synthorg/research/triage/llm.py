@@ -92,7 +92,16 @@ class LlmCredibilityTriage:
         *,
         brief: ResearchBrief,
     ) -> tuple[TriageOutput, float]:
-        """Score one batch and parse the model's structured verdicts."""
+        """Score one batch and parse the model's structured verdicts.
+
+        Returns:
+            A ``(TriageOutput, cost)`` pair: the parsed verdicts and the
+            LLM call's accrued cost.
+
+        Raises:
+            ResearchRunError: When the model output is not parseable into
+                a valid ``TriageOutput``.
+        """
         blocks = [
             f"ref_id: {item.ref_id}\nsource_type: {item.source_type.value}\n"
             + wrap_untrusted(
@@ -128,7 +137,12 @@ def _to_credibility(
     *,
     brief: ResearchBrief,
 ) -> SourceCredibility:
-    """Build a verdict for an item, defaulting to zero when omitted."""
+    """Build a verdict for an item, defaulting to zero when omitted.
+
+    Returns:
+        The ``SourceCredibility`` for the item: the model's verdict, or a
+        zero-score "unknown" verdict when ``verdict`` is ``None``.
+    """
     if verdict is None:
         return SourceCredibility(
             ref_id=item.ref_id,

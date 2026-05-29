@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 from pydantic import ValidationError
 
 from synthorg.core.agent import PersonalityConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
@@ -579,9 +580,8 @@ def generate_auto_name(
         else:
             fake = _get_faker(tuple(locale_list))
         return str(fake.name())
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         from synthorg.observability.events.template import (  # noqa: PLC0415
             TEMPLATE_NAME_GEN_FAKER_ERROR,
         )

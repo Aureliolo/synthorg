@@ -78,12 +78,11 @@ def _reraise_critical(exc: BaseException) -> None:
     stays self-contained and importable inside an arbitrary Playwright
     image that has no ``synthorg`` package installed.
 
+    Returns silently when ``exc`` is neither ``MemoryError`` nor
+    ``RecursionError``, so the caller continues its normal flow.
+
     Args:
         exc: The caught exception, inspected before any error handling.
-
-    Returns:
-        ``None`` when ``exc`` is neither ``MemoryError`` nor
-        ``RecursionError``, so the caller continues its normal flow.
 
     Raises:
         MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.

@@ -130,6 +130,10 @@ class ScoredFeedback:
         Full credit when the criterion text appears in the
         deliverable summary; otherwise a stable hash-derived score
         in ``[0.3, 0.8]``.
+
+        Returns:
+            ``1.0`` when the criterion text appears in the deliverable,
+            otherwise a stable hash-derived score in ``[0.3, 0.8]``.
         """
         if criterion.lower() in deliverable.lower():
             return 1.0

@@ -69,7 +69,11 @@ LinkText = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 
 
 def _new_block_id() -> NotBlankStr:
-    """Generate a fresh block UUID (kebab-stable across reorders)."""
+    """Generate a fresh block UUID (kebab-stable across reorders).
+
+    Returns:
+        A new UUID4 string wrapped as ``NotBlankStr``.
+    """
     return NotBlankStr(str(uuid4()))
 
 
@@ -219,6 +223,13 @@ class LinkBlock(BaseModel):
         Relative URLs (no scheme) and ``http`` / ``https`` / ``mailto``
         are permitted; any other explicit scheme is rejected because the
         wiki renders the value as an anchor ``href``.
+
+        Returns:
+            The validated URL string, unchanged.
+
+        Raises:
+            ValueError: When ``value`` carries an explicit scheme outside
+                the permitted set.
         """
         scheme = _url_scheme(value)
         if scheme is not None and scheme not in _ALLOWED_LINK_SCHEMES:

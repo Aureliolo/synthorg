@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.models import (
     Notification,
     NotificationSeverity,
@@ -39,7 +40,11 @@ _SEVERITY_ORDER: dict[NotificationSeverity, int] = {
 
 
 def _ignore_value_error() -> contextlib.AbstractContextManager[None]:
-    """Suppress ``ValueError`` from list operations on a possibly-stale sink."""
+    """Suppress ``ValueError`` from list operations on a possibly-stale sink.
+
+    Returns:
+        A context manager that suppresses ``ValueError`` within its block.
+    """
     return contextlib.suppress(ValueError)
 
 
@@ -131,6 +136,14 @@ class NotificationDispatcher:
         settings-backend outage must not silently silence the surface
         (operators silence by setting the value explicitly), so any
         resolver failure resolves to enabled.
+
+        Returns:
+            The resolved ``dispatcher_enabled`` flag, or ``True`` when no
+            resolver is wired or the lookup fails.
+
+        Raises:
+            asyncio.CancelledError: Propagated unchanged when the resolver
+                await is cancelled.
         """
         if self._config_resolver is None:
             return True
@@ -140,9 +153,8 @@ class NotificationDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
                     NOTIFICATION_DISPATCHER_RESOLVE_FAILED,
@@ -241,9 +253,8 @@ class NotificationDispatcher:
         """
         try:
             await sink.start()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             failed.append(sink)
             logger.warning(
                 NOTIFICATION_SINK_START_FAILED,
@@ -257,9 +268,8 @@ class NotificationDispatcher:
         """Run ``sink.close()`` with per-sink error isolation."""
         try:
             await sink.close()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_SINK_CLOSE_FAILED,
                 sink_name=sink.sink_name,
@@ -414,9 +424,8 @@ class NotificationDispatcher:
         """Send to a single sink, capturing errors."""
         try:
             await sink.send(notification)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             description = safe_error_description(exc)
             errors[index] = description
             logger.warning(

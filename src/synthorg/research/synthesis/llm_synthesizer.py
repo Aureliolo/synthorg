@@ -80,7 +80,12 @@ class LlmSynthesizer:
         *,
         sources_consulted: int,
     ) -> tuple[ResearchReport, float]:
-        """Return a cited report and the USD cost of producing it."""
+        """Return a cited report and the USD cost of producing it.
+
+        Raises:
+            ResearchSynthesisError: When no sources remain after triage,
+                or the model output cannot be parsed.
+        """
         if not sources:
             msg = "no sources retained after triage; cannot synthesise a report"
             raise ResearchSynthesisError(msg)
@@ -128,6 +133,10 @@ class LlmSynthesizer:
         the title, uri, and snippet all come from untrusted external
         sources, so they are wrapped together inside one fence. The research
         angle is model-produced by the planning stage, so it is fenced too.
+
+        Returns:
+            The assembled user prompt: the fenced question and research
+            angle followed by one wrapped block per source.
         """
         question = wrap_untrusted(TAG_TASK_DATA, f"Question: {brief.question}")
         research_angle = wrap_untrusted(
@@ -144,7 +153,15 @@ class LlmSynthesizer:
         return f"{question}\n{research_angle}\n\nSources:\n" + "\n\n".join(blocks)
 
     def _parse(self, content: str) -> SynthesisOutput:
-        """Extract and validate the synthesiser's structured output."""
+        """Extract and validate the synthesiser's structured output.
+
+        Returns:
+            The parsed, validated ``SynthesisOutput``.
+
+        Raises:
+            ResearchSynthesisError: When the model output is not parseable
+                into a valid ``SynthesisOutput``.
+        """
         try:
             obj = json.loads(extract_json_object(content))
             return parse_typed(_SYNTHESIS_BOUNDARY, obj, SynthesisOutput)

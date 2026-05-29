@@ -18,7 +18,12 @@ _PARAGRAPH_RE = re.compile(r"\n\s*\n")
 
 
 def approx_tokens(text: str) -> int:
-    """Approximate token count via the chars-per-token proxy."""
+    """Approximate token count via the chars-per-token proxy.
+
+    Returns:
+        ``0`` for empty text, otherwise at least ``1`` token scaled by the
+        chars-per-token proxy.
+    """
     if not text:
         return 0
     return max(1, len(text) // KNOWLEDGE_CHAR_PER_TOKEN_PROXY)
@@ -47,7 +52,12 @@ def _paragraph_spans(text: str) -> list[tuple[int, int]]:
 
 
 def _hard_split(start: int, end: int, max_chars: int) -> list[tuple[int, int]]:
-    """Split an oversized span into fixed-width sub-spans."""
+    """Split an oversized span into fixed-width sub-spans.
+
+    Returns:
+        Consecutive ``(start, end)`` sub-spans of at most ``max_chars``
+        covering ``[start, end)``.
+    """
     pieces: list[tuple[int, int]] = []
     pos = start
     while pos < end:
@@ -62,6 +72,10 @@ def pack_text_spans(text: str) -> tuple[tuple[int, int], ...]:
     Paragraphs are merged up to the target budget; a paragraph larger
     than the hard maximum is split at fixed width. Whitespace-only text
     yields no spans.
+
+    Returns:
+        The packed ``(char_start, char_end)`` chunk spans, or an empty
+        tuple for whitespace-only text.
     """
     if not text.strip():
         return ()

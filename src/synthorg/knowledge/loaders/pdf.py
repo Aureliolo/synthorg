@@ -46,7 +46,15 @@ logger = get_logger(__name__)
 
 
 def _default_opener(path: str) -> AbstractContextManager[Any]:
-    """Open *path* with pdfplumber, lazily importing the optional dep."""
+    """Open *path* with pdfplumber, lazily importing the optional dep.
+
+    Returns:
+        A context manager yielding a pdfplumber-like object exposing
+        ``.pages``.
+
+    Raises:
+        KnowledgeDependencyError: When ``pdfplumber`` is not installed.
+    """
     try:
         import pdfplumber  # noqa: PLC0415
     except ImportError as exc:
@@ -70,7 +78,11 @@ class PdfLoader:
         self._opener = opener if opener is not None else _default_opener
 
     async def load(self, source: KnowledgeSource) -> RawDocument:
-        """Parse the PDF at ``source.uri`` into per-page units."""
+        """Parse the PDF at ``source.uri`` into per-page units.
+
+        Returns:
+            A ``RawDocument`` with one page-addressable unit per PDF page.
+        """
         document = await asyncio.to_thread(self._load_sync, source)
         logger.debug(
             KNOWLEDGE_SOURCE_LOADED,

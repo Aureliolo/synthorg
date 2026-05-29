@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import BackupUnrestartableError
 from synthorg.backup.models import BackupTrigger
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.backup import (
@@ -53,6 +54,10 @@ class BackupScheduler:
         Distinct from :attr:`is_running` so the public predicate stays
         cheap and mockable in tests; loop introspection only matters
         on the cross-loop-restart path.
+
+        Returns:
+            ``True`` when a live task exists and is bound to the running
+            loop; ``False`` otherwise.
 
         Returns ``True`` (i.e. "do not drop state") when the task or
         loop cannot be introspected -- typically a ``MagicMock(spec=
@@ -105,6 +110,11 @@ class BackupScheduler:
         on the current loop.  If the foreign-loop task is still alive,
         ``start()`` refuses rather than silently abandoning a running
         scheduler and spawning a duplicate.
+
+        Raises:
+            BackupUnrestartableError: When a prior ``stop()`` timed out and
+                left the scheduler unrestartable, or ``start()`` is called
+                from a different loop while a prior task still runs.
         """
         # Detect cross-loop reuse before touching any lifecycle primitive.
         if self._task is not None and not self._task_is_on_current_loop():
@@ -172,6 +182,10 @@ class BackupScheduler:
         cancels the task directly via ``task.cancel()`` without
         signalling, since there is no event the running loop is
         waiting on.
+
+        Raises:
+            TimeoutError: When the drain exceeds the hard deadline; the
+                scheduler is marked unrestartable before re-raising.
         """
         if self._task is None:
             return
@@ -200,9 +214,8 @@ class BackupScheduler:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         BACKUP_FAILED,
                         error_type=type(exc).__name__,
@@ -287,6 +300,12 @@ class BackupScheduler:
         events into locals because ``stop()`` may set them to ``None``
         on completion; ``start()`` guarantees they are non-None at
         the moment the task is spawned.
+
+        Raises:
+            RuntimeError: When invoked without initialised lifecycle
+                events (a defensive guard that ``start()`` prevents).
+            asyncio.CancelledError: Propagated on cancellation so the
+                surrounding task tears down cleanly.
         """
         wake_event = self._wake_event
         stop_event = self._stop_event
@@ -310,11 +329,10 @@ class BackupScheduler:
             logger.debug(BACKUP_SCHEDULER_TICK)
             try:
                 await self._service.create_backup(BackupTrigger.SCHEDULED)
-            except MemoryError, RecursionError:
-                raise
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     BACKUP_FAILED,
                     error_type=type(exc).__name__,

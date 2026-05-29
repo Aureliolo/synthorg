@@ -68,6 +68,9 @@ class TelemetryEvent(BaseModel):
     def _validate_properties(self) -> Self:
         """Enforce the privacy property contract at construction.
 
+        Returns:
+            The validated model instance (``self``), unchanged.
+
         A telemetry property typo (key not in the per-event-type
         allowlist), a forbidden key pattern, a non-primitive value, or
         an over-length string now raises ``ValidationError`` here

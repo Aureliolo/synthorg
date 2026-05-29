@@ -52,7 +52,12 @@ class ConfigError(DomainError):
 
     @override
     def __str__(self) -> str:
-        """Format error message with source locations."""
+        """Format error message with source locations.
+
+        Returns:
+            The message alone when there are no locations, otherwise the
+            message followed by one indented line per source location.
+        """
         if not self.locations:
             return self.message
         parts = [self.message]
@@ -116,7 +121,13 @@ class ConfigValidationError(ConfigError):
 
     @override
     def __str__(self) -> str:
-        """Format validation error with per-field details."""
+        """Format validation error with per-field details.
+
+        Returns:
+            The base location-formatted message when there are no field
+            errors, otherwise a header line plus one indented line per
+            ``(key_path, message)`` field error.
+        """
         if not self.field_errors:
             return super().__str__()
         parts = [f"{self.message} ({len(self.field_errors)} errors):"]

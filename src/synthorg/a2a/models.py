@@ -68,7 +68,11 @@ class JsonRpcRequest(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_params(self) -> Self:
-        """Deep-copy mutable params dict at construction."""
+        """Deep-copy mutable params dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``params`` deep-copied.
+        """
         object.__setattr__(self, "params", copy.deepcopy(self.params))
         return self
 
@@ -93,7 +97,11 @@ class JsonRpcErrorData(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_data(self) -> Self:
-        """Deep-copy mutable data dict at construction."""
+        """Deep-copy mutable data dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``data`` deep-copied.
+        """
         if self.data is not None:
             object.__setattr__(self, "data", copy.deepcopy(self.data))
         return self
@@ -120,7 +128,15 @@ class JsonRpcResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_result_or_error(self) -> Self:
-        """Ensure exactly one of result or error is set."""
+        """Ensure exactly one of result or error is set.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When both ``result`` and ``error`` are set, or
+                neither is set.
+        """
         if self.result is not None and self.error is not None:
             msg = "JSON-RPC response must have result or error, not both"
             raise ValueError(msg)
@@ -131,7 +147,11 @@ class JsonRpcResponse(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_result(self) -> Self:
-        """Deep-copy mutable result dict at construction."""
+        """Deep-copy mutable result dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``result`` deep-copied.
+        """
         if self.result is not None:
             object.__setattr__(self, "result", copy.deepcopy(self.result))
         return self
@@ -216,7 +236,11 @@ class A2ADataPart(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_data(self) -> Self:
-        """Deep-copy mutable data dict at construction."""
+        """Deep-copy mutable data dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``data`` deep-copied.
+        """
         object.__setattr__(self, "data", copy.deepcopy(self.data))
         return self
 
@@ -285,7 +309,11 @@ class A2AMessage(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
-        """Deep-copy mutable metadata dict at construction."""
+        """Deep-copy mutable metadata dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``metadata`` deep-copied.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self
 
@@ -324,7 +352,11 @@ class A2ATask(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
-        """Deep-copy mutable metadata dict at construction."""
+        """Deep-copy mutable metadata dict at construction.
+
+        Returns:
+            The model instance (``self``) with ``metadata`` deep-copied.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self
 

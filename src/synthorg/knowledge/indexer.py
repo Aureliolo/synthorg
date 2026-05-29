@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
@@ -123,9 +124,8 @@ class KnowledgeIndexer:
             for removed_id in diff.removed_ids:
                 await self._provenance.delete(removed_id)
             await self._embed_chunks(source=source, chunks=diff.to_embed)
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to index chunks for source {source.source_id!r}"
             logger.warning(
                 KNOWLEDGE_CHUNKS_INDEX_FAILED,
@@ -150,8 +150,10 @@ class KnowledgeIndexer:
     async def purge_source(self, source_id: NotBlankStr) -> int:
         """Delete every memory entry and provenance row for a source.
 
-        Used when a source is deleted. Returns the provenance rows
-        removed.
+        Used when a source is deleted.
+
+        Returns:
+            The number of provenance rows removed.
         """
         existing = await self._existing_hashes(source_id)
         await self._purge_chunks(
@@ -304,7 +306,12 @@ class KnowledgeIndexer:
 def _chunk_tags(
     *, source: KnowledgeSource, chunk: KnowledgeChunk
 ) -> tuple[NotBlankStr, ...]:
-    """Build the indexing tags carried on a chunk's memory entry."""
+    """Build the indexing tags carried on a chunk's memory entry.
+
+    Returns:
+        The tag tuple: source, chunk, kind, and scope (project or global)
+        tags followed by the chunk's own tags.
+    """
     scope_tag = (
         KNOWLEDGE_GLOBAL_SCOPE_TAG
         if source.project_id is None
@@ -322,7 +329,12 @@ def _chunk_tags(
 def _chunk_to_request(
     *, source: KnowledgeSource, chunk: KnowledgeChunk
 ) -> MemoryStoreRequest:
-    """Translate a :class:`KnowledgeChunk` into a memory store request."""
+    """Translate a :class:`KnowledgeChunk` into a memory store request.
+
+    Returns:
+        A ``MemoryStoreRequest`` carrying the chunk text under the
+        ``KNOWLEDGE`` category with the chunk's indexing tags.
+    """
     return MemoryStoreRequest(
         category=MemoryCategory.KNOWLEDGE,
         namespace=KNOWLEDGE_MEMORY_NAMESPACE,

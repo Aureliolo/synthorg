@@ -117,7 +117,15 @@ class CodeSourceLocator(BaseModel):
 
     @model_validator(mode="after")
     def _validate_line_range(self) -> Self:
-        """Reject an end line preceding its start when both are set."""
+        """Reject an end line preceding its start when both are set.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When both bounds are set and ``line_end`` is less
+                than ``line_start``.
+        """
         if (
             self.line_start is not None
             and self.line_end is not None
@@ -165,7 +173,15 @@ class ResearchCitation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_payload(self) -> Self:
-        """Enforce exactly one payload, consistent with ``source_type``."""
+        """Enforce exactly one payload, consistent with ``source_type``.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the set payload (``knowledge`` / ``external``)
+                does not match ``source_type``, or both / neither are set.
+        """
         is_knowledge = self.source_type is ResearchSourceType.KNOWLEDGE
         if is_knowledge:
             if self.knowledge is None or self.external is not None:
@@ -254,7 +270,14 @@ class ResearchBrief(BaseModel):
 
     @model_validator(mode="after")
     def _require_a_source(self) -> Self:
-        """Reject a brief that enables no retrieval source."""
+        """Reject a brief that enables no retrieval source.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When no retrieval source type is enabled.
+        """
         if not self.enabled_source_types:
             msg = "at least one retrieval source must be enabled"
             raise ValueError(msg)
@@ -286,7 +309,14 @@ class ResearchQueryPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_indices(self) -> Self:
-        """Reject duplicate sub-query indices (they key replay routing)."""
+        """Reject duplicate sub-query indices (they key replay routing).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two sub-queries share an index.
+        """
         indices = [sq.index for sq in self.sub_queries]
         if len(set(indices)) != len(indices):
             msg = "sub_query indices must be unique"
@@ -324,7 +354,15 @@ class RetrievedItem(BaseModel):
 
     @model_validator(mode="after")
     def _validate_citation(self) -> Self:
-        """Citation must agree with this item's ``ref_id`` and source kind."""
+        """Citation must agree with this item's ``ref_id`` and source kind.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the citation's ``ref_id`` or ``source_type``
+                disagrees with the item's.
+        """
         if self.citation.ref_id != self.ref_id:
             msg = (
                 f"citation ref_id {self.citation.ref_id!r} does not match item "
@@ -405,7 +443,15 @@ class ResearchReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
-        """Retained sources cannot exceed those consulted."""
+        """Retained sources cannot exceed those consulted.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``sources_retained`` exceeds
+                ``sources_consulted``.
+        """
         if self.sources_retained > self.sources_consulted:
             msg = (
                 f"sources_retained ({self.sources_retained}) cannot exceed "
@@ -477,7 +523,15 @@ class ResearchRun(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> Self:
-        """Enforce brief linkage and status / payload invariants."""
+        """Enforce brief linkage and status / payload invariants.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the embedded brief's id mismatches, or the
+                status and payload (report / error) are inconsistent.
+        """
         if self.brief.brief_id != self.brief_id:
             msg = (
                 f"brief.brief_id {self.brief.brief_id!r} does not match run "

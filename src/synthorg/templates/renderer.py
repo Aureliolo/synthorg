@@ -458,6 +458,11 @@ def _build_config_dict(  # noqa: PLR0913
 
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
+
+    Raises:
+        TemplateRenderError: When a rendered field has the wrong shape
+            (e.g. ``company`` is not a mapping, or a list field is
+            malformed).
     """
     company = rendered_data.get("company")
     if company is None:
@@ -523,7 +528,16 @@ def _validate_list(
     rendered_data: dict[str, Any],
     key: str,
 ) -> list[dict[str, Any]]:
-    """Extract and validate a list field from rendered data."""
+    """Extract and validate a list field from rendered data.
+
+    Returns:
+        The list value for ``key`` (empty list when absent / ``None``),
+        with every element confirmed to be a mapping.
+
+    Raises:
+        TemplateRenderError: When the field is not a list, or an element
+            is not a mapping.
+    """
     raw = rendered_data.get(key, [])
     if raw is None:
         raw = []
@@ -560,6 +574,14 @@ def _extract_numeric_config(
 
     Autonomy is always a dict (AutonomyConfig-compatible). A copy
     is returned to prevent mutation of the original rendered data.
+
+    Returns:
+        A ``(autonomy_dict, budget_monthly)`` pair, the autonomy dict
+        deep-copied from the rendered data.
+
+    Raises:
+        TemplateRenderError: When ``autonomy`` is present but not a
+            mapping, or ``budget_monthly`` is not numeric.
     """
     source_name = template.metadata.name
     raw_autonomy = company.get("autonomy", template.autonomy)
@@ -661,6 +683,9 @@ def _expand_single_agent(  # noqa: PLR0913
 
     Returns:
         Expanded agent dict suitable for ``AgentConfig`` construction.
+
+    Raises:
+        TemplateRenderError: When the agent dict is missing a ``role``.
     """
     role = agent.get("role")
     if not role:

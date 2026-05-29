@@ -115,7 +115,13 @@ class VersioningService[T: BaseModel]:
         frozen: T,
         saved_by: str,
     ) -> VersionSnapshot[T]:
-        """Build a VersionSnapshot with the next version number."""
+        """Build a VersionSnapshot with the next version number.
+
+        Returns:
+            A new ``VersionSnapshot`` at ``latest.version + 1`` (or version 1
+            when there is no prior snapshot), carrying the frozen content and
+            its content hash.
+        """
         new_version = (latest.version + 1) if latest is not None else 1
         return VersionSnapshot(
             entity_id=entity_id,
@@ -138,6 +144,12 @@ class VersioningService[T: BaseModel]:
         Re-fetches the persisted row and returns it if the content
         matches.  If different content won the race, builds a new
         snapshot at the next version number and retries once.
+
+        Returns:
+            The persisted snapshot when its content matches the local write,
+            the freshly inserted retry snapshot when the second attempt wins,
+            or the latest persisted snapshot after a second collision.
+            ``None`` only when no snapshot exists for the entity.
         """
         persisted = await self._repo.get_latest_version(entity_id)
         if persisted is not None and persisted.content_hash == content_hash:

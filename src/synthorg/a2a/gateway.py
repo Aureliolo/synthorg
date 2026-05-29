@@ -50,6 +50,7 @@ from synthorg.a2a.rpc_params import (
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.normalization import (
@@ -101,6 +102,15 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
     resolver lookup fails.  A transient settings outage must not let
     an oversized message slip through, so the fallback is the same
     value as the registered default.
+
+    Returns:
+        The resolved ``a2a.max_message_parts`` value, or
+        ``_MAX_MESSAGE_PARTS_FALLBACK`` when no resolver is wired or the
+        lookup fails.
+
+    Raises:
+        asyncio.CancelledError: Propagated unchanged when the resolver
+            await is cancelled.
     """
     if app_state is None or app_state.slice(SettingsStateSlice).config_resolver is None:
         return _MAX_MESSAGE_PARTS_FALLBACK
@@ -110,9 +120,8 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
         return value  # noqa: TRY300 -- explicit return type; not a try-success path
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # SETTINGS_FETCH_FAILED is the correct surface for an
         # internal settings-resolution failure; A2A_JSONRPC_INVALID_PARAMS
         # would mislead operators into thinking a client request was
@@ -198,7 +207,12 @@ class A2AGatewayController(Controller):
         state: State,
         request: Request[Any, Any, Any],
     ) -> Response[dict[str, Any]]:
-        """Dispatch an inbound JSON-RPC 2.0 request."""
+        """Dispatch an inbound JSON-RPC 2.0 request.
+
+        Returns:
+            An HTTP ``Response`` wrapping the JSON-RPC result or error
+            envelope.
+        """
         app_state = state["app_state"]
         a2a_config = app_state.config.a2a
 
@@ -344,9 +358,8 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
             error=safe_error_description(exc),
         )
         return None
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # No ``exc_info=True``: a traceback attached here would
         # serialise frame-local variables (including the raw request
         # body bytes) into the log event. ``error_type`` + scrubbed
@@ -381,6 +394,10 @@ async def _dispatch_method(
 
     Returns:
         JSON-RPC response wrapped in an HTTP response.
+
+    Raises:
+        AssertionError: Defensive guard when a typed params variant is
+            not wired in the dispatch ``match`` (unreachable in practice).
     """
     request_id = rpc_request.id
     method = str(rpc_request.method)
@@ -470,9 +487,8 @@ async def _dispatch_method(
             media_type="application/json",
             status_code=exc.http_status,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # A2A is a credential-bearing path: a traceback attached via
         # ``logger.exception`` would serialise frame-local values from
         # the validated ``rpc_request`` (peer payloads, auth tokens).
@@ -526,6 +542,10 @@ def _credentials_match(stored: str, presented: str) -> bool:
     Callers MUST treat empty stored credentials as a missing-
     credentials condition before calling here -- this helper is
     purely byte-wise and reports two empty strings as equal.
+
+    Returns:
+        ``True`` when the two credentials are byte-equal under
+        constant-time comparison, ``False`` otherwise.
     """
     return hmac.compare_digest(
         stored.encode("utf-8", errors="replace"),
@@ -594,9 +614,8 @@ async def _verify_peer_credentials(
                 )
                 return False
         # mTLS/none: no header-level check needed
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Credential verification sits alongside ``request``,
         # ``credentials``, and raw auth headers in the local frame;
         # attaching ``exc_info=True`` would have structlog serialise
@@ -661,6 +680,10 @@ def _require_task_engine(app_state: Any) -> Any:
     when the engine is not wired.  We catch that and re-raise
     as ``_A2AMethodError`` so the JSON-RPC dispatcher can format
     a proper error response.
+
+    Raises:
+        _A2AMethodError: With a 503 status when the task engine is not
+            wired.
     """
     from synthorg.core.domain_errors import ServiceUnavailableError  # noqa: PLC0415
 
@@ -715,6 +738,10 @@ async def _handle_message_send(
 
     Returns:
         Task state dict.
+
+    Raises:
+        _A2AMethodError: When the message exceeds the configured
+            part-count cap, or the task engine is unavailable.
     """
     parts = params.message.parts
 
@@ -788,6 +815,10 @@ async def _handle_tasks_get(
 
     Returns:
         Task state dict.
+
+    Raises:
+        _A2AMethodError: With a 404 status when no task matches ``id``,
+            or when the task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get(params.id)
@@ -820,6 +851,11 @@ async def _handle_tasks_cancel(
 
     Returns:
         Updated task state dict.
+
+    Raises:
+        _A2AMethodError: With a 404 status when no task matches ``id``,
+            when the task is in a terminal (non-cancellable) state, or
+            when the task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
     task = await task_engine.get(params.id)

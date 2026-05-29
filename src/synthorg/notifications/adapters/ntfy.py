@@ -12,6 +12,7 @@ import httpx
 if TYPE_CHECKING:
     from types import TracebackType
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.notifications.models import (
     Notification,
@@ -39,7 +40,12 @@ _BLOCKED_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _validate_outbound_url(url: str, field: str) -> None:
-    """Reject URLs that target internal/loopback hosts or non-HTTP schemes."""
+    """Reject URLs that target internal/loopback hosts or non-HTTP schemes.
+
+    Raises:
+        ValueError: When ``url`` uses a non-HTTP(S) scheme, or targets a
+            loopback / private / link-local host.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
         msg = f"{field} must use http or https scheme, got {parsed.scheme!r}"
@@ -151,9 +157,8 @@ class NtfyNotificationSink:
             client = self._client
             try:
                 await client.aclose()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     NOTIFICATION_NTFY_FAILED,
                     error_type=type(exc).__name__,
@@ -164,7 +169,11 @@ class NtfyNotificationSink:
             self._client = None
 
     async def __aenter__(self) -> Self:
-        """Start the sink; return self for ``async with`` callers."""
+        """Start the sink; return self for ``async with`` callers.
+
+        Returns:
+            This sink instance, started and ready to send.
+        """
         await self.start()
         return self
 
@@ -221,9 +230,8 @@ class NtfyNotificationSink:
                 notification_id=notification.id,
                 status_code=response.status_code,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_NTFY_FAILED,
                 notification_id=notification.id,

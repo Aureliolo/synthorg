@@ -41,6 +41,10 @@ def derive_slug(
 
     Returns:
         A ``NotBlankStr`` slug not present in *existing_slugs*.
+
+    Raises:
+        DocValidationError: When the suffix space is exhausted without
+            finding a free slug.
     """
     base = _slugify(title)
     if base not in existing_slugs:
@@ -56,7 +60,12 @@ def derive_slug(
 
 
 def _slugify(title: str) -> NotBlankStr:
-    """Kebab-case ASCII reduction bounded by ``DOCS_SLUG_MAX_LENGTH``."""
+    """Kebab-case ASCII reduction bounded by ``DOCS_SLUG_MAX_LENGTH``.
+
+    Returns:
+        The kebab-cased slug, or ``_FALLBACK_SLUG`` when the reduction is
+        empty.
+    """
     lowered = title.lower()
     safe = _KEEP_PATTERN.sub("-", lowered).strip("-")
     if not safe:
@@ -65,7 +74,12 @@ def _slugify(title: str) -> NotBlankStr:
 
 
 def _truncate_with_suffix(base: str, suffix: int) -> str:
-    """Append ``-N`` to *base*, preserving the overall length budget."""
+    """Append ``-N`` to *base*, preserving the overall length budget.
+
+    Returns:
+        ``base`` truncated to fit the suffix within
+        ``DOCS_SLUG_MAX_LENGTH``, with ``-N`` appended.
+    """
     tail = f"-{suffix}"
     budget = DOCS_SLUG_MAX_LENGTH - len(tail)
     return (base[:budget].rstrip("-") or "doc") + tail

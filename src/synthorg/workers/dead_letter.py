@@ -23,6 +23,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.core.workers_errors import WorkerDeadLetterError
@@ -84,6 +85,10 @@ def make_engine_task_fail_handler(engine: Any) -> TaskFailHandler:
     consumer can decide ack vs nack without coupling to engine
     internals. Engine error types are imported lazily to keep this
     module importable without the engine package.
+
+    Returns:
+        A ``TaskFailHandler`` that fails a task via the engine and maps
+        the outcome to a ``DeadLetterOutcome``.
     """
     from synthorg.core.enums import TaskStatus  # noqa: PLC0415
     from synthorg.engine.errors import (  # noqa: PLC0415
@@ -204,8 +209,6 @@ class DeadLetterConsumer:
             claim, raw = pair
             try:
                 await self._handle(claim, raw)
-            except MemoryError, RecursionError:
-                raise
             except WorkerDeadLetterError as exc:
                 # One unresolved poison claim must not kill the loop and
                 # disable every later dead claim until restart. The
@@ -220,7 +223,12 @@ class DeadLetterConsumer:
                 continue
 
     async def _handle(self, claim: TaskClaim, raw: Any) -> None:
-        """Drive one dead claim to FAILED, idempotently."""
+        """Drive one dead claim to FAILED, idempotently.
+
+        Raises:
+            WorkerDeadLetterError: When the engine fail-handler raises an
+                unmapped failure (the claim is left un-acked).
+        """
         if await self._already_handled(claim):
             await JetStreamTaskQueue.ack(raw)
             return
@@ -229,9 +237,8 @@ class DeadLetterConsumer:
                 str(claim.task_id),
                 "Task exhausted distributed retry budget (dead-lettered)",
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # An unmapped failure means we cannot prove the task was
             # failed; raising loudly beats acking and losing it.
             log_exception_redacted(
@@ -265,6 +272,10 @@ class DeadLetterConsumer:
         dead consumer's own delivery budget is exhausted, raising is
         the honest outcome: silently acking would lose the task, which
         is exactly what this consumer exists to prevent.
+
+        Raises:
+            WorkerDeadLetterError: When the dead consumer's own delivery
+                budget is exhausted for a retryable claim.
         """
         metadata = getattr(raw, "metadata", None)
         num_delivered = int(getattr(metadata, "num_delivered", 0))

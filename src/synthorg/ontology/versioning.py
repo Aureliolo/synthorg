@@ -22,7 +22,14 @@ logger = get_logger(__name__)
 
 
 def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
-    """Deserialize a JSON text snapshot, wrapping validation errors."""
+    """Deserialize a JSON text snapshot, wrapping validation errors.
+
+    Returns:
+        The parsed ``EntityDefinition``.
+
+    Raises:
+        OntologyError: When the snapshot JSON fails model validation.
+    """
     try:
         return EntityDefinition.model_validate_json(raw)
     except ValidationError as exc:
@@ -36,7 +43,14 @@ def _safe_deserialize_snapshot_json(raw: str) -> EntityDefinition:
 
 
 def _safe_deserialize_snapshot_dict(data: object) -> EntityDefinition:
-    """Deserialize a parsed JSONB snapshot, wrapping validation errors."""
+    """Deserialize a parsed JSONB snapshot, wrapping validation errors.
+
+    Returns:
+        The parsed ``EntityDefinition``.
+
+    Raises:
+        OntologyError: When the snapshot data fails model validation.
+    """
     try:
         return EntityDefinition.model_validate(data)
     except ValidationError as exc:

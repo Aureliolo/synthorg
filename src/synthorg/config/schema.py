@@ -353,7 +353,15 @@ class TaskAssignmentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_strategy_name(self) -> Self:
-        """Ensure strategy is a known assignment strategy name."""
+        """Ensure strategy is a known assignment strategy name.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``strategy`` is not one of the known
+                assignment-strategy names.
+        """
         if self.strategy not in self._VALID_STRATEGIES:
             msg = (
                 f"Unknown assignment strategy {self.strategy!r}. "
@@ -630,7 +638,14 @@ class RootConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:
-        """Ensure agent names are unique."""
+        """Ensure agent names are unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two or more agents share a name.
+        """
         names = [a.name for a in self.agents]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -645,7 +660,14 @@ class RootConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
-        """Ensure department names are unique."""
+        """Ensure department names are unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two or more departments share a name.
+        """
         names = [d.name for d in self.departments]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -668,6 +690,13 @@ class RootConfig(BaseModel):
         transport cannot drive the queue, and additionally require a
         non-null ``nats`` sub-block so the worker has something to
         connect to.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``queue.enabled`` but the message-bus
+                backend is not NATS, or the ``nats`` sub-block is unset.
         """
         from synthorg.communication.enums import MessageBusBackend  # noqa: PLC0415
 
@@ -699,7 +728,15 @@ class RootConfig(BaseModel):
         return self
 
     def _collect_model_refs(self) -> set[str]:
-        """Build unique model ref set, raising on cross-provider collisions."""
+        """Build unique model ref set, raising on cross-provider collisions.
+
+        Returns:
+            The set of every model id and alias across all providers.
+
+        Raises:
+            ValueError: When the same id or alias is defined by more than
+                one provider.
+        """
         ref_to_provider: dict[str, str] = {}
         for prov_name, provider in self.providers.items():
             for model in provider.models:
@@ -723,7 +760,15 @@ class RootConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_routing_references(self) -> Self:
-        """Ensure routing model references exist and are unambiguous."""
+        """Ensure routing model references exist and are unambiguous.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When a routing rule, fallback, or fallback-chain
+                entry references a model id/alias no provider defines.
+        """
         if not self.routing.rules and not self.routing.fallback_chain:
             return self
 
@@ -760,7 +805,15 @@ class RootConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_degradation_fallback_providers(self) -> Self:
-        """Ensure degradation fallback_providers reference known providers."""
+        """Ensure degradation fallback_providers reference known providers.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When a provider's degradation ``fallback_providers``
+                names a provider absent from the config.
+        """
         known_providers = set(self.providers)
         for prov_name, prov_config in self.providers.items():
             for fb in prov_config.degradation.fallback_providers:

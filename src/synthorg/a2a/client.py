@@ -15,6 +15,7 @@ from synthorg.a2a.models import (
     JsonRpcRequest,
     JsonRpcResponse,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
@@ -215,9 +216,8 @@ class A2AClient:
                 raise A2AClientError(msg, peer_name=peer_name)
             try:
                 await validate_url_host(url_str, self._network_validator)
-            except MemoryError, RecursionError:
-                raise
             except Exception as ssrf_exc:
+                reraise_critical(ssrf_exc)
                 logger.warning(
                     A2A_OUTBOUND_SSRF_BLOCKED,
                     peer_name=peer_name,
@@ -418,9 +418,8 @@ def _parse_rpc_response(
     """
     try:
         raw = response.json()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,
@@ -433,9 +432,8 @@ def _parse_rpc_response(
 
     try:
         return JsonRpcResponse.model_validate(raw)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             A2A_OUTBOUND_FAILED,
             peer_name=peer_name,

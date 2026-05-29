@@ -40,6 +40,10 @@ def _build_sqlite_handler(
     :class:`synthorg.persistence.config.PersistenceConfig`), so
     Pydantic always materialises a value even when the YAML omits the
     block.
+
+    Returns:
+        A SQLite persistence ``ComponentHandler`` bound to the resolved
+        database path.
     """
     from pathlib import Path  # noqa: PLC0415
 
@@ -60,6 +64,13 @@ def _build_postgres_handler(
     constructing the handler so missing tooling surfaces at factory
     dispatch (the ``BACKUP_HANDLER_REGISTRATION_FAILED`` event) rather
     than the first scheduled backup attempt.
+
+    Returns:
+        A Postgres persistence ``ComponentHandler``.
+
+    Raises:
+        BackupConfigurationError: When ``pg_dump`` / ``pg_restore`` are
+            not available on PATH.
     """
     pg_config = config.persistence.postgres
     if pg_config is None:

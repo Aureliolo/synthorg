@@ -84,7 +84,12 @@ def clear_entity_registry() -> None:
 
 
 def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:
-    """Introspect a Pydantic model and build an EntityDefinition."""
+    """Introspect a Pydantic model and build an EntityDefinition.
+
+    Returns:
+        An ``EntityDefinition`` derived from the model's docstring,
+        described fields, tier, and source.
+    """
     from synthorg.ontology.models import (  # noqa: PLC0415
         EntityDefinition,
         EntityField,
@@ -131,7 +136,12 @@ def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:
 
 
 def _annotation_to_str(annotation: Any) -> str:
-    """Convert a type annotation to a readable string."""
+    """Convert a type annotation to a readable string.
+
+    Returns:
+        A readable string form of the annotation (generic args
+        recursively rendered; falls back to ``str(annotation)``).
+    """
     origin = getattr(annotation, "__origin__", None)
     if origin is not None:
         args = getattr(annotation, "__args__", ())

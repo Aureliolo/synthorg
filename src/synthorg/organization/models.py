@@ -81,7 +81,13 @@ class UpdateDepartmentRequest(BaseModel):
     def _validate_ceremony_policy(
         cls, v: dict[str, object] | None
     ) -> dict[str, object] | None:
-        """Validate ceremony_policy against CeremonyPolicyConfig schema."""
+        """Validate ceremony_policy against CeremonyPolicyConfig schema.
+
+        Returns:
+            The input value unchanged once validated (``None`` passes
+            through; a dict is checked against ``CeremonyPolicyConfig``
+            but not coerced to the typed model).
+        """
         if v is not None:
             CeremonyPolicyConfig.model_validate(v)
         return v
@@ -109,7 +115,15 @@ class CreateAgentOrgRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_pair(self) -> CreateAgentOrgRequest:
-        """Require both model_provider and model_id or neither."""
+        """Require both model_provider and model_id or neither.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``model_provider`` /
+                ``model_id`` is set.
+        """
         if bool(self.model_provider) != bool(self.model_id):
             msg = "model_provider and model_id must both be provided or both omitted"
             raise ValueError(msg)
@@ -131,7 +145,15 @@ class UpdateAgentOrgRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_pair(self) -> UpdateAgentOrgRequest:
-        """Require both model_provider and model_id or neither."""
+        """Require both model_provider and model_id or neither.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``model_provider`` /
+                ``model_id`` is set.
+        """
         if bool(self.model_provider) != bool(self.model_id):
             msg = "model_provider and model_id must both be provided or both omitted"
             raise ValueError(msg)

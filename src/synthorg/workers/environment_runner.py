@@ -44,7 +44,11 @@ class SandboxEnvironmentRunner:
         env: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109 -- matches runner protocol
     ) -> CommandOutcome:
-        """Execute a setup command in the project's sandbox."""
+        """Execute a setup command in the project's sandbox.
+
+        Returns:
+            The ``CommandOutcome`` from running the command in the sandbox.
+        """
         result = await self._backend.execute(
             command=command,
             args=args,

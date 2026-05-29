@@ -44,7 +44,11 @@ class KnowledgeToolFactory:
         )
 
     def tool_names(self) -> Iterable[str]:
-        """Inventory of tool names produced by this factory."""
+        """Inventory of tool names produced by this factory.
+
+        Returns:
+            The static tuple of knowledge tool names this factory emits.
+        """
         return KNOWLEDGE_TOOL_NAMES
 
 
@@ -52,7 +56,11 @@ def build_knowledge_tool_factory(
     *,
     service: KnowledgeService,
 ) -> KnowledgeToolFactory:
-    """Construct the default :class:`KnowledgeToolFactory` (boot wiring)."""
+    """Construct the default :class:`KnowledgeToolFactory` (boot wiring).
+
+    Returns:
+        A ``KnowledgeToolFactory`` bound to ``service``.
+    """
     return KnowledgeToolFactory(service=service)
 
 

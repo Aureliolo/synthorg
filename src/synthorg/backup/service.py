@@ -26,6 +26,7 @@ from synthorg.backup.models import (
 from synthorg.backup.retention import RetentionManager
 from synthorg.backup.scheduler import BackupScheduler
 from synthorg.backup.service_archive import BackupServiceArchiveMixin
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -55,7 +56,12 @@ _BACKUP_ID_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
 def _validate_backup_id(backup_id: str) -> None:
-    """Validate backup_id format at service boundary."""
+    """Validate backup_id format at service boundary.
+
+    Raises:
+        BackupNotFoundError: When ``backup_id`` is not a 12-character hex
+            string.
+    """
     if not _BACKUP_ID_RE.match(backup_id):
         msg = (
             f"Invalid backup_id format: {backup_id!r}. "
@@ -133,7 +139,15 @@ class BackupService(BackupServiceArchiveMixin):
         *,
         compress: bool | None = None,
     ) -> BackupManifest:
-        """Create a new backup."""
+        """Create a new backup.
+
+        Returns:
+            The manifest for the newly created backup.
+
+        Raises:
+            BackupInProgressError: When another backup already holds the
+                backup lock.
+        """
         # ``locked()`` is a fast-path observation, not an atomic gate:
         # if a concurrent caller acquires the lock between the check
         # and the ``async with`` below, this caller queues rather than
@@ -159,7 +173,11 @@ class BackupService(BackupServiceArchiveMixin):
         *,
         compress: bool | None = None,
     ) -> BackupManifest:
-        """Execute the backup. Caller must hold ``_backup_lock``."""
+        """Execute the backup. Caller must hold ``_backup_lock``.
+
+        Returns:
+            The manifest for the created backup.
+        """
         backup_id = uuid4().hex[:12]
         timestamp = datetime.now(UTC).isoformat()
         effective_components = components or self._config.include
@@ -191,9 +209,8 @@ class BackupService(BackupServiceArchiveMixin):
                 dir_name=dir_name,
                 backup_dir=backup_dir,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, BACKUP_FAILED, exc, backup_id=backup_id)
             if backup_dir.exists():
                 await asyncio.to_thread(shutil.rmtree, backup_dir)
@@ -211,7 +228,11 @@ class BackupService(BackupServiceArchiveMixin):
         dir_name: str,
         backup_dir: Path,
     ) -> BackupManifest:
-        """Run the backup steps: create dirs, copy data, write manifest."""
+        """Run the backup steps: create dirs, copy data, write manifest.
+
+        Returns:
+            The manifest describing the components backed up.
+        """
         await asyncio.to_thread(self._backup_path.mkdir, parents=True, exist_ok=True)
         await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
 
@@ -306,9 +327,8 @@ class BackupService(BackupServiceArchiveMixin):
 
         try:
             await self._retention.prune()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would
             # carry don't leak via the traceback frame-locals.
@@ -325,7 +345,16 @@ class BackupService(BackupServiceArchiveMixin):
         backup_id: str,
         components: tuple[BackupComponent, ...] | None = None,
     ) -> RestoreResponse:
-        """Restore data from a backup."""
+        """Restore data from a backup.
+
+        Returns:
+            The restore response: the manifest, restored components, and
+            the safety backup id.
+
+        Raises:
+            BackupInProgressError: When another backup or restore already
+                holds the backup lock.
+        """
         _validate_backup_id(backup_id)
 
         if self._backup_lock.locked():
@@ -341,7 +370,17 @@ class BackupService(BackupServiceArchiveMixin):
         backup_id: str,
         components: tuple[BackupComponent, ...] | None = None,
     ) -> RestoreResponse:
-        """Execute the restore (called under lock)."""
+        """Execute the restore (called under lock).
+
+        Returns:
+            The restore response after components are restored and a
+            safety backup is taken.
+
+        Raises:
+            BackupNotFoundError: When neither a backup directory nor a
+                restorable archive exists for ``backup_id``.
+            RestoreError: When a component restore fails.
+        """
         logger.info(BACKUP_RESTORE_STARTED, backup_id=backup_id)
 
         manifest = await self._load_manifest(backup_id)
@@ -391,7 +430,12 @@ class BackupService(BackupServiceArchiveMixin):
         manifest: BackupManifest,
         backup_dir: Path,
     ) -> None:
-        """Re-compute checksum and compare against manifest."""
+        """Re-compute checksum and compare against manifest.
+
+        Raises:
+            ManifestError: When the recomputed checksum does not match the
+                manifest's recorded checksum.
+        """
         computed = await asyncio.to_thread(self._compute_checksum, backup_dir)
         expected = manifest.checksum
         actual = f"sha256:{computed}"
@@ -411,7 +455,16 @@ class BackupService(BackupServiceArchiveMixin):
         backup_dir: Path,
         safety_backup_id: str,
     ) -> RestoreResponse:
-        """Restore individual components and build the response."""
+        """Restore individual components and build the response.
+
+        Returns:
+            The restore response listing the restored components and the
+            safety backup id.
+
+        Raises:
+            RestoreError: When a component has no handler, or a handler's
+                restore fails.
+        """
         try:
             for comp in restore_components:
                 handler = self._handlers.get(comp)
@@ -419,9 +472,8 @@ class BackupService(BackupServiceArchiveMixin):
                     msg = f"No handler for component: {comp.value}"
                     raise RestoreError(msg)  # noqa: TRY301
                 await handler.restore(backup_dir)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BACKUP_RESTORE_ROLLBACK,
                 backup_id=backup_id,
@@ -450,7 +502,12 @@ class BackupService(BackupServiceArchiveMixin):
         restore_components: tuple[BackupComponent, ...],
         backup_dir: Path,
     ) -> None:
-        """Validate all restore components have handlers and valid sources."""
+        """Validate all restore components have handlers and valid sources.
+
+        Raises:
+            RestoreError: When a component has no handler, or its backup
+                source fails validation.
+        """
         for comp in restore_components:
             handler = self._handlers.get(comp)
             if handler is None:

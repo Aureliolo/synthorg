@@ -60,7 +60,12 @@ class PresetEntry(BaseModel):
 
 
 def _builtin_to_entry(name: str, preset: dict[str, Any]) -> PresetEntry:
-    """Convert a builtin preset dict to a PresetEntry."""
+    """Convert a builtin preset dict to a PresetEntry.
+
+    Returns:
+        A ``PresetEntry`` with ``BUILTIN`` source wrapping the preset
+        config.
+    """
     return PresetEntry(
         name=NotBlankStr(name),
         source=PresetSource.BUILTIN,
@@ -166,6 +171,9 @@ def _check_not_builtin(key: str, operation: str) -> None:
     Args:
         key: Normalized preset name.
         operation: Operation name for logging context.
+
+    Raises:
+        ConflictError: When ``key`` matches a built-in preset name.
     """
     if key in PERSONALITY_PRESETS:
         logger.warning(

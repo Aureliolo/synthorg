@@ -324,9 +324,9 @@ extend-select = [
     # ``explicit-preview-rules`` activates exactly these, not every preview
     # rule. Selecting the ``DOC`` prefix in ``select`` is inert under that
     # flag, so the codes must live here for the standard ``ruff check`` to
-    # enforce them. Per-file-ignores below exempt not-yet-swept packages,
-    # tests, scripts, and the god modules; every package absent from that
-    # brace expansion is gated. Wave plan: https://github.com/Aureliolo/synthorg/issues/2065
+    # enforce them. Enforced across all of src/synthorg/ (the #2065 wave
+    # backfill is complete); only tests, scripts, and the api god modules
+    # awaiting #2077 decomposition carry per-file-ignores below.
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
@@ -415,23 +415,12 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
-# DOC201/DOC202/DOC501 stay ignored only on the top-level packages still
-# listed in the brace expansion below; each wave removes its packages as
-# they are swept, and Wave 6 deletes the entry entirely. See
-# https://github.com/Aureliolo/synthorg/issues/2065 for the wave plan.
-"src/synthorg/{a2a,approval,backup,budget,client,cli,config,coordination,docs_engine,engine,experiments,hr,infrastructure,knowledge,llm,memory,notifications,ontology,organization,research,telemetry,templates,tools,versioning,workers}/**/*.py" = [
-    "DOC201",
-    "DOC202",
-    "DOC501",
-]
 "src/synthorg/api/{app,state,auto_wire,lifecycle,lifecycle_builder}.py" = [
-    # Wave 3 (#2111) drops ``api`` from the brace expansion above to
-    # enforce DOC201/202/501 across the api/ tree. The 5 god modules on
-    # the ``check_no_growth_in_god_modules`` allowlist stay exempt: each
-    # docstring addition ratchets LOC and would conflict with the
-    # per-PR net-shrink rule. EPIC #2077 dissolves these files via
-    # decomposition; the successor modules are subject to the standard
-    # DOC enforcement.
+    # The 5 god modules on the ``check_no_growth_in_god_modules``
+    # allowlist stay exempt from DOC201/202/501: each docstring addition
+    # ratchets LOC and would conflict with the per-PR net-shrink rule.
+    # EPIC #2077 dissolves these files via decomposition; the successor
+    # modules are subject to the standard DOC enforcement.
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
@@ -826,7 +815,7 @@ ignore-nested-functions = true
 ignore-nested-classes = true
 ignore-setters = true
 ignore-overloaded-functions = true
-fail-under = 90
+fail-under = 95
 exclude = ["build", "dist", ".venv", "tests", "evals"]
 verbose = 0
 quiet = false

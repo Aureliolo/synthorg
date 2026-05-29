@@ -49,7 +49,12 @@ def chunk_raw_document(
     *,
     config: KnowledgeConfig,
 ) -> tuple[KnowledgeChunk, ...]:
-    """Chunk every unit of *raw* into positional :class:`KnowledgeChunk`."""
+    """Chunk every unit of *raw* into positional :class:`KnowledgeChunk`.
+
+    Returns:
+        The positional knowledge chunks for every unit of ``raw``,
+        indexed in order.
+    """
     typed_pieces: list[tuple[ContentKind, ChunkPiece]] = []
     for unit in raw.units:
         chunker = build_chunker(unit.content_kind, config)

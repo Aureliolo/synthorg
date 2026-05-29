@@ -163,6 +163,8 @@ def load_pack(name: str) -> LoadedTemplate:
         TemplateRenderError: If the pack YAML cannot be read or parsed.
         TemplateValidationError: If the parsed pack fails schema
             validation.
+        OSError: If reading a user-directory pack file fails and no
+            built-in pack of the same name exists to fall back to.
     """
     name_clean = _validate_pack_name(name)
     logger.debug(TEMPLATE_PACK_LOAD_START, pack_name=name_clean)
@@ -229,7 +231,11 @@ def _pack_info_from_loaded(
     loaded: LoadedTemplate,
     source: Literal["builtin", "user"],
 ) -> PackInfo:
-    """Build a :class:`PackInfo` from a loaded pack."""
+    """Build a :class:`PackInfo` from a loaded pack.
+
+    Returns:
+        A ``PackInfo`` describing the loaded pack and its source.
+    """
     meta = loaded.template.metadata
     return PackInfo(
         name=name,
@@ -281,7 +287,15 @@ def _collect_user_packs() -> dict[str, PackInfo]:
 
 
 def _load_builtin(name: str) -> LoadedTemplate:
-    """Load a built-in pack by name."""
+    """Load a built-in pack by name.
+
+    Returns:
+        The validated :class:`LoadedTemplate` for the built-in pack.
+
+    Raises:
+        TemplateNotFoundError: When ``name`` is not a known built-in pack.
+        TemplateRenderError: When the packaged resource cannot be read.
+    """
     # circular: pack_loader -> loader -> pack_loader
     from synthorg.templates.loader import (  # noqa: PLC0415
         _parse_template_yaml,
@@ -320,7 +334,15 @@ def _load_builtin(name: str) -> LoadedTemplate:
 
 
 def _load_from_file(path: Path) -> LoadedTemplate:
-    """Load a pack from a file path."""
+    """Load a pack from a file path.
+
+    Returns:
+        The validated :class:`LoadedTemplate` parsed from the file.
+
+    Raises:
+        TemplateRenderError: When the file cannot be read or is not valid
+            UTF-8.
+    """
     # circular: pack_loader -> loader -> pack_loader
     from synthorg.templates.loader import (  # noqa: PLC0415
         _parse_template_yaml,

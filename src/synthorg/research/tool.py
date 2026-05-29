@@ -74,6 +74,10 @@ def derive_research_ids(
     Identical requests reproduce the same identifiers, so a re-run upserts
     the same row (idempotent, replay-friendly). Shared by the agent tool
     and the MCP handler so both surfaces address the same run.
+
+    Returns:
+        The deterministic ``(brief_id, run_id)`` pair derived from the
+        request fields and project.
     """
     key = "|".join(
         [
@@ -98,7 +102,12 @@ def build_research_brief(
     project_id: NotBlankStr | None,
     created_at: AwareDatetime,
 ) -> ResearchBrief:
-    """Build a :class:`ResearchBrief` from validated request args."""
+    """Build a :class:`ResearchBrief` from validated request args.
+
+    Returns:
+        A ``ResearchBrief`` populated from the args (title falls back to a
+        truncated question when omitted).
+    """
     title = (
         args.title
         if args.title is not None
@@ -120,7 +129,12 @@ def build_research_brief(
 
 
 def _render_report(report: ResearchReport) -> str:
-    """Render a report as compact, citation-annotated text for the agent."""
+    """Render a report as compact, citation-annotated text for the agent.
+
+    Returns:
+        The report rendered as Markdown: title, summary, and a claims
+        list annotated with resolving source ref ids.
+    """
     lines = [f"# {report.title}", "", report.summary, "", "## Claims"]
     for claim in report.claims:
         refs = ", ".join(citation.ref_id for citation in claim.citations)
@@ -161,7 +175,12 @@ class ResearchTool(BaseTool):
 
     @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
-        """Run the research pipeline and return the cited report."""
+        """Run the research pipeline and return the cited report.
+
+        Returns:
+            A ``ToolExecutionResult`` carrying the rendered report on
+            success, or an error result when the run fails.
+        """
         args = parse_typed(_BRIEF_ARGS_BOUNDARY, arguments, ResearchBriefArgs)
         brief_id, run_id = derive_research_ids(args, project_id=self._project_id)
         brief = build_research_brief(

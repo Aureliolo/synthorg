@@ -26,6 +26,10 @@ def truncate_snippet(text: str) -> str:
 
     Falls back to a placeholder when the source yields no text, so the
     non-empty :class:`SnippetText` constraint always holds.
+
+    Returns:
+        The stripped text truncated to the snippet bound, or a placeholder
+        when the input is empty.
     """
     stripped = text.strip()
     if not stripped:

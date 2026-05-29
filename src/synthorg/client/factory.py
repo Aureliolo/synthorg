@@ -109,6 +109,9 @@ def _require_non_blank(
     that surfaces a domain-specific error (``UnknownStrategyError``) and
     emits the ``CLIENT_FACTORY_UNKNOWN_STRATEGY`` event with the contextual
     factory / strategy / field labels before failing.
+
+    Raises:
+        UnknownStrategyError: When ``value`` is blank / missing.
     """
     try:
         return require_non_blank(value, name=field)
@@ -130,7 +133,12 @@ def _raise_unknown_strategy(
     strategy: str,
     expected: frozenset[str],
 ) -> NoReturn:
-    """Log and raise :class:`UnknownStrategyError` for a bad discriminator."""
+    """Log and raise :class:`UnknownStrategyError` for a bad discriminator.
+
+    Raises:
+        UnknownStrategyError: Always; the discriminator is not one of
+            ``expected``.
+    """
     logger.warning(
         CLIENT_FACTORY_UNKNOWN_STRATEGY,
         factory=factory,
@@ -234,6 +242,9 @@ def build_requirement_generator(
     (``HybridGenerator`` composes weighted generators and has no
     single-argument factory); passing it raises
     :class:`UnknownStrategyError`.
+
+    Returns:
+        The ``RequirementGenerator`` for the configured strategy.
     """
     strategy = str(config.strategy)
     if strategy == "template":
@@ -273,6 +284,13 @@ def build_feedback_strategy(
     * ``scored`` -> ``ScoredFeedback``
     * ``criteria_check`` -> ``CriteriaCheckFeedback``
     * ``adversarial`` -> ``AdversarialFeedback``
+
+    Returns:
+        The ``FeedbackStrategy`` for the configured strategy.
+
+    Raises:
+        UnknownStrategyError: When ``config.strategy`` is not a known
+            feedback strategy.
     """
     strategy = str(config.strategy)
     if strategy == "binary":
@@ -308,6 +326,13 @@ def build_report_strategy(config: ReportConfig) -> ReportStrategy:
 
     Dispatches on ``config.strategy`` in ``{summary, detailed,
     json_export, metrics_only}``.
+
+    Returns:
+        The ``ReportStrategy`` for the configured strategy.
+
+    Raises:
+        UnknownStrategyError: When ``config.strategy`` is not a known
+            report strategy.
     """
     strategy = str(config.strategy)
     if strategy == "summary":
@@ -338,6 +363,13 @@ def build_client_pool_strategy(
 
     Dispatches on ``config.selection_strategy`` in ``{round_robin,
     weighted_random, domain_matched}``. Defaults to ``round_robin``.
+
+    Returns:
+        The ``ClientPoolStrategy`` for the configured selection strategy.
+
+    Raises:
+        UnknownStrategyError: When ``config.selection_strategy`` is not a
+            known pool strategy.
     """
     strategy = str(config.selection_strategy)
     if strategy == "round_robin":
@@ -371,6 +403,13 @@ def build_entry_point_strategy(
     Args:
         adapter: Discriminator identifier.
         project_id: Required when ``adapter == 'project'``.
+
+    Returns:
+        The ``EntryPointStrategy`` for the adapter identifier.
+
+    Raises:
+        UnknownStrategyError: When ``adapter`` is unknown, or
+            ``project_id`` is missing for the ``project`` adapter.
     """
     if adapter == "direct":
         return DirectAdapter()
@@ -408,7 +447,15 @@ def _build_agent_intake(
     cost_tracker: CostTracker | None,
     default_project: NotBlankStr,
 ) -> IntakeStrategy:
-    """Build the LLM-triage ``AgentIntake`` (needs provider + model)."""
+    """Build the LLM-triage ``AgentIntake`` (needs provider + model).
+
+    Returns:
+        A configured ``AgentIntake`` strategy.
+
+    Raises:
+        UnknownStrategyError: When no completion provider is supplied, or
+            ``config.model`` is blank.
+    """
     from synthorg.engine.intake import AgentIntake  # noqa: PLC0415
 
     if provider is None:
@@ -454,6 +501,9 @@ def build_intake_strategy(
     tasks into; the real work-entry adapter stamps the same value on
     the ``WorkItem`` so the pipeline's project-existence check and the
     created task agree.
+
+    Returns:
+        The ``IntakeStrategy`` for the configured strategy.
     """
     # Lazy: synthorg.engine.intake pulls the provider/prompt-safety
     # graph; keep it off the synthorg.client package-import path.

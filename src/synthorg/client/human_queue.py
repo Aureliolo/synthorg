@@ -179,7 +179,11 @@ class InMemoryHumanInputQueue:
         client_id: NotBlankStr,
         context: GenerationContext,
     ) -> str:
-        """Enqueue a pending requirement ticket."""
+        """Enqueue a pending requirement ticket.
+
+        Returns:
+            The new ticket id awaiting a human-supplied requirement.
+        """
         ticket_id = str(uuid4())
         loop = asyncio.get_running_loop()
         async with self._lock:
@@ -197,7 +201,11 @@ class InMemoryHumanInputQueue:
         client_id: NotBlankStr,
         context: ReviewContext,
     ) -> str:
-        """Enqueue a pending review ticket."""
+        """Enqueue a pending review ticket.
+
+        Returns:
+            The new ticket id awaiting a human review.
+        """
         ticket_id = str(uuid4())
         loop = asyncio.get_running_loop()
         async with self._lock:
@@ -217,10 +225,13 @@ class InMemoryHumanInputQueue:
     ) -> TaskRequirement | None:
         """Wait for the ticket to be resolved.
 
-        Returns ``None`` on timeout (never raises
-        ``asyncio.TimeoutError``) so callers can convert to a
-        decline-to-participate signal without wrapping in
-        try/except.
+        Returns:
+            The resolved requirement, or ``None`` on timeout (never raises
+            ``asyncio.TimeoutError``) so callers can convert to a
+            decline-to-participate signal without wrapping in try/except.
+
+        Raises:
+            KeyError: When ``ticket_id`` is not a known requirement ticket.
         """
         async with self._lock:
             future = self._requirement_futures.get(ticket_id)
@@ -244,7 +255,14 @@ class InMemoryHumanInputQueue:
         *,
         timeout: float,  # noqa: ASYNC109
     ) -> ClientFeedback | None:
-        """Wait for a review ticket to be resolved; ``None`` on timeout."""
+        """Wait for a review ticket to be resolved; ``None`` on timeout.
+
+        Returns:
+            The resolved feedback, or ``None`` on timeout.
+
+        Raises:
+            KeyError: When ``ticket_id`` is not a known review ticket.
+        """
         async with self._lock:
             future = self._review_futures.get(ticket_id)
         if future is None:
@@ -272,6 +290,9 @@ class InMemoryHumanInputQueue:
         can still observe the result; it is removed when the waiter
         finishes. Removing the ticket from the pending index is
         immediate so listings reflect the resolved state.
+
+        Raises:
+            KeyError: When ``ticket_id`` is not a known requirement ticket.
         """
         async with self._lock:
             future = self._requirement_futures.get(ticket_id)
@@ -287,7 +308,11 @@ class InMemoryHumanInputQueue:
         ticket_id: str,
         feedback: ClientFeedback,
     ) -> None:
-        """Resolve a pending review with the supplied feedback."""
+        """Resolve a pending review with the supplied feedback.
+
+        Raises:
+            KeyError: When ``ticket_id`` is not a known review ticket.
+        """
         async with self._lock:
             future = self._review_futures.get(ticket_id)
             if future is None:

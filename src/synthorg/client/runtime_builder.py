@@ -79,6 +79,10 @@ def _resolve_intake_settings(
     resolver; ``ConfigResolver`` is not wired at construction. The
     ``default_project`` resolves through the same chain and has a
     non-blank registered default, so it is always a usable project id.
+
+    Returns:
+        A ``(strategy, model, default_project)`` triple resolved from the
+        simulations settings.
     """
     strategy = str(
         resolve_init_value(
@@ -112,6 +116,15 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
     model) degrades to ``direct`` with a WARNING so a misconfigured
     choice never bricks boot. A ``direct`` failure is a real defect
     and propagates unchanged.
+
+    Returns:
+        A ``(strategy, effective_strategy_name)`` pair: the built strategy
+        and the strategy name actually used (degraded to ``direct`` on a
+        non-default failure).
+
+    Raises:
+        UnknownStrategyError: When the default ``direct`` strategy itself
+            fails to build.
     """
     try:
         strategy = build_intake_strategy(
@@ -164,6 +177,9 @@ def build_client_simulation_runtime(
     caller gates on this); ``provider_registry`` / ``cost_tracker``
     are consulted when present. ``env`` overrides ``os.environ`` for
     tests.
+
+    Returns:
+        The wired ``ClientSimulationState`` for boot.
     """
     task_engine = task_engine_of(app_state)
     requested_strategy, model, default_project = _resolve_intake_settings(env)

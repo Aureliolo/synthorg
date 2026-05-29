@@ -35,6 +35,7 @@ from synthorg.budget.state import BudgetStateSlice, cost_tracker_of
 from synthorg.client.state import client_simulation_state_of, has_simulation_runtime
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
@@ -132,6 +133,9 @@ def _resolve_baseline_window_size() -> int:
     sliding window is sized once at construction, so the value is
     sourced env > registered default via the bootstrap resolver (a
     runtime change requires a restart).
+
+    Returns:
+        The resolved baseline sliding-window size.
     """
     return resolve_init_int(SettingNamespace.BUDGET, _BASELINE_WINDOW_KEY)
 
@@ -149,6 +153,10 @@ def _construct_coordination_collector(
     ``AgentEngine`` and the multi-agent coordinator so one
     ``BaselineStore`` accumulates the single-agent baselines the
     multi-agent metrics compare against.
+
+    Returns:
+        The shared ``CoordinationMetricsCollector``, or ``None`` when no
+        ``CostTracker`` is wired (empty / degraded path).
     """
     if app_state.slice(BudgetStateSlice).cost_tracker is None:
         return None
@@ -198,6 +206,10 @@ def _select_active_provider(
 
     Logs the empty-company path and the unsupported multi-provider
     fan-in so the boot decision is observable.
+
+    Returns:
+        A ``(registry, provider_names)`` pair, or ``None`` for the
+        empty-company (no usable provider) path.
     """
     security = app_state.config.security
     if not has_active_provider(app_state):
@@ -257,6 +269,11 @@ async def _build_tool_registry(
     ``submit_red_team_report`` tool). They are appended to the
     config-driven default tools so the resulting registry sees every
     tool the agent engine should expose.
+
+    Returns:
+        A ``(registry, tool_count, sandbox_backends)`` triple: the wired
+        tool registry, the number of tools, and the per-category sandbox
+        backends.
     """
     await asyncio.to_thread(
         workspace_root.mkdir,
@@ -317,15 +334,18 @@ async def _build_external_api_runtime(
       discriminator, missing/invalid limit setting) is an operator
       misconfiguration and logged at ERROR, so a silently-disabled feature
       is never mistaken for an intentional one.
+
+    Returns:
+        The configured ``ExternalApiRuntime``, or ``None`` when the
+        feature is off, no catalog is wired, or resolution / build fails.
     """
     if app_state.slice(IntegrationsStateSlice).connection_catalog is None:
         return None
     resolver = config_resolver_of(app_state)
     try:
         enabled = await resolver.get_bool(_EXTERNAL_API_NS, "enabled")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="external_api",
@@ -355,9 +375,8 @@ async def _build_external_api_runtime(
         )
         default_max_rpm = await resolver.get_int(_EXTERNAL_API_NS, "default_max_rpm")
         provider = build_external_access_provider(provider_type=provider_type)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             API_APP_STARTUP,
@@ -399,6 +418,10 @@ def _build_stakes_router_or_none(
     router can never resolve a tier to a model owned by an inactive
     provider and hand it to the wrong client; ships the ``stakes_aware``
     default strategy.
+
+    Returns:
+        The ``StakesRouter``, or ``None`` when the benchmark provider or
+        the active provider config is absent.
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
 
@@ -427,6 +450,10 @@ async def _build_flight_recorder_sink(app_state: AppState) -> FlightRecorderSink
     frame repository only when persistence is connected. Without
     persistence the factory degrades to the no-op sink, so a
     persistence-less dev boot records nothing instead of crashing.
+
+    Returns:
+        The configured flight-recorder sink (a no-op sink when disabled
+        or persistence is absent).
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     repository = backend.flight_recorder_frames if backend is not None else None
@@ -460,6 +487,10 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     ``coordination_metrics_collector`` is shared too, so single-agent
     runs accumulate the baselines the multi-agent metrics compare
     against.
+
+    Returns:
+        The boot ``AgentEngine`` shared by the worker execution service
+        and the coordinator.
     """
     return AgentEngine(
         coordination_metrics_collector=coordination_metrics_collector,
@@ -508,6 +539,10 @@ async def _build_workspace_strategy(
     coordination wave first invokes ``workspace_service.setup_group()``
     during dispatch, and only when ``enable_workspace_isolation`` is set
     and the wave has multiple subtasks.
+
+    Returns:
+        A ``(strategy, config)`` pair: the git-worktree isolation
+        strategy and its workspace-isolation config.
     """
     ws_config = WorkspaceIsolationConfig()
     git_timeout = await config_resolver_of(app_state).get_float(
@@ -536,12 +571,15 @@ async def _resolve_routing_scorer_config(
     and ``post_setup_reinit``. The resolve and projection stages are
     caught separately so the log says which one failed (a persistent
     config bug vs a transient resolver flake are diagnosed differently).
+
+    Returns:
+        The projected ``RoutingScorerConfig``, or ``None`` (fail-open) so
+        the factory falls back to ``task_assignment_config.min_score``.
     """
     try:
         bridge = await config_resolver_of(app_state).get_engine_bridge_config()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="coordinator",
@@ -553,9 +591,8 @@ async def _resolve_routing_scorer_config(
         return None
     try:
         return RoutingScorerConfig.from_bridge_config(bridge)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="coordinator",
@@ -585,6 +622,10 @@ async def _build_runtime_coordinator(
     pipeline's solo-path selection can share the very same instance
     (one routing surface, no divergence). The resolved decomposition
     model is returned so the ``llm-judged`` routing policy reuses it.
+
+    Returns:
+        A ``(coordinator, scorer, decomposition_model)`` triple sharing
+        the boot engine and a single ``AgentTaskScorer``.
     """
     try:
         async with asyncio.TaskGroup() as tg:
@@ -596,9 +637,8 @@ async def _build_runtime_coordinator(
             )
             scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
             workspace_task = tg.create_task(_build_workspace_strategy(app_state))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             API_APP_STARTUP,
@@ -671,6 +711,10 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
     rather than silently dropping work. The solo-vs-team routing policy
     discriminator and leaf threshold are resolved at boot so the
     setting-to-startup trace holds.
+
+    Returns:
+        The wired ``WorkPipeline``, or ``None`` when no intake runtime is
+        available (no work-entry path).
     """
     if not has_simulation_runtime(app_state):
         logger.info(
@@ -875,6 +919,10 @@ def _build_red_team_runtime_or_none(
     :class:`SubmitRedTeamReportTool` already registered on the engine's
     tool registry, so the runtime shares those instances rather than
     constructing fresh ones.
+
+    Returns:
+        The ``RedTeamRuntime`` when the gate is enabled, otherwise
+        ``None``.
     """
     from synthorg.core.agent import ModelConfig  # noqa: PLC0415
 
@@ -906,6 +954,10 @@ def _build_vision_gate_or_none(
     via the post-init swap path). A misconfigured ``llm_vision`` with no
     provider (empty company) degrades the gate to ``None`` with a
     warning rather than crashing boot.
+
+    Returns:
+        The ``VisionVerifierGate`` when the subsystem is enabled and
+        buildable, otherwise ``None``.
     """
     from synthorg.security.visionverify.builder import (  # noqa: PLC0415
         build_vision_verifier_gate,

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 import httpx
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.adapters.ntfy import _validate_outbound_url
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.notification import (
@@ -23,12 +24,21 @@ _DEFAULT_WEBHOOK_TIMEOUT_SECONDS: Final[float] = 10.0
 
 
 def _escape_mrkdwn(text: str) -> str:
-    """Escape text for Slack mrkdwn to prevent injection of mentions."""
+    """Escape text for Slack mrkdwn to prevent injection of mentions.
+
+    Returns:
+        The text with ``&``, ``<`` and ``>`` HTML-escaped.
+    """
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _build_slack_payload(notification: Notification) -> dict[str, object]:
-    """Build the Slack Block Kit payload for a notification."""
+    """Build the Slack Block Kit payload for a notification.
+
+    Returns:
+        The Slack webhook payload: a fallback ``text`` plus Block Kit
+        ``blocks`` rendering the escaped notification fields.
+    """
     safe_title = _escape_mrkdwn(notification.title)
     safe_body = _escape_mrkdwn(notification.body) if notification.body else ""
     safe_category = _escape_mrkdwn(notification.category)
@@ -139,9 +149,8 @@ class SlackNotificationSink:
             client = self._client
             try:
                 await client.aclose()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     NOTIFICATION_SLACK_FAILED,
                     error_type=type(exc).__name__,
@@ -152,7 +161,11 @@ class SlackNotificationSink:
             self._client = None
 
     async def __aenter__(self) -> Self:
-        """Start the sink; return self for ``async with`` callers."""
+        """Start the sink; return self for ``async with`` callers.
+
+        Returns:
+            This sink instance, started and ready to send.
+        """
         await self.start()
         return self
 
@@ -195,9 +208,8 @@ class SlackNotificationSink:
                 NOTIFICATION_SLACK_DELIVERED,
                 notification_id=notification.id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 NOTIFICATION_SLACK_FAILED,
                 notification_id=notification.id,

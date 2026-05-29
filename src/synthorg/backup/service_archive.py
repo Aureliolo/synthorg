@@ -116,7 +116,12 @@ class BackupServiceArchiveMixin:
         self,
         entry: Path,
     ) -> BackupInfo | None:
-        """Try to load backup info from a directory manifest."""
+        """Try to load backup info from a directory manifest.
+
+        Returns:
+            The ``BackupInfo`` for the directory, or ``None`` when the
+            manifest is absent or invalid.
+        """
         manifest_path = entry / "manifest.json"
         if not manifest_path.exists():
             return None
@@ -136,7 +141,12 @@ class BackupServiceArchiveMixin:
         entry: Path,
         backup_id: str,
     ) -> BackupManifest | None:
-        """Load and validate a directory manifest matching ``backup_id``."""
+        """Load and validate a directory manifest matching ``backup_id``.
+
+        Returns:
+            The parsed manifest when it matches ``backup_id``, else
+            ``None`` (missing / invalid / non-matching).
+        """
         manifest_path = entry / "manifest.json"
         if not manifest_path.exists():
             return None
@@ -157,7 +167,12 @@ class BackupServiceArchiveMixin:
         self,
         entry: Path,
     ) -> BackupInfo | None:
-        """Try to load backup info from a compressed archive."""
+        """Try to load backup info from a compressed archive.
+
+        Returns:
+            The ``BackupInfo`` for the archive, or ``None`` when no
+            manifest could be read.
+        """
         try:
             m = await asyncio.to_thread(
                 self._read_manifest_from_archive,
@@ -173,7 +188,11 @@ class BackupServiceArchiveMixin:
         return None
 
     async def get_backup(self, backup_id: str) -> BackupManifest:
-        """Get the full manifest for a specific backup."""
+        """Get the full manifest for a specific backup.
+
+        Returns:
+            The full ``BackupManifest`` for ``backup_id``.
+        """
         from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
 
         _validate_backup_id(backup_id)
@@ -184,6 +203,11 @@ class BackupServiceArchiveMixin:
 
         Serialized via ``_backup_lock`` so a concurrent create/restore
         cannot observe a half-deleted directory or archive.
+
+        Raises:
+            BackupInProgressError: When another backup or restore holds
+                the backup lock.
+            BackupNotFoundError: When no backup matches ``backup_id``.
         """
         from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
 
@@ -205,7 +229,11 @@ class BackupServiceArchiveMixin:
         logger.info(BACKUP_DELETED, backup_id=backup_id)
 
     def _try_delete_backup(self, backup_id: str) -> bool:
-        """Attempt to delete a backup, returning True on success."""
+        """Attempt to delete a backup, returning True on success.
+
+        Returns:
+            ``True`` when a matching directory or archive was deleted.
+        """
         if not self._backup_path.exists():
             return False
 
@@ -224,7 +252,11 @@ class BackupServiceArchiveMixin:
         return False
 
     def _dir_matches_backup(self, entry: Path, backup_id: str) -> bool:
-        """Check if a directory contains a manifest matching backup_id."""
+        """Check if a directory contains a manifest matching backup_id.
+
+        Returns:
+            ``True`` when the directory's manifest's ``backup_id`` matches.
+        """
         manifest_path = entry / "manifest.json"
         if not manifest_path.exists():
             return False
@@ -239,7 +271,14 @@ class BackupServiceArchiveMixin:
             return False
 
     async def _load_manifest(self, backup_id: str) -> BackupManifest:
-        """Load manifest for a given backup ID."""
+        """Load manifest for a given backup ID.
+
+        Returns:
+            The manifest matching ``backup_id``.
+
+        Raises:
+            BackupNotFoundError: When no backup matches ``backup_id``.
+        """
         entries = await asyncio.to_thread(self._scan_backup_entries)
         if entries is not None:
             for entry, is_dir in entries:
@@ -262,7 +301,12 @@ class BackupServiceArchiveMixin:
         *,
         is_dir: bool,
     ) -> BackupManifest | None:
-        """Try to load a manifest matching backup_id."""
+        """Try to load a manifest matching backup_id.
+
+        Returns:
+            The manifest matching ``backup_id``, or ``None`` when this
+            entry does not match.
+        """
         if is_dir:
             return await asyncio.to_thread(
                 self._load_dir_manifest_matching,
@@ -288,11 +332,20 @@ class BackupServiceArchiveMixin:
         return None
 
     async def _find_backup_dir(self, backup_id: str) -> Path | None:
-        """Find uncompressed backup directory by ID."""
+        """Find uncompressed backup directory by ID.
+
+        Returns:
+            The backup directory for ``backup_id``, or ``None`` when no
+            uncompressed directory matches.
+        """
         return await asyncio.to_thread(self._find_backup_dir_sync, backup_id)
 
     def _find_backup_dir_sync(self, backup_id: str) -> Path | None:
-        """Synchronous filesystem scan for the backup directory."""
+        """Synchronous filesystem scan for the backup directory.
+
+        Returns:
+            The matching backup directory, or ``None`` when none matches.
+        """
         if not self._backup_path.exists():
             return None
         for entry in self._backup_path.iterdir():
@@ -303,7 +356,16 @@ class BackupServiceArchiveMixin:
         return None
 
     async def _extract_archive(self, backup_id: str) -> Path | None:
-        """Extract a compressed backup archive to a temp directory."""
+        """Extract a compressed backup archive to a temp directory.
+
+        Returns:
+            The temp directory the archive was extracted into, or ``None``
+            when no matching archive exists.
+
+        Raises:
+            ManifestError: When extraction fails or the archive contains
+                unsafe paths.
+        """
         entries = await asyncio.to_thread(self._scan_backup_entries)
         if entries is None:
             return None
@@ -346,7 +408,12 @@ class BackupServiceArchiveMixin:
         entry: Path,
         backup_id: str,
     ) -> bool:
-        """Check if an archive contains a manifest matching backup_id."""
+        """Check if an archive contains a manifest matching backup_id.
+
+        Returns:
+            ``True`` when the archive's filename prefix or manifest
+            ``backup_id`` matches.
+        """
         if entry.name.startswith(f"{backup_id}_"):
             return True
         try:
@@ -363,7 +430,12 @@ class BackupServiceArchiveMixin:
 
     @staticmethod
     def _compute_checksum(directory: Path) -> str:
-        """Compute SHA-256 checksum of all files in a directory."""
+        """Compute SHA-256 checksum of all files in a directory.
+
+        Returns:
+            The hex SHA-256 digest over the directory's files (excluding
+            ``manifest.json`` and symlinks), path-prefixed for stability.
+        """
         hasher = hashlib.sha256()
         for filepath in sorted(directory.rglob("*")):
             if (
@@ -387,7 +459,12 @@ class BackupServiceArchiveMixin:
 
     @staticmethod
     def _extract_tar(archive_path: Path, target_dir: Path) -> None:
-        """Extract a tar.gz archive to a target directory."""
+        """Extract a tar.gz archive to a target directory.
+
+        Raises:
+            ManifestError: When a member has an absolute / traversal path
+                or an unsafe symlink target.
+        """
         target_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive_path, "r:gz") as tar:
             for member in tar.getmembers():
@@ -408,7 +485,12 @@ class BackupServiceArchiveMixin:
     def _read_manifest_from_archive(
         archive_path: Path,
     ) -> BackupManifest | None:
-        """Read manifest.json from a tar.gz archive."""
+        """Read manifest.json from a tar.gz archive.
+
+        Returns:
+            The parsed manifest, or ``None`` when the archive has no
+            manifest, exceeds the size limit, or is corrupt / invalid.
+        """
         try:
             with tarfile.open(archive_path, "r:gz") as tar:
                 try:
@@ -432,8 +514,6 @@ class BackupServiceArchiveMixin:
                     return None
                 data = json.loads(raw)
                 return BackupManifest.model_validate(data)
-        except MemoryError, RecursionError:
-            raise
         except tarfile.TarError as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,

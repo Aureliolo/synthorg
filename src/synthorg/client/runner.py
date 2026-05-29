@@ -354,7 +354,12 @@ class _RunningTotals:
 
 
 def _client_id(client: ClientInterface) -> str:
-    """Best-effort client id extraction for logging."""
+    """Best-effort client id extraction for logging.
+
+    Returns:
+        The client's ``profile.client_id``, or ``"anonymous"`` when
+        unavailable.
+    """
     profile = getattr(client, "profile", None)
     client_id = getattr(profile, "client_id", None)
     return client_id or "anonymous"

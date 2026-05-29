@@ -24,6 +24,7 @@ from synthorg.communication.bus.errors import (
     BusStreamError,
     BusUnrestartableError,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
@@ -263,9 +264,8 @@ class JetStreamTaskQueue:
                         f"{self._stop_drain_timeout_seconds}s"
                     )
                     raise BusStopTimeoutError(msg) from exc
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         WORKERS_TASK_QUEUE_DRAIN_FAILED,
                         error_type=type(exc).__name__,
@@ -283,9 +283,8 @@ class JetStreamTaskQueue:
         if self._client is not None:
             try:
                 await self._client.drain()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_DRAIN_FAILED,
                     error_type=type(exc).__name__,
@@ -295,7 +294,12 @@ class JetStreamTaskQueue:
             self._js = None
 
     async def _connect(self) -> None:
-        """Open the NATS connection, translating failures to domain errors."""
+        """Open the NATS connection, translating failures to domain errors.
+
+        Raises:
+            BusConnectionError: When the NATS connection cannot be
+                established.
+        """
         import nats  # noqa: PLC0415
         from nats.errors import NoServersError  # noqa: PLC0415
 
@@ -323,7 +327,12 @@ class JetStreamTaskQueue:
         self._js = self._client.jetstream()
 
     async def _ensure_stream(self) -> None:
-        """Create the work-queue stream if it does not already exist."""
+        """Create the work-queue stream if it does not already exist.
+
+        Raises:
+            BusStreamError: When JetStream is uninitialised or the stream
+                setup fails.
+        """
         from nats.errors import Error as NatsError  # noqa: PLC0415
         from nats.js.api import (  # noqa: PLC0415
             RetentionPolicy,
@@ -370,6 +379,10 @@ class JetStreamTaskQueue:
         Passes ``ack_wait`` and ``max_deliver`` from
         :class:`QueueConfig` so redelivery and dead-letter routing
         behave as documented in the Distributed Runtime design page.
+
+        Raises:
+            BusStreamError: When JetStream is uninitialised or the
+                consumer cannot be created.
         """
         from nats.errors import Error as NatsError  # noqa: PLC0415
         from nats.js.api import ConsumerConfig  # noqa: PLC0415
@@ -408,6 +421,9 @@ class JetStreamTaskQueue:
 
         Args:
             claim: The task claim to enqueue.
+
+        Raises:
+            BusStreamError: When the task queue is not running.
         """
         if self._js is None:
             logger.warning(
@@ -433,6 +449,9 @@ class JetStreamTaskQueue:
 
         Args:
             claim: The exhausted claim to route to the DLQ.
+
+        Raises:
+            BusStreamError: When the task queue is not running.
         """
         if self._js is None:
             logger.warning(
@@ -459,6 +478,9 @@ class JetStreamTaskQueue:
         Args:
             subject: Core NATS subject to publish to.
             payload: Encoded message body.
+
+        Raises:
+            BusStreamError: When the task queue is not running.
         """
         if self._client is None:
             logger.warning(
@@ -483,6 +505,13 @@ class JetStreamTaskQueue:
         Args:
             subject: Core subject (supports ``>`` wildcard).
             cb: Async callback invoked with each raw NATS message.
+
+        Returns:
+            The raw NATS subscription, so the caller can
+            ``unsubscribe()`` it on shutdown.
+
+        Raises:
+            BusStreamError: When the task queue is not running.
         """
         if self._client is None:
             logger.warning(
@@ -499,9 +528,14 @@ class JetStreamTaskQueue:
     ) -> tuple[TaskClaim, Any] | None:
         """Fetch the next claim from the work queue.
 
-        Returns a ``(claim, raw_message)`` tuple or ``None`` on
-        timeout. The raw message must be passed to :meth:`ack` or
-        :meth:`nack` when the worker finishes.
+        Returns:
+            A ``(claim, raw_message)`` tuple, or ``None`` on timeout or an
+            oversize / malformed payload (which is terminally acked). The
+            raw message must be passed to :meth:`ack` or :meth:`nack` when
+            the worker finishes.
+
+        Raises:
+            BusStreamError: When the task queue is not running.
         """
         from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
@@ -528,9 +562,8 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
                     error_type=type(exc).__name__,
@@ -548,9 +581,8 @@ class JetStreamTaskQueue:
             )
             try:
                 await raw.ack()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
                     error_type=type(exc).__name__,
@@ -565,6 +597,10 @@ class JetStreamTaskQueue:
         Separate durable name + filter subject from the ready consumer
         so dead-letter delivery does not contend with normal claims.
         Idempotent: a second call is a no-op once ``_dead_sub`` exists.
+
+        Raises:
+            BusStreamError: When JetStream is uninitialised or the dead
+                consumer cannot be created.
         """
         if self._dead_sub is not None:
             return
@@ -613,6 +649,10 @@ class JetStreamTaskQueue:
         Mirrors :meth:`next_claim` (oversize / malformed payloads are
         terminally acked so a poison dead message cannot wedge the
         dead-letter consumer) but reads the dead-subject consumer.
+
+        Returns:
+            A ``(claim, raw_message)`` tuple, or ``None`` on timeout or a
+            poison payload.
         """
         from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
@@ -657,9 +697,8 @@ class JetStreamTaskQueue:
             return
         try:
             await sub.unsubscribe()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_UNSUBSCRIBE_FAILED,
                 error_type=type(exc).__name__,
@@ -671,9 +710,8 @@ class JetStreamTaskQueue:
         """Terminally ack an unparseable message; log if the ack fails."""
         try:
             await raw.ack()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKERS_TASK_QUEUE_ACK_MALFORMED_FAILED,
                 error_type=type(exc).__name__,

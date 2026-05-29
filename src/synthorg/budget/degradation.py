@@ -8,7 +8,7 @@ quota check fails and degradation resolution is needed.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -182,12 +182,22 @@ async def _resolve_fallback(
 
     Raises:
         QuotaExhaustedError: When no providers are configured or all
-            fallbacks are exhausted (built by ``_no_fallback_error`` /
+            fallbacks are exhausted (raised via ``_no_fallback_error`` /
             ``_all_fallbacks_exhausted_error``).
     """
     fallbacks = degradation_config.fallback_providers
     if not fallbacks:
-        raise _no_fallback_error(provider_name)
+        logger.warning(
+            DEGRADATION_FALLBACK_EXHAUSTED,
+            provider=provider_name,
+            reason="no_fallback_providers_configured",
+        )
+        msg = f"No fallback providers configured for provider {provider_name!r}"
+        raise QuotaExhaustedError(
+            msg,
+            provider_name=provider_name,
+            degradation_action=DegradationAction.FALLBACK,
+        )
 
     logger.info(
         DEGRADATION_FALLBACK_STARTED,
@@ -224,7 +234,20 @@ async def _resolve_fallback(
             )
         tried.append(fallback_name)
 
-    raise _all_fallbacks_exhausted_error(provider_name, tried)
+    logger.warning(
+        DEGRADATION_FALLBACK_EXHAUSTED,
+        provider=provider_name,
+        tried=tried,
+    )
+    msg = (
+        f"All fallback providers exhausted for "
+        f"provider {provider_name!r}: tried {tried}"
+    )
+    raise QuotaExhaustedError(
+        msg,
+        provider_name=provider_name,
+        degradation_action=DegradationAction.FALLBACK,
+    )
 
 
 def _build_fallback_result(
@@ -245,52 +268,6 @@ def _build_fallback_result(
         original_provider=original,
         effective_provider=fallback,
         action_taken=DegradationAction.FALLBACK,
-    )
-
-
-def _no_fallback_error(
-    provider_name: str,
-) -> QuotaExhaustedError:
-    """Log and build error for no fallback providers configured.
-
-    Returns:
-        Result of type ``QuotaExhaustedError``.
-    """
-    logger.warning(
-        DEGRADATION_FALLBACK_EXHAUSTED,
-        provider=provider_name,
-        reason="no_fallback_providers_configured",
-    )
-    msg = f"No fallback providers configured for provider {provider_name!r}"
-    return QuotaExhaustedError(
-        msg,
-        provider_name=provider_name,
-        degradation_action=DegradationAction.FALLBACK,
-    )
-
-
-def _all_fallbacks_exhausted_error(
-    provider_name: str,
-    tried: list[str],
-) -> QuotaExhaustedError:
-    """Log and build error for all fallbacks exhausted.
-
-    Returns:
-        Result of type ``QuotaExhaustedError``.
-    """
-    logger.warning(
-        DEGRADATION_FALLBACK_EXHAUSTED,
-        provider=provider_name,
-        tried=tried,
-    )
-    msg = (
-        f"All fallback providers exhausted for "
-        f"provider {provider_name!r}: tried {tried}"
-    )
-    return QuotaExhaustedError(
-        msg,
-        provider_name=provider_name,
-        degradation_action=DegradationAction.FALLBACK,
     )
 
 
@@ -404,14 +381,14 @@ async def _compute_queue_delay(
 
     Raises:
         QuotaExhaustedError: When no reset time is available or the
-            delay exceeds ``max_wait`` (built by ``_queue_exhausted_error``).
+            delay exceeds ``max_wait`` (raised via ``_queue_exhausted_error``).
     """
     snapshots = await quota_tracker.get_snapshot(provider_name)
     reset_times = _extract_reset_times(snapshots, exhausted_windows)
 
     if not reset_times:
         msg = f"Provider {provider_name!r} quota exhausted but no reset time available"
-        raise _queue_exhausted_error(
+        _queue_exhausted_error(
             provider_name,
             msg,
             reason="no_reset_time_available",
@@ -432,7 +409,7 @@ async def _compute_queue_delay(
             f"Provider {provider_name!r} quota reset in "
             f"{delay:.0f}s exceeds max wait {max_wait}s"
         )
-        raise _queue_exhausted_error(
+        _queue_exhausted_error(
             provider_name,
             msg,
             reason="max_wait_exceeded",
@@ -465,11 +442,12 @@ def _queue_exhausted_error(
     *,
     reason: str = "queue_exhausted",
     **extra: object,
-) -> QuotaExhaustedError:
-    """Log and build error for QUEUE exhaustion.
+) -> NoReturn:
+    """Log and raise the QUEUE-exhaustion error.
 
-    Returns:
-        Result of type ``QuotaExhaustedError``.
+    Raises:
+        QuotaExhaustedError: Always; the queue strategy cannot satisfy the
+            request within ``max_wait``.
     """
     logger.warning(
         DEGRADATION_QUEUE_EXHAUSTED,
@@ -477,7 +455,7 @@ def _queue_exhausted_error(
         reason=reason,
         **extra,
     )
-    return QuotaExhaustedError(
+    raise QuotaExhaustedError(
         msg,
         provider_name=provider_name,
         degradation_action=DegradationAction.QUEUE,

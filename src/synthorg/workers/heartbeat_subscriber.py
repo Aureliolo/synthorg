@@ -19,6 +19,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_HEARTBEAT_OBSERVED,
@@ -121,9 +122,8 @@ class WorkerHeartbeatSubscriber:
         if subscription is not None:
             try:
                 await subscription.unsubscribe()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # A failed unsubscribe can leave a duplicate callback on
                 # restart; surface it instead of swallowing silently.
                 logger.warning(
@@ -203,5 +203,9 @@ class WorkerHeartbeatSubscriber:
             self._flagged_stale.discard(worker_id)
 
     def _now_seconds(self) -> float:
-        """Wall-clock seconds from the injected clock (test-seam-safe)."""
+        """Wall-clock seconds from the injected clock (test-seam-safe).
+
+        Returns:
+            The current time as POSIX seconds from the injected clock.
+        """
         return self._clock.now().timestamp()
