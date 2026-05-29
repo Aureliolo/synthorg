@@ -9718,7 +9718,7 @@
     },
     {
       "kind": "code",
-      "loc": 65,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/__init__.py",
       "owning_feature": "meta"
@@ -9984,7 +9984,7 @@
     },
     {
       "kind": "code",
-      "loc": 81,
+      "loc": 46,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/__init__.py",
       "owning_feature": "meta"

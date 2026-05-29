@@ -8,7 +8,8 @@ import re
 
 import pytest
 
-from synthorg.meta.mcp.domains import ALL_DOMAIN_TOOLS, build_full_registry
+from synthorg._core.features import discover_features
+from synthorg.meta.mcp.domains import build_full_registry
 from synthorg.meta.mcp.domains.agents import AGENT_TOOLS
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
@@ -35,11 +36,8 @@ CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
 
 
 def _all_tools() -> list[MCPToolDef]:
-    """Flatten all domain tool tuples into a single list."""
-    result: list[MCPToolDef] = []
-    for domain_tools in ALL_DOMAIN_TOOLS:
-        result.extend(domain_tools)
-    return result
+    """Flatten every discovered feature's MCP tool defs into a single list."""
+    return list(build_full_registry().as_mapping().values())
 
 
 class TestAllDomainTools:
@@ -94,9 +92,13 @@ class TestAllDomainTools:
         tools = _all_tools()
         assert len(tools) >= 150, f"Expected at least 150 tools, got {len(tools)}"
 
-    def test_no_empty_domain_tuples(self) -> None:
-        for i, domain_tools in enumerate(ALL_DOMAIN_TOOLS):
-            assert len(domain_tools) > 0, f"Domain tuple at index {i} is empty"
+    def test_no_empty_mcp_descriptors(self) -> None:
+        for feature in discover_features():
+            for descriptor in feature.mcp_handlers:
+                assert len(descriptor.tool_defs) > 0, (
+                    f"Feature {feature.name!r} MCP descriptor for domain "
+                    f"{descriptor.domain!r} has no tool defs"
+                )
 
 
 class TestSignalDomain:
