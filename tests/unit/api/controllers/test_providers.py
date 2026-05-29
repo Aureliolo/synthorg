@@ -166,7 +166,7 @@ class TestProviderCrudEndpoints:
         """
         resp = await async_test_client.post(
             "/api/v1/providers/probe-preset",
-            json={"preset_name": "ollama"},
+            json={"preset_name": "example-provider"},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code in (404, 405)

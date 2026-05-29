@@ -1640,8 +1640,10 @@ class TestListPersonalityPresets:
             cursor = page["pagination"]["next_cursor"]
             if cursor is None:
                 break
-        if len(full) < 2:
-            pytest.skip("need at least two presets for cursor round-trip")
+        assert len(full) >= 2, (
+            "need at least two presets for cursor round-trip; "
+            "fixture or endpoint regressed"
+        )
         first = (
             await async_test_client.get(
                 "/api/v1/setup/personality-presets?limit=1",

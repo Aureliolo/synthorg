@@ -110,12 +110,18 @@ class LoopAsyncClient(httpx.AsyncClient):
             self._from_app.get(),
         )
         waiters: set[asyncio.Future[Any]] = {get_message, task}
-        done, _ = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
-        if get_message in done:
-            return get_message.result()
-        get_message.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await get_message
+        try:
+            done, _ = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+            if get_message in done:
+                return get_message.result()
+        finally:
+            # Always retire the queue read: a cancellation propagating out
+            # of ``asyncio.wait`` (e.g. the per-test timeout cancelling
+            # ``__aenter__``) would otherwise leave ``get_message`` pending
+            # and leak the task.
+            get_message.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await get_message
         reason = f"ASGI lifespan task exited during {phase} without a message"
         if not task.cancelled() and task.exception() is not None:
             raise RuntimeError(reason) from task.exception()
@@ -162,7 +168,7 @@ class LoopAsyncClient(httpx.AsyncClient):
         if message["type"] != "lifespan.startup.complete":
             detail = ""
             if message["type"] == "lifespan.startup.failed":
-                detail = message["message"]
+                detail = message.get("message", "")
             await self._discard_lifespan_task()
             await super().__aexit__(None, None, None)
             reason = f"ASGI lifespan startup failed: {message['type']} {detail}"
@@ -185,7 +191,7 @@ class LoopAsyncClient(httpx.AsyncClient):
                 if ack["type"] != "lifespan.shutdown.complete":
                     detail = ""
                     if ack["type"] == "lifespan.shutdown.failed":
-                        detail = ack["message"]
+                        detail = ack.get("message", "")
                     reason = f"ASGI lifespan shutdown failed: {ack['type']} {detail}"
                     raise RuntimeError(reason.strip())
             elif (

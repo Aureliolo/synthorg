@@ -75,7 +75,7 @@ class TestProviderControllerDbOverride:
         app = await _build_app_with_db_providers(
             fake_persistence,
             fake_message_bus,
-            {"db-provider": {"driver": "litellm"}},
+            {"test-provider": {"driver": "litellm"}},
         )
         async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
@@ -85,11 +85,11 @@ class TestProviderControllerDbOverride:
             # /providers returns a paginated list; locate the provider
             # by its embedded ``name`` field.
             providers_by_name = {p["name"]: p for p in body["data"]}
-            assert "db-provider" in providers_by_name
-            assert providers_by_name["db-provider"]["driver"] == "litellm"
-            assert providers_by_name["db-provider"]["auth_type"] == "api_key"
+            assert "test-provider" in providers_by_name
+            assert providers_by_name["test-provider"]["driver"] == "litellm"
+            assert providers_by_name["test-provider"]["auth_type"] == "api_key"
 
-            detail_resp = await client.get("/api/v1/providers/db-provider")
+            detail_resp = await client.get("/api/v1/providers/test-provider")
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["driver"] == "litellm"
