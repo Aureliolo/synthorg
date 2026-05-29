@@ -8,7 +8,7 @@ lifecycle hooks (startup/shutdown).
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
@@ -50,6 +50,13 @@ from synthorg.api.feature_composition import (
 )
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_helpers.boot_resolvers import (
+    build_default_approval_timeout_scheduler,
+    resolve_api_int,
+    resolve_api_str_tuple,
+    resolve_budget_int,
+    resolve_rate_limiter_enabled,
+)
 from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
 from synthorg.api.lifecycle_helpers.settings_dispatcher import (
     _build_settings_dispatcher,
@@ -128,17 +135,11 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
-from synthorg.security.timeout.policies import WaitForeverPolicy
-from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-from synthorg.security.timeout.timeout_checker import TimeoutChecker
 from synthorg.security.trust.service import TrustService
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
-    parse_bool,
     parse_float,
-    parse_str_tuple_json,
-    resolve_init_int,
 )
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
@@ -151,102 +152,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# Default approval-timeout interval mirrors the registry default for
-# ``security.timeout_check_interval_seconds`` defined in
-# ``src/synthorg/settings/definitions/security.py``. Held here as a
-# constant so the bootstrap and the registry definition cannot drift;
-# future reads from ConfigResolver still override at runtime via the
-# scheduler's ``reschedule()`` (called from a settings subscriber).
-# Update both sites together if the default ever changes; otherwise a
-# bootstrap value will silently disagree with operator-editable
-# overrides resolved through ``ConfigResolver``.
-_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS: Final[float] = 60.0
-
-
-def _resolve_rate_limiter_enabled() -> bool:
-    """Resolve ``api.rate_limiter_enabled`` at app construction time.
-
-    Cat-2 (``read_only_post_init=True``): env > default. The
-    ``SettingsService`` rejects runtime mutation, so the value baked
-    here lives for the process lifetime.
-    """
-    resolved = resolve_init_value(
-        SettingNamespace.API,
-        "rate_limiter_enabled",
-        parse=parse_bool,
-    )
-    return bool(resolved.value)
-
-
-def _resolve_api_str_tuple(key: str) -> tuple[str, ...]:
-    """Resolve a JSON-tuple-typed api.* setting at boot.
-
-    When the parsed value is not a tuple (e.g. invalid JSON returns None
-    from the parser), the resolver applies the registered default, which
-    is always a valid tuple, so this function always returns a tuple.
-    """
-    resolved = resolve_init_value(
-        SettingNamespace.API,
-        key,
-        parse=parse_str_tuple_json,
-    )
-    if isinstance(resolved.value, tuple):
-        return resolved.value
-    return ()
-
-
-def _resolve_api_int(key: str) -> int:
-    """Resolve an integer-typed api.* setting at boot.
-
-    Non-integer env values fall through to the registered default rather
-    than raising at app construction time.
-    """
-    return resolve_init_int(SettingNamespace.API, key)
-
-
-def _resolve_api_str(key: str) -> str:
-    """Resolve a string-typed api.* setting at boot."""
-    resolved = resolve_init_value(SettingNamespace.API, key)
-    return str(resolved.value)
-
-
-def _resolve_budget_int(key: str) -> int:
-    """Resolve an integer-typed budget.* setting at boot.
-
-    Cat-2 boot knob: the store is constructed before the
-    ``SettingsService`` connects, so the value is sourced env >
-    registered default via the bootstrap resolver (a runtime change
-    requires a restart -- the consumer is a fixed-length ring buffer).
-    """
-    return resolve_init_int(SettingNamespace.BUDGET, key)
-
-
-def _build_default_approval_timeout_scheduler(
-    *,
-    approval_store: ApprovalStoreProtocol,
-) -> ApprovalTimeoutScheduler:
-    """Construct an :class:`ApprovalTimeoutScheduler` with safe defaults.
-
-    Uses :class:`WaitForeverPolicy` so the scheduler runs the periodic
-    scan and emits TIMEOUT_WAITING events but never auto-decides
-    pending approvals. Operators wire a real policy via the
-    ``security.timeout_*`` settings; the settings subscriber on
-    ``security.timeout_check_interval_seconds`` invokes
-    ``scheduler.reschedule()`` so the cadence stays operator-tunable
-    without restart.
-    """
-    timeout_checker = TimeoutChecker(policy=WaitForeverPolicy())
-    return ApprovalTimeoutScheduler(
-        approval_store=approval_store,
-        timeout_checker=timeout_checker,
-        interval_seconds=_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS,
-    )
-
-
-# Two-step init: construction bakes immutable middleware / CORS / routes from
-# RootConfig; on_startup wires SettingsService + ConfigResolver for
-# runtime-editable settings.  Litestar rate-limit middleware reads config at
-# construction; runtime DB changes only affect code calling get_api_config().
+# Construction bakes immutable middleware / CORS / routes from RootConfig;
+# on_startup wires SettingsService + ConfigResolver for runtime-editable
+# settings. Litestar rate-limit middleware reads config at construction;
+# runtime DB changes only affect code calling get_api_config(). Boot-time
+# setting resolvers + the default approval-timeout scheduler live in
+# ``lifecycle_helpers/boot_resolvers.py``.
 
 
 def create_app(  # noqa: PLR0913
@@ -537,7 +448,7 @@ def create_app(  # noqa: PLR0913
         audit_log = AuditLog()
     if coordination_metrics_store is None:
         coordination_metrics_store = CoordinationMetricsStore(
-            max_entries=_resolve_budget_int("coordination_metrics_max_entries"),
+            max_entries=resolve_budget_int("coordination_metrics_max_entries"),
         )
     if trust_service is None:
         trust_service = _build_configured_trust_service(effective_config.trust)
@@ -805,7 +716,7 @@ def create_app(  # noqa: PLR0913
     # ``_build_settings_dispatcher`` needs the scheduler instance to
     # wire the ``security.timeout_check_interval_seconds`` subscriber,
     # so the scheduler must be in scope before the dispatcher is built.
-    approval_timeout_scheduler = _build_default_approval_timeout_scheduler(
+    approval_timeout_scheduler = build_default_approval_timeout_scheduler(
         approval_store=effective_approval_store,
     )
     settings_dispatcher = _build_settings_dispatcher(
@@ -817,7 +728,7 @@ def create_app(  # noqa: PLR0913
         approval_timeout_scheduler,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
-    rate_limiter_enabled = _resolve_rate_limiter_enabled()
+    rate_limiter_enabled = resolve_rate_limiter_enabled()
     if not rate_limiter_enabled:
         logger.warning(
             API_APP_STARTUP,
@@ -1209,7 +1120,7 @@ def create_app(  # noqa: PLR0913
     if not _skip_lifecycle_shutdown:
         shutdown = [*shutdown, per_op_inflight_store.close]
 
-    _trusted_proxies = _resolve_api_str_tuple("trusted_proxies")
+    _trusted_proxies = resolve_api_str_tuple("trusted_proxies")
 
     return Litestar(
         route_handlers=[api_router, *root_handlers],
@@ -1244,18 +1155,18 @@ def create_app(  # noqa: PLR0913
             },
         ),
         cors_config=CORSConfig(
-            allow_origins=list(_resolve_api_str_tuple("cors_allowed_origins")),
+            allow_origins=list(resolve_api_str_tuple("cors_allowed_origins")),
             allow_methods=list(api_config.cors.allow_methods),  # type: ignore[arg-type]
             allow_headers=list(api_config.cors.allow_headers),
             allow_credentials=api_config.cors.allow_credentials,
         ),
         compression_config=CompressionConfig(
             backend="brotli",
-            minimum_size=_resolve_api_int("compression_minimum_size_bytes"),
+            minimum_size=resolve_api_int("compression_minimum_size_bytes"),
         ),
         # Must be >= artifact API max payload (50 MB) so endpoint-level
         # validation can enforce exact storage limits.
-        request_max_body_size=_resolve_api_int("request_max_body_size_bytes"),
+        request_max_body_size=resolve_api_int("request_max_body_size_bytes"),
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,

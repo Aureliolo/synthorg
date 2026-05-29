@@ -223,7 +223,7 @@ repos:
         args: [run, python, scripts/check_timeout_interval_default_drift.py]
         language: system
         pass_filenames: false
-        files: ^src/synthorg/(api/app\.py|settings/definitions/security\.py)$
+        files: ^src/synthorg/(api/lifecycle_helpers/boot_resolvers\.py|settings/definitions/security\.py)$
         stages: [pre-commit, pre-push]
 
       - id: no-bare-time-in-business-logic

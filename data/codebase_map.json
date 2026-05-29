@@ -170,7 +170,7 @@
     },
     {
       "kind": "code",
-      "loc": 929,
+      "loc": 866,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -1363,6 +1363,13 @@
       "loc": 94,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/auth_store_autowire.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 94,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_helpers/boot_resolvers.py",
       "owning_feature": "api_core"
     },
     {

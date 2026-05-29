@@ -1,7 +1,7 @@
 """Pre-commit / CI drift gate: timeout-check interval default.
 
-``synthorg.api.app._DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS`` is the
-boot-time fallback the approval-timeout scheduler uses before the
+``synthorg.api.lifecycle_helpers.boot_resolvers._DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS``
+is the boot-time fallback the approval-timeout scheduler uses before the
 settings resolver is wired. It MUST equal the registered default of
 the ``security.timeout_check_interval_seconds`` setting so that a
 deployment with no DB / env override behaves identically whether the
@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 from typing import Final
 
-_APP_REL: Final[str] = "src/synthorg/api/app.py"
+_RESOLVERS_REL: Final[str] = "src/synthorg/api/lifecycle_helpers/boot_resolvers.py"
 _SECURITY_REL: Final[str] = "src/synthorg/settings/definitions/security.py"
 _CONSTANT_NAME: Final[str] = "_DEFAULT_TIMEOUT_CHECK_INTERVAL_SECONDS"
 _SETTING_KEY: Final[str] = "timeout_check_interval_seconds"
@@ -96,11 +96,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: --repo-root is not a directory: {root}", file=sys.stderr)
         return 2
 
-    app_tree = _parse(root / _APP_REL)
+    app_tree = _parse(root / _RESOLVERS_REL)
     sec_tree = _parse(root / _SECURITY_REL)
     if app_tree is None or sec_tree is None:
         print(
-            f"error: could not parse {_APP_REL} or {_SECURITY_REL}",
+            f"error: could not parse {_RESOLVERS_REL} or {_SECURITY_REL}",
             file=sys.stderr,
         )
         return 1
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if constant is None:
         print(
-            f"error: {_CONSTANT_NAME} not found in {_APP_REL}",
+            f"error: {_CONSTANT_NAME} not found in {_RESOLVERS_REL}",
             file=sys.stderr,
         )
         return 1
