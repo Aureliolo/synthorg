@@ -12,7 +12,6 @@ presence: true with a provider, false on the empty-company backstop.
 """
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.workers.execution_service import (
@@ -21,7 +20,7 @@ from synthorg.workers.execution_service import (
     NoProviderExecutionService,
 )
 from synthorg.workers.state import RuntimeStateSlice
-from tests._shared import mock_of
+from tests._shared import LoopAsyncClient, mock_of
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -30,7 +29,7 @@ pytestmark = pytest.mark.integration
 _COMPANY_NAME = "install-order-test"
 
 
-def test_no_provider_installs_backstop_not_lazy_default(
+async def test_no_provider_installs_backstop_not_lazy_default(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
@@ -40,7 +39,7 @@ def test_no_provider_installs_backstop_not_lazy_default(
         with_provider=False,
         company_name=_COMPANY_NAME,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         app_state = client.app.state["app_state"]
         runtime_slice = app_state.slice(RuntimeStateSlice)
         service = runtime_slice.worker_execution_service
@@ -51,7 +50,7 @@ def test_no_provider_installs_backstop_not_lazy_default(
     assert has_coordinator is False
 
 
-def test_provider_installs_agent_engine_service_and_coordinator(
+async def test_provider_installs_agent_engine_service_and_coordinator(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
@@ -61,7 +60,7 @@ def test_provider_installs_agent_engine_service_and_coordinator(
         with_provider=True,
         company_name=_COMPANY_NAME,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         app_state = client.app.state["app_state"]
         runtime_slice = app_state.slice(RuntimeStateSlice)
         service = runtime_slice.worker_execution_service
@@ -73,7 +72,7 @@ def test_provider_installs_agent_engine_service_and_coordinator(
     assert isinstance(coordinator, MultiAgentCoordinator)
 
 
-def test_injected_coordinator_wins_over_autowired(
+async def test_injected_coordinator_wins_over_autowired(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
 ) -> None:
@@ -91,7 +90,7 @@ def test_injected_coordinator_wins_over_autowired(
         company_name=_COMPANY_NAME,
         coordinator=injected,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         app_state = client.app.state["app_state"]
         coordinator = app_state.slice(RuntimeStateSlice).coordinator
     assert coordinator is injected

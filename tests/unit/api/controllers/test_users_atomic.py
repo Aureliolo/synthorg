@@ -10,8 +10,8 @@ import uuid
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes import FakePersistenceBackend
 
@@ -35,21 +35,21 @@ def _create_payload(**overrides: Any) -> dict[str, Any]:
 class TestNoModuleLevelLock:
     """Verify the asyncio.Lock was actually removed."""
 
-    def test_ceo_lock_removed(self) -> None:
+    async def test_ceo_lock_removed(self) -> None:
         from synthorg.api.controllers import users
 
         assert not hasattr(users, "_CEO_LOCK"), (
             "_CEO_LOCK still exists -- it should be removed"
         )
 
-    def test_validate_ceo_create_removed(self) -> None:
+    async def test_validate_ceo_create_removed(self) -> None:
         from synthorg.api.controllers import users
 
         assert not hasattr(users, "_validate_ceo_create"), (
             "_validate_ceo_create should be removed"
         )
 
-    def test_validate_role_change_removed(self) -> None:
+    async def test_validate_role_change_removed(self) -> None:
         from synthorg.api.controllers import users
 
         assert not hasattr(users, "_validate_role_change"), (
@@ -64,29 +64,29 @@ class TestNoModuleLevelLock:
 class TestCEOCreationConstraint:
     """Controller maps QueryError from save() to ConflictError (409)."""
 
-    def test_second_ceo_returns_409(
+    async def test_second_ceo_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Creating a second CEO gets 409 from DB constraint."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="ceo2", role="ceo"),
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_duplicate_username_returns_409(
+    async def test_duplicate_username_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Duplicate username gets 409 from UNIQUE constraint."""
-        test_client.post(
+        await async_test_client.post(
             _BASE,
             json=_create_payload(username="unique-user", role="manager"),
             headers=_CEO_HEADERS,
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="unique-user", role="observer"),
             headers=_CEO_HEADERS,
@@ -101,12 +101,12 @@ class TestCEOCreationConstraint:
 class TestRoleChangeConstraint:
     """Controller maps role-change constraint violations to 409."""
 
-    def test_update_to_ceo_when_ceo_exists_returns_409(
+    async def test_update_to_ceo_when_ceo_exists_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Promoting to CEO when one exists gets 409."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _BASE,
             json=_create_payload(username="promote-target", role="manager"),
             headers=_CEO_HEADERS,
@@ -114,16 +114,16 @@ class TestRoleChangeConstraint:
         assert resp.status_code == 201
         user_id = resp.json()["data"]["id"]
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{user_id}",
             json={"role": "ceo"},
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_demote_last_ceo_returns_409(
+    async def test_demote_last_ceo_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Demoting the only CEO gets 409 from DB trigger.
 
@@ -131,7 +131,7 @@ class TestRoleChangeConstraint:
         """
         ceo_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "test-ceo"))
 
-        resp = test_client.patch(
+        resp = await async_test_client.patch(
             f"{_BASE}/{ceo_id}",
             json={"role": "manager"},
             headers=_CEO_HEADERS,
@@ -147,27 +147,27 @@ class TestRoleChangeConstraint:
 class TestOwnerRevocationConstraint:
     """Controller maps last-owner trigger violation to 409."""
 
-    def test_revoke_last_owner_returns_409(
+    async def test_revoke_last_owner_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Revoking the last owner gets 409 from DB trigger.
 
         The fake backend enforces the last-owner constraint.
-        The test_client fixture auto-promotes the first CEO user
+        The async_test_client fixture auto-promotes the first CEO user
         to owner on startup, so we just need to revoke that.
         """
         ceo_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "test-ceo"))
 
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/{ceo_id}/org-roles/owner",
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 409
 
-    def test_delete_last_owner_returns_409(
+    async def test_delete_last_owner_returns_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         """DELETE user returns 409 when the user is the last owner.
@@ -197,7 +197,7 @@ class TestOwnerRevocationConstraint:
             update={"org_roles": (OrgRole.OWNER,)},
         )
 
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             f"{_BASE}/{manager_id}",
             headers=_CEO_HEADERS,
         )

@@ -1,12 +1,11 @@
 """Tests for meeting controller."""
 
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.communication.meeting.enums import (
@@ -25,7 +24,7 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.settings.resolver import ConfigResolver
 
 # Re-use the shared conftest helpers.
-from tests._shared import make_app_state, mock_of
+from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -197,16 +196,16 @@ def mock_scheduler() -> MagicMock:
 
 
 @pytest.fixture
-def meeting_client(
+async def meeting_client(
     mock_orchestrator: MagicMock,
     mock_scheduler: MagicMock,
-) -> Iterator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Test client with meeting orchestrator and scheduler configured."""
     app = _create_meeting_test_app(
         meeting_orchestrator=mock_orchestrator,
         meeting_scheduler=mock_scheduler,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
@@ -215,21 +214,21 @@ def meeting_client(
 class TestMeetingController:
     """Tests for the meetings controller."""
 
-    def test_list_meetings_returns_records(
+    async def test_list_meetings_returns_records(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
-        resp = meeting_client.get("/api/v1/meetings")
+        resp = await meeting_client.get("/api/v1/meetings")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert len(body["data"]) == 2
 
-    def test_list_meetings_with_status_filter(
+    async def test_list_meetings_with_status_filter(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
-        resp = meeting_client.get(
+        resp = await meeting_client.get(
             "/api/v1/meetings",
             params={"status": "completed"},
         )
@@ -238,11 +237,11 @@ class TestMeetingController:
         assert len(body["data"]) == 1
         assert body["data"][0]["status"] == "completed"
 
-    def test_list_meetings_with_meeting_type_filter(
+    async def test_list_meetings_with_meeting_type_filter(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
-        resp = meeting_client.get(
+        resp = await meeting_client.get(
             "/api/v1/meetings",
             params={"meeting_type": "retro"},
         )
@@ -251,34 +250,34 @@ class TestMeetingController:
         assert len(body["data"]) == 1
         assert body["data"][0]["meeting_type_name"] == "retro"
 
-    def test_get_meeting_by_id(
+    async def test_get_meeting_by_id(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
-        resp = meeting_client.get("/api/v1/meetings/mtg-001")
+        resp = await meeting_client.get("/api/v1/meetings/mtg-001")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["meeting_id"] == "mtg-001"
 
-    def test_get_unknown_meeting_returns_404(
+    async def test_get_unknown_meeting_returns_404(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
-        resp = meeting_client.get("/api/v1/meetings/mtg-unknown")
+        resp = await meeting_client.get("/api/v1/meetings/mtg-unknown")
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
         assert "error_code" in body or "type" in body or "error" in body
 
-    def test_delete_meeting_returns_200_when_record_exists(
+    async def test_delete_meeting_returns_200_when_record_exists(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_orchestrator: MagicMock,
     ) -> None:
         mock_orchestrator.delete_record = MagicMock(return_value=True)
 
-        resp = meeting_client.delete("/api/v1/meetings/mtg-001")
+        resp = await meeting_client.delete("/api/v1/meetings/mtg-001")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -286,28 +285,28 @@ class TestMeetingController:
         assert body["data"] is None
         mock_orchestrator.delete_record.assert_called_once_with("mtg-001")
 
-    def test_delete_meeting_returns_404_for_unknown_id(
+    async def test_delete_meeting_returns_404_for_unknown_id(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_orchestrator: MagicMock,
     ) -> None:
         mock_orchestrator.delete_record = MagicMock(return_value=False)
 
-        resp = meeting_client.delete("/api/v1/meetings/mtg-unknown")
+        resp = await meeting_client.delete("/api/v1/meetings/mtg-unknown")
 
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
 
-    def test_trigger_endpoint_calls_mock_scheduler(
+    async def test_trigger_endpoint_calls_mock_scheduler(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_scheduler: MagicMock,
     ) -> None:
         record = _make_record("mtg-triggered")
         mock_scheduler.trigger_event.return_value = (record,)
 
-        resp = meeting_client.post(
+        resp = await meeting_client.post(
             "/api/v1/meetings/trigger",
             json={"event_name": "deploy_complete"},
         )
@@ -319,7 +318,7 @@ class TestMeetingController:
             context={},
         )
 
-    def test_trigger_returns_503_when_scheduler_not_configured(
+    async def test_trigger_returns_503_when_scheduler_not_configured(
         self,
         mock_orchestrator: MagicMock,
         mock_scheduler: MagicMock,
@@ -340,9 +339,9 @@ class TestMeetingController:
             meeting_scheduler=mock_scheduler,
         )
         app.state.app_state.wire(CommunicationStateSlice, meeting_scheduler=None)
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.post(
+            resp = await client.post(
                 "/api/v1/meetings/trigger",
                 json={"event_name": "deploy_complete"},
             )
@@ -350,14 +349,14 @@ class TestMeetingController:
             body = resp.json()
             assert body["success"] is False
 
-    def test_trigger_response_includes_analytics(
+    async def test_trigger_response_includes_analytics(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_scheduler: MagicMock,
     ) -> None:
         record = _make_record("mtg-triggered")
         mock_scheduler.trigger_event.return_value = (record,)
-        resp = meeting_client.post(
+        resp = await meeting_client.post(
             "/api/v1/meetings/trigger",
             json={"event_name": "deploy_complete"},
         )
@@ -369,9 +368,9 @@ class TestMeetingController:
         assert item["contribution_rank"] == []
         assert item["meeting_duration_seconds"] == 120.0
 
-    def test_trigger_rejects_context_exceeding_settings_cap(
+    async def test_trigger_rejects_context_exceeding_settings_cap(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_scheduler: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -392,7 +391,7 @@ class TestMeetingController:
             "_resolve_max_context_keys",
             _capped_at_one,
         )
-        resp = meeting_client.post(
+        resp = await meeting_client.post(
             "/api/v1/meetings/trigger",
             json={
                 "event_name": "deploy_complete",
@@ -407,9 +406,9 @@ class TestMeetingController:
         # dispatch -- otherwise the cap is decorative.
         mock_scheduler.trigger_event.assert_not_awaited()
 
-    def test_trigger_accepts_context_at_settings_cap(
+    async def test_trigger_accepts_context_at_settings_cap(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
         mock_scheduler: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -427,7 +426,7 @@ class TestMeetingController:
         record = _make_record("mtg-cap-ok")
         mock_scheduler.trigger_event.return_value = (record,)
 
-        resp = meeting_client.post(
+        resp = await meeting_client.post(
             "/api/v1/meetings/trigger",
             json={
                 "event_name": "deploy_complete",
@@ -437,33 +436,33 @@ class TestMeetingController:
         assert resp.status_code == 200
         mock_scheduler.trigger_event.assert_awaited_once()
 
-    def test_oversized_meeting_id_rejected(
+    async def test_oversized_meeting_id_rejected(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
         long_id = "x" * 129
-        resp = meeting_client.get(f"/api/v1/meetings/{long_id}")
+        resp = await meeting_client.get(f"/api/v1/meetings/{long_id}")
         assert resp.status_code == 400
 
-    def test_oversized_meeting_type_query_rejected(
+    async def test_oversized_meeting_type_query_rejected(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
         long_type = "x" * 129
-        resp = meeting_client.get(
+        resp = await meeting_client.get(
             "/api/v1/meetings",
             params={"meeting_type": long_type},
         )
         assert resp.status_code in (400, 422)
 
-    def test_auto_wired_meetings_returns_200(
+    async def test_auto_wired_meetings_returns_200(
         self,
     ) -> None:
         """Auto-wired meeting services should return 200 (empty list)."""
         app = _create_app_without_explicit_meetings()
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
-            resp = client.get("/api/v1/meetings")
+            resp = await client.get("/api/v1/meetings")
             assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
@@ -471,16 +470,16 @@ class TestMeetingController:
 
 
 @pytest.fixture
-def analytics_client(
+async def analytics_client(
     mock_orchestrator_with_contributions: MagicMock,
     mock_scheduler: MagicMock,
-) -> Iterator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Test client with meeting records that include contributions."""
     app = _create_meeting_test_app(
         meeting_orchestrator=mock_orchestrator_with_contributions,
         meeting_scheduler=mock_scheduler,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
         yield client
 
@@ -489,22 +488,22 @@ def analytics_client(
 class TestMeetingAnalytics:
     """Tests for computed meeting analytics fields."""
 
-    def test_list_includes_analytics_fields(
+    async def test_list_includes_analytics_fields(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings")
+        resp = await analytics_client.get("/api/v1/meetings")
         assert resp.status_code == 200
         item = resp.json()["data"][0]
         assert "token_usage_by_participant" in item
         assert "contribution_rank" in item
         assert "meeting_duration_seconds" in item
 
-    def test_token_usage_by_participant(
+    async def test_token_usage_by_participant(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        resp = await analytics_client.get("/api/v1/meetings/mtg-rich")
         data = resp.json()["data"]
         usage = data["token_usage_by_participant"]
         # agent-alpha: (100+200) + (50+100) = 450
@@ -512,50 +511,50 @@ class TestMeetingAnalytics:
         # agent-beta: (150+250) = 400
         assert usage["agent-beta"] == 400
 
-    def test_contribution_rank_sorted_desc(
+    async def test_contribution_rank_sorted_desc(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        resp = await analytics_client.get("/api/v1/meetings/mtg-rich")
         data = resp.json()["data"]
         rank = data["contribution_rank"]
         assert rank == ["agent-alpha", "agent-beta"]
 
-    def test_meeting_duration_seconds(
+    async def test_meeting_duration_seconds(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        resp = await analytics_client.get("/api/v1/meetings/mtg-rich")
         data = resp.json()["data"]
         assert data["meeting_duration_seconds"] == 120.0
 
-    def test_analytics_empty_for_non_completed(
+    async def test_analytics_empty_for_non_completed(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings/mtg-fail")
+        resp = await analytics_client.get("/api/v1/meetings/mtg-fail")
         data = resp.json()["data"]
         assert data["token_usage_by_participant"] == {}
         assert data["contribution_rank"] == []
         assert data["meeting_duration_seconds"] is None
 
-    def test_get_meeting_includes_analytics(
+    async def test_get_meeting_includes_analytics(
         self,
-        analytics_client: TestClient[Any],
+        analytics_client: LoopAsyncClient,
     ) -> None:
-        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        resp = await analytics_client.get("/api/v1/meetings/mtg-rich")
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert "token_usage_by_participant" in data
         assert "contribution_rank" in data
         assert "meeting_duration_seconds" in data
 
-    def test_completed_meeting_with_empty_contributions(
+    async def test_completed_meeting_with_empty_contributions(
         self,
-        meeting_client: TestClient[Any],
+        meeting_client: LoopAsyncClient,
     ) -> None:
         """Completed meeting with minutes but no contributions."""
-        resp = meeting_client.get("/api/v1/meetings/mtg-001")
+        resp = await meeting_client.get("/api/v1/meetings/mtg-001")
         data = resp.json()["data"]
         assert data["token_usage_by_participant"] == {}
         assert data["contribution_rank"] == []

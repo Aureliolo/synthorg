@@ -7,6 +7,7 @@ repository's CAS mechanism serialises concurrent writers.
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
@@ -40,10 +41,11 @@ def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-async def persistence() -> FakePersistenceBackend:
+async def persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture

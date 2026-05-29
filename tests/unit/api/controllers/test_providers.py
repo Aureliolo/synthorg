@@ -6,14 +6,13 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state, mock_of
+from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import make_auth_headers
 
 if TYPE_CHECKING:
@@ -22,8 +21,10 @@ if TYPE_CHECKING:
 
 @pytest.mark.unit
 class TestProviderController:
-    def test_list_providers_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/providers")
+    async def test_list_providers_empty(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/providers")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -31,23 +32,31 @@ class TestProviderController:
         assert body["pagination"]["has_more"] is False
         assert body["pagination"]["next_cursor"] is None
 
-    def test_list_providers_tampered_cursor(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/providers?cursor=not-a-valid-cursor")
+    async def test_list_providers_tampered_cursor(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/providers?cursor=not-a-valid-cursor"
+        )
         assert resp.status_code == 400
 
-    def test_get_provider_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/providers/nonexistent")
+    async def test_get_provider_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/providers/nonexistent")
         assert resp.status_code == 404
 
-    def test_list_models_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/providers/nonexistent/models")
+    async def test_list_models_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/providers/nonexistent/models")
         assert resp.status_code == 404
 
-    def test_oversized_provider_name_rejected(
-        self, test_client: TestClient[Any]
+    async def test_oversized_provider_name_rejected(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         long_name = "x" * 129
-        resp = test_client.get(f"/api/v1/providers/{long_name}")
+        resp = await async_test_client.get(f"/api/v1/providers/{long_name}")
         assert resp.status_code == 400
 
 
@@ -109,21 +118,21 @@ class TestProviderResponseSecurity:
 
 @pytest.mark.unit
 class TestProviderCrudEndpoints:
-    def test_get_presets_returns_all(
+    async def test_get_presets_returns_all(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/providers/presets")
+        resp = await async_test_client.get("/api/v1/providers/presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert len(body["data"]) >= 4
 
-    def test_write_endpoints_require_write_access(
+    async def test_write_endpoints_require_write_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/providers",
             json={
                 "name": "test-provider",
@@ -134,30 +143,30 @@ class TestProviderCrudEndpoints:
         )
         assert resp.status_code == 403
 
-    def test_probe_local_requires_write_access(
+    async def test_probe_local_requires_write_access(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """POST /providers/probe-local is guarded by write access."""
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/providers/probe-local",
             json={},
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
-    def test_legacy_probe_preset_endpoint_returns_404(
+    async def test_legacy_probe_preset_endpoint_returns_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """The legacy /probe-preset endpoint is removed and must 404 / 405.
 
         Belt-and-braces regression guard so a stray client integration
         cannot silently fall through to a different handler.
         """
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/providers/probe-preset",
-            json={"preset_name": "ollama"},
+            json={"preset_name": "example-provider"},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code in (404, 405)
@@ -514,9 +523,9 @@ class TestProbeLocalEndpoint:
         assert response.data.results == {}
         assert response.data.errors == {}
 
-    def test_probe_local_rate_limit_returns_429_when_exhausted(
+    async def test_probe_local_rate_limit_returns_429_when_exhausted(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """The probe-local guard surfaces a 429 once its bucket drains.
 
@@ -543,7 +552,7 @@ class TestProbeLocalEndpoint:
             # Litestar ``@post`` defaults to 201 Created on success;
             # accept either 200 OR 201 to stay handler-config agnostic.
             for i in range(20):
-                resp = test_client.post(
+                resp = await async_test_client.post(
                     "/api/v1/providers/probe-local",
                     json={},
                     headers=make_auth_headers("ceo"),
@@ -553,7 +562,7 @@ class TestProbeLocalEndpoint:
                     f"{resp.status_code}; expected 2xx while bucket fills"
                 )
             # 21st call hits the cap.
-            resp = test_client.post(
+            resp = await async_test_client.post(
                 "/api/v1/providers/probe-local",
                 json={},
                 headers=make_auth_headers("ceo"),

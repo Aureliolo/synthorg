@@ -158,18 +158,17 @@ def _fast_getfqdn(name: str = "") -> str:
 socket.getfqdn = _fast_getfqdn
 
 
-# ── socket.socketpair: bounded retry on Windows (tactical) ───────────
+# ── socket.socketpair: bounded retry on Windows (permanent guard) ───
 #
 # CPython https://github.com/python/cpython/issues/122797: the
 # post-CVE-2024-3219 ``socket._fallback_socketpair`` creates a TCP
 # listener on loopback, ``setblocking(False)``, ``connect()``, then a
 # blocking ``lsock.accept()`` -- with NO timeout and NO retry. Under
-# heavy concurrent socketpair creation on Windows (8 xdist workers each
-# spawning litestar ``TestClient`` instances via
-# ``anyio.start_blocking_portal`` -> a fresh asyncio loop ->
-# ``_make_self_pipe`` -> ``socket.socketpair`` per test, ~500k calls per
-# ``--count=2`` unit run), the listener's backlog occasionally fails to
-# deliver the connection to ``accept()`` before the 30s
+# heavy concurrent socketpair creation on Windows (8 xdist workers, each
+# function-scoped async test building a fresh asyncio event loop whose
+# ``_make_self_pipe`` calls ``socket.socketpair`` -- tens of thousands of
+# calls per ``--count=2`` unit run), the listener's backlog occasionally
+# fails to deliver the connection to ``accept()`` before the 30s
 # ``pytest-timeout`` fires; the worker then ``os.abort``s inside
 # ``_timeout_timer_with_faulthandler``.
 #
@@ -182,14 +181,24 @@ socket.getfqdn = _fast_getfqdn
 # (asyncio's ``_make_self_pipe`` reads/writes a single byte to wake the
 # selector, with default blocking I/O on the read side).
 #
-# Tactical bridge. Long-term cure: drop the per-test BlockingPortal
-# pattern in ``litestar.TestClient.__enter__`` (migrate to
-# ``AsyncTestClient``); the socketpair stops being called per-test and
-# this wrapper becomes dead code. Delete this block in that same PR.
+# Permanent Windows guard, not a tactical bridge. The API clients run
+# ASGI on the test's own loop (no ``BlockingPortal``), which roughly
+# halves socketpair churn: at ``--count=1`` contention stays below the
+# 122797 saturation threshold, so the suite is green without this
+# wrapper. But every function-scoped async test still builds an event
+# loop, and ``_make_self_pipe`` is an irreducible ``socket.socketpair``
+# caller (one per such test); that floor still saturates ``accept()`` at
+# ``--count=2`` load. CPython closed 122797 without bounding ``accept()``
+# (the 3.14 branch still ships the unguarded call), so there is no
+# upstream fix to inherit -- this wrapper IS that issue's proposed
+# hardening. Removing it would mean serialising the per-test loops and
+# sacrificing per-test isolation, a worse trade than a Windows-only,
+# semantically-invisible syscall guard.
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 1.0
-    _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 3
+    _SOCKETPAIR_TOTAL_BUDGET_SECONDS: Final[float] = 20.0
     _SOCKETPAIR_RETRY_BASE_DELAY_SECONDS: Final[float] = 0.05
+    _SOCKETPAIR_MAX_RETRY_DELAY_SECONDS: Final[float] = 0.5
     _orig_socketpair = socket.socketpair
 
     def _socketpair_with_retry(
@@ -199,16 +208,23 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     ) -> tuple[socket.socket, socket.socket]:
         """Drop-in ``socket.socketpair`` that retries a stuck ``accept``.
 
-        Three short, bounded attempts (~3.3s worst case before fallback)
-        catch the common load-induced hang. If all three time out, the
-        call falls through to the stock implementation so a truly
-        pathological wait is still subject to ``pytest-timeout``'s 30s
-        ceiling rather than failing the caller with a misleading
-        ``TimeoutError`` from the wrapper itself -- and stays well under
-        the affected-suite per-test 6s wall-clock guard in the happy
-        retry-recovery path. Unusual call shapes (non-INET family,
-        non-stream type, custom proto) go straight to stock so any
-        future caller that wants the real semantics still gets them.
+        On Windows ``socket.socketpair`` is emulated by binding a
+        loopback listener, connecting a client, and ``accept``-ing it
+        (CPython has no native ``socketpair`` syscall). Under heavy xdist
+        load that ``accept`` can stall (CPython 122797); an unbounded
+        blocking ``accept`` would hang to the 30s ``pytest-timeout`` wall
+        and abort the whole worker. This wrapper bounds each ``accept`` to
+        ``_SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS`` and retries with a fresh
+        listener until it succeeds or the
+        ``_SOCKETPAIR_TOTAL_BUDGET_SECONDS`` wall-clock budget (well under
+        the per-test timeout) is spent. Loopback contention is transient
+        and clears within a few retries, so the loop rides it out instead
+        of giving up; only a genuinely pathological machine exhausts the
+        budget, and then it raises a clear diagnostic (a fast, recoverable
+        test error) rather than deferring to the stock blocking ``accept``
+        that crashes the worker. Unusual call shapes (non-INET family,
+        non-stream type, custom proto) go straight to stock so any future
+        caller that wants the real semantics still gets them.
         """
         if (
             family not in (socket.AF_INET, socket.AF_INET6)
@@ -217,7 +233,10 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
         ):
             return _orig_socketpair(family, type, proto)
         host = "127.0.0.1" if family == socket.AF_INET else "::1"
-        for attempt in range(_SOCKETPAIR_MAX_ATTEMPTS):
+        deadline = time.monotonic() + _SOCKETPAIR_TOTAL_BUDGET_SECONDS
+        attempt = 0
+        last_error: OSError | None = None
+        while True:
             lsock = socket.socket(family, type, proto)
             csock: socket.socket | None = None
             try:
@@ -231,20 +250,35 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
                     csock.connect((addr, port))
                 csock.setblocking(True)
                 ssock, _ = lsock.accept()
-            except OSError:
+            except OSError as exc:
+                last_error = exc
                 if csock is not None:
                     csock.close()
-                time.sleep(_SOCKETPAIR_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+                if time.monotonic() >= deadline:
+                    msg = (
+                        "socket.socketpair could not complete the loopback "
+                        "handshake within "
+                        f"{_SOCKETPAIR_TOTAL_BUDGET_SECONDS:.0f}s "
+                        f"({attempt + 1} attempts) under xdist load "
+                        "(CPython 122797). Failing fast with a diagnostic "
+                        "instead of deferring to the stock blocking "
+                        "accept(), which would hang to the pytest-timeout "
+                        "wall and abort the worker."
+                    )
+                    raise OSError(msg) from last_error
+                time.sleep(
+                    min(
+                        _SOCKETPAIR_RETRY_BASE_DELAY_SECONDS * (attempt + 1),
+                        _SOCKETPAIR_MAX_RETRY_DELAY_SECONDS,
+                    )
+                )
+                attempt += 1
                 continue
             else:
                 ssock.settimeout(None)
                 return ssock, csock
             finally:
                 lsock.close()
-        # Bounded retries exhausted: defer to the stock implementation so
-        # the original blocking behaviour (and pytest-timeout's 30s wall)
-        # decides the outcome rather than raising a wrapper-local timeout.
-        return _orig_socketpair(family, type, proto)
 
     socket.socketpair = _socketpair_with_retry
 
@@ -505,6 +539,14 @@ settings.register_profile(
     # so the same 10 examples run every time.  Not random, not skipped.
     max_examples=10,
     derandomize=True,
+    # No per-example wall-clock deadline: derandomize pins WHICH examples
+    # run, but per-example timing is load-dependent (a property test that
+    # is sub-millisecond when idle can take ~1s under an 8-worker xdist
+    # run), and Hypothesis's default 200ms deadline then raises a spurious
+    # DeadlineExceeded / FlakyFailure. Correctness is asserted regardless
+    # of timing, and the global pytest-timeout still bounds a truly hung
+    # test.
+    deadline=None,
     # ``differing_executors`` warns when the same property test runs
     # from multiple executor instances; pytest-repeat (used by the
     # isolation regression gate, see scripts/run_affected_tests.py)
@@ -522,6 +564,8 @@ settings.register_profile(
 settings.register_profile(
     "dev",
     max_examples=1000,
+    # Load-independent timing, same rationale as the ``ci`` profile.
+    deadline=None,
     database=_local_combined_db,
 )
 settings.register_profile(
@@ -575,6 +619,16 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # integration work (real subprocess, real network, real heavy I/O)
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
+# Architecture / layering meta-tests under ``tests/unit/architecture/``
+# legitimately AST-parse the entire src tree (the ``@cache``d sweep in
+# test_layering.py); the one-time fill lands on whichever such test runs
+# first under ``--dist=loadfile`` and is inherently near the budget.
+# That is the meta-test's job, not misplaced integration work, so the
+# per-test guard exempts the directory (the suite-level timing
+# regression guard still covers real slowdowns). pytest nodeids always
+# use ``/`` separators on every platform, so the fragment matches on
+# Windows too.
+_WALL_CLOCK_GUARD_EXEMPT_FRAGMENT: Final = "unit/architecture/"
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is used exclusively by
 # ``scripts/run_affected_tests.py``'s isolation regression gate (a
@@ -657,6 +711,7 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
         not _FUZZ_PROFILE_ACTIVE
         and not _COUNT_ISOLATION_RUN
         and item.get_closest_marker("unit")
+        and _WALL_CLOCK_GUARD_EXEMPT_FRAGMENT not in item.nodeid
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
         pytest.fail(

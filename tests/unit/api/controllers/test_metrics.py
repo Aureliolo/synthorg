@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from litestar import Litestar
 from litestar.datastructures import State
-from litestar.testing import TestClient
 from prometheus_client import CollectorRegistry, Gauge, Info
 
 from synthorg.api.controllers.metrics import MetricsController
+from tests._shared import LoopAsyncClient
 
 
 def _make_app(*, collector: object | None = None) -> Litestar:
@@ -43,30 +43,30 @@ def _make_collector() -> MagicMock:
 class TestMetricsEndpoint:
     """Tests for GET /metrics."""
 
-    def test_returns_200_with_correct_content_type(self) -> None:
+    async def test_returns_200_with_correct_content_type(self) -> None:
         collector = _make_collector()
-        with TestClient(app=_make_app(collector=collector)) as client:
-            resp = client.get("/metrics")
+        async with LoopAsyncClient(app=_make_app(collector=collector)) as client:
+            resp = await client.get("/metrics")
             assert resp.status_code == 200
             assert "text/plain" in resp.headers["content-type"]
             assert "version=0.0.4" in resp.headers["content-type"]
 
-    def test_response_contains_metric_names(self) -> None:
+    async def test_response_contains_metric_names(self) -> None:
         collector = _make_collector()
-        with TestClient(app=_make_app(collector=collector)) as client:
-            resp = client.get("/metrics")
+        async with LoopAsyncClient(app=_make_app(collector=collector)) as client:
+            resp = await client.get("/metrics")
             body = resp.text
             assert "synthorg_app_info" in body
             assert "synthorg_cost_total" in body
 
-    def test_calls_refresh(self) -> None:
+    async def test_calls_refresh(self) -> None:
         collector = _make_collector()
-        with TestClient(app=_make_app(collector=collector)) as client:
-            client.get("/metrics")
+        async with LoopAsyncClient(app=_make_app(collector=collector)) as client:
+            await client.get("/metrics")
             collector.refresh.assert_awaited_once()
 
-    def test_returns_503_when_collector_not_configured(self) -> None:
-        with TestClient(app=_make_app(collector=None)) as client:
-            resp = client.get("/metrics")
+    async def test_returns_503_when_collector_not_configured(self) -> None:
+        async with LoopAsyncClient(app=_make_app(collector=None)) as client:
+            resp = await client.get("/metrics")
             assert resp.status_code == 503
             assert "No metrics collector configured" in resp.text

@@ -1,12 +1,10 @@
 """Tests for AuthController endpoints."""
 
-import asyncio
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import jwt
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -15,14 +13,15 @@ from synthorg.api.api_core_state import (
 )
 from synthorg.core.auth.roles import HumanRole
 from synthorg.persistence.state import persistence_of
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 
 
 @pytest.fixture
-def bare_client(test_client: TestClient[Any]) -> TestClient[Any]:
+async def bare_client(async_test_client: LoopAsyncClient) -> LoopAsyncClient:
     """Test client with no default Authorization header."""
-    test_client.headers.pop("authorization", None)
-    return test_client
+    async_test_client.headers.pop("authorization", None)
+    return async_test_client
 
 
 def _extract_auth_cookies(response: Any) -> dict[str, str]:
@@ -45,11 +44,11 @@ def _extract_auth_cookies(response: Any) -> dict[str, str]:
 
 @pytest.mark.unit
 class TestSetup:
-    def test_setup_creates_admin(self, bare_client: TestClient[Any]) -> None:
+    async def test_setup_creates_admin(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "newadmin",
@@ -66,9 +65,9 @@ class TestSetup:
         assert "session=" in set_cookie
         assert "httponly" in set_cookie.lower()
 
-    def test_setup_409_when_users_exist(
+    async def test_setup_409_when_users_exist(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         # Re-seed a user so the check fails
         import uuid
@@ -84,7 +83,7 @@ class TestSetup:
         user = User(
             id=str(uuid.uuid4()),
             username="existing",
-            password_hash=asyncio.run(svc.hash_password_async("test-password-12chars")),
+            password_hash=await svc.hash_password_async("test-password-12chars"),
             role=HumanRole.CEO,
             must_change_password=False,
             created_at=now,
@@ -92,7 +91,7 @@ class TestSetup:
         )
         cast(Any, persistence_of(app_state))._users._users[user.id] = user
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "admin2",
@@ -101,11 +100,13 @@ class TestSetup:
         )
         assert response.status_code == 409
 
-    def test_setup_short_password_rejected(self, bare_client: TestClient[Any]) -> None:
+    async def test_setup_short_password_rejected(
+        self, bare_client: LoopAsyncClient
+    ) -> None:
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={"username": "admin", "password": "short"},
         )
@@ -114,11 +115,11 @@ class TestSetup:
 
 @pytest.mark.unit
 class TestLogin:
-    def test_login_valid_credentials(self, bare_client: TestClient[Any]) -> None:
+    async def test_login_valid_credentials(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        bare_client.post(
+        await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "loginuser",
@@ -126,7 +127,7 @@ class TestLogin:
             },
         )
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/login",
             json={
                 "username": "loginuser",
@@ -140,8 +141,8 @@ class TestLogin:
         set_cookie = response.headers.get("set-cookie", "")
         assert "session=" in set_cookie
 
-    def test_login_wrong_password(self, bare_client: TestClient[Any]) -> None:
-        response = bare_client.post(
+    async def test_login_wrong_password(self, bare_client: LoopAsyncClient) -> None:
+        response = await bare_client.post(
             "/api/v1/auth/login",
             json={
                 "username": "test-ceo",
@@ -150,8 +151,8 @@ class TestLogin:
         )
         assert response.status_code == 401
 
-    def test_login_nonexistent_user(self, bare_client: TestClient[Any]) -> None:
-        response = bare_client.post(
+    async def test_login_nonexistent_user(self, bare_client: LoopAsyncClient) -> None:
+        response = await bare_client.post(
             "/api/v1/auth/login",
             json={
                 "username": "nonexistent",
@@ -163,11 +164,11 @@ class TestLogin:
 
 @pytest.mark.unit
 class TestChangePassword:
-    def test_change_password_success(self, bare_client: TestClient[Any]) -> None:
+    async def test_change_password_success(self, bare_client: LoopAsyncClient) -> None:
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        setup_resp = bare_client.post(
+        setup_resp = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "changepw",
@@ -177,7 +178,7 @@ class TestChangePassword:
         # Extract session JWT and CSRF token from Set-Cookie headers
         cookies = _extract_auth_cookies(setup_resp)
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/change-password",
             json={
                 "current_password": "old-password-12chars",
@@ -194,8 +195,10 @@ class TestChangePassword:
         data = response.json()["data"]
         assert data["must_change_password"] is False
 
-    def test_change_password_wrong_current(self, test_client: TestClient[Any]) -> None:
-        response = test_client.post(
+    async def test_change_password_wrong_current(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.post(
             "/api/v1/auth/change-password",
             json={
                 "current_password": "wrong-current-pw-12",
@@ -205,8 +208,10 @@ class TestChangePassword:
         )
         assert response.status_code == 401
 
-    def test_change_password_requires_auth(self, bare_client: TestClient[Any]) -> None:
-        response = bare_client.post(
+    async def test_change_password_requires_auth(
+        self, bare_client: LoopAsyncClient
+    ) -> None:
+        response = await bare_client.post(
             "/api/v1/auth/change-password",
             json={
                 "current_password": "old-password-12chars",
@@ -215,14 +220,14 @@ class TestChangePassword:
         )
         assert response.status_code == 401
 
-    def test_change_password_short_new_password(
+    async def test_change_password_short_new_password(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        setup_resp = bare_client.post(
+        setup_resp = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "shortpw",
@@ -231,7 +236,7 @@ class TestChangePassword:
         )
         cookies = _extract_auth_cookies(setup_resp)
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/change-password",
             json={
                 "current_password": "old-password-12chars",
@@ -249,8 +254,10 @@ class TestChangePassword:
 
 @pytest.mark.unit
 class TestMe:
-    def test_me_returns_user_info(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get(
+    async def test_me_returns_user_info(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get(
             "/api/v1/auth/me",
             headers=make_auth_headers("ceo"),
         )
@@ -260,8 +267,8 @@ class TestMe:
         assert data["role"] == "ceo"
         assert data["must_change_password"] is False
 
-    def test_me_requires_auth(self, bare_client: TestClient[Any]) -> None:
-        response = bare_client.get("/api/v1/auth/me")
+    async def test_me_requires_auth(self, bare_client: LoopAsyncClient) -> None:
+        response = await bare_client.get("/api/v1/auth/me")
         assert response.status_code == 401
 
 
@@ -373,11 +380,11 @@ class TestRequirePasswordChanged:
 
 @pytest.mark.unit
 class TestWsTicket:
-    def test_ws_ticket_returns_ticket_and_expires_in(
+    async def test_ws_ticket_returns_ticket_and_expires_in(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         assert response.status_code == 200
         data = response.json()["data"]
         assert "ticket" in data
@@ -385,19 +392,19 @@ class TestWsTicket:
         assert len(data["ticket"]) > 0
         assert data["expires_in"] == 30
 
-    def test_ws_ticket_requires_auth(
+    async def test_ws_ticket_requires_auth(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
-        response = bare_client.post("/api/v1/auth/ws-ticket")
+        response = await bare_client.post("/api/v1/auth/ws-ticket")
         assert response.status_code == 401
 
-    def test_ws_ticket_with_observer_role(
+    async def test_ws_ticket_with_observer_role(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """All roles should be able to get a WS ticket."""
-        response = test_client.post(
+        response = await async_test_client.post(
             "/api/v1/auth/ws-ticket",
             headers=make_auth_headers("observer"),
         )
@@ -405,16 +412,16 @@ class TestWsTicket:
         data = response.json()["data"]
         assert "ticket" in data
 
-    def test_ws_ticket_is_consumable(
+    async def test_ws_ticket_is_consumable(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """The returned ticket can be consumed by the ticket store."""
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         data = response.json()["data"]
         ticket = data["ticket"]
 
-        app_state = test_client.app.state["app_state"]
+        app_state = async_test_client.app.state["app_state"]
         user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method.value == "ws_ticket"
@@ -427,9 +434,9 @@ class TestWsTicket:
 class TestSystemUserBlocking:
     """Verify the system user cannot log in or change its password."""
 
-    def test_login_rejects_system_user(
+    async def test_login_rejects_system_user(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         """System user login returns 401 (same as invalid credentials)."""
         from datetime import UTC, datetime
@@ -447,9 +454,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=asyncio.run(
-                svc.hash_password_async("irrelevant-password-12")
-            ),
+            password_hash=await svc.hash_password_async("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -458,7 +463,7 @@ class TestSystemUserBlocking:
         # Use internal dict because save() is async and this is a sync test
         cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/login",
             json={
                 "username": "system",
@@ -467,9 +472,9 @@ class TestSystemUserBlocking:
         )
         assert response.status_code == 401
 
-    def test_change_password_rejects_system_user(
+    async def test_change_password_rejects_system_user(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         """System user cannot change its password (403)."""
         from datetime import UTC, datetime, timedelta
@@ -489,9 +494,7 @@ class TestSystemUserBlocking:
         system_user = User(
             id=SYSTEM_USER_ID,
             username=SYSTEM_USERNAME,
-            password_hash=asyncio.run(
-                svc.hash_password_async("irrelevant-password-12")
-            ),
+            password_hash=await svc.hash_password_async("irrelevant-password-12"),
             role=HumanRole.SYSTEM,
             must_change_password=False,
             created_at=now,
@@ -513,7 +516,7 @@ class TestSystemUserBlocking:
             algorithm="HS256",
         )
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/change-password",
             json={
                 "current_password": "any-password-12chars",
@@ -523,9 +526,9 @@ class TestSystemUserBlocking:
         )
         assert response.status_code == 403
 
-    def test_setup_succeeds_with_system_user_present(
+    async def test_setup_succeeds_with_system_user_present(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         """Setup endpoint returns 201 when only the system user exists."""
         from datetime import UTC, datetime
@@ -551,7 +554,7 @@ class TestSystemUserBlocking:
         )
         cast(Any, persistence_of(app_state))._users._users[SYSTEM_USER_ID] = system_user
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "newadmin",
@@ -560,15 +563,15 @@ class TestSystemUserBlocking:
         )
         assert response.status_code == 201
 
-    def test_setup_rejects_reserved_system_username(
+    async def test_setup_rejects_reserved_system_username(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         """Setup rejects the reserved 'system' username with 409."""
         app_state = bare_client.app.state["app_state"]
         cast(Any, persistence_of(app_state))._users._users.clear()
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "system",
@@ -577,9 +580,9 @@ class TestSystemUserBlocking:
         )
         assert response.status_code == 409
 
-    def test_setup_succeeds_with_non_ceo_human_users_present(
+    async def test_setup_succeeds_with_non_ceo_human_users_present(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         """Setup succeeds when only non-CEO human users exist."""
         from datetime import UTC, datetime
@@ -600,7 +603,7 @@ class TestSystemUserBlocking:
         )
         cast(Any, persistence_of(app_state))._users._users["observer-001"] = observer
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/setup",
             json={
                 "username": "firstadmin",
@@ -641,22 +644,22 @@ class TestLogoutIdempotency:
             )
         assert response.headers.get("Clear-Site-Data") == '"cookies"'
 
-    def test_logout_without_auth_returns_204_with_clear_cookies(
+    async def test_logout_without_auth_returns_204_with_clear_cookies(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
         # No Authorization header, no session cookie -- the idempotent
         # logout still has to work so clients with stale cookies can
         # clear them.
-        response = bare_client.post("/api/v1/auth/logout")
+        response = await bare_client.post("/api/v1/auth/logout")
         assert response.status_code == 204
         self._assert_clear_cookies(response)
 
-    def test_logout_with_invalid_bearer_still_returns_204(
+    async def test_logout_with_invalid_bearer_still_returns_204(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
     ) -> None:
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/logout",
             headers={"Authorization": "Bearer not-a-real-token"},
         )
@@ -684,9 +687,9 @@ class TestLogoutIdempotency:
         )
         monkeypatch.setitem(app_state._slices, ApiCoreStateSlice, spied)
 
-    def test_logout_with_valid_auth_returns_204_and_revokes_session(
+    async def test_logout_with_valid_auth_returns_204_and_revokes_session(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         app_state = bare_client.app.state["app_state"]
@@ -718,7 +721,7 @@ class TestLogoutIdempotency:
             audience=USER_AUDIENCE,
         )["jti"]
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/logout",
             headers=headers,
         )
@@ -726,9 +729,9 @@ class TestLogoutIdempotency:
         self._assert_clear_cookies(response)
         revoke_spy.assert_awaited_once_with(expected_jti)
 
-    def test_logout_still_204_when_session_store_revoke_fails(
+    async def test_logout_still_204_when_session_store_revoke_fails(
         self,
-        bare_client: TestClient[Any],
+        bare_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         app_state = bare_client.app.state["app_state"]
@@ -740,7 +743,7 @@ class TestLogoutIdempotency:
         )
         self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
 
-        response = bare_client.post(
+        response = await bare_client.post(
             "/api/v1/auth/logout",
             headers=make_auth_headers(role=HumanRole.CEO),
         )

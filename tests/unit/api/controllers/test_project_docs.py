@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
@@ -25,6 +24,7 @@ from synthorg.docs_engine.models import (
     ProseBlock,
 )
 from synthorg.docs_engine.state import DocsStateSlice
+from tests._shared import LoopAsyncClient
 
 _NOW = datetime(2026, 5, 20, tzinfo=UTC)
 
@@ -82,8 +82,8 @@ class _FakeDocsService:
 
 
 @contextmanager
-def _with_docs_service(test_client: TestClient[Any], svc: Any) -> Iterator[None]:
-    app_state = test_client.app.state.app_state
+def _with_docs_service(async_test_client: LoopAsyncClient, svc: Any) -> Iterator[None]:
+    app_state = async_test_client.app.state.app_state
     original_slice = app_state.slice(DocsStateSlice)
     app_state.swap_slice(DocsStateSlice.model_construct(service=svc))
     try:
@@ -94,46 +94,52 @@ def _with_docs_service(test_client: TestClient[Any], svc: Any) -> Iterator[None]
 
 @pytest.mark.unit
 class TestProjectDocsController:
-    def test_not_wired_returns_503(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/projects/proj-1/docs")
+    async def test_not_wired_returns_503(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/projects/proj-1/docs")
         assert resp.status_code == 503
 
-    def test_list_docs(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get("/api/v1/projects/proj-1/docs")
+    async def test_list_docs(self, async_test_client: LoopAsyncClient) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get("/api/v1/projects/proj-1/docs")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"][0]["slug"] == "q2-status"
 
-    def test_list_rejects_invalid_doc_type(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get(
+    async def test_list_rejects_invalid_doc_type(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get(
                 "/api/v1/projects/proj-1/docs", params={"doc_type": "not_a_type"}
             )
         assert resp.status_code == 422
 
-    def test_get_doc(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get("/api/v1/projects/proj-1/docs/q2-status")
+    async def test_get_doc(self, async_test_client: LoopAsyncClient) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get("/api/v1/projects/proj-1/docs/q2-status")
         assert resp.status_code == 200
         assert resp.json()["data"]["title"] == "Q2 Status"
 
-    def test_get_doc_not_found(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get("/api/v1/projects/proj-1/docs/ghost")
+    async def test_get_doc_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get("/api/v1/projects/proj-1/docs/ghost")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    def test_search_docs(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get(
+    async def test_search_docs(self, async_test_client: LoopAsyncClient) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get(
                 "/api/v1/projects/proj-1/docs/search", params={"q": "checkout"}
             )
         assert resp.status_code == 200
         assert resp.json()["data"][0]["doc_slug"] == "q2-status"
 
-    def test_history(self, test_client: TestClient[Any]) -> None:
-        with _with_docs_service(test_client, _FakeDocsService()):
-            resp = test_client.get("/api/v1/projects/proj-1/docs/q2-status/history")
+    async def test_history(self, async_test_client: LoopAsyncClient) -> None:
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs/q2-status/history"
+            )
         assert resp.status_code == 200
         assert resp.json()["data"][0]["commit_sha"] == "b" * 40

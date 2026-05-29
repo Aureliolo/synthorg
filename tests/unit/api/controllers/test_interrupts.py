@@ -1,16 +1,15 @@
 """Tests for InterruptController (polling fallback)."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
     InterruptStore,
     InterruptType,
 )
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _WRITE_HEADERS = make_auth_headers("ceo")
@@ -20,15 +19,15 @@ _BASE = "/api/v1/interrupts"
 
 @pytest.mark.unit
 class TestListInterrupts:
-    def test_list_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+    async def test_list_empty(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
     async def test_list_with_pending(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         interrupt_store: InterruptStore,
     ) -> None:
         interrupt = Interrupt(
@@ -42,7 +41,7 @@ class TestListInterrupts:
         )
         await interrupt_store.create(interrupt)
 
-        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         ids = [item["id"] for item in body["data"]]
@@ -50,7 +49,7 @@ class TestListInterrupts:
 
     async def test_list_filtered_by_session(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         interrupt_store: InterruptStore,
     ) -> None:
         await interrupt_store.create(
@@ -76,7 +75,7 @@ class TestListInterrupts:
             ),
         )
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"session_id": "session-filter-1"},
             headers=_READ_HEADERS,
@@ -92,9 +91,9 @@ class TestListInterrupts:
 class TestResumeInterrupt:
     async def test_resume_nonexistent_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/nonexistent/resume",
             json={"decision": "approve"},
             headers=_WRITE_HEADERS,
@@ -103,7 +102,7 @@ class TestResumeInterrupt:
 
     async def test_resume_success(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         interrupt_store: InterruptStore,
     ) -> None:
         await interrupt_store.create(
@@ -117,7 +116,7 @@ class TestResumeInterrupt:
                 tool_name="deploy",
             ),
         )
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"{_BASE}/int-resume-poll/resume",
             json={"decision": "approve"},
             headers=_WRITE_HEADERS,

@@ -1,10 +1,8 @@
 """Tests for provider health endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
@@ -15,6 +13,7 @@ from synthorg.providers.health import (
 )
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -48,8 +47,8 @@ def _build_provider_client(
     fake_message_bus: FakeMessageBus,
     provider_health_tracker: ProviderHealthTracker | None = None,
     cost_tracker: CostTracker | None = None,
-) -> TestClient[Any]:
-    """Build a TestClient with a provider configured."""
+) -> LoopAsyncClient:
+    """Build a LoopAsyncClient with a provider configured."""
     from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
@@ -83,37 +82,37 @@ def _build_provider_client(
         settings_service=settings_service,
         provider_health_tracker=provider_health_tracker or ProviderHealthTracker(),
     )
-    return TestClient(app)
+    return LoopAsyncClient(app)
 
 
 @pytest.mark.unit
 class TestProviderHealth:
-    def test_provider_not_found(
+    async def test_provider_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/providers/nonexistent/health")
+        resp = await async_test_client.get("/api/v1/providers/nonexistent/health")
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
-    def test_auth_required(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_auth_required(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             "/api/v1/providers/test-provider/health",
             headers={"Authorization": "Bearer invalid"},
         )
         assert resp.status_code == 401
 
-    def test_empty_health(
+    async def test_empty_health(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Provider exists but no health records."""
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -139,12 +138,12 @@ class TestProviderHealth:
                     response_time_ms=100.0 + i * 10,
                 ),
             )
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             provider_health_tracker=tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -171,12 +170,12 @@ class TestProviderHealth:
                     error_message=None if ok else "test error",
                 ),
             )
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             provider_health_tracker=tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -200,12 +199,12 @@ class TestProviderHealth:
                     error_message="test error",
                 ),
             )
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             provider_health_tracker=tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -219,17 +218,17 @@ class TestProviderHealth:
 class TestProviderHealthUsageEnrichment:
     """Tests for cost/token enrichment of the health endpoint."""
 
-    def test_health_includes_zero_usage_when_no_cost_records(
+    async def test_health_includes_zero_usage_when_no_cost_records(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
         """Usage fields present and zero when no cost records exist."""
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -271,12 +270,12 @@ class TestProviderHealthUsageEnrichment:
                 timestamp=_NOW - timedelta(minutes=10),
             ),
         )
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             cost_tracker=tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -318,12 +317,12 @@ class TestProviderHealthUsageEnrichment:
                 timestamp=_NOW - timedelta(minutes=5),
             ),
         )
-        with _build_provider_client(
+        async with _build_provider_client(
             fake_persistence=fake_persistence,
             fake_message_bus=fake_message_bus,
             cost_tracker=tracker,
         ) as client:
-            resp = client.get(
+            resp = await client.get(
                 "/api/v1/providers/test-provider/health",
                 headers=_HEADERS,
             )
@@ -341,26 +340,24 @@ class TestProviderHealthUsageEnrichment:
         from unittest.mock import AsyncMock, patch
 
         tracker = CostTracker()
-        with (
-            patch.object(
-                tracker,
-                "get_provider_usage",
-                new=AsyncMock(
-                    spec=tracker.get_provider_usage,
-                    side_effect=RuntimeError("cost tracker broken"),
-                ),
+        with patch.object(
+            tracker,
+            "get_provider_usage",
+            new=AsyncMock(
+                spec=tracker.get_provider_usage,
+                side_effect=RuntimeError("cost tracker broken"),
             ),
-            _build_provider_client(
+        ):
+            async with _build_provider_client(
                 fake_persistence=fake_persistence,
                 fake_message_bus=fake_message_bus,
                 cost_tracker=tracker,
-            ) as client,
-        ):
-            resp = client.get(
-                "/api/v1/providers/test-provider/health",
-                headers=_HEADERS,
-            )
-            assert resp.status_code == 200
-            data = resp.json()["data"]
-            assert data["total_tokens_24h"] == 0
-            assert data["total_cost_24h"] == 0.0
+            ) as client:
+                resp = await client.get(
+                    "/api/v1/providers/test-provider/health",
+                    headers=_HEADERS,
+                )
+                assert resp.status_code == 200
+                data = resp.json()["data"]
+                assert data["total_tokens_24h"] == 0
+                assert data["total_cost_24h"] == 0.0

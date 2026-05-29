@@ -24,9 +24,9 @@ from typing import Annotated, Any
 import pytest
 from litestar import Litestar, get
 from litestar.params import QueryParameter
-from litestar.testing import TestClient
 
 from synthorg.api.path_params import QUERY_MAX_LENGTH
+from tests._shared import LoopAsyncClient
 
 
 @get("/probe")
@@ -42,7 +42,7 @@ async def _probe_handler(
 
 @pytest.mark.integration
 class TestQueryParamOverlongReturns4xx:
-    def test_overlong_query_param_returns_4xx_not_5xx(self) -> None:
+    async def test_overlong_query_param_returns_4xx_not_5xx(self) -> None:
         """An over-long ``QueryParameter(max_length=N)`` value must be 4xx.
 
         Drives the binding through Litestar 2.22's ``QueryParameter``
@@ -53,19 +53,19 @@ class TestQueryParamOverlongReturns4xx:
         redundant and can be removed.
         """
         app = Litestar(route_handlers=[_probe_handler])
-        client = TestClient(app)
-        overlong = "x" * (QUERY_MAX_LENGTH + 1)
-        response = client.get("/probe", params={"action_type": overlong})
-        assert 400 <= response.status_code < 500, (
-            f"Litestar 2.22 QueryParameter(max_length={QUERY_MAX_LENGTH}) "
-            f"should return 4xx for an over-long value "
-            f"(got {response.status_code}). If this fails, keep the "
-            "'Manual check retained' blocks in approvals.py / budget.py / "
-            "meetings.py and update their comments to reference "
-            "QueryParameter."
-        )
+        async with LoopAsyncClient(app) as client:
+            overlong = "x" * (QUERY_MAX_LENGTH + 1)
+            response = await client.get("/probe", params={"action_type": overlong})
+            assert 400 <= response.status_code < 500, (
+                f"Litestar 2.22 QueryParameter(max_length={QUERY_MAX_LENGTH}) "
+                f"should return 4xx for an over-long value "
+                f"(got {response.status_code}). If this fails, keep the "
+                "'Manual check retained' blocks in approvals.py / budget.py / "
+                "meetings.py and update their comments to reference "
+                "QueryParameter."
+            )
 
-    def test_within_bounds_query_param_returns_2xx(self) -> None:
+    async def test_within_bounds_query_param_returns_2xx(self) -> None:
         """Control case: a value at the boundary must succeed.
 
         Without this, the over-long assertion could pass for any
@@ -74,17 +74,17 @@ class TestQueryParamOverlongReturns4xx:
         this test is supposed to catch.
         """
         app = Litestar(route_handlers=[_probe_handler])
-        client = TestClient(app)
-        at_bound = "x" * QUERY_MAX_LENGTH
-        response = client.get("/probe", params={"action_type": at_bound})
-        assert response.status_code == 200, (
-            "QueryParameter at the max_length bound should be accepted; "
-            f"got {response.status_code}. The over-long test below would "
-            "pass for any unrelated 4xx and silently mask the real "
-            "regression -- this control case is the negative."
-        )
+        async with LoopAsyncClient(app) as client:
+            at_bound = "x" * QUERY_MAX_LENGTH
+            response = await client.get("/probe", params={"action_type": at_bound})
+            assert response.status_code == 200, (
+                "QueryParameter at the max_length bound should be accepted; "
+                f"got {response.status_code}. The over-long test below would "
+                "pass for any unrelated 4xx and silently mask the real "
+                "regression -- this control case is the negative."
+            )
 
-    def test_omitted_optional_query_param_uses_default(self) -> None:
+    async def test_omitted_optional_query_param_uses_default(self) -> None:
         """An omitted optional QueryParameter must bind to the default.
 
         The three production handlers (`approvals.py`, `budget.py`,
@@ -95,15 +95,15 @@ class TestQueryParamOverlongReturns4xx:
         codepath change. This test pins the current behaviour.
         """
         app = Litestar(route_handlers=[_probe_handler])
-        client = TestClient(app)
-        response = client.get("/probe")
-        assert response.status_code == 200, (
-            "Omitting an optional QueryParameter should bind to its "
-            f"default; got {response.status_code}."
-        )
-        assert response.json()["action_type"] is None
+        async with LoopAsyncClient(app) as client:
+            response = await client.get("/probe")
+            assert response.status_code == 200, (
+                "Omitting an optional QueryParameter should bind to its "
+                f"default; got {response.status_code}."
+            )
+            assert response.json()["action_type"] is None
 
-    def test_multibyte_query_param_uses_character_count(self) -> None:
+    async def test_multibyte_query_param_uses_character_count(self) -> None:
         """``max_length`` is character-count, not byte-count, on Litestar 2.22.
 
         The pre-2.22 manual checks in `approvals.py` / `budget.py` /
@@ -117,18 +117,22 @@ class TestQueryParamOverlongReturns4xx:
         payloads).
         """
         app = Litestar(route_handlers=[_probe_handler])
-        client = TestClient(app)
-        # Euro sign is 3 bytes in UTF-8 but one character.
-        at_bound_chars = "€" * QUERY_MAX_LENGTH
-        response = client.get("/probe", params={"action_type": at_bound_chars})
-        assert response.status_code == 200, (
-            "Multibyte value at the character bound should be accepted "
-            f"(char-count semantics); got {response.status_code}."
-        )
+        async with LoopAsyncClient(app) as client:
+            # Euro sign is 3 bytes in UTF-8 but one character.
+            at_bound_chars = "€" * QUERY_MAX_LENGTH
+            response = await client.get(
+                "/probe", params={"action_type": at_bound_chars}
+            )
+            assert response.status_code == 200, (
+                "Multibyte value at the character bound should be accepted "
+                f"(char-count semantics); got {response.status_code}."
+            )
 
-        over_bound_chars = "€" * (QUERY_MAX_LENGTH + 1)
-        response = client.get("/probe", params={"action_type": over_bound_chars})
-        assert 400 <= response.status_code < 500, (
-            "Multibyte value one character over the bound should be "
-            f"rejected (char-count semantics); got {response.status_code}."
-        )
+            over_bound_chars = "€" * (QUERY_MAX_LENGTH + 1)
+            response = await client.get(
+                "/probe", params={"action_type": over_bound_chars}
+            )
+            assert 400 <= response.status_code < 500, (
+                "Multibyte value one character over the bound should be "
+                f"rejected (char-count semantics); got {response.status_code}."
+            )

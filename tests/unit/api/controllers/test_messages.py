@@ -4,21 +4,23 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.persistence.conftest import make_message
 
 
 @pytest.mark.unit
 class TestMessageController:
-    def test_list_messages_no_channel(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/messages")
+    async def test_list_messages_no_channel(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/messages")
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
 
-    def test_list_channels(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/messages/channels")
+    async def test_list_channels(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/messages/channels")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -37,24 +39,24 @@ class TestMessageControllerDelete:
 
     async def test_delete_returns_200_when_message_exists(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         msg = make_message(msg_id=uuid4(), channel="ops")
         await fake_persistence.messages.append(msg)
 
-        resp = test_client.delete(f"/api/v1/messages/{msg.id}")
+        resp = await async_test_client.delete(f"/api/v1/messages/{msg.id}")
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert body["data"] is None
 
-    def test_delete_returns_404_for_unknown_id(
+    async def test_delete_returns_404_for_unknown_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.delete(f"/api/v1/messages/{uuid4()}")
+        resp = await async_test_client.delete(f"/api/v1/messages/{uuid4()}")
 
         assert resp.status_code == 404
         body = resp.json()

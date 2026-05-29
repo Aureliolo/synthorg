@@ -1,11 +1,11 @@
 """Tests for application factory."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 from litestar import Litestar
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.app_builders import _bootstrap_app_logging
@@ -23,7 +23,62 @@ from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
+
+
+def _build_startup_with_failing_settings_autowire(
+    monkeypatch: pytest.MonkeyPatch,
+    root_config: Any,
+) -> Callable[[], Awaitable[None]]:
+    """Build an on_startup hook whose ``auto_wire_settings`` step raises.
+
+    ``_safe_startup`` is mocked so the hook reaches the auto-wire stage,
+    and ``auto_wire_settings`` is patched to raise so the test can assert
+    the failure propagates (triggering ``_safe_shutdown`` cleanup).
+    """
+    from unittest.mock import AsyncMock
+
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.lifecycle_builder import _build_lifecycle
+    from tests.unit.api.conftest import FakeMessageBus, FakePersistenceBackend
+
+    persistence = FakePersistenceBackend()
+    bus = FakeMessageBus()
+    app_state = make_app_state(
+        config=root_config,
+        approval_store=ApprovalStore(),
+        persistence=persistence,
+        message_bus=bus,
+    )
+
+    async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
+        msg = "phase2 boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        "synthorg.api.auto_wire.auto_wire_settings",
+        failing_auto_wire,
+    )
+    startup, _shutdown = _build_lifecycle(
+        persistence,
+        bus,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        app_state,
+        should_auto_wire_settings=True,
+        effective_config=root_config,
+    )
+    # Mock _safe_startup so on_startup gets past the early stage.
+    safe_startup_mock = AsyncMock()
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_builder._safe_startup",
+        safe_startup_mock,
+    )
+    return startup[0]
 
 
 @pytest.mark.unit
@@ -59,8 +114,10 @@ class TestCreateApp:
         )
         assert app.logging_config is None
 
-    def test_openapi_schema_accessible(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/docs/openapi.json")
+    async def test_openapi_schema_accessible(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        response = await async_test_client.get("/docs/openapi.json")
         assert response.status_code == 200
         data = response.json()
         assert data["info"]["title"] == "SynthOrg API"
@@ -69,14 +126,14 @@ class TestCreateApp:
         ("header", "expected"),
         list(_SECURITY_HEADERS.items()),
     )
-    def test_security_response_headers(
+    async def test_security_response_headers(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         header: str,
         expected: str,
     ) -> None:
         # Use a non-docs endpoint -- /docs paths relax COOP for Scalar UI.
-        response = test_client.get("/api/v1/healthz")
+        response = await async_test_client.get("/api/v1/healthz")
         assert response.headers.get(header) == expected
 
     def test_agent_registry_built_before_auto_wire_meetings(
@@ -930,56 +987,12 @@ class TestAutoWirePhase2ErrorPaths:
         root_config: Any,
     ) -> None:
         """On-startup auto-wire failure calls _safe_shutdown for cleanup."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.lifecycle_builder import _build_lifecycle
-        from tests.unit.api.conftest import (
-            FakeMessageBus,
-            FakePersistenceBackend,
+        startup_hook = _build_startup_with_failing_settings_autowire(
+            monkeypatch,
+            root_config,
         )
-
-        persistence = FakePersistenceBackend()
-        bus = FakeMessageBus()
-        app_state = make_app_state(
-            config=root_config,
-            approval_store=ApprovalStore(),
-            persistence=persistence,
-            message_bus=bus,
-        )
-
-        async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
-            msg = "phase2 boom"
-            raise RuntimeError(msg)
-
-        monkeypatch.setattr(
-            "synthorg.api.auto_wire.auto_wire_settings",
-            failing_auto_wire,
-        )
-
-        startup, _shutdown = _build_lifecycle(
-            persistence,
-            bus,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            app_state,
-            should_auto_wire_settings=True,
-            effective_config=root_config,
-        )
-
-        # Mock _safe_startup so on_startup gets past the early stage.
-        safe_startup_mock = AsyncMock()
-        monkeypatch.setattr(
-            "synthorg.api.lifecycle_builder._safe_startup",
-            safe_startup_mock,
-        )
-
         with pytest.raises(RuntimeError, match="phase2 boom"):
-            await startup[0]()
+            await startup_hook()
 
     async def test_auto_wired_dispatcher_stopped_on_shutdown(
         self,

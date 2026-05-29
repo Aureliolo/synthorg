@@ -1,16 +1,15 @@
 """Tests for EventStreamController."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.communication.event_stream.interrupt import (
     Interrupt,
     InterruptStore,
     InterruptType,
 )
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _WRITE_HEADERS = make_auth_headers("ceo")
@@ -34,11 +33,11 @@ _MALFORMED_SESSION_ID_IDS = tuple(i for _, i in _MALFORMED_SESSION_IDS)
 
 @pytest.mark.unit
 class TestEventStreamSSE:
-    def test_stream_requires_session_id(
+    async def test_stream_requires_session_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/events/stream",
             headers=_READ_HEADERS,
         )
@@ -50,12 +49,12 @@ class TestEventStreamSSE:
         _MALFORMED_SESSION_ID_VALUES,
         ids=_MALFORMED_SESSION_ID_IDS,
     )
-    def test_stream_rejects_malformed_session_id(
+    async def test_stream_rejects_malformed_session_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         bad_id: str,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/events/stream",
             params={"session_id": bad_id},
             headers=_READ_HEADERS,
@@ -81,9 +80,9 @@ class TestEventStreamSSE:
             "single_word",
         ],
     )
-    def test_interrupts_accepts_valid_session_id(
+    async def test_interrupts_accepts_valid_session_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         good_id: str,
     ) -> None:
         """The regex happy path must *not* reject well-formed session ids.
@@ -93,7 +92,7 @@ class TestEventStreamSSE:
         SSE stream holds the connection open indefinitely once the
         validator admits the id.
         """
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/interrupts",
             params={"session_id": good_id},
             headers=_READ_HEADERS,
@@ -110,14 +109,14 @@ class TestEventStreamSSE:
         _MALFORMED_SESSION_ID_VALUES,
         ids=_MALFORMED_SESSION_ID_IDS,
     )
-    def test_interrupts_rejects_malformed_session_id(
+    async def test_interrupts_rejects_malformed_session_id(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         bad_id: str,
     ) -> None:
         # Parametrized to mirror the coverage of the streams variant:
         # the regex gate must apply identically to both endpoints.
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/interrupts",
             params={"session_id": bad_id},
             headers=_READ_HEADERS,
@@ -131,10 +130,10 @@ class TestEventStreamSSE:
 class TestEventStreamResume:
     async def test_resume_nonexistent_interrupt_404(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         interrupt_store: InterruptStore,
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/events/resume/nonexistent",
             json={"decision": "approve"},
             headers=_WRITE_HEADERS,
@@ -143,7 +142,7 @@ class TestEventStreamResume:
 
     async def test_resume_existing_interrupt(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         interrupt_store: InterruptStore,
     ) -> None:
         interrupt = Interrupt(
@@ -157,7 +156,7 @@ class TestEventStreamResume:
         )
         await interrupt_store.create(interrupt)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/events/resume/int-resume-001",
             json={"decision": "approve"},
             headers=_WRITE_HEADERS,

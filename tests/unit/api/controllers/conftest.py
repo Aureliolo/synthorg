@@ -5,9 +5,8 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from litestar.testing import TestClient
-
 from synthorg.providers.state import ProvidersStateSlice
+from tests._shared import LoopAsyncClient
 
 
 def _build_mock_provider_management() -> MagicMock:
@@ -30,7 +29,7 @@ def _build_mock_provider_management() -> MagicMock:
 
 
 @contextmanager
-def mock_providers(test_client: TestClient[Any]) -> Iterator[Any]:
+def mock_providers(async_test_client: LoopAsyncClient) -> Iterator[Any]:
     """Patch ``app_state._provider_management`` with a stub for the test body.
 
     Returning ``(app_state, original)`` would force every caller to
@@ -38,7 +37,7 @@ def mock_providers(test_client: TestClient[Any]) -> Iterator[Any]:
     makes restoration unconditional even when an intermediate
     ``raise`` skips the manual finally block.
     """
-    app_state = test_client.app.state.app_state
+    app_state = async_test_client.app.state.app_state
     original = app_state.slice(ProvidersStateSlice).management
     app_state.wire(ProvidersStateSlice, management=_build_mock_provider_management())
     try:
@@ -48,17 +47,15 @@ def mock_providers(test_client: TestClient[Any]) -> Iterator[Any]:
 
 
 def setup_mock_providers(
-    test_client: TestClient[Any],
+    async_test_client: LoopAsyncClient,
 ) -> tuple[Any, Any]:
     """Patch ``app_state._provider_management`` with a stub.
 
-    Legacy entry point kept for tests that have not migrated to the
-    context-manager form. Prefer :func:`mock_providers` -- it
-    guarantees state restoration even when the test body raises.
-    Returns ``(app_state, original)`` so the caller can manually
-    restore in a ``finally`` block.
+    For callers that restore state manually in a ``finally`` block;
+    returns ``(app_state, original)``. Prefer :func:`mock_providers`,
+    which guarantees restoration even when the test body raises.
     """
-    app_state = test_client.app.state.app_state
+    app_state = async_test_client.app.state.app_state
     original = app_state.slice(ProvidersStateSlice).management
     app_state.wire(ProvidersStateSlice, management=_build_mock_provider_management())
     return app_state, original

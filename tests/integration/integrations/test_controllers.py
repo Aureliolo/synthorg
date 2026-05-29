@@ -11,7 +11,7 @@ Covers:
 The per-controller tests below invoke the underlying handler via
 ``handler.fn(ctrl, ...)`` so they run fast and can mock every
 collaborator. ``TestControllerHttpLayer`` complements them with an
-end-to-end sanity check through Litestar's ``TestClient`` so guards,
+end-to-end sanity check through ``LoopAsyncClient`` so guards,
 dependency injection, and RFC 9457 error translation are exercised
 on the real HTTP path.
 """
@@ -23,7 +23,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar.datastructures import State
-from litestar.testing import TestClient
 
 from synthorg.api.cursor import CursorSecret
 from synthorg.core.domain_errors import (
@@ -43,7 +42,7 @@ from synthorg.integrations.connections.models import (
 from synthorg.integrations.errors import (
     DuplicateConnectionError,
 )
-from tests._shared import make_app_state
+from tests._shared import LoopAsyncClient, make_app_state
 
 
 def _make_conn(name: str = "c1") -> Connection:
@@ -1050,8 +1049,8 @@ class TestOAuthController:
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        with TestClient(app) as http:
-            resp = http.post("/api/v1/oauth/initiate", json={})
+        async with LoopAsyncClient(app) as http:
+            resp = await http.post("/api/v1/oauth/initiate", json={})
         # Litestar surfaces request-body Pydantic-bind failures as
         # its built-in ``ValidationException`` which is mapped to
         # HTTP 400 by default. The project's domain
@@ -1086,19 +1085,19 @@ class TestOAuthController:
 
 @pytest.mark.integration
 class TestControllerHttpLayer:
-    """End-to-end smoke checks through Litestar ``TestClient``.
+    """End-to-end smoke checks through ``LoopAsyncClient``.
 
     The per-controller tests above call handlers directly, which is
     fast but bypasses routing, guards, dependency injection, and
     RFC 9457 error response translation. These smoke tests drive
-    the same handlers through a real ``TestClient`` so a regression
+    the same handlers through a real ``LoopAsyncClient`` so a regression
     in the HTTP stack surfaces here instead of in production.
     """
 
     def _build_client(
         self,
         catalog: MagicMock,
-    ) -> TestClient[Any]:
+    ) -> LoopAsyncClient:
         """Construct a minimal Litestar app + test client for smoke tests."""
         from litestar import Litestar, Router
         from litestar.datastructures import State
@@ -1162,14 +1161,14 @@ class TestControllerHttpLayer:
             middleware=[_InjectUserMiddleware()],
             exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
-        return TestClient(app)
+        return LoopAsyncClient(app)
 
     async def test_list_connections_returns_200(self) -> None:
         catalog = MagicMock()
         catalog.list_all = AsyncMock(return_value=(_make_conn(),))
         client = self._build_client(catalog)
-        with client as http:
-            resp = http.get("/api/v1/connections")
+        async with client as http:
+            resp = await http.get("/api/v1/connections")
         # The full HTTP stack must return an exact 200 with the
         # connection list serialized through the ApiResponse
         # envelope. Any other status would be a regression in
@@ -1188,8 +1187,8 @@ class TestControllerHttpLayer:
             side_effect=ConnectionNotFoundError("missing"),
         )
         client = self._build_client(catalog)
-        with client as http:
-            resp = http.get("/api/v1/integrations/health/missing")
+        async with client as http:
+            resp = await http.get("/api/v1/integrations/health/missing")
         # Expect a structured 404 via RFC 9457 translation -- the
         # ``NotFoundError`` raised by the handler must be mapped
         # to the right status and serialized through the error

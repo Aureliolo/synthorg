@@ -2,10 +2,10 @@
 
 import pytest
 from litestar import Litestar, get, post
-from litestar.testing import TestClient
 
 from synthorg.api.auth.csrf import create_csrf_middleware_class
 from synthorg.core.auth.config import AuthConfig
+from tests._shared import LoopAsyncClient
 
 
 def _build_csrf_app(
@@ -36,27 +36,27 @@ def _build_csrf_app(
 
 @pytest.mark.unit
 class TestCsrfSafeMethods:
-    def test_get_always_passes(self) -> None:
+    async def test_get_always_passes(self) -> None:
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.get("/data")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.get("/data")
             assert resp.status_code == 200
 
 
 @pytest.mark.unit
 class TestCsrfNoSessionCookie:
-    def test_post_without_session_cookie_passes(self) -> None:
+    async def test_post_without_session_cookie_passes(self) -> None:
         """No session cookie -> no CSRF risk -> skip validation."""
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post("/mutate")
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post("/mutate")
             assert resp.status_code == 201
 
-    def test_post_with_api_key_header_no_cookie_passes(self) -> None:
+    async def test_post_with_api_key_header_no_cookie_passes(self) -> None:
         """API key auth (no cookie) should not be CSRF-gated."""
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
                 "/mutate",
                 headers={"Authorization": "Bearer some-api-key"},
             )
@@ -65,22 +65,22 @@ class TestCsrfNoSessionCookie:
 
 @pytest.mark.unit
 class TestCsrfWithSessionCookie:
-    def test_post_with_cookie_but_no_csrf_token_returns_403(self) -> None:
+    async def test_post_with_cookie_but_no_csrf_token_returns_403(self) -> None:
         """Session cookie present but no CSRF token -> reject."""
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
                 "/mutate",
                 headers={"Cookie": "session=some.jwt.token"},
             )
             assert resp.status_code == 403
 
-    def test_post_with_matching_csrf_tokens_passes(self) -> None:
+    async def test_post_with_matching_csrf_tokens_passes(self) -> None:
         """Session cookie + matching CSRF cookie and header -> accept."""
         csrf_value = "test-csrf-token-value"
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
                 "/mutate",
                 headers={
                     "Cookie": f"session=some.jwt.token; csrf_token={csrf_value}",
@@ -89,11 +89,11 @@ class TestCsrfWithSessionCookie:
             )
             assert resp.status_code == 201
 
-    def test_post_with_mismatched_csrf_tokens_returns_403(self) -> None:
+    async def test_post_with_mismatched_csrf_tokens_returns_403(self) -> None:
         """CSRF header doesn't match cookie -> reject."""
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
                 "/mutate",
                 headers={
                     "Cookie": "session=some.jwt.token; csrf_token=correct-token",
@@ -102,11 +102,11 @@ class TestCsrfWithSessionCookie:
             )
             assert resp.status_code == 403
 
-    def test_post_with_csrf_cookie_but_no_header_returns_403(self) -> None:
+    async def test_post_with_csrf_cookie_but_no_header_returns_403(self) -> None:
         """CSRF cookie present but header missing -> reject."""
         app = _build_csrf_app()
-        with TestClient(app) as client:
-            resp = client.post(
+        async with LoopAsyncClient(app) as client:
+            resp = await client.post(
                 "/mutate",
                 headers={
                     "Cookie": "session=some.jwt.token; csrf_token=some-token",
@@ -117,7 +117,7 @@ class TestCsrfWithSessionCookie:
 
 @pytest.mark.unit
 class TestCsrfExemptPaths:
-    def test_exempt_path_skips_csrf(self) -> None:
+    async def test_exempt_path_skips_csrf(self) -> None:
         """Configured exempt paths skip CSRF validation."""
 
         @post("/auth/login")
@@ -134,9 +134,9 @@ class TestCsrfExemptPaths:
             middleware=[csrf_cls],
         )
 
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             # POST to exempt path with session cookie but no CSRF -> should pass
-            resp = client.post(
+            resp = await client.post(
                 "/auth/login",
                 headers={"Cookie": "session=some.jwt.token"},
             )
@@ -145,7 +145,7 @@ class TestCsrfExemptPaths:
 
 @pytest.mark.unit
 class TestCsrfCustomConfig:
-    def test_custom_cookie_and_header_names(self) -> None:
+    async def test_custom_cookie_and_header_names(self) -> None:
         """Middleware respects custom CSRF cookie/header names."""
         config = AuthConfig(
             cookie_name="my_session",
@@ -154,13 +154,13 @@ class TestCsrfCustomConfig:
         )
         csrf_value = "custom-csrf-val"
         app = _build_csrf_app(auth_config=config)
-        with TestClient(app) as client:
+        async with LoopAsyncClient(app) as client:
             # No session cookie -> passes
-            resp = client.post("/mutate")
+            resp = await client.post("/mutate")
             assert resp.status_code == 201
 
             # Session cookie present, correct CSRF header
-            resp = client.post(
+            resp = await client.post(
                 "/mutate",
                 headers={
                     "Cookie": f"my_session=some.jwt.token; xsrf={csrf_value}",
@@ -170,7 +170,7 @@ class TestCsrfCustomConfig:
             assert resp.status_code == 201
 
             # Wrong header name -> fail
-            resp = client.post(
+            resp = await client.post(
                 "/mutate",
                 headers={
                     "Cookie": f"my_session=some.jwt.token; xsrf={csrf_value}",

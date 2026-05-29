@@ -3,11 +3,11 @@
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.services.workflow_rollback_service import WorkflowRollbackService
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -39,8 +39,8 @@ _THREE_NODE_EDGES = [
 ]
 
 
-def _create_workflow(
-    test_client: TestClient[Any],
+async def _create_workflow(
+    async_test_client: LoopAsyncClient,
     **overrides: object,
 ) -> dict[str, Any]:
     """Create a workflow via POST and return the response data."""
@@ -52,7 +52,7 @@ def _create_workflow(
         "edges": _THREE_NODE_EDGES,
     }
     payload.update(overrides)
-    resp = test_client.post(
+    resp = await async_test_client.post(
         "/api/v1/workflows",
         json=payload,
         headers=make_auth_headers("ceo"),
@@ -62,8 +62,8 @@ def _create_workflow(
     return result
 
 
-def _update_workflow(
-    test_client: TestClient[Any],
+async def _update_workflow(
+    async_test_client: LoopAsyncClient,
     wf_id: str,
     expected_revision: int,
     **fields: object,
@@ -71,7 +71,7 @@ def _update_workflow(
     """PATCH a workflow and return response data."""
     payload: dict[str, object] = {"expected_revision": expected_revision}
     payload.update(fields)
-    resp = test_client.patch(
+    resp = await async_test_client.patch(
         f"/api/v1/workflows/{wf_id}",
         json=payload,
         headers=make_auth_headers("ceo"),
@@ -88,9 +88,11 @@ class TestAutoSnapshot:
     """Version snapshots are created automatically."""
 
     @pytest.mark.unit
-    def test_create_creates_version(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.get(
+    async def test_create_creates_version(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -100,10 +102,12 @@ class TestAutoSnapshot:
         assert versions[0]["version"] == 1
 
     @pytest.mark.unit
-    def test_update_creates_version(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        _update_workflow(test_client, wf["id"], 1, name="Updated Name")
-        resp = test_client.get(
+    async def test_update_creates_version(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client)
+        await _update_workflow(async_test_client, wf["id"], 1, name="Updated Name")
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -122,8 +126,10 @@ class TestListVersions:
     """List versions endpoint."""
 
     @pytest.mark.unit
-    def test_empty_for_nonexistent(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_empty_for_nonexistent(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/workflows/wfdef-nonexistent/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -131,13 +137,15 @@ class TestListVersions:
         assert resp.json()["data"] == []
 
     @pytest.mark.unit
-    def test_list_versions_ordering(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client, name="V1")
+    async def test_list_versions_ordering(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client, name="V1")
         wf_id = wf["id"]
-        _update_workflow(test_client, wf_id, 1, name="V2")
-        _update_workflow(test_client, wf_id, 2, name="V3")
+        await _update_workflow(async_test_client, wf_id, 1, name="V2")
+        await _update_workflow(async_test_client, wf_id, 2, name="V3")
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf_id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -150,14 +158,16 @@ class TestListVersions:
         assert versions[2]["snapshot"]["name"] == "V1"
 
     @pytest.mark.unit
-    def test_list_versions_paginated(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client, name="V1")
+    async def test_list_versions_paginated(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client, name="V1")
         wf_id = wf["id"]
-        _update_workflow(test_client, wf_id, 1, name="V2")
-        _update_workflow(test_client, wf_id, 2, name="V3")
+        await _update_workflow(async_test_client, wf_id, 1, name="V2")
+        await _update_workflow(async_test_client, wf_id, 2, name="V3")
 
         # First page: limit=2
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf_id}/versions?limit=2",
             headers=make_auth_headers("ceo"),
         )
@@ -176,7 +186,7 @@ class TestListVersions:
         # future versions use a symbol that needs URL-escaping, the
         # interpolated form breaks silently while ``params`` hands it
         # to httpx as an opaque value).
-        resp2 = test_client.get(
+        resp2 = await async_test_client.get(
             f"/api/v1/workflows/{wf_id}/versions",
             params={"limit": 2, "cursor": next_cursor},
             headers=make_auth_headers("ceo"),
@@ -200,9 +210,9 @@ class TestGetVersion:
     """Get specific version endpoint."""
 
     @pytest.mark.unit
-    def test_get_version(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.get(
+    async def test_get_version(self, async_test_client: LoopAsyncClient) -> None:
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -211,9 +221,9 @@ class TestGetVersion:
         assert resp.json()["data"]["snapshot"]["name"] == "test-workflow"
 
     @pytest.mark.unit
-    def test_version_not_found(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.get(
+    async def test_version_not_found(self, async_test_client: LoopAsyncClient) -> None:
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/versions/99",
             headers=make_auth_headers("ceo"),
         )
@@ -227,10 +237,12 @@ class TestDiff:
     """Diff computation endpoint."""
 
     @pytest.mark.unit
-    def test_diff_between_versions(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        _update_workflow(test_client, wf["id"], 1, name="Renamed Workflow")
-        resp = test_client.get(
+    async def test_diff_between_versions(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client)
+        await _update_workflow(async_test_client, wf["id"], 1, name="Renamed Workflow")
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/diff",
             params={"from_version": 1, "to_version": 2},
             headers=make_auth_headers("ceo"),
@@ -244,12 +256,12 @@ class TestDiff:
         assert "name" in meta_fields
 
     @pytest.mark.unit
-    def test_diff_same_version_returns_validation_error(
+    async def test_diff_same_version_returns_validation_error(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.get(
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/diff",
             params={"from_version": 1, "to_version": 1},
             headers=make_auth_headers("ceo"),
@@ -268,9 +280,11 @@ class TestDiff:
         assert detail["retryable"] is False
 
     @pytest.mark.unit
-    def test_diff_version_not_found(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.get(
+    async def test_diff_version_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.get(
             f"/api/v1/workflows/{wf['id']}/diff",
             params={"from_version": 1, "to_version": 99},
             headers=make_auth_headers("ceo"),
@@ -285,16 +299,16 @@ class TestRollback:
     """Rollback endpoint."""
 
     @pytest.mark.unit
-    def test_rollback_success(self, test_client: TestClient[Any]) -> None:
+    async def test_rollback_success(self, async_test_client: LoopAsyncClient) -> None:
         # 1. Create a workflow with name "Original" (auto-creates v1).
-        wf = _create_workflow(test_client, name="Original")
+        wf = await _create_workflow(async_test_client, name="Original")
         wf_id = wf["id"]
 
         # 2. Update it to name "Updated" (auto-creates v2).
-        _update_workflow(test_client, wf_id, 1, name="Updated")
+        await _update_workflow(async_test_client, wf_id, 1, name="Updated")
 
         # 3. POST rollback to v1 (definition revision is now 2).
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/rollback",
             json={"target_version": 1, "expected_revision": 2},
             headers=make_auth_headers("ceo"),
@@ -303,7 +317,7 @@ class TestRollback:
         assert resp.json()["data"]["name"] == "Original"
 
         # 4. Verify version history has v3 with name "Original".
-        hist_resp = test_client.get(
+        hist_resp = await async_test_client.get(
             f"/api/v1/workflows/{wf_id}/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -315,9 +329,11 @@ class TestRollback:
         assert versions[0]["snapshot"]["name"] == "Original"
 
     @pytest.mark.unit
-    def test_rollback_revision_conflict(self, test_client: TestClient[Any]) -> None:
-        wf = _create_workflow(test_client)
-        resp = test_client.post(
+    async def test_rollback_revision_conflict(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        wf = await _create_workflow(async_test_client)
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf['id']}/rollback",
             json={"target_version": 1, "expected_revision": 99},
             headers=make_auth_headers("ceo"),
@@ -325,8 +341,10 @@ class TestRollback:
         assert resp.status_code == 409
 
     @pytest.mark.unit
-    def test_rollback_definition_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_rollback_definition_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             "/api/v1/workflows/wfdef-nonexistent/rollback",
             json={"target_version": 1, "expected_revision": 2},
             headers=make_auth_headers("ceo"),
@@ -334,9 +352,9 @@ class TestRollback:
         assert resp.status_code == 404
 
     @pytest.mark.unit
-    def test_rollback_persistence_version_conflict_translates_to_409(
+    async def test_rollback_persistence_version_conflict_translates_to_409(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A late persistence-layer concurrency miss surfaces as 409.
@@ -347,9 +365,9 @@ class TestRollback:
         produces a 409 response. Without that translation the persistence
         error would escape uncaught and become a generic 500.
         """
-        wf = _create_workflow(test_client, name="Original")
+        wf = await _create_workflow(async_test_client, name="Original")
         wf_id = wf["id"]
-        _update_workflow(test_client, wf_id, 1, name="Updated")
+        await _update_workflow(async_test_client, wf_id, 1, name="Updated")
 
         # Patch the ``rollback`` method at the class level so the
         # AppState-wired instance picks up the stub via normal attribute
@@ -369,7 +387,7 @@ class TestRollback:
 
         monkeypatch.setattr(WorkflowRollbackService, "rollback", _raise_conflict)
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             f"/api/v1/workflows/{wf_id}/rollback",
             json={"target_version": 1, "expected_revision": 2},
             headers=make_auth_headers("ceo"),

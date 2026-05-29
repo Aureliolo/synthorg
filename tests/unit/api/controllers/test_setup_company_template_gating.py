@@ -7,19 +7,18 @@ tier-classifiable model, and accepts when at least one model is
 seeded via the shared ``mock_providers`` fixture.
 """
 
-from typing import Any
-
 import pytest
-from litestar.testing import TestClient
+
+from tests._shared import LoopAsyncClient
 
 
 @pytest.mark.unit
 class TestSetupCompanyTemplateGating:
     """Tier-coverage gate -- creation succeeds with seeded providers, fails without."""
 
-    def test_company_with_template(
+    async def test_company_with_template(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         # Seed a provider with at least one model so the
         # tier-coverage gate passes; the gate rejects setups that
@@ -27,8 +26,8 @@ class TestSetupCompanyTemplateGating:
         # warnings during template expansion.
         from tests.unit.api.controllers.conftest import mock_providers
 
-        with mock_providers(test_client):
-            resp = test_client.post(
+        with mock_providers(async_test_client):
+            resp = await async_test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "My Startup",
@@ -43,9 +42,9 @@ class TestSetupCompanyTemplateGating:
             assert data["template_applied"] == "solo_founder"
             assert data["department_count"] >= 1
 
-    def test_company_with_template_rejects_empty_provider_set(
+    async def test_company_with_template_rejects_empty_provider_set(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Tier-coverage gate at the provider step.
 
@@ -57,7 +56,7 @@ class TestSetupCompanyTemplateGating:
         message points at the upstream Providers step rather than the
         company step.
         """
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/setup/company",
             json={
                 "company_name": "No-Providers Startup",

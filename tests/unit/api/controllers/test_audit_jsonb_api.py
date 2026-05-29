@@ -5,11 +5,9 @@ all JSONB queries return 422.  Postgres-specific correctness tests
 live in the integration test suite.
 """
 
-from typing import Any
-
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _BASE = "/api/v1/security/audit"
@@ -20,11 +18,11 @@ _HEADERS = make_auth_headers("ceo")
 class TestJsonbCapabilityFallback:
     """Non-Postgres backends reject JSONB queries with 422."""
 
-    def test_jsonb_contains_returns_422(
+    async def test_jsonb_contains_returns_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"jsonb_contains": '{"severity": "high"}'},
             headers=_HEADERS,
@@ -32,21 +30,21 @@ class TestJsonbCapabilityFallback:
         assert resp.status_code == 422
         assert "Postgres" in resp.json()["error"]
 
-    def test_jsonb_key_exists_returns_422(
+    async def test_jsonb_key_exists_returns_422(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _BASE,
             params={"jsonb_key_exists": "rule_name"},
             headers=_HEADERS,
         )
         assert resp.status_code == 422
 
-    def test_no_jsonb_params_works(
+    async def test_no_jsonb_params_works(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Without JSONB params, the standard query path is used."""
-        resp = test_client.get(_BASE, headers=_HEADERS)
+        resp = await async_test_client.get(_BASE, headers=_HEADERS)
         assert resp.status_code == 200

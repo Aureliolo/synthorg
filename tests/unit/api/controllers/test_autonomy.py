@@ -7,16 +7,15 @@ than returning a hardcoded pending stub.
 """
 
 from datetime import date
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _BASE = "/api/v1/agents"
@@ -46,9 +45,9 @@ def _make_identity(
 
 @pytest.mark.unit
 class TestGetAutonomy:
-    def test_get_autonomy(self, test_client: TestClient[Any]) -> None:
+    async def test_get_autonomy(self, async_test_client: LoopAsyncClient) -> None:
         # Default autonomy flipped SEMI -> SUPERVISED (2026-04-23, #1538).
-        resp = test_client.get(_url("agent-42"), headers=_READ_HEADERS)
+        resp = await async_test_client.get(_url("agent-42"), headers=_READ_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -57,10 +56,10 @@ class TestGetAutonomy:
         assert data["level"] == "supervised"
         assert data["promotion_pending"] is False
 
-    def test_get_autonomy_requires_read_access(
-        self, test_client: TestClient[Any]
+    async def test_get_autonomy_requires_read_access(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _url(), headers={"Authorization": "Bearer invalid-token"}
         )
         assert resp.status_code == 401
@@ -70,7 +69,7 @@ class TestGetAutonomy:
 class TestUpdateAutonomy:
     async def test_pending_for_registered_agent(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
         approval_store: ApprovalStore,
     ) -> None:
@@ -79,7 +78,7 @@ class TestUpdateAutonomy:
             _make_identity(agent_id=agent_id, level=SeniorityLevel.SENIOR),
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _url(str(agent_id)),
             json={"level": "semi", "reason": "earned trust over Q1"},
             headers=_WRITE_HEADERS,
@@ -104,7 +103,7 @@ class TestUpdateAutonomy:
 
     async def test_seniority_violation_forbidden(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         agent_registry: AgentRegistryService,
     ) -> None:
         agent_id = uuid4()
@@ -112,7 +111,7 @@ class TestUpdateAutonomy:
             _make_identity(agent_id=agent_id, level=SeniorityLevel.JUNIOR),
         )
 
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _url(str(agent_id)),
             json={"level": "full", "reason": "wants full autonomy"},
             headers=_WRITE_HEADERS,
@@ -120,26 +119,30 @@ class TestUpdateAutonomy:
 
         assert resp.status_code == 403
 
-    def test_unknown_agent_not_found(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_unknown_agent_not_found(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _url(str(uuid4())),
             json={"level": "semi", "reason": "no such agent"},
             headers=_WRITE_HEADERS,
         )
         assert resp.status_code == 404
 
-    def test_missing_reason_rejected(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
+    async def test_missing_reason_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.post(
             _url("agent-42"),
             json={"level": "full"},
             headers=_WRITE_HEADERS,
         )
         assert resp.status_code in (400, 422)
 
-    def test_update_autonomy_requires_write_access(
-        self, test_client: TestClient[Any]
+    async def test_update_autonomy_requires_write_access(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
-        resp = test_client.post(
+        resp = await async_test_client.post(
             _url(),
             json={"level": "full", "reason": "needs write access"},
             headers=_READ_HEADERS,
@@ -149,9 +152,11 @@ class TestUpdateAutonomy:
 
 @pytest.mark.unit
 class TestAutonomyPathParamValidation:
-    def test_oversized_agent_id_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_agent_id_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             _url(long_id),
             headers=_READ_HEADERS,
         )

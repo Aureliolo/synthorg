@@ -1,5 +1,7 @@
 """Tests for the system user module."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
 
 from synthorg.api.auth.service import AuthService
@@ -26,10 +28,11 @@ def auth_svc() -> AuthService:
 
 
 @pytest.fixture
-async def fake_persistence() -> FakePersistenceBackend:
+async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.mark.unit

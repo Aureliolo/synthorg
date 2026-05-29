@@ -1,13 +1,12 @@
 """Tests for budget controller."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _HEADERS = make_auth_headers("ceo")
@@ -15,15 +14,17 @@ _HEADERS = make_auth_headers("ceo")
 
 @pytest.mark.unit
 class TestBudgetController:
-    def test_get_budget_config(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/budget/config", headers=_HEADERS)
+    async def test_get_budget_config(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/budget/config", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert "total_monthly" in body["data"]
 
-    def test_list_cost_records_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+    async def test_list_cost_records_empty(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
@@ -32,7 +33,7 @@ class TestBudgetController:
 
     async def test_list_cost_records_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         record = CostRecord(
@@ -47,7 +48,7 @@ class TestBudgetController:
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 1
@@ -55,7 +56,7 @@ class TestBudgetController:
 
     async def test_agent_spending(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         record = CostRecord(
@@ -70,22 +71,28 @@ class TestBudgetController:
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
-        resp = test_client.get("/api/v1/budget/agents/bob", headers=_HEADERS)
+        resp = await async_test_client.get(
+            "/api/v1/budget/agents/bob", headers=_HEADERS
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["agent_id"] == "bob"
         assert body["data"]["total_cost"] == 0.05
 
-    def test_budget_requires_read_access(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_budget_requires_read_access(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/budget/config",
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert resp.status_code == 401
 
-    def test_oversized_agent_id_rejected(self, test_client: TestClient[Any]) -> None:
+    async def test_oversized_agent_id_rejected(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/budget/agents/{long_id}",
             headers=_HEADERS,
         )
@@ -96,11 +103,11 @@ class TestBudgetController:
 class TestBudgetSummaries:
     """Tests for daily_summary and period_summary computed fields."""
 
-    def test_list_includes_daily_summary(
+    async def test_list_includes_daily_summary(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -109,7 +116,7 @@ class TestBudgetSummaries:
 
     async def test_daily_summary_groups_by_date(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         for day in (1, 1, 2):
@@ -126,7 +133,7 @@ class TestBudgetSummaries:
                     timestamp=datetime(2026, 3, day, tzinfo=UTC),
                 ),
             )
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         body = resp.json()
         daily = body["daily_summary"]
         assert len(daily) == 2
@@ -144,7 +151,7 @@ class TestBudgetSummaries:
 
     async def test_period_summary_avg_cost(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         for cost in (0.10, 0.20, 0.30):
@@ -161,7 +168,7 @@ class TestBudgetSummaries:
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         body = resp.json()
         period = body["period_summary"]
         assert period["record_count"] == 3
@@ -170,11 +177,11 @@ class TestBudgetSummaries:
         assert period["total_input_tokens"] == 300
         assert period["total_output_tokens"] == 150
 
-    def test_period_summary_empty(
+    async def test_period_summary_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
+        resp = await async_test_client.get("/api/v1/budget/records", headers=_HEADERS)
         body = resp.json()
         period = body["period_summary"]
         assert period["record_count"] == 0
@@ -183,7 +190,7 @@ class TestBudgetSummaries:
 
     async def test_summaries_from_all_records_not_page(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         for i in range(3):
@@ -200,7 +207,7 @@ class TestBudgetSummaries:
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/records",
             params={"limit": 1},
             headers=_HEADERS,
@@ -213,7 +220,7 @@ class TestBudgetSummaries:
 
     async def test_summaries_respect_agent_filter(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         cost_tracker: CostTracker,
     ) -> None:
         for agent in ("alice", "alice", "bob"):
@@ -230,7 +237,7 @@ class TestBudgetSummaries:
                     timestamp=datetime(2026, 3, 1, tzinfo=UTC),
                 ),
             )
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/records",
             params={"agent_id": "alice", "limit": 1},
             headers=_HEADERS,
@@ -274,7 +281,7 @@ class TestBuildSummariesCurrencyInvariant:
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
 
-    def test_same_currency_accepted(self) -> None:
+    async def test_same_currency_accepted(self) -> None:
         from synthorg.api.controllers.budget import _build_summaries
 
         records = (self._make(currency="USD"), self._make(currency="USD"))
@@ -293,7 +300,7 @@ class TestBuildSummariesCurrencyInvariant:
             pytest.param(("EUR",), "USD", id="record-currency-mismatch"),
         ],
     )
-    def test_mixed_currency_raises(
+    async def test_mixed_currency_raises(
         self,
         record_currencies: tuple[str, ...],
         summary_currency: str,
@@ -305,7 +312,7 @@ class TestBuildSummariesCurrencyInvariant:
         with pytest.raises(MixedCurrencyAggregationError):
             _build_summaries(records, currency=summary_currency)
 
-    def test_empty_records_no_invariant_check(self) -> None:
+    async def test_empty_records_no_invariant_check(self) -> None:
         from synthorg.api.controllers.budget import _build_summaries
 
         daily, period = _build_summaries((), currency="USD")
@@ -318,7 +325,7 @@ class TestBuildSummariesCurrencyInvariant:
 class TestCostRecordListResponseValidator:
     """Tests for CostRecordListResponse error/error_detail consistency."""
 
-    def test_error_without_error_detail_raises(self) -> None:
+    async def test_error_without_error_detail_raises(self) -> None:
         from synthorg.api.controllers.budget import (
             CostRecordListResponse,
             PeriodSummary,
@@ -338,7 +345,7 @@ class TestCostRecordListResponseValidator:
                 ),
             )
 
-    def test_error_detail_without_error_raises(self) -> None:
+    async def test_error_detail_without_error_raises(self) -> None:
         from synthorg.api.controllers.budget import (
             CostRecordListResponse,
             PeriodSummary,
@@ -374,7 +381,7 @@ class TestCostRecordListResponseValidator:
                 ),
             )
 
-    def test_both_error_and_detail_accepted(self) -> None:
+    async def test_both_error_and_detail_accepted(self) -> None:
         from synthorg.api.controllers.budget import (
             CostRecordListResponse,
             PeriodSummary,
@@ -409,7 +416,7 @@ class TestCostRecordListResponseValidator:
         )
         assert resp.success is False
 
-    def test_success_true_when_no_error(self) -> None:
+    async def test_success_true_when_no_error(self) -> None:
         from synthorg.api.controllers.budget import (
             CostRecordListResponse,
             PeriodSummary,

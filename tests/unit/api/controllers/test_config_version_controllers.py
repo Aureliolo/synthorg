@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
@@ -17,6 +16,7 @@ from synthorg.core.enums import DepartmentName
 from synthorg.core.role import Role
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.versioning import VersionSnapshot, compute_content_hash
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 _NOW = datetime(2026, 4, 8, 12, 0, tzinfo=UTC)
@@ -44,11 +44,11 @@ class TestBudgetConfigVersions:
     """GET /budget/config/versions endpoints."""
 
     @pytest.mark.unit
-    def test_list_versions_empty(
+    async def test_list_versions_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/config/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -58,7 +58,7 @@ class TestBudgetConfigVersions:
     @pytest.mark.unit
     async def test_list_versions_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.budget_config_versions
@@ -67,7 +67,7 @@ class TestBudgetConfigVersions:
         await repo.save_version(_snap("default", c1, version=1))
         await repo.save_version(_snap("default", c2, version=2))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/config/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -80,14 +80,14 @@ class TestBudgetConfigVersions:
     @pytest.mark.unit
     async def test_get_version(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.budget_config_versions
         config = BudgetConfig(total_monthly=150.0)
         await repo.save_version(_snap("default", config))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/config/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -97,11 +97,11 @@ class TestBudgetConfigVersions:
         assert snap["snapshot"]["total_monthly"] == 150.0
 
     @pytest.mark.unit
-    def test_get_version_not_found(
+    async def test_get_version_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/config/versions/99",
             headers=make_auth_headers("ceo"),
         )
@@ -110,7 +110,7 @@ class TestBudgetConfigVersions:
     @pytest.mark.unit
     async def test_list_versions_paginated(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.budget_config_versions
@@ -118,7 +118,7 @@ class TestBudgetConfigVersions:
             c = BudgetConfig(total_monthly=float(v * 100))
             await repo.save_version(_snap("default", c, version=v))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/budget/config/versions?limit=2&offset=0",
             headers=make_auth_headers("ceo"),
         )
@@ -134,11 +134,11 @@ class TestCompanyVersions:
     """GET /company/versions endpoints."""
 
     @pytest.mark.unit
-    def test_list_versions_empty(
+    async def test_list_versions_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/company/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -148,7 +148,7 @@ class TestCompanyVersions:
     @pytest.mark.unit
     async def test_list_versions_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.company_versions
@@ -157,7 +157,7 @@ class TestCompanyVersions:
         await repo.save_version(_snap("default", c1, version=1))
         await repo.save_version(_snap("default", c2, version=2))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/company/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -170,7 +170,7 @@ class TestCompanyVersions:
     @pytest.mark.unit
     async def test_list_versions_paginated(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.company_versions
@@ -178,7 +178,7 @@ class TestCompanyVersions:
             c = Company(name=f"Corp v{v}")
             await repo.save_version(_snap("default", c, version=v))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/company/versions?limit=2&offset=0",
             headers=make_auth_headers("ceo"),
         )
@@ -189,14 +189,14 @@ class TestCompanyVersions:
     @pytest.mark.unit
     async def test_get_version(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.company_versions
         company = Company(name="Test Corp")
         await repo.save_version(_snap("default", company))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/company/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -206,11 +206,11 @@ class TestCompanyVersions:
         assert snap["snapshot"]["name"] == "Test Corp"
 
     @pytest.mark.unit
-    def test_get_version_not_found(
+    async def test_get_version_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/company/versions/99",
             headers=make_auth_headers("ceo"),
         )
@@ -224,11 +224,11 @@ class TestEvaluationConfigVersions:
     """GET /evaluation/config/versions endpoints."""
 
     @pytest.mark.unit
-    def test_list_versions_empty(
+    async def test_list_versions_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/evaluation/config/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -238,7 +238,7 @@ class TestEvaluationConfigVersions:
     @pytest.mark.unit
     async def test_list_versions_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
@@ -247,7 +247,7 @@ class TestEvaluationConfigVersions:
         await repo.save_version(_snap("default", c1, version=1))
         await repo.save_version(_snap("default", c2, version=2))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/evaluation/config/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -260,7 +260,7 @@ class TestEvaluationConfigVersions:
     @pytest.mark.unit
     async def test_list_versions_paginated(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
@@ -268,7 +268,7 @@ class TestEvaluationConfigVersions:
             c = EvaluationConfig(calibration_drift_threshold=0.1 * v)
             await repo.save_version(_snap("default", c, version=v))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/evaluation/config/versions?limit=2&offset=0",
             headers=make_auth_headers("ceo"),
         )
@@ -279,14 +279,14 @@ class TestEvaluationConfigVersions:
     @pytest.mark.unit
     async def test_get_version(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.evaluation_config_versions
         config = EvaluationConfig()
         await repo.save_version(_snap("default", config))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/evaluation/config/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -295,11 +295,11 @@ class TestEvaluationConfigVersions:
         assert snap["version"] == 1
 
     @pytest.mark.unit
-    def test_get_version_not_found(
+    async def test_get_version_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/evaluation/config/versions/99",
             headers=make_auth_headers("ceo"),
         )
@@ -313,11 +313,11 @@ class TestRoleVersions:
     """GET /roles/{role_name}/versions endpoints."""
 
     @pytest.mark.unit
-    def test_list_versions_empty(
+    async def test_list_versions_empty(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/roles/backend-dev/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -327,7 +327,7 @@ class TestRoleVersions:
     @pytest.mark.unit
     async def test_list_versions_with_data(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.role_versions
@@ -346,7 +346,7 @@ class TestRoleVersions:
         await repo.save_version(_snap("backend-dev", r1, version=1))
         await repo.save_version(_snap("backend-dev", r2, version=2))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/roles/backend-dev/versions",
             headers=make_auth_headers("ceo"),
         )
@@ -359,7 +359,7 @@ class TestRoleVersions:
     @pytest.mark.unit
     async def test_list_versions_paginated(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.role_versions
@@ -373,14 +373,14 @@ class TestRoleVersions:
             await repo.save_version(_snap("backend-dev", r, version=v))
 
         # Walk one page to advance past v3, then request the next.
-        resp1 = test_client.get(
+        resp1 = await async_test_client.get(
             "/api/v1/roles/backend-dev/versions?limit=1",
             headers=make_auth_headers("ceo"),
         )
         assert resp1.status_code == 200
         cursor = resp1.json()["pagination"]["next_cursor"]
         assert cursor is not None
-        resp = test_client.get(
+        resp = await async_test_client.get(
             f"/api/v1/roles/backend-dev/versions?limit=1&cursor={cursor}",
             headers=make_auth_headers("ceo"),
         )
@@ -394,7 +394,7 @@ class TestRoleVersions:
     @pytest.mark.unit
     async def test_get_version(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
         fake_persistence: Any,
     ) -> None:
         repo = fake_persistence.role_versions
@@ -406,7 +406,7 @@ class TestRoleVersions:
         )
         await repo.save_version(_snap("backend-dev", role))
 
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/roles/backend-dev/versions/1",
             headers=make_auth_headers("ceo"),
         )
@@ -416,11 +416,11 @@ class TestRoleVersions:
         assert snap["snapshot"]["name"] == "backend-dev"
 
     @pytest.mark.unit
-    def test_get_version_not_found(
+    async def test_get_version_not_found(
         self,
-        test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
-        resp = test_client.get(
+        resp = await async_test_client.get(
             "/api/v1/roles/backend-dev/versions/99",
             headers=make_auth_headers("ceo"),
         )

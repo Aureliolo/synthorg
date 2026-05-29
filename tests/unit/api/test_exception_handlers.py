@@ -14,7 +14,6 @@ from litestar.exceptions import (
     ValidationException,
 )
 from litestar.params import PathParameter
-from litestar.testing import TestClient
 
 from synthorg.api.dto import ProblemDetail
 from synthorg.api.exception_handlers import (
@@ -54,6 +53,7 @@ from synthorg.core.persistence_errors import (
     PersistenceError,
     RecordNotFoundError,
 )
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
@@ -90,14 +90,14 @@ def _assert_error_detail(
 
 
 class TestExceptionHandlers:
-    def test_record_not_found_maps_to_404(self) -> None:
+    async def test_record_not_found_maps_to_404(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
@@ -110,14 +110,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_duplicate_record_maps_to_409(self) -> None:
+    async def test_duplicate_record_maps_to_409(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "exists"
             raise DuplicateRecordError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 409
             body = resp.json()
             assert body["error"] == "Resource already exists"
@@ -128,14 +128,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_persistence_error_maps_to_500(self) -> None:
+    async def test_persistence_error_maps_to_500(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "db fail"
             raise PersistenceError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
@@ -147,7 +147,7 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_constraint_violation_error_maps_to_400(self) -> None:
+    async def test_constraint_violation_error_maps_to_400(self) -> None:
         """Backstop: persistence integrity violations -> 400.
 
         Repository modules translate driver integrity errors (psycopg
@@ -166,8 +166,8 @@ class TestExceptionHandlers:
             msg = "fk constraint x violated"
             raise ConstraintViolationError(msg, constraint="connections_fk")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 400
             body = resp.json()
             assert body["success"] is False
@@ -186,93 +186,87 @@ class TestExceptionHandlers:
     # exception input.  An assertion failure should name which branch
     # diverged without the reader having to decode parameter ids.
 
-    def test_backup_not_found_error_maps_to_404(self) -> None:
+    async def test_backup_not_found_error_maps_to_404(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "Backup not found: abc123"
             raise BackupNotFoundError(msg)
 
-        with (
-            structlog.testing.capture_logs() as logs,
-            TestClient(make_exception_handler_app(handler)) as client,
-        ):
-            resp = client.get("/test")
-            assert resp.status_code == 404
-            body = resp.json()
-            assert body["success"] is False
-            # 4xx responses surface the raw exception message.  The
-            # backup_id in that message is a public identifier (returned
-            # by ``GET /admin/backups`` as resource metadata), not PII or
-            # internal state, so the pass-through is intentional.
-            assert body["error"] == "Backup not found: abc123"
-            _assert_error_detail(
-                body,
-                error_code=ErrorCode.BACKUP_NOT_FOUND,
-                error_category=ErrorCategory.NOT_FOUND,
-                retryable=False,
-            )
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+                resp = await client.get("/test")
+                assert resp.status_code == 404
+                body = resp.json()
+                assert body["success"] is False
+                # 4xx responses surface the raw exception message.  The
+                # backup_id in that message is a public identifier (returned
+                # by ``GET /admin/backups`` as resource metadata), not PII or
+                # internal state, so the pass-through is intentional.
+                assert body["error"] == "Backup not found: abc123"
+                _assert_error_detail(
+                    body,
+                    error_code=ErrorCode.BACKUP_NOT_FOUND,
+                    error_category=ErrorCategory.NOT_FOUND,
+                    retryable=False,
+                )
         request_errors = [
             log for log in logs if log.get("event") == "api.request.error"
         ]
         assert request_errors, "_log_error must emit api.request.error"
         assert request_errors[0]["log_level"] == "warning"
 
-    def test_backup_in_progress_error_maps_to_409(self) -> None:
+    async def test_backup_in_progress_error_maps_to_409(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "A backup is already in progress"
             raise BackupInProgressError(msg)
 
-        with (
-            structlog.testing.capture_logs() as logs,
-            TestClient(make_exception_handler_app(handler)) as client,
-        ):
-            resp = client.get("/test")
-            assert resp.status_code == 409
-            body = resp.json()
-            assert body["success"] is False
-            assert body["error"] == "A backup is already in progress"
-            _assert_error_detail(
-                body,
-                error_code=ErrorCode.BACKUP_IN_PROGRESS,
-                error_category=ErrorCategory.CONFLICT,
-                retryable=False,
-            )
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+                resp = await client.get("/test")
+                assert resp.status_code == 409
+                body = resp.json()
+                assert body["success"] is False
+                assert body["error"] == "A backup is already in progress"
+                _assert_error_detail(
+                    body,
+                    error_code=ErrorCode.BACKUP_IN_PROGRESS,
+                    error_category=ErrorCategory.CONFLICT,
+                    retryable=False,
+                )
         request_errors = [
             log for log in logs if log.get("event") == "api.request.error"
         ]
         assert request_errors[0]["log_level"] == "warning"
 
-    def test_manifest_error_maps_to_structured_500(self) -> None:
+    async def test_manifest_error_maps_to_structured_500(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "Manifest checksum mismatch"
             raise ManifestError(msg)
 
-        with (
-            structlog.testing.capture_logs() as logs,
-            TestClient(make_exception_handler_app(handler)) as client,
-        ):
-            resp = client.get("/test")
-            assert resp.status_code == 500
-            body = resp.json()
-            assert body["success"] is False
-            # 5xx scrubs the upstream message to the class default; the
-            # distinct ``BACKUP_MANIFEST_ERROR`` code lets clients tell
-            # a corrupt-manifest failure apart from a generic 500.
-            assert body["error"] == "Backup manifest is invalid or corrupt"
-            _assert_error_detail(
-                body,
-                error_code=ErrorCode.BACKUP_MANIFEST_ERROR,
-                error_category=ErrorCategory.INTERNAL,
-                retryable=False,
-            )
+        with structlog.testing.capture_logs() as logs:
+            async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+                resp = await client.get("/test")
+                assert resp.status_code == 500
+                body = resp.json()
+                assert body["success"] is False
+                # 5xx scrubs the upstream message to the class default; the
+                # distinct ``BACKUP_MANIFEST_ERROR`` code lets clients tell
+                # a corrupt-manifest failure apart from a generic 500.
+                assert body["error"] == "Backup manifest is invalid or corrupt"
+                _assert_error_detail(
+                    body,
+                    error_code=ErrorCode.BACKUP_MANIFEST_ERROR,
+                    error_category=ErrorCategory.INTERNAL,
+                    retryable=False,
+                )
         request_errors = [
             log for log in logs if log.get("event") == "api.request.error"
         ]
         assert request_errors[0]["log_level"] == "error"
 
-    def test_generic_backup_error_does_not_fall_through_to_500_unstructured(
+    async def test_generic_backup_error_does_not_fall_through_to_500_unstructured(
         self,
     ) -> None:
         """Catch-all ``BackupError`` must reach ``handle_backup_error``.
@@ -291,8 +285,8 @@ class TestExceptionHandlers:
             msg = "generic backup failure"
             raise BackupError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             assert body["error"] == "Backup operation failed"
@@ -303,7 +297,7 @@ class TestExceptionHandlers:
         [RetentionError, ComponentBackupError],
         ids=["retention_error", "component_backup_error"],
     )
-    def test_other_backup_subtypes_map_to_structured_500(
+    async def test_other_backup_subtypes_map_to_structured_500(
         self,
         exc_cls: type[BackupError],
     ) -> None:
@@ -322,8 +316,8 @@ class TestExceptionHandlers:
             msg = "subtype failure"
             raise exc_cls(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             assert body["error"] == "Backup operation failed"
@@ -334,7 +328,7 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_restore_error_maps_to_structured_500_with_distinct_code(
+    async def test_restore_error_maps_to_structured_500_with_distinct_code(
         self,
     ) -> None:
         """``RestoreError`` carries the distinct ``BACKUP_RESTORE_FAILED``.
@@ -349,8 +343,8 @@ class TestExceptionHandlers:
             msg = "restore subtype failure"
             raise RestoreError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             assert body["error"] == "Restore operation failed"
@@ -369,7 +363,7 @@ class TestExceptionHandlers:
         ],
         ids=["not_found_empty_msg", "in_progress_empty_msg"],
     )
-    def test_backup_error_4xx_uses_fallback_when_message_empty(
+    async def test_backup_error_4xx_uses_fallback_when_message_empty(
         self,
         exc_cls: type[BackupError],
         status_code: int,
@@ -388,20 +382,20 @@ class TestExceptionHandlers:
             msg = ""
             raise exc_cls(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == status_code
             body = resp.json()
             assert body["error"] == expected_detail
 
-    def test_api_not_found_error_maps_to_404(self) -> None:
+    async def test_api_not_found_error_maps_to_404(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "nope"
             raise NotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
             # 4xx errors return the actual exception message
@@ -413,14 +407,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_api_conflict_error_maps_to_409(self) -> None:
+    async def test_api_conflict_error_maps_to_409(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "conflict"
             raise ConflictError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 409
             body = resp.json()
             assert body["error"] == "conflict"
@@ -431,14 +425,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_api_forbidden_error_maps_to_403(self) -> None:
+    async def test_api_forbidden_error_maps_to_403(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "denied"
             raise ForbiddenError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
             assert body["error"] == "denied"
@@ -449,14 +443,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_value_error_falls_through_to_catch_all(self) -> None:
+    async def test_value_error_falls_through_to_catch_all(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "bad input"
             raise ValueError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             _assert_error_detail(
@@ -466,14 +460,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_unexpected_error_maps_to_500(self) -> None:
+    async def test_unexpected_error_maps_to_500(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "boom"
             raise RuntimeError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
@@ -485,14 +479,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_unauthorized_error_maps_to_401(self) -> None:
+    async def test_unauthorized_error_maps_to_401(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             # 4xx returns the actual message, not the generic default
@@ -504,14 +498,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_validation_error_maps_to_422(self) -> None:
+    async def test_validation_error_maps_to_422(self) -> None:
         @get("/test")
         async def handler() -> None:
             msg = "Bad field"
             raise ValidationError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 422
             body = resp.json()
             assert body["error"] == "Bad field"
@@ -522,15 +516,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_unmatched_route_returns_404(self) -> None:
+    async def test_unmatched_route_returns_404(self) -> None:
         """NotFoundException for unknown routes returns 404, not 500."""
 
         @get("/test")
         async def handler() -> str:
             return "ok"
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/nonexistent")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/nonexistent")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
@@ -542,15 +536,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_litestar_permission_denied_maps_to_403(self) -> None:
+    async def test_litestar_permission_denied_maps_to_403(self) -> None:
         """PermissionDeniedException with no detail falls back to 'Forbidden'."""
 
         @get("/test")
         async def handler() -> None:
             raise PermissionDeniedException
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
             assert body["success"] is False
@@ -562,15 +556,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_permission_denied_scrubs_custom_detail(self) -> None:
+    async def test_permission_denied_scrubs_custom_detail(self) -> None:
         """PermissionDeniedException always returns fixed 'Forbidden' message."""
 
         @get("/test")
         async def handler() -> None:
             raise PermissionDeniedException(detail="Write access denied")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
             assert body["error"] == "Forbidden"
@@ -581,15 +575,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_litestar_not_authorized_maps_to_401(self) -> None:
+    async def test_litestar_not_authorized_maps_to_401(self) -> None:
         """NotAuthorizedException with default detail returns 401."""
 
         @get("/test")
         async def handler() -> None:
             raise NotAuthorizedException
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             assert body["success"] is False
@@ -604,7 +598,7 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_missing_authentication_maps_to_session_no_token(self) -> None:
+    async def test_missing_authentication_maps_to_session_no_token(self) -> None:
         """Missing-cookie path emits SESSION_NO_TOKEN.
 
         The dashboard treats this as a fresh page load with no
@@ -616,8 +610,8 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise NotAuthorizedException(detail="Missing authentication")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             assert body["error"] == "Authentication required"
@@ -628,7 +622,7 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_invalid_session_cookie_maps_to_session_expired(self) -> None:
+    async def test_invalid_session_cookie_maps_to_session_expired(self) -> None:
         """Cookie-present-but-invalid path emits SESSION_EXPIRED.
 
         The dashboard treats this as a session that lapsed --
@@ -639,8 +633,8 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise NotAuthorizedException(detail="Invalid session cookie")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             assert body["error"] == "Session expired. Please log in again."
@@ -651,15 +645,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_invalid_jwt_token_also_maps_to_session_expired(self) -> None:
+    async def test_invalid_jwt_token_also_maps_to_session_expired(self) -> None:
         """Bearer-token-invalid path is treated the same as expired cookie."""
 
         @get("/test")
         async def handler() -> None:
             raise NotAuthorizedException(detail="Invalid JWT token")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             assert "expired" in body["error"].lower()
@@ -670,15 +664,17 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_not_authorized_unknown_detail_falls_through_to_unauthorized(self) -> None:
+    async def test_not_authorized_unknown_detail_falls_through_to_unauthorized(
+        self,
+    ) -> None:
         """Unrecognised detail strings get the generic UNAUTHORIZED code."""
 
         @get("/test")
         async def handler() -> None:
             raise NotAuthorizedException(detail="Custom: something else")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
             assert body["error"] == "Authentication required"
@@ -689,15 +685,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_litestar_validation_exception_maps_to_400(self) -> None:
+    async def test_litestar_validation_exception_maps_to_400(self) -> None:
         """Litestar ValidationException forwards its detail."""
 
         @get("/test")
         async def handler() -> None:
             raise ValidationException
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 400
             body = resp.json()
             assert body["success"] is False
@@ -711,15 +707,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_method_not_allowed_maps_to_405(self) -> None:
+    async def test_method_not_allowed_maps_to_405(self) -> None:
         """Router-level MethodNotAllowed returns 405 via HTTPException handler."""
 
         @post("/test")
         async def handler() -> str:
             return "ok"
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 405
             body = resp.json()
             assert body["success"] is False
@@ -732,7 +728,7 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_http_exception_5xx_returns_scrubbed_message(self) -> None:
+    async def test_http_exception_5xx_returns_scrubbed_message(self) -> None:
         """5xx HTTPException scrubs detail to prevent info leakage."""
 
         @get("/test")
@@ -742,8 +738,8 @@ class TestExceptionHandlers:
                 detail="upstream db connection refused",
             )
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 502
             body = resp.json()
             assert body["success"] is False
@@ -755,15 +751,15 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_http_exception_empty_detail_uses_phrase(self) -> None:
+    async def test_http_exception_empty_detail_uses_phrase(self) -> None:
         """HTTPException with empty detail falls back to HTTP phrase."""
 
         @get("/test")
         async def handler() -> None:
             raise HTTPException(status_code=429)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
             assert body["error"] == "Too Many Requests"
@@ -910,13 +906,13 @@ class TestNormalizeStatusCode:
 class TestStructuredErrorMetadata:
     """Tests specifically for RFC 9457 structured error features."""
 
-    def test_service_unavailable_is_retryable(self) -> None:
+    async def test_service_unavailable_is_retryable(self) -> None:
         @get("/test")
         async def handler() -> None:
             raise ServiceUnavailableError
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
             assert body["error"] == "Service unavailable"
@@ -927,13 +923,13 @@ class TestStructuredErrorMetadata:
                 retryable=True,
             )
 
-    def test_http_429_is_retryable(self) -> None:
+    async def test_http_429_is_retryable(self) -> None:
         @get("/test")
         async def handler() -> None:
             raise HTTPException(status_code=429, detail="Slow down")
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
             _assert_error_detail(
@@ -943,7 +939,7 @@ class TestStructuredErrorMetadata:
                 retryable=True,
             )
 
-    def test_http_429_retry_after_header_propagated_to_body(self) -> None:
+    async def test_http_429_retry_after_header_propagated_to_body(self) -> None:
         """Retry-After header value is parsed into the body field."""
 
         @get("/test")
@@ -954,21 +950,21 @@ class TestStructuredErrorMetadata:
                 headers={"Retry-After": "60"},
             )
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
             assert resp.headers.get("retry-after") == "60"
             assert body["error_detail"]["retry_after"] == 60
             assert body["error_detail"]["retryable"] is True
 
-    def test_http_503_is_retryable(self) -> None:
+    async def test_http_503_is_retryable(self) -> None:
         @get("/test")
         async def handler() -> None:
             raise HTTPException(status_code=503)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
             _assert_error_detail(
@@ -991,7 +987,7 @@ class TestStructuredErrorMetadata:
         instance = resp.content.error_detail.instance  # type: ignore[union-attr]
         assert _UUID_RE.match(instance), f"Expected UUID, got {instance!r}"
 
-    def test_error_detail_detail_matches_error_field(self) -> None:
+    async def test_error_detail_detail_matches_error_field(self) -> None:
         """error_detail.detail must match the top-level error field."""
 
         @get("/test")
@@ -999,12 +995,12 @@ class TestStructuredErrorMetadata:
             msg = "custom not found"
             raise NotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             body = resp.json()
             assert body["error_detail"]["detail"] == body["error"]
 
-    def test_error_detail_has_title_and_type(self) -> None:
+    async def test_error_detail_has_title_and_type(self) -> None:
         """error_detail includes RFC 9457 title and type fields."""
 
         @get("/test")
@@ -1012,14 +1008,14 @@ class TestStructuredErrorMetadata:
             msg = "gone"
             raise NotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             body = resp.json()
             ed = body["error_detail"]
             assert ed["title"] == category_title(ErrorCategory.NOT_FOUND)
             assert ed["type"] == category_type_uri(ErrorCategory.NOT_FOUND)
 
-    def test_retry_after_is_none_for_non_rate_limit(self) -> None:
+    async def test_retry_after_is_none_for_non_rate_limit(self) -> None:
         """retry_after should be None for non-rate-limit errors."""
 
         @get("/test")
@@ -1027,12 +1023,12 @@ class TestStructuredErrorMetadata:
             msg = "dup"
             raise ConflictError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             body = resp.json()
             assert body["error_detail"]["retry_after"] is None
 
-    def test_5xx_scrubs_custom_message(self) -> None:
+    async def test_5xx_scrubs_custom_message(self) -> None:
         """ServiceUnavailableError with custom message returns default."""
 
         @get("/test")
@@ -1040,8 +1036,8 @@ class TestStructuredErrorMetadata:
             msg = "Connection pool exhausted: 10.0.0.5:5432"
             raise ServiceUnavailableError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
             # 5xx must scrub to class-level default, not leak internals
@@ -1493,7 +1489,7 @@ class TestDomainErrorMapping:
             ),
         ],
     )
-    def test_domain_error_base_maps_to_rfc_9457(
+    async def test_domain_error_base_maps_to_rfc_9457(
         self,
         exc_factory: Any,
         expected_status: int,
@@ -1505,8 +1501,8 @@ class TestDomainErrorMapping:
         async def handler() -> None:
             raise exc_factory()
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == expected_status
             body = resp.json()
             assert body["success"] is False
@@ -1520,7 +1516,7 @@ class TestDomainErrorMapping:
                 retryable=expected_retryable,
             )
 
-    def test_provider_rate_limit_surfaces_retry_after(self) -> None:
+    async def test_provider_rate_limit_surfaces_retry_after(self) -> None:
         """``RateLimitError`` produces 429 with ``Retry-After`` header."""
         from synthorg.providers.errors import RateLimitError
 
@@ -1530,8 +1526,8 @@ class TestDomainErrorMapping:
         async def handler() -> None:
             raise RateLimitError(msg, retry_after=42.0)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 429
             assert resp.headers.get("Retry-After") == "42"
             body = resp.json()
@@ -1543,7 +1539,7 @@ class TestDomainErrorMapping:
                 retry_after=42,
             )
 
-    def test_retryable_provider_timeout_flag_is_set(self) -> None:
+    async def test_retryable_provider_timeout_flag_is_set(self) -> None:
         """Retryable provider errors surface ``retryable: True``."""
         from synthorg.providers.errors import ProviderTimeoutError
 
@@ -1553,8 +1549,8 @@ class TestDomainErrorMapping:
         async def handler() -> None:
             raise ProviderTimeoutError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == 504
             body = resp.json()
             assert body["error_detail"]["retryable"] is True
@@ -1575,7 +1571,7 @@ class TestBareResponseFixes:
     ``error_detail`` envelope.
     """
 
-    def test_artifact_too_large_produces_rfc_9457_413(self) -> None:
+    async def test_artifact_too_large_produces_rfc_9457_413(self) -> None:
         """Artifact upload over the size limit returns 413 + error_detail."""
         from synthorg.core.domain_errors import (
             ArtifactRejectedTooLargeError,
@@ -1585,8 +1581,8 @@ class TestBareResponseFixes:
         async def handler() -> None:
             raise ArtifactRejectedTooLargeError
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.post("/upload")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.post("/upload")
             assert resp.status_code == 413
             body = resp.json()
             assert body["success"] is False
@@ -1597,7 +1593,7 @@ class TestBareResponseFixes:
                 retryable=False,
             )
 
-    def test_subworkflow_not_found_produces_rfc_9457_404(self) -> None:
+    async def test_subworkflow_not_found_produces_rfc_9457_404(self) -> None:
         """SubworkflowNotFoundError escapes as 404 with structured detail."""
         from synthorg.engine.errors import SubworkflowNotFoundError
 
@@ -1611,8 +1607,8 @@ class TestBareResponseFixes:
                 version="1.0",
             )
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/sub")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/sub")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
@@ -1623,7 +1619,7 @@ class TestBareResponseFixes:
                 retryable=False,
             )
 
-    def test_invalid_project_status_produces_rfc_9457_422(self) -> None:
+    async def test_invalid_project_status_produces_rfc_9457_422(self) -> None:
         """Invalid project status filter raises ValidationError (422)."""
 
         @get("/projects")
@@ -1631,8 +1627,8 @@ class TestBareResponseFixes:
             msg = "Invalid project status: 'bogus'. Valid values: active"
             raise ValidationError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/projects")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/projects")
             assert resp.status_code == 422
             body = resp.json()
             assert body["success"] is False
@@ -1644,7 +1640,7 @@ class TestBareResponseFixes:
                 retryable=False,
             )
 
-    def test_project_not_found_produces_rfc_9457_404(self) -> None:
+    async def test_project_not_found_produces_rfc_9457_404(self) -> None:
         """Missing project raises NotFoundError (404)."""
 
         @get("/projects/{project_id:str}")
@@ -1652,8 +1648,8 @@ class TestBareResponseFixes:
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/projects/missing")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/projects/missing")
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
@@ -1780,7 +1776,7 @@ class TestDomainErrorFamilyClassVarHttpMapping:
             ),
         ],
     )
-    def test_migrated_class_classvars_drive_response(
+    async def test_migrated_class_classvars_drive_response(
         self,
         import_path: str,
         exc_name: str,
@@ -1808,8 +1804,8 @@ class TestDomainErrorFamilyClassVarHttpMapping:
                 msg = ""
                 raise exc_cls(msg)  # noqa: B904 -- intentional re-raise
 
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get("/test")
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
             assert resp.status_code == status_code, (
                 f"{exc_name}: expected {status_code}, got {resp.status_code}"
             )

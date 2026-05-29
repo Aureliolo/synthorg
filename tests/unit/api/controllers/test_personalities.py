@@ -3,8 +3,8 @@
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -39,21 +39,25 @@ def _make_valid_preset_body(
 
 @pytest.mark.unit
 class TestListPresets:
-    def test_lists_all_builtins(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/presets")
+    async def test_lists_all_builtins(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get("/api/v1/personalities/presets")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
 
-    def test_pagination_works(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/presets?offset=0&limit=5")
+    async def test_pagination_works(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/personalities/presets?offset=0&limit=5"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["data"]) == 5
         assert body["pagination"]["limit"] == 5
 
-    def test_each_item_has_required_fields(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/presets?limit=3")
+    async def test_each_item_has_required_fields(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/personalities/presets?limit=3")
         body = resp.json()
         for item in body["data"]:
             assert "name" in item
@@ -62,8 +66,8 @@ class TestListPresets:
             assert "source" in item
             assert item["source"] in ("builtin", "custom")
 
-    def test_observer_can_read(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_observer_can_read(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
             "/api/v1/personalities/presets",
             headers=make_auth_headers("observer"),
         )
@@ -72,8 +76,10 @@ class TestListPresets:
 
 @pytest.mark.unit
 class TestGetPreset:
-    def test_get_builtin_preset(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/presets/visionary_leader")
+    async def test_get_builtin_preset(self, async_test_client: LoopAsyncClient) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/personalities/presets/visionary_leader"
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -82,14 +88,20 @@ class TestGetPreset:
         assert "openness" in body["data"]
         assert "traits" in body["data"]
 
-    def test_get_nonexistent_returns_404(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/presets/nonexistent_preset_xyz")
+    async def test_get_nonexistent_returns_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/personalities/presets/nonexistent_preset_xyz"
+        )
         assert resp.status_code == 404
         body = resp.json()
         assert body["success"] is False
 
-    def test_observer_can_read_detail(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
+    async def test_observer_can_read_detail(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get(
             "/api/v1/personalities/presets/pragmatic_builder",
             headers=make_auth_headers("observer"),
         )
@@ -98,8 +110,10 @@ class TestGetPreset:
 
 @pytest.mark.unit
 class TestGetSchema:
-    def test_returns_json_schema(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/personalities/schema")
+    async def test_returns_json_schema(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.get("/api/v1/personalities/schema")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
@@ -113,9 +127,11 @@ class TestGetSchema:
 
 @pytest.mark.unit
 class TestCreatePreset:
-    def test_create_custom_preset(self, test_client: TestClient[Any]) -> None:
+    async def test_create_custom_preset(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body()
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
@@ -126,83 +142,95 @@ class TestCreatePreset:
         assert data["data"]["name"] == "my_custom_preset"
         assert data["data"]["source"] == "custom"
 
-    def test_create_with_builtin_name_returns_409(
-        self, test_client: TestClient[Any]
+    async def test_create_with_builtin_name_returns_409(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         body = _make_valid_preset_body(name="visionary_leader")
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
 
-    def test_create_with_invalid_openness_returns_400(
-        self, test_client: TestClient[Any]
+    async def test_create_with_invalid_openness_returns_400(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         body = _make_valid_preset_body(openness=2.0)
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 400
 
-    def test_create_duplicate_returns_409(self, test_client: TestClient[Any]) -> None:
+    async def test_create_duplicate_returns_409(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body(name="dup_test")
-        first_resp = test_client.post(
+        first_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert first_resp.status_code == 201
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
 
-    def test_observer_cannot_create(self, test_client: TestClient[Any]) -> None:
+    async def test_observer_cannot_create(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body()
-        resp = test_client.post(
+        resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
-    def test_created_preset_appears_in_list(self, test_client: TestClient[Any]) -> None:
+    async def test_created_preset_appears_in_list(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body(name="listed_preset")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert create_resp.status_code == 201
-        resp = test_client.get("/api/v1/personalities/presets?limit=200")
+        resp = await async_test_client.get("/api/v1/personalities/presets?limit=200")
         names = [p["name"] for p in resp.json()["data"]]
         assert "listed_preset" in names
 
-    def test_created_preset_gettable(self, test_client: TestClient[Any]) -> None:
+    async def test_created_preset_gettable(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body(name="gettable_preset")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert create_resp.status_code == 201
-        resp = test_client.get("/api/v1/personalities/presets/gettable_preset")
+        resp = await async_test_client.get(
+            "/api/v1/personalities/presets/gettable_preset"
+        )
         assert resp.status_code == 200
         assert resp.json()["data"]["source"] == "custom"
 
 
 @pytest.mark.unit
 class TestUpdatePreset:
-    def test_update_custom_preset(self, test_client: TestClient[Any]) -> None:
+    async def test_update_custom_preset(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         # Create first
         body = _make_valid_preset_body(name="updatable")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
@@ -211,7 +239,7 @@ class TestUpdatePreset:
         # Update
         update_body = {k: v for k, v in body.items() if k != "name"}
         update_body["openness"] = 0.1
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/personalities/presets/updatable",
             json=update_body,
             headers=make_auth_headers("ceo"),
@@ -219,47 +247,53 @@ class TestUpdatePreset:
         assert resp.status_code == 200
         assert resp.json()["data"]["openness"] == 0.1
 
-    def test_update_builtin_returns_409(self, test_client: TestClient[Any]) -> None:
+    async def test_update_builtin_returns_409(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body()
         update_body = {k: v for k, v in body.items() if k != "name"}
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/personalities/presets/visionary_leader",
             json=update_body,
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
 
-    def test_update_nonexistent_returns_404(self, test_client: TestClient[Any]) -> None:
+    async def test_update_nonexistent_returns_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body()
         update_body = {k: v for k, v in body.items() if k != "name"}
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/personalities/presets/nonexistent_xyz",
             json=update_body,
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
-    def test_observer_cannot_update(self, test_client: TestClient[Any]) -> None:
+    async def test_observer_cannot_update(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         body = _make_valid_preset_body(name="obs_update_test")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert create_resp.status_code == 201
         update_body = {k: v for k, v in body.items() if k != "name"}
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/personalities/presets/obs_update_test",
             json=update_body,
             headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
-    def test_update_with_invalid_config_returns_400(
-        self, test_client: TestClient[Any]
+    async def test_update_with_invalid_config_returns_400(
+        self, async_test_client: LoopAsyncClient
     ) -> None:
         body = _make_valid_preset_body(name="invalid_update")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
@@ -267,7 +301,7 @@ class TestUpdatePreset:
         assert create_resp.status_code == 201
         update_body = {k: v for k, v in body.items() if k != "name"}
         update_body["openness"] = 2.0
-        resp = test_client.put(
+        resp = await async_test_client.put(
             "/api/v1/personalities/presets/invalid_update",
             json=update_body,
             headers=make_auth_headers("ceo"),
@@ -277,40 +311,50 @@ class TestUpdatePreset:
 
 @pytest.mark.unit
 class TestDeletePreset:
-    def test_delete_custom_preset(self, test_client: TestClient[Any]) -> None:
+    async def test_delete_custom_preset(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
         # Create first
         body = _make_valid_preset_body(name="deletable")
-        create_resp = test_client.post(
+        create_resp = await async_test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
         assert create_resp.status_code == 201
-        resp = test_client.delete(
+        resp = await async_test_client.delete(
             "/api/v1/personalities/presets/deletable",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 200
         # Verify it's gone
-        get_resp = test_client.get("/api/v1/personalities/presets/deletable")
+        get_resp = await async_test_client.get(
+            "/api/v1/personalities/presets/deletable"
+        )
         assert get_resp.status_code == 404
 
-    def test_delete_builtin_returns_409(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_delete_builtin_returns_409(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/personalities/presets/visionary_leader",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 409
 
-    def test_delete_nonexistent_returns_404(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_delete_nonexistent_returns_404(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/personalities/presets/nonexistent_xyz",
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
 
-    def test_observer_cannot_delete(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.delete(
+    async def test_observer_cannot_delete(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        resp = await async_test_client.delete(
             "/api/v1/personalities/presets/visionary_leader",
             headers=make_auth_headers("observer"),
         )

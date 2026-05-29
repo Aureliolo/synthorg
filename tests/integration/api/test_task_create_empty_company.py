@@ -5,12 +5,12 @@ must be rejected with a clear 409 message instead of creating a task
 that can never execute. With a provider present, creation succeeds.
 """
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
+from tests._shared import LoopAsyncClient
 from tests.integration.api.conftest import build_runtime_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
@@ -34,9 +34,9 @@ def _extract_auth_cookies(resp: Any) -> tuple[str, str]:
     return session, csrf
 
 
-def _authed(app: Any) -> Generator[TestClient[Any]]:
-    with TestClient(app) as client:
-        resp = client.post(
+async def _authed(app: Any) -> AsyncGenerator[LoopAsyncClient]:
+    async with LoopAsyncClient(app) as client:
+        resp = await client.post(
             "/api/v1/auth/setup",
             json={"username": _USERNAME, "password": _PASSWORD},
         )
@@ -50,33 +50,35 @@ def _authed(app: Any) -> Generator[TestClient[Any]]:
 
 
 @pytest.fixture
-def empty_company_client(
+async def empty_company_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> Generator[TestClient[Any]]:
-    yield from _authed(
+) -> AsyncGenerator[LoopAsyncClient]:
+    async for client in _authed(
         build_runtime_app(
             fake_persistence,
             fake_message_bus,
             with_provider=False,
             company_name=_COMPANY_NAME,
         )
-    )
+    ):
+        yield client
 
 
 @pytest.fixture
-def provider_company_client(
+async def provider_company_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> Generator[TestClient[Any]]:
-    yield from _authed(
+) -> AsyncGenerator[LoopAsyncClient]:
+    async for client in _authed(
         build_runtime_app(
             fake_persistence,
             fake_message_bus,
             with_provider=True,
             company_name=_COMPANY_NAME,
         )
-    )
+    ):
+        yield client
 
 
 def _task_payload() -> dict[str, Any]:
@@ -90,11 +92,11 @@ def _task_payload() -> dict[str, Any]:
 
 
 class TestEmptyCompanyRejectsTaskCreation:
-    def test_no_provider_rejects_with_clear_message(
+    async def test_no_provider_rejects_with_clear_message(
         self,
-        empty_company_client: TestClient[Any],
+        empty_company_client: LoopAsyncClient,
     ) -> None:
-        resp = empty_company_client.post("/api/v1/tasks", json=_task_payload())
+        resp = await empty_company_client.post("/api/v1/tasks", json=_task_payload())
         assert resp.status_code == 409, resp.text
         detail = resp.json()["error_detail"]
         # error_code is the stable contract; the message text is a
@@ -105,9 +107,9 @@ class TestEmptyCompanyRejectsTaskCreation:
         assert "provider" in message
         assert "empty mode" in message
 
-    def test_provider_present_allows_creation(
+    async def test_provider_present_allows_creation(
         self,
-        provider_company_client: TestClient[Any],
+        provider_company_client: LoopAsyncClient,
     ) -> None:
         """``POST /tasks`` now returns 202 + a submission envelope.
 
@@ -117,7 +119,7 @@ class TestEmptyCompanyRejectsTaskCreation:
         filing to it and returns 202; the spine creates the task in a
         detached background coroutine.
         """
-        resp = provider_company_client.post("/api/v1/tasks", json=_task_payload())
+        resp = await provider_company_client.post("/api/v1/tasks", json=_task_payload())
         assert resp.status_code == 202, resp.text
         body = resp.json()
         assert body["success"] is True

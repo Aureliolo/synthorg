@@ -12,11 +12,10 @@ The intake engine uses a deterministic fake strategy so the test
 does not depend on real provider or task engine integration.
 """
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
-from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
@@ -26,6 +25,7 @@ from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
+from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,
@@ -74,10 +74,10 @@ async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
 
 
 @pytest.fixture
-def e2e_client(
+async def e2e_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
-) -> Generator[TestClient[Any]]:
+) -> AsyncGenerator[LoopAsyncClient]:
     """Build the full app with client-simulation state attached."""
     config = RootConfig(company_name="e2e-company")
     auth_service = _make_test_auth_service()
@@ -98,55 +98,61 @@ def e2e_client(
         auth_service=auth_service,
         client_simulation_state=state,
     )
-    with TestClient(app) as client:
+    async with LoopAsyncClient(app) as client:
         yield client
+
+
+async def _create_client_and_submit_request(client: LoopAsyncClient) -> str:
+    """Create the e2e client and submit a requirement; return the request id.
+
+    Asserts both creations succeed and the request appears in the list.
+    """
+    create_resp = await client.post(
+        "/api/v1/clients/",
+        json={
+            "client_id": "e2e-client",
+            "name": "E2E Client",
+            "persona": "End-to-end simulation operator",
+            "expertise_domains": ["backend"],
+            "strictness_level": 0.6,
+        },
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["data"]["client_id"] == "e2e-client"
+
+    submit_resp = await client.post(
+        "/api/v1/requests/",
+        json={
+            "client_id": "e2e-client",
+            "requirement": {
+                "title": "E2E Feature",
+                "description": "Build a sample feature for the e2e run.",
+            },
+        },
+    )
+    assert submit_resp.status_code == 201
+    request_id: str = submit_resp.json()["data"]["request_id"]
+    assert submit_resp.json()["data"]["status"] == "submitted"
+
+    list_resp = await client.get("/api/v1/requests")
+    assert list_resp.status_code == 200
+    assert any(r["request_id"] == request_id for r in list_resp.json()["data"])
+    return request_id
 
 
 class TestClientSimulationE2E:
     """End-to-end client simulation loop via the HTTP API."""
 
-    def test_full_client_lifecycle(
+    async def test_full_client_lifecycle(
         self,
-        e2e_client: TestClient[Any],
+        e2e_client: LoopAsyncClient,
     ) -> None:
         """Create client, submit request, reject it, then run a sim."""
         e2e_client.headers.update(make_auth_headers("ceo"))
-
-        # 1. Create a client.
-        create_resp = e2e_client.post(
-            "/api/v1/clients/",
-            json={
-                "client_id": "e2e-client",
-                "name": "E2E Client",
-                "persona": "End-to-end simulation operator",
-                "expertise_domains": ["backend"],
-                "strictness_level": 0.6,
-            },
-        )
-        assert create_resp.status_code == 201
-        assert create_resp.json()["data"]["client_id"] == "e2e-client"
-
-        # 2. Submit a request and confirm it appears in the list.
-        submit_resp = e2e_client.post(
-            "/api/v1/requests/",
-            json={
-                "client_id": "e2e-client",
-                "requirement": {
-                    "title": "E2E Feature",
-                    "description": "Build a sample feature for the e2e run.",
-                },
-            },
-        )
-        assert submit_resp.status_code == 201
-        request_id = submit_resp.json()["data"]["request_id"]
-        assert submit_resp.json()["data"]["status"] == "submitted"
-
-        list_resp = e2e_client.get("/api/v1/requests")
-        assert list_resp.status_code == 200
-        assert any(r["request_id"] == request_id for r in list_resp.json()["data"])
+        request_id = await _create_client_and_submit_request(e2e_client)
 
         # 3. Reject the request (exercises the cancel transition).
-        reject_resp = e2e_client.post(
+        reject_resp = await e2e_client.post(
             f"/api/v1/requests/{request_id}/reject",
             json={"reason": "covered by the simulation run"},
         )
@@ -154,7 +160,7 @@ class TestClientSimulationE2E:
         assert reject_resp.json()["data"]["status"] == "cancelled"
 
         # 4. Kick off a simulation run.
-        start_resp = e2e_client.post(
+        start_resp = await e2e_client.post(
             "/api/v1/simulations/",
             json={
                 "config": {
@@ -169,14 +175,14 @@ class TestClientSimulationE2E:
         simulation_id = start_resp.json()["data"]["simulation_id"]
 
         # 5. Fetch the simulation detail and confirm it is reachable.
-        detail_resp = e2e_client.get(
+        detail_resp = await e2e_client.get(
             f"/api/v1/simulations/{simulation_id}",
         )
         assert detail_resp.status_code == 200
         assert detail_resp.json()["data"]["simulation_id"] == simulation_id
 
         # 6. Missing review returns 404/503 as a defensive guard.
-        review_resp = e2e_client.get(
+        review_resp = await e2e_client.get(
             "/api/v1/reviews/missing-task/pipeline",
         )
         assert review_resp.status_code in {404, 503}
