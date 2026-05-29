@@ -621,7 +621,7 @@ class TestApprovalUrgencyFields:
         )
         await approval_store.add(item)
         with patch(
-            "synthorg.api.controllers.approvals.datetime",
+            "synthorg.api.controllers.approvals.query.datetime",
         ) as mock_dt:
             mock_dt.now.return_value = frozen_now
             mock_dt.side_effect = datetime
@@ -760,7 +760,9 @@ class TestResolveUrgencyThresholdsFallback:
         """
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.api.controllers.approvals._shared import (
+            _resolve_urgency_thresholds,
+        )
 
         if scenario == "resolver_absent":
             app_state = make_app_state()
@@ -780,7 +782,9 @@ class TestResolveUrgencyThresholdsFallback:
         import asyncio as _asyncio
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.api.controllers.approvals._shared import (
+            _resolve_urgency_thresholds,
+        )
 
         app_state = make_app_state(
             config_resolver=mock_of[ConfigResolver](
@@ -793,7 +797,9 @@ class TestResolveUrgencyThresholdsFallback:
     async def test_returns_resolved_values_on_success(self) -> None:
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.api.controllers.approvals._shared import (
+            _resolve_urgency_thresholds,
+        )
 
         app_state = make_app_state(
             config_resolver=mock_of[ConfigResolver](
@@ -825,7 +831,9 @@ class TestResolveUrgencyThresholdsFallback:
         """
         from unittest.mock import AsyncMock as _AsyncMock
 
-        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.api.controllers.approvals._shared import (
+            _resolve_urgency_thresholds,
+        )
 
         app_state = make_app_state(
             config_resolver=mock_of[ConfigResolver](
@@ -848,7 +856,9 @@ class TestResolveUrgencyThresholdsFallback:
 
         import structlog.testing
 
-        from synthorg.api.controllers.approvals import _resolve_urgency_thresholds
+        from synthorg.api.controllers.approvals._shared import (
+            _resolve_urgency_thresholds,
+        )
         from synthorg.observability.events.api import API_SETTINGS_BACKEND_RECOVERED
 
         # First call: raise.  Second + third: serve a valid pair

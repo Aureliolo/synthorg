@@ -10,7 +10,7 @@ from synthorg.api.controllers._approval_review_gate import (
     preflight_review_gate,
     try_review_gate_transition,
 )
-from synthorg.api.controllers.approvals import (
+from synthorg.api.controllers.approvals._notify import (
     _log_approval_decision,
     _publish_approval_event,
     _resolve_decision,

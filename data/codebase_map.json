@@ -366,7 +366,7 @@
     },
     {
       "kind": "code",
-      "loc": 344,
+      "loc": 347,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -443,9 +443,37 @@
     },
     {
       "kind": "code",
-      "loc": 747,
+      "loc": 13,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/approvals.py",
+      "module": "src/synthorg/api/controllers/approvals/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 253,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/approvals/_notify.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 195,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/approvals/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 250,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/approvals/decisions.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 119,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/approvals/query.py",
       "owning_feature": "api_core"
     },
     {
@@ -1626,7 +1654,7 @@
     },
     {
       "kind": "feature",
-      "loc": 30,
+      "loc": 35,
       "loc_cap": 100,
       "module": "src/synthorg/approval/feature.py",
       "owning_feature": "approval"

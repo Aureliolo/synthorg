@@ -12,7 +12,8 @@ from synthorg._core.features import (
     FeatureModule,
     McpHandlerDescriptor,
 )
-from synthorg.api.controllers.approvals import ApprovalsController
+from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
+from synthorg.api.controllers.approvals.query import ApprovalsQueryController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
@@ -21,7 +22,11 @@ FEATURE: FeatureModule = FeatureManifest(
     name="approval",
     settings_namespace=None,
     state_slice=ApprovalStateSlice,
-    controllers=(ApprovalsController, ReviewController),
+    controllers=(
+        ApprovalsQueryController,
+        ApprovalsDecisionsController,
+        ReviewController,
+    ),
     mcp_handlers=(
         McpHandlerDescriptor(
             domain="approvals",

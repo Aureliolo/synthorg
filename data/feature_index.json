@@ -56,7 +56,8 @@
     },
     {
       "controllers": [
-        "ApprovalsController",
+        "ApprovalsQueryController",
+        "ApprovalsDecisionsController",
         "ReviewController"
       ],
       "depends_on": [],
@@ -903,6 +904,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T18:43:06.638062Z",
+  "generated_at": "2026-05-29T18:53:10.609723Z",
   "schema_version": 1
 }
