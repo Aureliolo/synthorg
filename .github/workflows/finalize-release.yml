@@ -118,11 +118,36 @@ jobs:
           SIBLING_STATUS=missing
           SIBLING_CONCLUSION=pending
           for attempt in 1 2 3 4 5 6; do
-            SIBLING_JSON=$(gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
-              --jq "[.workflow_runs[] | select(.name == \"$SIBLING_NAME\" and .head_branch == \"$TAG\" and .event == \"push\")] | .[0] // {}")
-            SIBLING_STATUS=$(jq -r '.status // "missing"' <<< "$SIBLING_JSON")
-            SIBLING_CONCLUSION=$(jq -r '.conclusion // "pending"' <<< "$SIBLING_JSON")
+            # Guard both the fetch and the parse. A transient / truncated
+            # API response makes gh's embedded jq abort with "unexpected
+            # end of JSON input" (non-zero exit); under `set -euo
+            # pipefail` a bare `SIBLING_JSON=$(...)` assignment would kill
+            # the whole step on a single blip even though the sibling is
+            # merely mid-flight. Treat ANY fetch / parse failure as "not
+            # yet observable" so this 6-attempt loop simply retries; if
+            # every attempt fails, the "sibling not completed" branch
+            # below skips and the sibling's own workflow_run completion
+            # retriggers this run. `.workflow_runs[]?` tolerates a missing
+            # key; the `--jq "... // {}"` guarantees a `{}` object on
+            # success, and the `|| echo` (covers a non-zero jq parse
+            # error, which would otherwise abort under `set -e`) plus the
+            # `${VAR:-...}` fallback (covers empty jq output, since empty
+            # input exits 0 with NO output, so `// "missing"` alone leaves
+            # the var blank) make the parse total. The publish gate below
+            # still demands a genuine completed+success sibling, so this
+            # never green-lights a publish on a failed fetch.
+            if SIBLING_JSON=$(gh api \
+                "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100" \
+                --jq "[.workflow_runs[]? | select(.name == \"$SIBLING_NAME\" and .head_branch == \"$TAG\" and .event == \"push\")] | .[0] // {}"); then
+              SIBLING_STATUS=$(jq -r '.status // "missing"' <<< "$SIBLING_JSON" || echo missing)
+              SIBLING_CONCLUSION=$(jq -r '.conclusion // "pending"' <<< "$SIBLING_JSON" || echo pending)
+              SIBLING_STATUS=${SIBLING_STATUS:-missing}
+              SIBLING_CONCLUSION=${SIBLING_CONCLUSION:-pending}
+            else
+              echo "::warning::Sibling $SIBLING_NAME status fetch failed (attempt $attempt/6); treating as not-yet-observable."
+              SIBLING_STATUS=missing
+              SIBLING_CONCLUSION=pending
+            fi
             if [ "$SIBLING_STATUS" = "completed" ]; then
               break
             fi
@@ -161,41 +186,60 @@ jobs:
           #    forever. After the retry budget is exhausted, treat the
           #    miss as a genuine skip (release-please simply has not run
           #    yet) and let the next push or finalize cycle pick it up.
-          # 3. Other failure (auth / rate limit / 5xx / DNS): fail the
-          #    job non-zero so the run is visible and can be retried,
-          #    rather than silently writing proceed=false.
+          # 3. Transient API error (empty / truncated body so gh's jq
+          #    aborts with "unexpected end of JSON input", 5xx, DNS):
+          #    RETRY within the SAME budget rather than failing on the
+          #    first blip. A bare assignment here used to abort under
+          #    `set -euo pipefail` even though both workflows had already
+          #    finished and no retrigger could recover the publish. Only
+          #    after the budget is exhausted by transient errors do we
+          #    fail the job non-zero so the run is visible and retryable.
+          #    The kind of the LAST failure (notfound vs transient) is
+          #    tracked so the exhaustion branch picks the right outcome.
           IS_DRAFT=""
+          got_draft=false
+          last_kind=transient
           MISS_RETRIES=6              # 6 attempts
-          MISS_BACKOFF_BASE=5         # seconds: 5, 10, 15, 20, 25, 30 (105s total)
+          MISS_BACKOFF_BASE=5         # seconds: 5, 10, 15, 20, 25 (75s across 6 attempts; no sleep after the last)
           attempt=0
           while [ "$attempt" -lt "$MISS_RETRIES" ]; do
             attempt=$((attempt + 1))
             release_err=$(mktemp)
+            # `&& [ -n "$IS_DRAFT" ]` rejects an exit-0-but-empty read
+            # (truncated success) so a blank value cannot masquerade as a
+            # real isDraft below; it falls through to a retry instead.
             if IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-                --json isDraft --jq '.isDraft' 2>"$release_err"); then
+                --json isDraft --jq '.isDraft' 2>"$release_err") && [ -n "$IS_DRAFT" ]; then
               rm -f "$release_err"
+              got_draft=true
               break
             fi
             if grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
-              rm -f "$release_err"
-              if [ "$attempt" -lt "$MISS_RETRIES" ]; then
-                sleep_for=$((MISS_BACKOFF_BASE * attempt))
-                echo "Release $TAG not found yet (attempt $attempt/$MISS_RETRIES); sleeping ${sleep_for}s before retry."
-                sleep "$sleep_for"
-                continue
-              fi
-              # Retries exhausted -- release-please hasn't cut the
-              # release; legitimate skip (the next push or scheduled
-              # cycle will pick it up).
-              echo "Release $TAG not found after $MISS_RETRIES attempts -- nothing to publish."
-              echo "proceed=false" >> "$GITHUB_OUTPUT"
-              exit 0
+              last_kind=notfound
+            else
+              last_kind=transient
+              echo "::warning::gh release view transient error for $TAG (attempt $attempt/$MISS_RETRIES): $(tr '\n' ' ' < "$release_err")"
             fi
-            echo "::error::gh release view failed for $TAG (transient API/auth error)"
-            cat "$release_err" >&2
             rm -f "$release_err"
-            exit 1
+            if [ "$attempt" -lt "$MISS_RETRIES" ]; then
+              sleep_for=$((MISS_BACKOFF_BASE * attempt))
+              echo "Release $TAG not readable yet (kind=$last_kind, attempt $attempt/$MISS_RETRIES); sleeping ${sleep_for}s before retry."
+              sleep "$sleep_for"
+            fi
           done
+
+          if [ "$got_draft" != "true" ]; then
+            if [ "$last_kind" = "transient" ]; then
+              echo "::error::gh release view failed for $TAG after $MISS_RETRIES attempts (transient API/auth error)"
+              exit 1
+            fi
+            # notfound-exhausted: release-please simply has not cut the
+            # release yet; legitimate skip (the next push or scheduled
+            # cycle will pick it up).
+            echo "Release $TAG not found after $MISS_RETRIES attempts -- nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
@@ -231,10 +275,70 @@ jobs:
         run: |
           set -euo pipefail
 
+          # ── Helper: gh_retry ──
+          # Wraps a gh invocation with bounded retry on TRANSIENT failures
+          # (5xx, connection reset, DNS "could not resolve", and the
+          # truncated / empty-body case where gh's embedded jq aborts with
+          # "unexpected end of JSON input"). Returns gh's stdout on success
+          # (exit 0 -- INCLUDING a valid EMPTY body, which is NOT retried)
+          # and non-zero on a definitive client error (4xx / release not
+          # found) or an exhausted transient budget. This is the
+          # anti-masking guarantee: retry keys off gh's exit code, never
+          # off empty-but-valid content, so a real publish bug is never
+          # hidden. Inlined here rather than sourced from scripts/: this
+          # privileged publish job runs with NO actions/checkout by design
+          # (see the workflow-level zizmor note), so there is no working
+          # tree to source a helper from, and adding checkout to a
+          # contents:write job would be a security downgrade. Mirrors the
+          # shape of cla.yml's gh_api_retry. Backoff: 5, 10, 20, 40, 60
+          # (capped) = ~135s over 6 attempts.
+          gh_retry() {
+            local attempt=0 max_attempts=6 delay=5 rc errf
+            errf=$(mktemp)
+            while : ; do
+              attempt=$((attempt + 1))
+              # `rc=$?` MUST live in the `else`: after `fi`, `$?` is the
+              # if-statement's own status (0 when the condition is false
+              # and there is no else), which would mask gh's failure and
+              # make the helper wrongly return 0. In the else branch `$?`
+              # is still the condition command's exit code.
+              if "$@" 2>"$errf"; then
+                rm -f "$errf"
+                return 0
+              else
+                rc=$?
+              fi
+              # Definitive client errors will not heal within the budget.
+              # ("could not resolve" is deliberately ABSENT here -- DNS is
+              # transient and must retry.)
+              if grep -qiE 'HTTP 4(00|01|03|04|09|22)|release not found' "$errf"; then
+                echo "::warning::gh definitive client error (no retry): $(tr '\n' ' ' < "$errf")" >&2
+                rm -f "$errf"
+                return "$rc"
+              fi
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "::warning::gh transient failure persisted after $attempt attempts: $(tr '\n' ' ' < "$errf")" >&2
+                rm -f "$errf"
+                return "$rc"
+              fi
+              echo "::warning::gh transient failure (attempt $attempt/$max_attempts), retrying in ${delay}s: $(tr '\n' ' ' < "$errf")" >&2
+              sleep "$delay"
+              delay=$((delay * 2))
+              if [ "$delay" -gt 60 ]; then delay=60; fi
+            done
+          }
+
           # ── Assemble combined Verification section ──
           # CLI and Docker workflows embed verification data in HTML comments.
           # Extract, strip markers, and append as a visible Verification section.
-          BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')"
+          # Wrap only the fetch in gh_retry; the marker parsing below must
+          # operate on a complete body. A transient blip here would
+          # otherwise abort the publish with no later workflow_run to
+          # recover it, permanently stranding the draft.
+          if ! BODY="$(gh_retry gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')"; then
+            echo "::error::Failed to read release body for $TAG after retries -- refusing to assemble/publish from a partial read."
+            exit 1
+          fi
 
           CLI_CHECKSUMS=""
           CLI_SLSA=""
@@ -327,8 +431,16 @@ jobs:
           # it would let the workflow proceed to the immutable
           # `--draft=false` publish below with an SBOM-less
           # release body.
-          SBOM_ASSETS=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json assets --jq '[.assets[].name | select(test("^sbom-.*\\.cdx\\.json$"))] | .[]')
+          # Wrapped in gh_retry so a transient blip (5xx / DNS / truncated
+          # body) retries instead of aborting the publish; an empty asset
+          # list is still a valid exit-0 result (jq emits no output) and is
+          # NOT retried, preserving the "empty SBOM list is fine, real
+          # failure is not" intent above.
+          if ! SBOM_ASSETS=$(gh_retry gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '[.assets[].name | select(test("^sbom-.*\\.cdx\\.json$"))] | .[]'); then
+            echo "::error::Failed to list release assets for $TAG after retries -- refusing to publish a possibly SBOM-less body."
+            exit 1
+          fi
           SBOM_ITEMS=""
           if [ -n "$SBOM_ASSETS" ]; then
             # Render as `\`name\`` separated by ` | `, preserving the
