@@ -6,7 +6,7 @@ lifecycle hooks (startup/shutdown).
 """
 
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from litestar import Litestar, Router
 
@@ -20,9 +20,9 @@ from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
 )
+from synthorg.api.app_overrides import AppOverrides
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller_helpers import require_password_changed
-from synthorg.api.auth.service import AuthService
 from synthorg.api.auto_wire import (
     auto_wire_meetings,
     auto_wire_phase1,
@@ -58,8 +58,6 @@ from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.backup.factory import build_backup_service
 from synthorg.budget.coordination_store import CoordinationMetricsStore
-from synthorg.budget.tracker import CostTracker
-from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.escalation import (
     EscalationExpirationSweeper,
     PendingFuturesRegistry,
@@ -67,27 +65,11 @@ from synthorg.communication.conflict_resolution.escalation import (
     build_escalation_notify_subscriber,
     build_escalation_queue_store,
 )
-from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,
-)
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
-from synthorg.communication.meeting.orchestrator import (
-    MeetingOrchestrator,
-)
-from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
-from synthorg.engine.coordination.service import MultiAgentCoordinator
-from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
-from synthorg.engine.pipeline.entry.task_board_adapter import (
-    TaskBoardEntryAdapter,
-)
-from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.task_engine import TaskEngine
-from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.hr.training.service import TrainingService
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import (
     get_logger,
@@ -97,21 +79,11 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
-from synthorg.persistence.artifact_storage import (
-    ArtifactStorageBackend,
-)
-from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.health import ProviderHealthTracker
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
-from synthorg.security.trust.service import TrustService
-from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
 
-    from synthorg.client.simulation_state import ClientSimulationState
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -124,96 +96,57 @@ logger = get_logger(__name__)
 # ``lifecycle_helpers/boot_resolvers.py``.
 
 
-def create_app(  # noqa: PLR0913
+def create_app(
     *,
     config: RootConfig | None = None,
-    persistence: PersistenceBackend | None = None,
-    message_bus: MessageBus | None = None,
-    cost_tracker: CostTracker | None = None,
-    approval_store: ApprovalStoreProtocol | None = None,
-    auth_service: AuthService | None = None,
-    task_engine: TaskEngine | None = None,
-    coordinator: MultiAgentCoordinator | None = None,
-    work_pipeline: WorkPipeline | None = None,
-    intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
-    task_board_entry_adapter: TaskBoardEntryAdapter | None = None,
-    agent_registry: AgentRegistryService | None = None,
-    meeting_orchestrator: MeetingOrchestrator | None = None,
-    meeting_scheduler: MeetingScheduler | None = None,
-    performance_tracker: PerformanceTracker | None = None,
-    settings_service: SettingsService | None = None,
-    provider_registry: ProviderRegistry | None = None,
-    provider_health_tracker: ProviderHealthTracker | None = None,
-    tool_invocation_tracker: ToolInvocationTracker | None = None,
-    delegation_record_store: DelegationRecordStore | None = None,
-    artifact_storage: ArtifactStorageBackend | None = None,
-    audit_log: AuditLog | None = None,
-    trust_service: TrustService | None = None,
-    coordination_metrics_store: CoordinationMetricsStore | None = None,
-    training_service: TrainingService | None = None,
-    event_stream_hub: EventStreamHub | None = None,
-    interrupt_store: InterruptStore | None = None,
-    client_simulation_state: ClientSimulationState | None = None,
+    overrides: AppOverrides | None = None,
     _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
-    All parameters are optional for testing -- provide fakes via
-    keyword arguments.  Services not explicitly provided are
-    auto-wired from config and environment variables.
-
     Args:
         config: Root company configuration.
-        persistence: Persistence backend.
-        message_bus: Internal message bus.
-        cost_tracker: Cost tracking service.
-        approval_store: Approval queue store.
-        auth_service: Pre-built auth service (for testing).
-        task_engine: Centralized task state engine.
-        coordinator: Multi-agent coordinator.
-        work_pipeline: Work pipeline spine (injected double wins over
-            the boot-autowired one).
-        intake_entry_adapter: Real work-entry adapter (injected double
-            wins over the boot-autowired one).
-        task_board_entry_adapter: Real task-board work-entry adapter
-            (injected double wins over the boot-autowired one).
-        agent_registry: Agent registry service.
-        meeting_orchestrator: Meeting orchestrator.
-        meeting_scheduler: Meeting scheduler.
-        performance_tracker: Performance tracking service.
-        settings_service: Settings service for runtime config.
-        provider_registry: Provider registry.
-        provider_health_tracker: Provider health tracking service.
-        tool_invocation_tracker: Tool invocation tracking service.
-        delegation_record_store: Delegation record store.
-        artifact_storage: Artifact storage backend.
-        audit_log: Pre-built audit log (auto-wired if None).
-        trust_service: Pre-built trust service.
-        coordination_metrics_store: Pre-built metrics store
-            (auto-wired if None).
-        training_service: Pre-built training service (auto-wired
-            in startup if None and dependencies are available).
-        event_stream_hub: Pre-built event stream hub (auto-created
-            if None).
-        interrupt_store: Pre-built interrupt store (auto-created
-            if None).
-        client_simulation_state: Pre-built client simulation state.
-            Wired before the optional-controller predicate check so
-            the Simulation / Request controllers register correctly
-            on a test app boot.
-        _skip_lifecycle_shutdown: Test-only flag.  When ``True``, the
-            Litestar app is built with an empty ``on_shutdown`` list so
-            the lifespan exit is a no-op.  Used by the session-scoped
-            test fixture in ``tests/unit/api/conftest.py`` to reuse the
-            same app across tests without tearing down the task engine,
-            message bus, and persistence between each one.  Never use
-            in production: shutdown hooks perform critical cleanup
-            (task-engine drain, persistence disconnect, health prober
-            stop, etc.).
+        overrides: Optional dependency injections (chiefly tests / bespoke
+            wiring); any field left unset is auto-wired from config and the
+            environment. An injected double always wins over the auto-wired one.
+        _skip_lifecycle_shutdown: Test-only flag. When ``True`` the app is built
+            with an empty ``on_shutdown`` list so a shared-app fixture can reuse
+            it across lifespans without tearing down the task engine, message
+            bus, and persistence. Never use in production: shutdown hooks
+            perform critical cleanup.
 
     Returns:
         Configured Litestar application.
     """
+    ov = overrides or AppOverrides()
+    persistence = ov.persistence
+    message_bus = ov.message_bus
+    cost_tracker = ov.cost_tracker
+    approval_store = ov.approval_store
+    auth_service = ov.auth_service
+    task_engine = ov.task_engine
+    coordinator = ov.coordinator
+    work_pipeline = ov.work_pipeline
+    intake_entry_adapter = ov.intake_entry_adapter
+    task_board_entry_adapter = ov.task_board_entry_adapter
+    agent_registry = ov.agent_registry
+    meeting_orchestrator = ov.meeting_orchestrator
+    meeting_scheduler = ov.meeting_scheduler
+    performance_tracker = ov.performance_tracker
+    settings_service = ov.settings_service
+    provider_registry = ov.provider_registry
+    provider_health_tracker = ov.provider_health_tracker
+    tool_invocation_tracker = ov.tool_invocation_tracker
+    delegation_record_store = ov.delegation_record_store
+    artifact_storage = ov.artifact_storage
+    audit_log = ov.audit_log
+    trust_service = ov.trust_service
+    coordination_metrics_store = ov.coordination_metrics_store
+    training_service = ov.training_service
+    event_stream_hub = ov.event_stream_hub
+    interrupt_store = ov.interrupt_store
+    client_simulation_state = ov.client_simulation_state
+
     effective_config = config or RootConfig(company_name="default")
 
     # Activate the structured logging pipeline before any

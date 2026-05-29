@@ -21,10 +21,10 @@ async def _build_app_with_db_providers(
     """Build an app whose settings DB stores ``db_providers``."""
     from cryptography.fernet import Fernet
 
-    from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
     from synthorg.settings.encryption import SettingsEncryptor
+    from tests._shared import build_test_app as create_app
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     config = RootConfig(company_name="test")

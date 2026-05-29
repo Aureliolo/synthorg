@@ -10,6 +10,7 @@ are not scanned for the bare-mock convention they implement.
 """
 
 from tests._shared.app_state import make_app_state
+from tests._shared.build_app import build_test_app
 from tests._shared.capturing_logger import CapturingErrorLogger
 from tests._shared.fake_clock import FakeClock
 from tests._shared.loop_async_client import LoopAsyncClient
@@ -21,6 +22,7 @@ __all__ = [
     "FakeClock",
     "LoopAsyncClient",
     "NoOpTrustStrategy",
+    "build_test_app",
     "make_app_state",
     "mock_of",
 ]

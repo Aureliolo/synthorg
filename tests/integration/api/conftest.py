@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
@@ -25,6 +24,7 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 TEST_JWT_SECRET = "integration-test-secret-at-least-32-characters"

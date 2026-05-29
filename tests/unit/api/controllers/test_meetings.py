@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
@@ -24,7 +23,14 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.settings.resolver import ConfigResolver
 
 # Re-use the shared conftest helpers.
-from tests._shared import LoopAsyncClient, make_app_state, mock_of
+from tests._shared import (
+    LoopAsyncClient,
+    make_app_state,
+    mock_of,
+)
+from tests._shared import (
+    build_test_app as create_app,
+)
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,

@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.app import create_app
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.state import BudgetStateSlice
@@ -22,6 +21,7 @@ from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.security.state import SecurityStateSlice
+from tests._shared import build_test_app
 
 pytestmark = pytest.mark.unit
 
@@ -34,7 +34,7 @@ def built_app_state(
     root_config: Any,
 ) -> AppState:
     """Build a full app with fakes injected and return its ``AppState``."""
-    app = create_app(
+    app = build_test_app(
         config=root_config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,

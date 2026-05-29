@@ -20,7 +20,7 @@ import pytest
 from litestar import Litestar
 from litestar.exceptions import ImproperlyConfiguredException
 
-from synthorg.api.app import create_app
+from tests._shared import build_test_app as create_app
 
 
 @pytest.mark.unit

@@ -15,7 +15,6 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
@@ -40,6 +39,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from tests._shared import LoopAsyncClient
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,

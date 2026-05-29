@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from litestar import Litestar
 
-from synthorg.api.app import create_app
 from synthorg.api.app_builders import _bootstrap_app_logging
 from synthorg.api.app_helpers import _resolve_artifact_dir_env
 from synthorg.api.middleware import _SECURITY_HEADERS
@@ -23,7 +22,13 @@ from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import (
+    LoopAsyncClient,
+    make_app_state,
+)
+from tests._shared import (
+    build_test_app as create_app,
+)
 
 
 def _build_startup_with_failing_settings_autowire(

@@ -184,7 +184,7 @@
     },
     {
       "kind": "code",
-      "loc": 466,
+      "loc": 399,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -201,6 +201,13 @@
       "loc": 216,
       "loc_cap": 500,
       "module": "src/synthorg/api/app_helpers.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 77,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/app_overrides.py",
       "owning_feature": "api_core"
     },
     {

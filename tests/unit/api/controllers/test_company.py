@@ -26,9 +26,9 @@ async def db_override_app(
     fake_message_bus: FakeMessageBus,
 ) -> tuple[Litestar, SettingsService]:
     """Build an app with a real SettingsService for DB-override tests."""
-    from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
+    from tests._shared import build_test_app as create_app
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     config = RootConfig(company_name="test")

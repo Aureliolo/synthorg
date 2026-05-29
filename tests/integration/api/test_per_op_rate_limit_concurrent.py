@@ -27,7 +27,6 @@ import pytest
 from litestar.testing import TestClient
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
-from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.budget.tracker import CostTracker
@@ -37,6 +36,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 pytestmark = pytest.mark.integration
