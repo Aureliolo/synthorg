@@ -1318,7 +1318,7 @@
     },
     {
       "kind": "code",
-      "loc": 346,
+      "loc": 347,
       "loc_cap": 500,
       "module": "src/synthorg/api/services/_org_department_mutations.py",
       "owning_feature": "api_core"

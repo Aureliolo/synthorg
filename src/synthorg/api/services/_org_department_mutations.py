@@ -83,8 +83,9 @@ class OrgDepartmentMutationsMixin:
         """Validate that department budgets stay within the company ceiling."""
         raise NotImplementedError
 
+    @staticmethod
     def _collect_department_updates(  # pragma: no cover - see concrete
-        self, data: UpdateDepartmentRequest
+        data: UpdateDepartmentRequest,
     ) -> dict[str, Any]:
         """Collect the mutable department fields from an update request."""
         raise NotImplementedError
