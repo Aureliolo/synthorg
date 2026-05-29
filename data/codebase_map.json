@@ -30,6 +30,13 @@
     },
     {
       "kind": "code",
+      "loc": 75,
+      "loc_cap": 500,
+      "module": "src/synthorg/a2a/_construction.py",
+      "owning_feature": "a2a"
+    },
+    {
+      "kind": "code",
       "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/a2a/agent_card.py",
@@ -65,7 +72,7 @@
     },
     {
       "kind": "feature",
-      "loc": 38,
+      "loc": 40,
       "loc_cap": 100,
       "module": "src/synthorg/a2a/feature.py",
       "owning_feature": "a2a"
@@ -177,7 +184,7 @@
     },
     {
       "kind": "code",
-      "loc": 562,
+      "loc": 491,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"

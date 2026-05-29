@@ -15,6 +15,7 @@ from synthorg._core.features import (
     FeatureManifest,
     FeatureModule,
 )
+from synthorg.a2a._construction import wire_construction
 from synthorg.a2a.gateway import A2AGatewayController
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.a2a.well_known import WellKnownAgentCardController
@@ -37,6 +38,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

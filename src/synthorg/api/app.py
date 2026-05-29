@@ -78,7 +78,6 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.entry.task_board_adapter import (
@@ -107,11 +106,6 @@ from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.security.trust.service import TrustService
-from synthorg.settings.bootstrap_resolver import resolve_init_value
-from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import (
-    parse_float,
-)
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 if TYPE_CHECKING:
@@ -543,90 +537,6 @@ def create_app(  # noqa: PLR0913
     # ~0.7s-per-create_app registration saving when the subsystem is off
     # and the per-collaborator 404 gate (catalog / bus / tunnel-provider)
     # when it is on.
-
-    # ── A2A gateway auto-wire ─────────────────────────────────────
-    # The a2a controllers are discovery-registered from the a2a feature
-    # manifest: the well-known Agent Card controller at the application
-    # root and the JSON-RPC gateway under the API prefix, each gated by a
-    # predicate reading the committed a2a state slice. This block builds
-    # the a2a collaborators and commits them to the slice on full success;
-    # a partial failure leaves the slice empty so the predicates keep both
-    # controllers unmounted (the historic build-all-then-commit guard).
-    if effective_config.a2a.enabled:
-        a2a_card_builder = None
-        a2a_peer_registry = None
-        a2a_client_obj = None
-        try:
-            from synthorg.a2a.agent_card import (  # noqa: PLC0415
-                AgentCardBuilder,
-            )
-            from synthorg.a2a.models import A2AAuthSchemeInfo  # noqa: PLC0415
-
-            auth_schemes = (
-                A2AAuthSchemeInfo(
-                    scheme=str(
-                        effective_config.a2a.auth.inbound_scheme,
-                    ),
-                ),
-            )
-            a2a_card_builder = AgentCardBuilder(
-                default_auth_schemes=auth_schemes,
-            )
-
-            # Outbound client + JSON-RPC gateway need the connection
-            # catalog and integrations enabled.
-            if effective_config.integrations.enabled and connection_catalog is not None:
-                import httpx  # noqa: PLC0415
-
-                from synthorg.a2a.client import A2AClient  # noqa: PLC0415
-                from synthorg.a2a.peer_registry import (  # noqa: PLC0415
-                    PeerRegistry,
-                )
-
-                a2a_peer_registry = PeerRegistry()
-                a2a_client_timeout = float(
-                    resolve_init_value(
-                        SettingNamespace.A2A,
-                        "client_timeout_seconds",
-                        parse=parse_float,
-                    ).value
-                )
-                a2a_http_client = httpx.AsyncClient(timeout=a2a_client_timeout)
-                from synthorg.tools.network_validator import (  # noqa: PLC0415
-                    NetworkPolicy,
-                )
-
-                a2a_network_policy = NetworkPolicy()
-                a2a_client_obj = A2AClient(
-                    connection_catalog,
-                    network_validator=a2a_network_policy,
-                    http_client=a2a_http_client,
-                    timeout_seconds=a2a_client_timeout,
-                )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                note="A2A gateway auto-wire failed (non-fatal)",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-        else:
-            # Commit only on full success. Partial failures land in
-            # the except branch above with the slice still empty.
-            from synthorg.a2a.state import A2aStateSlice  # noqa: PLC0415
-
-            app_state.swap_slice(
-                A2aStateSlice(
-                    card_builder=a2a_card_builder,
-                    client=a2a_client_obj,
-                    peer_registry=a2a_peer_registry,
-                )
-            )
-            logger.info(
-                API_SERVICE_AUTO_WIRED,
-                service="a2a_gateway",
-            )
 
     # Client-simulation runtime. An explicit kwarg always wins (test
     # doubles / bespoke wiring). Otherwise, when a TaskEngine is
