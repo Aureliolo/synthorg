@@ -101,29 +101,169 @@ function ChartTooltipContent({ active, payload, label, currency }: {
   )
 }
 
+function BurnChartActions({
+  forecast,
+  budgetRemaining,
+  currency,
+}: {
+  forecast: ForecastResponse | null
+  budgetRemaining?: number
+  currency?: string
+}) {
+  return (
+    <div className="flex gap-2">
+      {budgetRemaining !== undefined && (
+        <StatPill label="Remaining" value={formatCurrency(budgetRemaining, currency)} />
+      )}
+      {forecast && (
+        <>
+          <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend, forecast.currency)} />
+          {forecast.days_until_exhausted != null && (
+            <StatPill label="Days left" value={forecast.days_until_exhausted} />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+interface BurnChartBodyProps {
+  chartData: readonly ChartDataPoint[]
+  forecast: ForecastResponse | null
+  budgetTotal: number
+  currency?: string
+  todayLabel: string
+}
+
+function BurnChartGradients() {
+  return (
+    <defs>
+      <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="var(--so-accent)" stopOpacity="var(--so-chart-fill-opacity-strong)" />
+        <stop offset="100%" stopColor="var(--so-accent)" stopOpacity={0} />
+      </linearGradient>
+      <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="var(--so-warning)" stopOpacity="var(--so-chart-fill-opacity-subtle)" />
+        <stop offset="100%" stopColor="var(--so-warning)" stopOpacity={0} />
+      </linearGradient>
+    </defs>
+  )
+}
+
+function BudgetReferenceLine({ budgetTotal }: { budgetTotal: number }) {
+  if (budgetTotal <= 0) return null
+  return (
+    <ReferenceLine
+      y={budgetTotal}
+      stroke="var(--so-danger)"
+      strokeDasharray="var(--so-dash-medium)"
+      strokeWidth="var(--so-stroke-hairline)"
+      label={{
+        value: 'Budget',
+        position: 'right',
+        fontSize: 'var(--so-text-micro)',
+        fill: 'var(--so-danger)',
+      }}
+    />
+  )
+}
+
+function BurnChartBody({
+  chartData,
+  forecast,
+  budgetTotal,
+  currency,
+  todayLabel,
+}: BurnChartBodyProps) {
+  return (
+    <div className="h-48 w-full" data-testid="budget-burn-chart" role="img" aria-label="Budget spend over time chart">
+      {/*
+       * `initialDimension` is recharts' first-paint size for the
+       * chart, used before ResizeObserver fires with real
+       * measurements.  The library default is `{width: -1, height:
+       * -1}`, which fails its own `width > 0 && height > 0` sanity
+       * check and logs the "width(-1) height(-1) of chart should
+       * be greater than 0" warning on every first render.  A
+       * positive placeholder silences the warning without
+       * affecting layout -- recharts swaps to the real measured
+       * size on the next animation frame.
+       */}
+      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+        <AreaChart data={[...chartData]} margin={CHART_MARGIN}>
+          <CartesianGrid
+            strokeDasharray="var(--so-dash-compact)"
+            stroke="var(--so-border)"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
+            axisLine={{ stroke: 'var(--so-border)' }}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
+            width={48}
+          />
+          <Tooltip content={<ChartTooltipContent currency={currency} />} />
+
+          <BudgetReferenceLine budgetTotal={budgetTotal} />
+
+          <ReferenceLine
+            x={todayLabel}
+            stroke="var(--so-text-muted)"
+            strokeDasharray="var(--so-dash-compact)"
+            strokeWidth="var(--so-stroke-hairline)"
+            label={{
+              value: 'Today',
+              position: 'top',
+              fontSize: 'var(--so-text-micro)',
+              fill: 'var(--so-text-muted)',
+            }}
+          />
+
+          <BurnChartGradients />
+
+          <Area
+            type="monotone"
+            dataKey="actual"
+            stroke="var(--so-accent)"
+            fill="url(#actualFill)"
+            strokeWidth="var(--so-stroke-thin)"
+            dot={false}
+            connectNulls={false}
+          />
+          {forecast && (
+            <Area
+              type="monotone"
+              dataKey="projected"
+              stroke="var(--so-warning)"
+              fill="url(#forecastFill)"
+              strokeWidth="var(--so-stroke-thin)"
+              strokeDasharray="var(--so-dash-medium)"
+              dot={false}
+              connectNulls={false}
+            />
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function BudgetBurnChartInner({ trendData, forecast, budgetTotal, budgetRemaining, currency }: BudgetBurnChartProps) {
   const chartData = useMemo(() => buildChartData(trendData, forecast), [trendData, forecast])
   const hasData = trendData.length > 0
-  const todayLabel = getTodayLabel()
 
   return (
     <SectionCard
       title="Budget Burn"
       icon={DollarSign}
       action={
-        <div className="flex gap-2">
-          {budgetRemaining !== undefined && (
-            <StatPill label="Remaining" value={formatCurrency(budgetRemaining, currency)} />
-          )}
-          {forecast && (
-            <>
-              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend, forecast.currency)} />
-              {forecast.days_until_exhausted != null && (
-                <StatPill label="Days left" value={forecast.days_until_exhausted} />
-              )}
-            </>
-          )}
-        </div>
+        <BurnChartActions forecast={forecast} budgetRemaining={budgetRemaining} currency={currency} />
       }
     >
       {!hasData ? (
@@ -133,103 +273,13 @@ function BudgetBurnChartInner({ trendData, forecast, budgetTotal, budgetRemainin
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        <div className="h-48 w-full" data-testid="budget-burn-chart" role="img" aria-label="Budget spend over time chart">
-          {/*
-           * `initialDimension` is recharts' first-paint size for the
-           * chart, used before ResizeObserver fires with real
-           * measurements.  The library default is `{width: -1, height:
-           * -1}`, which fails its own `width > 0 && height > 0` sanity
-           * check and logs the "width(-1) height(-1) of chart should
-           * be greater than 0" warning on every first render.  A
-           * positive placeholder silences the warning without
-           * affecting layout -- recharts swaps to the real measured
-           * size on the next animation frame.
-           */}
-          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
-            <AreaChart data={chartData} margin={CHART_MARGIN}>
-              <CartesianGrid
-                strokeDasharray="var(--so-dash-compact)"
-                stroke="var(--so-border)"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
-                axisLine={{ stroke: 'var(--so-border)' }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
-                width={48}
-              />
-              <Tooltip content={<ChartTooltipContent currency={currency} />} />
-
-              {budgetTotal > 0 && (
-                <ReferenceLine
-                  y={budgetTotal}
-                  stroke="var(--so-danger)"
-                  strokeDasharray="var(--so-dash-medium)"
-                  strokeWidth="var(--so-stroke-hairline)"
-                  label={{
-                    value: 'Budget',
-                    position: 'right',
-                    fontSize: 'var(--so-text-micro)',
-                    fill: 'var(--so-danger)',
-                  }}
-                />
-              )}
-
-              <ReferenceLine
-                x={todayLabel}
-                stroke="var(--so-text-muted)"
-                strokeDasharray="var(--so-dash-compact)"
-                strokeWidth="var(--so-stroke-hairline)"
-                label={{
-                  value: 'Today',
-                  position: 'top',
-                  fontSize: 'var(--so-text-micro)',
-                  fill: 'var(--so-text-muted)',
-                }}
-              />
-
-              <defs>
-                <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity="var(--so-chart-fill-opacity-strong)" />
-                  <stop offset="100%" stopColor="var(--so-accent)" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="forecastFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity="var(--so-chart-fill-opacity-subtle)" />
-                  <stop offset="100%" stopColor="var(--so-warning)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-
-              <Area
-                type="monotone"
-                dataKey="actual"
-                stroke="var(--so-accent)"
-                fill="url(#actualFill)"
-                strokeWidth="var(--so-stroke-thin)"
-                dot={false}
-                connectNulls={false}
-              />
-              {forecast && (
-                <Area
-                  type="monotone"
-                  dataKey="projected"
-                  stroke="var(--so-warning)"
-                  fill="url(#forecastFill)"
-                  strokeWidth="var(--so-stroke-thin)"
-                  strokeDasharray="var(--so-dash-medium)"
-                  dot={false}
-                  connectNulls={false}
-                />
-              )}
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <BurnChartBody
+          chartData={chartData}
+          forecast={forecast}
+          budgetTotal={budgetTotal}
+          currency={currency}
+          todayLabel={getTodayLabel()}
+        />
       )}
     </SectionCard>
   )

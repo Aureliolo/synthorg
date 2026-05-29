@@ -39,6 +39,56 @@ function DonutTooltipContent({ active, payload, currency }: {
   )
 }
 
+interface CostDonutProps {
+  breakdown: readonly BreakdownSlice[]
+  legendSlices: readonly BreakdownSlice[]
+  currency: string | undefined
+}
+
+function CostDonut({ breakdown, legendSlices, currency }: CostDonutProps) {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="aspect-square w-full md:aspect-[2/1] lg:aspect-[3/1]" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
+        {/* `initialDimension` silences recharts' first-paint
+            "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
+            for the full explanation. */}
+        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+          <PieChart>
+            <Pie
+              data={[...breakdown]}
+              dataKey="cost"
+              nameKey="label"
+              innerRadius={50}
+              outerRadius={80}
+              paddingAngle={1}
+            >
+              {breakdown.map((slice) => (
+                <Cell key={slice.key} fill={slice.color} />
+              ))}
+            </Pie>
+            <Tooltip content={<DonutTooltipContent currency={currency} />} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="flex flex-wrap gap-3" data-testid="cost-breakdown-legend">
+        {legendSlices.map((slice) => (
+          <div key={slice.key} className="flex items-center gap-1.5 text-xs">
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: slice.color }}
+              aria-hidden="true"
+            />
+            <span className="text-muted-foreground">{slice.label}</span>
+            <span className="font-mono text-foreground">
+              {formatCurrency(slice.cost, currency)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function CostBreakdownChart({
   breakdown,
   dimension,
@@ -68,8 +118,6 @@ export function CostBreakdownChart({
     ]
   }, [breakdown])
 
-  const chartData = useMemo(() => [...breakdown], [breakdown])
-
   return (
     <SectionCard
       title="Cost Breakdown"
@@ -90,45 +138,7 @@ export function CostBreakdownChart({
           description="Cost breakdown will appear when agents incur costs"
         />
       ) : (
-        <div className="flex flex-col items-center gap-4">
-          <div className="aspect-square w-full md:aspect-[2/1] lg:aspect-[3/1]" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
-            {/* `initialDimension` silences recharts' first-paint
-                "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
-                for the full explanation. */}
-            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey="cost"
-                  nameKey="label"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={1}
-                >
-                  {breakdown.map((slice) => (
-                    <Cell key={slice.key} fill={slice.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<DonutTooltipContent currency={currency} />} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex flex-wrap gap-3" data-testid="cost-breakdown-legend">
-            {legendSlices.map((slice) => (
-              <div key={slice.key} className="flex items-center gap-1.5 text-xs">
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: slice.color }}
-                  aria-hidden="true"
-                />
-                <span className="text-muted-foreground">{slice.label}</span>
-                <span className="font-mono text-foreground">
-                  {formatCurrency(slice.cost, currency)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <CostDonut breakdown={breakdown} legendSlices={legendSlices} currency={currency} />
       )}
     </SectionCard>
   )

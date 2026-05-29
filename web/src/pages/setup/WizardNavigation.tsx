@@ -20,6 +20,37 @@ export interface WizardNavigationProps {
   loading?: boolean
 }
 
+interface WizardNextButtonProps {
+  onNext: () => void
+  nextDisabled?: boolean
+  loading?: boolean
+  nextLabel?: string
+  reasonId: string
+  showReason: boolean
+}
+
+function WizardNextButton({
+  onNext,
+  nextDisabled,
+  loading,
+  nextLabel,
+  reasonId,
+  showReason,
+}: WizardNextButtonProps) {
+  return (
+    <Button
+      type="button"
+      onClick={onNext}
+      disabled={nextDisabled || loading}
+      aria-describedby={showReason ? reasonId : undefined}
+      className="gap-2"
+    >
+      {loading ? 'Loading...' : nextLabel ?? 'Next'}
+      {!loading && <ArrowRight className="size-4" />}
+    </Button>
+  )
+}
+
 export function WizardNavigation({
   stepOrder,
   currentStep,
@@ -54,16 +85,14 @@ export function WizardNavigation({
           Back
         </Button>
         {!isLast && (
-          <Button
-            type="button"
-            onClick={onNext}
-            disabled={nextDisabled || loading}
-            aria-describedby={showReason ? reasonId : undefined}
-            className="gap-2"
-          >
-            {loading ? 'Loading...' : nextLabel ?? 'Next'}
-            {!loading && <ArrowRight className="size-4" />}
-          </Button>
+          <WizardNextButton
+            onNext={onNext}
+            nextDisabled={nextDisabled}
+            loading={loading}
+            nextLabel={nextLabel}
+            reasonId={reasonId}
+            showReason={showReason}
+          />
         )}
       </div>
       {showReason && (

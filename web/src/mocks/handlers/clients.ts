@@ -59,7 +59,7 @@ function buildRequest(overrides: Partial<ClientRequest> = {}): ClientRequest {
   }
 }
 
-function buildSimulation(
+export function buildSimulation(
   overrides: Partial<SimulationStatusResponse> = {},
 ): SimulationStatusResponse {
   return {

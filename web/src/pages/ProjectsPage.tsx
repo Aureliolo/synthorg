@@ -16,28 +16,23 @@ import { ProjectFilters } from './projects/ProjectFilters'
 import { ProjectGridView } from './projects/ProjectGridView'
 import { ProjectCreateDrawer } from './projects/ProjectCreateDrawer'
 
-export default function ProjectsPage() {
-  const [createOpen, setCreateOpen] = useState(false)
+type ProjectList = ReturnType<typeof useProjectsData>['filteredProjects']
+
+interface ProjectSelection {
+  visibleSelected: ReadonlySet<string>
+  selectedCount: number
+  handleToggleSelect: (id: string) => void
+  clearSelection: () => void
+  bulkDeleteOpen: boolean
+  setBulkDeleteOpen: (open: boolean) => void
+  bulkDeleting: boolean
+  handleBulkDelete: () => Promise<void>
+}
+
+function useProjectSelection(filteredProjects: ProjectList): ProjectSelection {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const {
-    filteredProjects,
-    totalProjects,
-    loading,
-    error,
-    wsConnected,
-    wsSetupError,
-  } = useProjectsData()
-
-  const {
-    page,
-    pageSize,
-    totalItems,
-    paginatedItems: pagedProjects,
-    setPage,
-    setPageSize,
-  } = useListPagination({ items: filteredProjects, namespace: 'projects' })
 
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -61,7 +56,6 @@ export default function ProjectsPage() {
     }
     return next
   }, [selectedIds, visibleIds])
-  const selectedCount = visibleSelected.size
 
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
@@ -75,6 +69,102 @@ export default function ProjectsPage() {
     setBulkDeleteOpen(false)
     clearSelection()
   }, [visibleSelected, clearSelection])
+
+  return {
+    visibleSelected,
+    selectedCount: visibleSelected.size,
+    handleToggleSelect,
+    clearSelection,
+    bulkDeleteOpen,
+    setBulkDeleteOpen,
+    bulkDeleting,
+    handleBulkDelete,
+  }
+}
+
+function ProjectsBulkActions({
+  selectedCount,
+  clearSelection,
+  bulkDeleting,
+  bulkDeleteOpen,
+  setBulkDeleteOpen,
+  onConfirm,
+}: {
+  selectedCount: number
+  clearSelection: () => void
+  bulkDeleting: boolean
+  bulkDeleteOpen: boolean
+  setBulkDeleteOpen: (open: boolean) => void
+  onConfirm: () => Promise<void>
+}) {
+  return (
+    <>
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <BulkActionBar
+            selectedCount={selectedCount}
+            onClear={clearSelection}
+            loading={bulkDeleting}
+            ariaLabel="Project bulk actions"
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={bulkDeleting}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {formatNumber(selectedCount)}
+            </Button>
+          </BulkActionBar>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
+        title={`Delete ${formatNumber(selectedCount)} project${selectedCount === 1 ? '' : 's'}?`}
+        description="This will permanently remove the selected projects. Associated tasks remain, but their project link will be broken. This action cannot be undone."
+        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
+        variant="destructive"
+        loading={bulkDeleting}
+        onConfirm={onConfirm}
+      />
+    </>
+  )
+}
+
+export default function ProjectsPage() {
+  const [createOpen, setCreateOpen] = useState(false)
+  const {
+    filteredProjects,
+    totalProjects,
+    loading,
+    error,
+    wsConnected,
+    wsSetupError,
+  } = useProjectsData()
+
+  const {
+    page,
+    pageSize,
+    totalItems,
+    paginatedItems: pagedProjects,
+    setPage,
+    setPageSize,
+  } = useListPagination({ items: filteredProjects, namespace: 'projects' })
+
+  const {
+    visibleSelected,
+    selectedCount,
+    handleToggleSelect,
+    clearSelection,
+    bulkDeleteOpen,
+    setBulkDeleteOpen,
+    bulkDeleting,
+    handleBulkDelete,
+  } = useProjectSelection(filteredProjects)
 
   if (loading && totalProjects === 0) {
     return <ProjectsSkeleton />
@@ -120,36 +210,12 @@ export default function ProjectsPage() {
         onPageSizeChange={setPageSize}
       />
 
-      <AnimatePresence>
-        {selectedCount > 0 && (
-          <BulkActionBar
-            selectedCount={selectedCount}
-            onClear={clearSelection}
-            loading={bulkDeleting}
-            ariaLabel="Project bulk actions"
-          >
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-              onClick={() => setBulkDeleteOpen(true)}
-              disabled={bulkDeleting}
-            >
-              <Trash2 className="size-3.5" />
-              Delete {formatNumber(selectedCount)}
-            </Button>
-          </BulkActionBar>
-        )}
-      </AnimatePresence>
-
-      <ConfirmDialog
-        open={bulkDeleteOpen}
-        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
-        title={`Delete ${formatNumber(selectedCount)} project${selectedCount === 1 ? '' : 's'}?`}
-        description="This will permanently remove the selected projects. Associated tasks remain, but their project link will be broken. This action cannot be undone."
-        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
-        variant="destructive"
-        loading={bulkDeleting}
+      <ProjectsBulkActions
+        selectedCount={selectedCount}
+        clearSelection={clearSelection}
+        bulkDeleting={bulkDeleting}
+        bulkDeleteOpen={bulkDeleteOpen}
+        setBulkDeleteOpen={setBulkDeleteOpen}
         onConfirm={handleBulkDelete}
       />
 

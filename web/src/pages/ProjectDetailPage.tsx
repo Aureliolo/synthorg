@@ -73,17 +73,7 @@ export default function ProjectDetailPage() {
         />
       </div>
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load project" description={error} />
-      )}
-
-      {!wsConnected && !loading && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
+      <ProjectDetailBanners error={error} wsConnected={wsConnected} loading={loading} wsSetupError={wsSetupError} />
 
       <ErrorBoundary level="section">
         <ProjectHeader project={project} />
@@ -99,5 +89,32 @@ export default function ProjectDetailPage() {
         </ErrorBoundary>
       </div>
     </div>
+  )
+}
+
+function ProjectDetailBanners({
+  error,
+  wsConnected,
+  loading,
+  wsSetupError,
+}: {
+  error: string | null
+  wsConnected: boolean
+  loading: boolean
+  wsSetupError: string | null
+}) {
+  return (
+    <>
+      {error && (
+        <ErrorBanner severity="error" title="Could not load project" description={error} />
+      )}
+      {!wsConnected && !loading && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
+      )}
+    </>
   )
 }

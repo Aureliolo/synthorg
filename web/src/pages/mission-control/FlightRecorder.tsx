@@ -25,7 +25,55 @@ interface FlightRecorderProps {
   initialExecutionId?: string | null
 }
 
-export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
+interface PlaybackControlsProps {
+  index: number
+  lastIndex: number
+  total: number
+  playing: boolean
+  speed: string
+  onStepBack: () => void
+  onTogglePlay: () => void
+  onStepForward: () => void
+  onSpeedChange: (value: string) => void
+}
+
+function PlaybackControls({
+  index,
+  lastIndex,
+  total,
+  playing,
+  speed,
+  onStepBack,
+  onTogglePlay,
+  onStepForward,
+  onSpeedChange,
+}: PlaybackControlsProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" disabled={index <= 0} onClick={onStepBack}>
+        Prev
+      </Button>
+      <Button variant="default" size="sm" disabled={total === 0} onClick={onTogglePlay}>
+        {playing ? 'Pause' : 'Play'}
+      </Button>
+      <Button variant="outline" size="sm" disabled={index >= lastIndex} onClick={onStepForward}>
+        Next
+      </Button>
+      <SegmentedControl
+        label="Playback speed"
+        size="sm"
+        options={SPEED_OPTIONS}
+        value={speed}
+        onChange={onSpeedChange}
+      />
+      <span className="text-xs text-text-secondary">
+        Step {index + 1} of {total}
+      </span>
+    </div>
+  )
+}
+
+function useFlightReplay(initialExecutionId?: string | null) {
   const [executionId, setExecutionId] = useState(initialExecutionId ?? '')
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -37,12 +85,10 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
 
   // Frames arrive newest-first; show the timeline oldest-first for replay.
   const ordered = useMemo(() => [...frames].reverse(), [frames])
-  const current = ordered[index]
   const timelineFrames: readonly TimelineFrame[] = useMemo(
     () => ordered.map((f) => ({ turnIndex: f.turn_index, status: f.status })),
     [ordered],
   )
-
   const lastIndex = ordered.length - 1
 
   useEffect(() => {
@@ -66,6 +112,42 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
     setPlaying(false)
     void fetchFrames(executionId.trim())
   }
+
+  return {
+    executionId,
+    setExecutionId,
+    index,
+    setIndex,
+    playing,
+    setPlaying,
+    speed,
+    setSpeed,
+    framesError,
+    ordered,
+    current: ordered[index],
+    timelineFrames,
+    lastIndex,
+    loadFrames,
+  }
+}
+
+export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
+  const {
+    executionId,
+    setExecutionId,
+    index,
+    setIndex,
+    playing,
+    setPlaying,
+    speed,
+    setSpeed,
+    framesError,
+    ordered,
+    current,
+    timelineFrames,
+    lastIndex,
+    loadFrames,
+  } = useFlightReplay(initialExecutionId)
 
   return (
     <div className="space-y-section-gap">
@@ -104,48 +186,23 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
             }}
           />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={index <= 0}
-              onClick={() => {
-                setPlaying(false)
-                setIndex((p) => Math.max(0, p - 1))
-              }}
-            >
-              Prev
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              disabled={ordered.length === 0}
-              onClick={() => setPlaying((p) => !p)}
-            >
-              {playing ? 'Pause' : 'Play'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={index >= lastIndex}
-              onClick={() => {
-                setPlaying(false)
-                setIndex((p) => Math.min(lastIndex, p + 1))
-              }}
-            >
-              Next
-            </Button>
-            <SegmentedControl
-              label="Playback speed"
-              size="sm"
-              options={SPEED_OPTIONS}
-              value={speed}
-              onChange={setSpeed}
-            />
-            <span className="text-xs text-text-secondary">
-              Step {index + 1} of {ordered.length}
-            </span>
-          </div>
+          <PlaybackControls
+            index={index}
+            lastIndex={lastIndex}
+            total={ordered.length}
+            playing={playing}
+            speed={speed}
+            onStepBack={() => {
+              setPlaying(false)
+              setIndex((p) => Math.max(0, p - 1))
+            }}
+            onTogglePlay={() => setPlaying((p) => !p)}
+            onStepForward={() => {
+              setPlaying(false)
+              setIndex((p) => Math.min(lastIndex, p + 1))
+            }}
+            onSpeedChange={setSpeed}
+          />
 
           {current != null && <FrameDetail frame={current} />}
         </>

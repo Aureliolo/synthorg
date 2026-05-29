@@ -24,67 +24,23 @@ import type { ProbePresetResponse, ProviderConfig } from '@/api/types/providers'
 
 const log = createLogger('providers-page')
 
-/**
- * Settings → Providers page.
- *
- * Top: configured providers list with filters.  Bottom: the same
- * three-section picker the wizard uses, so first-run and ongoing
- * management share UX.  The "Add Provider" verb is the picker itself
- * -- there is no separate dialog-launching button.
- */
-export default function ProvidersPage() {
-  const { filteredProviders, healthMap, loading, error, providers, isRefetching } = useProvidersData()
-  const presets = useProvidersStore((s) => s.presets)
-  const presetsLoading = useProvidersStore((s) => s.presetsLoading)
-  const presetsError = useProvidersStore((s) => s.presetsError)
-  const fetchPresets = useProvidersStore((s) => s.fetchPresets)
-  const createFromPreset = useProvidersStore((s) => s.createFromPreset)
-  const fetchProviders = useProvidersStore((s) => s.fetchProviders)
+type ProviderList = ReturnType<typeof useProvidersData>['filteredProviders']
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [modalPreset, setModalPreset] = useState<string | null>(null)
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
-  const [bulkDeleting, setBulkDeleting] = useState(false)
-  const bulkDeleteProviders = useProvidersStore((s) => s.bulkDeleteProviders)
+interface ProviderProbe {
+  probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
+  probeErrors: Readonly<Partial<Record<string, string>>>
+  probing: boolean
+  probeError: string | null
+  handleReprobe: () => void
+}
 
-  const handleToggleSelect = useCallback((name: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }, [])
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
-
+function useProviderProbe(presetsLength: number): ProviderProbe {
   const [probeResults, setProbeResults] = useState<
     Readonly<Partial<Record<string, ProbePresetResponse>>>
   >({})
-  const [probeErrors, setProbeErrors] = useState<
-    Readonly<Partial<Record<string, string>>>
-  >({})
+  const [probeErrors, setProbeErrors] = useState<Readonly<Partial<Record<string, string>>>>({})
   const [probing, setProbing] = useState(false)
   const [probeError, setProbeError] = useState<string | null>(null)
-
-  // Cast the wire-shape providers list (full-detail config) into the
-  // map of name → ProviderConfig that PresetPickerSections expects.
-  // ``ProviderWithName`` extends ``ProviderConfig`` with a ``name`` so
-  // this widening is safe.
-  const providersByName = useMemo<Readonly<Record<string, ProviderConfig>>>(() => {
-    const out: Record<string, ProviderConfig> = {}
-    for (const p of providers) {
-      out[p.name] = p
-    }
-    return out
-  }, [providers])
-
-  const presetsFetchedRef = useRef(false)
-  useEffect(() => {
-    if (presetsFetchedRef.current) return
-    presetsFetchedRef.current = true
-    void fetchPresets()
-  }, [fetchPresets])
 
   const runProbe = useCallback(async () => {
     setProbing(true)
@@ -93,7 +49,7 @@ export default function ProvidersPage() {
       const response = await probeLocal()
       // Persist BOTH halves of the batch envelope: per-preset results
       // and per-preset errors are disjoint and both meaningful for the
-      // detected-list UI.  Dropping ``response.errors`` would silently
+      // detected-list UI. Dropping ``response.errors`` would silently
       // hide unreachable local providers from the operator.
       const results = Object.fromEntries(
         Object.entries(response.results ?? {}).filter(
@@ -119,10 +75,33 @@ export default function ProvidersPage() {
   const probeStartedRef = useRef(false)
   useEffect(() => {
     if (probeStartedRef.current) return
-    if (presets.length === 0) return
+    if (presetsLength === 0) return
     probeStartedRef.current = true
     void runProbe()
-  }, [presets.length, runProbe])
+  }, [presetsLength, runProbe])
+
+  const handleReprobe = useCallback(() => {
+    void runProbe()
+  }, [runProbe])
+
+  return { probeResults, probeErrors, probing, probeError, handleReprobe }
+}
+
+interface ProviderPickerModal {
+  modalOpen: boolean
+  setModalOpen: (open: boolean) => void
+  modalPreset: string | null
+  handleSelectCloud: (presetName: string) => void
+  handleAddLocal: (presetName: string, detectedUrl: string) => Promise<void>
+  handleAddCloudCounterpart: (cloudPresetName: string) => void
+  handleConfigureManually: () => void
+}
+
+function useProviderPickerModal(): ProviderPickerModal {
+  const createFromPreset = useProvidersStore((s) => s.createFromPreset)
+  const fetchProviders = useProvidersStore((s) => s.fetchProviders)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalPreset, setModalPreset] = useState<string | null>(null)
 
   const handleSelectCloud = useCallback((presetName: string) => {
     setModalPreset(presetName)
@@ -155,22 +134,38 @@ export default function ProvidersPage() {
     setModalOpen(true)
   }, [])
 
-  const handleReprobe = useCallback(() => {
-    void runProbe()
-  }, [runProbe])
+  return {
+    modalOpen, setModalOpen, modalPreset, handleSelectCloud, handleAddLocal,
+    handleAddCloudCounterpart, handleConfigureManually,
+  }
+}
 
-  const hasData = filteredProviders.length > 0 || providers.length > 0
+interface ProviderSelection {
+  visibleSelected: ReadonlySet<string>
+  selectedCount: number
+  handleToggleSelect: (name: string) => void
+  clearSelection: () => void
+  bulkDeleteOpen: boolean
+  setBulkDeleteOpen: (open: boolean) => void
+  bulkDeleting: boolean
+  handleBulkDelete: () => Promise<void>
+}
 
-  // URL-persisted pagination over the filtered providers list, matching
-  // the dashboard-wide pattern.
-  const {
-    page,
-    pageSize,
-    totalItems,
-    paginatedItems: pagedProviders,
-    setPage,
-    setPageSize,
-  } = useListPagination({ items: filteredProviders, namespace: 'providers' })
+function useProviderSelection(filteredProviders: ProviderList): ProviderSelection {
+  const bulkDeleteProviders = useProvidersStore((s) => s.bulkDeleteProviders)
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  const handleToggleSelect = useCallback((name: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const visibleSelected = useMemo(() => {
     const visible = new Set(filteredProviders.map((p) => p.name))
@@ -180,7 +175,6 @@ export default function ProvidersPage() {
     }
     return next
   }, [selectedIds, filteredProviders])
-  const selectedCount = visibleSelected.size
 
   const handleBulkDelete = useCallback(async () => {
     // Page owns only UI state; the store action owns the API loop +
@@ -196,6 +190,157 @@ export default function ProvidersPage() {
     }
   }, [visibleSelected, bulkDeleteProviders, clearSelection])
 
+  return {
+    visibleSelected,
+    selectedCount: visibleSelected.size,
+    handleToggleSelect,
+    clearSelection,
+    bulkDeleteOpen,
+    setBulkDeleteOpen,
+    bulkDeleting,
+    handleBulkDelete,
+  }
+}
+
+function ProvidersBulkActions({ sel }: { sel: ProviderSelection }) {
+  return (
+    <>
+      <AnimatePresence>
+        {sel.selectedCount > 0 && (
+          <BulkActionBar
+            selectedCount={sel.selectedCount}
+            onClear={sel.clearSelection}
+            loading={sel.bulkDeleting}
+            ariaLabel="Provider bulk actions"
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+              onClick={() => sel.setBulkDeleteOpen(true)}
+              disabled={sel.bulkDeleting}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {formatNumber(sel.selectedCount)}
+            </Button>
+          </BulkActionBar>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={sel.bulkDeleteOpen}
+        onOpenChange={(open) => { if (!open && !sel.bulkDeleting) sel.setBulkDeleteOpen(false) }}
+        title={`Delete ${formatNumber(sel.selectedCount)} provider${sel.selectedCount === 1 ? '' : 's'}?`}
+        description="Each provider is removed via its individual delete endpoint. Agents bound to these providers will fail until reassigned. This cannot be undone."
+        confirmLabel={`Delete ${formatNumber(sel.selectedCount)}`}
+        variant="destructive"
+        loading={sel.bulkDeleting}
+        onConfirm={sel.handleBulkDelete}
+      />
+    </>
+  )
+}
+
+interface AddProviderSectionProps {
+  probe: ProviderProbe
+  presets: ReturnType<typeof useProvidersStore.getState>['presets']
+  presetsLoading: boolean
+  presetsError: string | null
+  fetchPresets: () => void
+  providersByName: Readonly<Record<string, ProviderConfig>>
+  modal: ProviderPickerModal
+}
+
+function AddProviderSection({
+  probe,
+  presets,
+  presetsLoading,
+  presetsError,
+  fetchPresets,
+  providersByName,
+  modal,
+}: AddProviderSectionProps) {
+  return (
+    <section
+      aria-labelledby="add-provider-heading"
+      className="space-y-section-gap border-t border-border pt-section-gap"
+    >
+      <h2 id="add-provider-heading" className="text-base font-semibold text-foreground">
+        Add a provider
+      </h2>
+
+      {probe.probeError && (
+        <ErrorBanner
+          severity="warning"
+          title="Local provider probe did not complete"
+          description={`${probe.probeError} Re-scan to try again, or configure providers manually.`}
+          onRetry={probe.handleReprobe}
+        />
+      )}
+
+      {presetsError && presets.length === 0 ? (
+        <ErrorBanner
+          title="Failed to load provider presets"
+          description={presetsError}
+          onRetry={fetchPresets}
+        />
+      ) : (
+        <PresetPickerSections
+          presets={presets}
+          probeResults={probe.probeResults}
+          probeErrors={probe.probeErrors}
+          probing={probe.probing || presetsLoading}
+          providers={providersByName}
+          onSelectCloud={modal.handleSelectCloud}
+          onAddLocal={modal.handleAddLocal}
+          onAddCloudCounterpart={modal.handleAddCloudCounterpart}
+          onReprobe={probe.handleReprobe}
+          onConfigureManually={modal.handleConfigureManually}
+        />
+      )}
+    </section>
+  )
+}
+
+/**
+ * Settings → Providers page.
+ *
+ * Top: configured providers list with filters.  Bottom: the same
+ * three-section picker the wizard uses, so first-run and ongoing
+ * management share UX.  The "Add Provider" verb is the picker itself
+ * -- there is no separate dialog-launching button.
+ */
+export default function ProvidersPage() {
+  const { filteredProviders, healthMap, loading, error, providers, isRefetching } = useProvidersData()
+  const presets = useProvidersStore((s) => s.presets)
+  const presetsLoading = useProvidersStore((s) => s.presetsLoading)
+  const presetsError = useProvidersStore((s) => s.presetsError)
+  const fetchPresets = useProvidersStore((s) => s.fetchPresets)
+
+  // Cast the wire-shape providers list (full-detail config) into the
+  // map of name → ProviderConfig that PresetPickerSections expects.
+  const providersByName = useMemo<Readonly<Record<string, ProviderConfig>>>(() => {
+    const out: Record<string, ProviderConfig> = {}
+    for (const p of providers) {
+      out[p.name] = p
+    }
+    return out
+  }, [providers])
+
+  const presetsFetchedRef = useRef(false)
+  useEffect(() => {
+    if (presetsFetchedRef.current) return
+    presetsFetchedRef.current = true
+    void fetchPresets()
+  }, [fetchPresets])
+
+  const probe = useProviderProbe(presets.length)
+  const modal = useProviderPickerModal()
+  const pagination = useListPagination({ items: filteredProviders, namespace: 'providers' })
+  const sel = useProviderSelection(filteredProviders)
+
+  const hasData = filteredProviders.length > 0 || providers.length > 0
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
@@ -206,11 +351,7 @@ export default function ProvidersPage() {
       />
 
       {error && (
-        <ErrorBanner
-          severity="error"
-          title="Could not load providers"
-          description={error}
-        />
+        <ErrorBanner severity="error" title="Could not load providers" description={error} />
       )}
 
       <ProviderFilters />
@@ -220,99 +361,39 @@ export default function ProvidersPage() {
       ) : (
         <ErrorBoundary level="section">
           <ProviderGridView
-            providers={pagedProviders}
+            providers={pagination.paginatedItems}
             healthMap={healthMap}
-            onAddProvider={handleConfigureManually}
-            selectedIds={visibleSelected}
-            onToggleSelect={handleToggleSelect}
+            onAddProvider={modal.handleConfigureManually}
+            selectedIds={sel.visibleSelected}
+            onToggleSelect={sel.handleToggleSelect}
           />
           <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={totalItems}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
+            page={pagination.page}
+            pageSize={pagination.pageSize}
+            total={pagination.totalItems}
+            onPageChange={pagination.setPage}
+            onPageSizeChange={pagination.setPageSize}
           />
         </ErrorBoundary>
       )}
 
-      <AnimatePresence>
-        {selectedCount > 0 && (
-          <BulkActionBar
-            selectedCount={selectedCount}
-            onClear={clearSelection}
-            loading={bulkDeleting}
-            ariaLabel="Provider bulk actions"
-          >
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-              onClick={() => setBulkDeleteOpen(true)}
-              disabled={bulkDeleting}
-            >
-              <Trash2 className="size-3.5" />
-              Delete {formatNumber(selectedCount)}
-            </Button>
-          </BulkActionBar>
-        )}
-      </AnimatePresence>
+      <ProvidersBulkActions sel={sel} />
 
-      <ConfirmDialog
-        open={bulkDeleteOpen}
-        onOpenChange={(open) => { if (!open && !bulkDeleting) setBulkDeleteOpen(false) }}
-        title={`Delete ${formatNumber(selectedCount)} provider${selectedCount === 1 ? '' : 's'}?`}
-        description="Each provider is removed via its individual delete endpoint. Agents bound to these providers will fail until reassigned. This cannot be undone."
-        confirmLabel={`Delete ${formatNumber(selectedCount)}`}
-        variant="destructive"
-        loading={bulkDeleting}
-        onConfirm={handleBulkDelete}
+      <AddProviderSection
+        probe={probe}
+        presets={presets}
+        presetsLoading={presetsLoading}
+        presetsError={presetsError}
+        fetchPresets={() => void fetchPresets()}
+        providersByName={providersByName}
+        modal={modal}
       />
 
-      <section
-        aria-labelledby="add-provider-heading"
-        className="space-y-section-gap border-t border-border pt-section-gap"
-      >
-        <h2 id="add-provider-heading" className="text-base font-semibold text-foreground">
-          Add a provider
-        </h2>
-
-        {probeError && (
-          <ErrorBanner
-            severity="warning"
-            title="Local provider probe did not complete"
-            description={`${probeError} Re-scan to try again, or configure providers manually.`}
-            onRetry={handleReprobe}
-          />
-        )}
-
-        {presetsError && presets.length === 0 ? (
-          <ErrorBanner
-            title="Failed to load provider presets"
-            description={presetsError}
-            onRetry={() => void fetchPresets()}
-          />
-        ) : (
-          <PresetPickerSections
-            presets={presets}
-            probeResults={probeResults}
-            probeErrors={probeErrors}
-            probing={probing || presetsLoading}
-            providers={providersByName}
-            onSelectCloud={handleSelectCloud}
-            onAddLocal={handleAddLocal}
-            onAddCloudCounterpart={handleAddCloudCounterpart}
-            onReprobe={handleReprobe}
-            onConfigureManually={handleConfigureManually}
-          />
-        )}
-      </section>
-
       <ProviderFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        open={modal.modalOpen}
+        onClose={() => modal.setModalOpen(false)}
         mode="create"
-        initialPreset={modalPreset}
+        initialPreset={modal.modalPreset}
       />
     </div>
   )

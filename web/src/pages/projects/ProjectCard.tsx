@@ -14,8 +14,44 @@ interface ProjectCardProps {
   selected?: boolean
 }
 
+interface ProjectCardData {
+  detailHref: string
+  status: NonNullable<Project['status']> | 'planning'
+  taskCount: number
+  budget: number
+  teamSize: number
+}
+
+function deriveProjectCardData(project: Project): ProjectCardData {
+  return {
+    detailHref: ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id)),
+    status: project.status ?? 'planning',
+    taskCount: project.task_ids?.length ?? 0,
+    budget: project.budget ?? 0,
+    teamSize: project.team?.length ?? 0,
+  }
+}
+
+function ProjectCardFooter({
+  teamSize,
+  deadline,
+}: {
+  teamSize: number
+  deadline?: string | null
+}) {
+  return (
+    <div className="flex items-center justify-between text-xs text-text-muted">
+      <span className="flex items-center gap-1">
+        <Users className="size-3" />
+        {teamSize} member{teamSize === 1 ? '' : 's'}
+      </span>
+      {deadline && <span>Due {formatRelativeTime(deadline)}</span>}
+    </div>
+  )
+}
+
 export function ProjectCard({ project, onToggleSelect, selected = false }: ProjectCardProps) {
-  const detailHref = ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id))
+  const { detailHref, status, taskCount, budget, teamSize } = deriveProjectCardData(project)
   return (
     <div className="relative">
       {onToggleSelect && (
@@ -40,7 +76,7 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="truncate text-sm font-semibold text-foreground">{project.name}</span>
-        <ProjectStatusBadge status={project.status ?? 'planning'} showLabel />
+        <ProjectStatusBadge status={status} showLabel />
       </div>
 
       {project.description && (
@@ -48,21 +84,11 @@ export function ProjectCard({ project, onToggleSelect, selected = false }: Proje
       )}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <StatPill label="Tasks" value={project.task_ids?.length ?? 0} />
-        {(project.budget ?? 0) > 0 && (
-          <StatPill label="Budget" value={formatCurrency(project.budget ?? 0)} />
-        )}
+        <StatPill label="Tasks" value={taskCount} />
+        {budget > 0 && <StatPill label="Budget" value={formatCurrency(budget)} />}
       </div>
 
-      <div className="flex items-center justify-between text-xs text-text-muted">
-        <span className="flex items-center gap-1">
-          <Users className="size-3" />
-          {(project.team?.length ?? 0)} member{(project.team?.length ?? 0) !== 1 ? 's' : ''}
-        </span>
-        {project.deadline && (
-          <span>Due {formatRelativeTime(project.deadline)}</span>
-        )}
-      </div>
+      <ProjectCardFooter teamSize={teamSize} deadline={project.deadline} />
     </Link>
     </div>
   )

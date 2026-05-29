@@ -3,24 +3,107 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
 import { useStepCompletionSync } from './_hooks'
-import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
+import { ProviderFormModal } from '@/pages/providers/ProviderFormModal'
+import type { ProviderFormOverrides } from '@/pages/providers/provider-form-helpers'
 
 const log = createLogger('setup:providers-step')
 
+type ProvidersValidation = ReturnType<typeof validateProvidersStep>
+
 /**
- * Wizard step: pick cloud presets, accept auto-detected local servers,
- * or configure custom endpoints.
- *
- * Layout follows the canonical three-section picker (Cloud / Detected
- * / Manual), reused on the Settings page so first-run and ongoing
- * management feel like one product.  All probe + create state lives in
- * ``useSetupWizardStore``; this component is a thin adapter.
+ * Auto-add a detected local provider using its probed URL. The created
+ * provider keeps the preset's display_name as the identifier so the
+ * configured-providers list matches what the user saw under "Detected on
+ * this machine". Branches on the create result-object so a downstream
+ * fetchProviders failure cannot retroactively make the create look like
+ * it failed (fetchProviders swallows its own errors into providersError).
  */
-export function ProvidersStep() {
+async function addDetectedLocalProvider(presetName: string, detectedUrl: string): Promise<void> {
+  const result = await useSetupWizardStore
+    .getState()
+    .createProviderFromPreset(presetName, presetName, undefined, detectedUrl)
+  if (!result.ok) return
+  await useSetupWizardStore.getState().fetchProviders()
+  const fetchErrMsg = useSetupWizardStore.getState().providersError
+  if (!fetchErrMsg) return
+  // The create genuinely succeeded; only the list refresh failed. Log +
+  // toast (so a dismissed toast still leaves an observability trace) AND
+  // clear providersError so the new provider is not surfaced as
+  // "Failed to load providers".
+  log.warn('fetch_providers_after_create_failed', {
+    preset: sanitizeForLog(presetName),
+    error: sanitizeForLog(fetchErrMsg),
+  })
+  useSetupWizardStore.setState({ providersError: null })
+  useToastStore.getState().add({
+    variant: 'warning',
+    title: 'Provider added; could not refresh the list',
+    description: fetchErrMsg,
+  })
+}
+
+/** Run a create mutation, then refresh the list unless the create poisoned it. */
+async function createProviderThenRefresh<T>(create: () => Promise<T>): Promise<T> {
+  const result = await create()
+  if (result && !useSetupWizardStore.getState().providersError) {
+    await useSetupWizardStore.getState().fetchProviders()
+  }
+  return result
+}
+
+/** Modal overrides so the form talks to the wizard store, not Settings. */
+function buildProvidersModalOverrides(presetState: {
+  presets: ProviderFormOverrides['presets']
+  presetsLoading: boolean
+  presetsError: string | null
+}): ProviderFormOverrides {
+  return {
+    ...presetState,
+    onFetchPresets: () => {
+      void useSetupWizardStore.getState().fetchPresets()
+    },
+    onCreateFromPreset: (data) =>
+      createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderFromPresetFull(data)),
+    onCreateProvider: (data) =>
+      createProviderThenRefresh(() => useSetupWizardStore.getState().createProviderCustom(data)),
+  }
+}
+
+interface ProvidersStepController {
+  agents: ReturnType<typeof useSetupWizardStore.getState>['agents']
+  providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
+  presets: ReturnType<typeof useSetupWizardStore.getState>['presets']
+  probeResults: ReturnType<typeof useSetupWizardStore.getState>['probeResults']
+  probeErrors: ReturnType<typeof useSetupWizardStore.getState>['probeErrors']
+  probeGlobalError: string | null
+  probing: boolean
+  providersLoading: boolean
+  providersError: string | null
+  providersWarning: string | null
+  presetsLoading: boolean
+  presetsError: string | null
+  validation: ProvidersValidation
+  missingProviders: string[]
+  hasConfiguredProviders: boolean
+  modalOpen: boolean
+  modalPreset: string | null
+  setModalOpen: (open: boolean) => void
+  modalOverrides: ProviderFormOverrides
+  handleSelectCloud: (presetName: string) => void
+  handleAddLocal: (presetName: string, detectedUrl: string) => Promise<void>
+  handleAddCloudCounterpart: (cloudPresetName: string) => void
+  handleConfigureManually: () => void
+  handleReprobe: () => Promise<void>
+  onRetryProviders: () => void
+  onRetryPresets: () => void
+}
+
+function useProvidersStepController(): ProvidersStepController {
   const agents = useSetupWizardStore((s) => s.agents)
   const providers = useSetupWizardStore((s) => s.providers)
   const presets = useSetupWizardStore((s) => s.presets)
@@ -34,46 +117,29 @@ export function ProvidersStep() {
   const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
   const presetsError = useSetupWizardStore((s) => s.presetsError)
 
-  const fetchProviders = useSetupWizardStore((s) => s.fetchProviders)
-  const fetchPresets = useSetupWizardStore((s) => s.fetchPresets)
-  const probeLocalProviders = useSetupWizardStore((s) => s.probeLocalProviders)
-  const reprobeLocalProviders = useSetupWizardStore((s) => s.reprobeLocalProviders)
-  const createProviderFromPreset = useSetupWizardStore((s) => s.createProviderFromPreset)
-  const createProviderFromPresetFull = useSetupWizardStore((s) => s.createProviderFromPresetFull)
-  const createProviderCustom = useSetupWizardStore((s) => s.createProviderCustom)
-
-  // Modal state -- one modal, opened with a known preset (or null for
-  // custom mode).  ``modalOpen`` toggles visibility; ``modalPreset``
-  // captures which preset to pre-fill on open.
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPreset, setModalPreset] = useState<string | null>(null)
-
   const fetchedRef = useRef(false)
+  const probeAttemptedRef = useRef(false)
 
-  // Fetch providers and presets once on first mount (not on every re-render).
-  // Clear any stale providersError that lingered from an earlier visit so the
-  // step re-enters cleanly: the previous error came from a different attempt
-  // and is misleading on a fresh remount, especially when the user navigated
-  // back from a later wizard step.
+  // Fetch providers and presets once on first mount. Clear any stale
+  // providersError from an earlier visit so the step re-enters cleanly.
   useEffect(() => {
     if (fetchedRef.current) return
     fetchedRef.current = true
-
     useSetupWizardStore.setState({ providersError: null })
-    void fetchProviders()
-    void fetchPresets()
-  }, [fetchProviders, fetchPresets])
+    void useSetupWizardStore.getState().fetchProviders()
+    void useSetupWizardStore.getState().fetchPresets()
+  }, [])
 
-  // Auto-probe local presets once after presets are loaded
-  const probeAttemptedRef = useRef(false)
+  // Auto-probe local presets once after presets are loaded.
   useEffect(() => {
     if (presets.length > 0 && !probing && !probeAttemptedRef.current) {
       probeAttemptedRef.current = true
-      void probeLocalProviders()
+      void useSetupWizardStore.getState().probeLocalProviders()
     }
-  }, [presets.length, probing, probeLocalProviders])
+  }, [presets.length, probing])
 
-  // Track step completion
   const validation = useMemo(() => validateProvidersStep({ providers }), [providers])
   useStepCompletionSync('providers', validation.valid)
 
@@ -83,55 +149,11 @@ export function ProvidersStep() {
   }, [])
 
   const handleAddLocal = useCallback(
-    async (presetName: string, detectedUrl: string) => {
-      // Auto-add detected local providers using the detected URL.
-      // Created provider keeps the preset's display_name as the
-      // identifier so the configured-providers list matches what the
-      // user just saw under "Detected on this machine".
-      //
-      // Branch on the result-object so a downstream fetchProviders
-      // failure cannot retroactively make the create look like it
-      // failed (the previous race read providersError after the
-      // create returned, but providersError could be set BY the
-      // refresh).
-      const result = await createProviderFromPreset(
-        presetName,
-        presetName,
-        undefined,
-        detectedUrl,
-      )
-      if (result.ok) {
-        // fetchProviders swallows its own errors and writes them to
-        // providersError in the store, so a try/catch around it is
-        // dead code; read the store after the call. If the refresh
-        // failed, log and toast (so a dismissed toast still leaves
-        // an observability trace) AND clear providersError so the
-        // successfully-created provider is not surfaced as
-        // "Failed to load providers" -- the create genuinely
-        // succeeded; only the list refresh didn't.
-        await fetchProviders()
-        const fetchErrMsg = useSetupWizardStore.getState().providersError
-        if (fetchErrMsg) {
-          log.warn('fetch_providers_after_create_failed', {
-            preset: presetName,
-            error: fetchErrMsg,
-          })
-          useSetupWizardStore.setState({ providersError: null })
-          useToastStore.getState().add({
-            variant: 'warning',
-            title: 'Provider added; could not refresh the list',
-            description: fetchErrMsg,
-          })
-        }
-      }
-    },
-    [createProviderFromPreset, fetchProviders],
+    (presetName: string, detectedUrl: string) => addDetectedLocalProvider(presetName, detectedUrl),
+    [],
   )
 
   const handleAddCloudCounterpart = useCallback((cloudPresetName: string) => {
-    // Open the credential form pre-filled with the cloud counterpart
-    // (e.g. ollama-cloud when "Add cloud" is clicked on the detected
-    // local Ollama row).
     setModalPreset(cloudPresetName)
     setModalOpen(true)
   }, [])
@@ -143,77 +165,82 @@ export function ProvidersStep() {
 
   const handleReprobe = useCallback(async () => {
     probeAttemptedRef.current = true
-    await reprobeLocalProviders()
-  }, [reprobeLocalProviders])
+    await useSetupWizardStore.getState().reprobeLocalProviders()
+  }, [])
 
-  // Modal overrides so it talks to the wizard store, not the Settings store
-  const modalOverrides: ProviderFormOverrides = useMemo(() => ({
-    presets,
-    presetsLoading,
-    presetsError,
-    onFetchPresets: fetchPresets,
-    onCreateFromPreset: async (data) => {
-      const result = await createProviderFromPresetFull(data)
-      if (result && !useSetupWizardStore.getState().providersError) {
-        await fetchProviders()
-      }
-      return result
-    },
-    onCreateProvider: async (data) => {
-      const result = await createProviderCustom(data)
-      if (result && !useSetupWizardStore.getState().providersError) {
-        await fetchProviders()
-      }
-      return result
-    },
-  }), [presets, presetsLoading, presetsError, fetchPresets, createProviderFromPresetFull, createProviderCustom, fetchProviders])
+  const modalOverrides = useMemo(
+    () => buildProvidersModalOverrides({ presets, presetsLoading, presetsError }),
+    [presets, presetsLoading, presetsError],
+  )
 
-  if (providersLoading && Object.keys(providers).length === 0) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-24 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
-      </div>
-    )
-  }
-
-  // Which providers do agents need?
-  const neededProviders = new Set(agents.map((a) => a.model_provider).filter((p): p is string => Boolean(p)))
+  const neededProviders = new Set(
+    agents.map((a) => a.model_provider).filter((p): p is string => Boolean(p)),
+  )
   const missingProviders = [...neededProviders].filter((p) => !providers[p])
-
   const hasConfiguredProviders = Object.keys(providers).length > 0
 
+  return {
+    agents, providers, presets, probeResults, probeErrors, probeGlobalError, probing,
+    providersLoading, providersError, providersWarning, presetsLoading, presetsError,
+    validation, missingProviders, hasConfiguredProviders,
+    modalOpen, modalPreset, setModalOpen, modalOverrides,
+    handleSelectCloud, handleAddLocal, handleAddCloudCounterpart, handleConfigureManually, handleReprobe,
+    onRetryProviders: () => void useSetupWizardStore.getState().fetchProviders(),
+    onRetryPresets: () => void useSetupWizardStore.getState().fetchPresets(),
+  }
+}
+
+/**
+ * First-entry guidance: explains the three options (cloud preset,
+ * detected local, manual) before the user picks one. Hidden once at
+ * least one provider is configured to avoid repeating itself on revisit.
+ */
+function ProvidersGuidanceBanner({
+  hasConfiguredProviders,
+  presetsLoading,
+}: {
+  hasConfiguredProviders: boolean
+  presetsLoading: boolean
+}) {
+  if (hasConfiguredProviders || presetsLoading) return null
   return (
-    <div className="space-y-section-gap">
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-foreground">Set Up Providers</h2>
-        <p className="text-sm text-muted-foreground">
-          Connect your LLM providers so agents can work.
-        </p>
-      </div>
+    <ErrorBanner
+      variant="section"
+      severity="info"
+      title="Pick at least one provider to organise your agents"
+      description={
+        'Cloud presets sign you in with an API key. Detected local servers '
+        + 'auto-fill from a probe of localhost. Configure manually for self-hosted '
+        + 'endpoints. You can mix and match before continuing.'
+      }
+    />
+  )
+}
 
-      {/* Guidance banner shown on first entry: explains the three options
-          (cloud preset, detected local, manual) before the user picks
-          one. Hidden once at least one provider is configured to avoid
-          repeating itself on every revisit. */}
-      {!hasConfiguredProviders && !presetsLoading && (
-        <ErrorBanner
-          variant="section"
-          severity="info"
-          title="Pick at least one provider to organise your agents"
-          description={
-            'Cloud presets sign you in with an API key. Detected local servers '
-            + 'auto-fill from a probe of localhost. Configure manually for self-hosted '
-            + 'endpoints. You can mix and match before continuing.'
-          }
-        />
-      )}
+interface ProvidersStepBannersProps {
+  providersError: string | null
+  providersWarning: string | null
+  probeGlobalError: string | null
+  missingProviders: readonly string[]
+  onRetryProviders: () => void
+  onReprobe: () => void
+}
 
+function ProvidersStepBanners({
+  providersError,
+  providersWarning,
+  probeGlobalError,
+  missingProviders,
+  onRetryProviders,
+  onReprobe,
+}: ProvidersStepBannersProps) {
+  return (
+    <>
       {providersError && (
         <ErrorBanner
           title="Failed to load providers"
           description={providersError}
-          onRetry={() => void fetchProviders()}
+          onRetry={onRetryProviders}
         />
       )}
 
@@ -225,7 +252,7 @@ export function ProvidersStep() {
           severity="warning"
           title="Provider added with warnings"
           description={providersWarning}
-          onRetry={() => void fetchProviders()}
+          onRetry={onRetryProviders}
         />
       )}
 
@@ -233,7 +260,7 @@ export function ProvidersStep() {
         <ErrorBanner
           title="Local provider probe did not complete"
           description={`${probeGlobalError} Re-scan to try again, or configure providers manually below.`}
-          onRetry={handleReprobe}
+          onRetry={onReprobe}
         />
       )}
 
@@ -244,45 +271,149 @@ export function ProvidersStep() {
           description={`Missing: ${missingProviders.join(', ')}`}
         />
       )}
+    </>
+  )
+}
 
-      {presetsLoading ? (
-        <Skeleton className="h-32 rounded-lg" />
-      ) : presetsError && presets.length === 0 ? (
-        <ErrorBanner
-          title="Failed to load provider presets"
-          description={presetsError}
-          onRetry={() => void fetchPresets()}
-        />
-      ) : (
-        <PresetPickerSections
-          presets={presets}
-          probeResults={probeResults}
-          probeErrors={probeErrors}
-          probing={probing}
-          providers={providers}
-          onSelectCloud={handleSelectCloud}
-          onAddLocal={handleAddLocal}
-          onAddCloudCounterpart={handleAddCloudCounterpart}
-          onReprobe={handleReprobe}
-          onConfigureManually={handleConfigureManually}
-        />
-      )}
+interface ProvidersPresetSectionProps {
+  presetsLoading: boolean
+  presetsError: string | null
+  presets: ProvidersStepController['presets']
+  probeResults: ProvidersStepController['probeResults']
+  probeErrors: ProvidersStepController['probeErrors']
+  probing: boolean
+  providers: ProvidersStepController['providers']
+  onSelectCloud: (presetName: string) => void
+  onAddLocal: (presetName: string, detectedUrl: string) => Promise<void>
+  onAddCloudCounterpart: (cloudPresetName: string) => void
+  onReprobe: () => Promise<void>
+  onConfigureManually: () => void
+  onRetryPresets: () => void
+}
 
-      <ProviderFormModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        mode="create"
-        initialPreset={modalPreset}
-        overrides={modalOverrides}
+function ProvidersPresetSection({
+  presetsLoading,
+  presetsError,
+  presets,
+  probeResults,
+  probeErrors,
+  probing,
+  providers,
+  onSelectCloud,
+  onAddLocal,
+  onAddCloudCounterpart,
+  onReprobe,
+  onConfigureManually,
+  onRetryPresets,
+}: ProvidersPresetSectionProps) {
+  if (presetsLoading) {
+    return <Skeleton className="h-32 rounded-lg" />
+  }
+  if (presetsError && presets.length === 0) {
+    return (
+      <ErrorBanner
+        title="Failed to load provider presets"
+        description={presetsError}
+        onRetry={onRetryPresets}
+      />
+    )
+  }
+  return (
+    <PresetPickerSections
+      presets={presets}
+      probeResults={probeResults}
+      probeErrors={probeErrors}
+      probing={probing}
+      providers={providers}
+      onSelectCloud={onSelectCloud}
+      onAddLocal={onAddLocal}
+      onAddCloudCounterpart={onAddCloudCounterpart}
+      onReprobe={onReprobe}
+      onConfigureManually={onConfigureManually}
+    />
+  )
+}
+
+function ProvidersValidationErrors({ validation }: { validation: ProvidersValidation }) {
+  if (validation.valid || validation.errors.length === 0) return null
+  return (
+    <ul className="space-y-1 text-xs text-muted-foreground">
+      {validation.errors.map((err) => (
+        <li key={err}>{err}</li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * Wizard step: pick cloud presets, accept auto-detected local servers,
+ * or configure custom endpoints.
+ *
+ * Layout follows the canonical three-section picker (Cloud / Detected
+ * / Manual), reused on the Settings page so first-run and ongoing
+ * management feel like one product. All probe + create state lives in
+ * ``useSetupWizardStore``; this component is a thin adapter.
+ */
+export function ProvidersStep() {
+  const c = useProvidersStepController()
+
+  if (c.providersLoading && Object.keys(c.providers).length === 0) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-24 rounded-lg" />
+        <Skeleton className="h-48 rounded-lg" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-section-gap">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold text-foreground">Set Up Providers</h2>
+        <p className="text-sm text-muted-foreground">
+          Connect your LLM providers so agents can work.
+        </p>
+      </div>
+
+      <ProvidersGuidanceBanner
+        hasConfiguredProviders={c.hasConfiguredProviders}
+        presetsLoading={c.presetsLoading}
       />
 
-      {!validation.valid && validation.errors.length > 0 && (
-        <ul className="space-y-1 text-xs text-muted-foreground">
-          {validation.errors.map((err) => (
-            <li key={err}>{err}</li>
-          ))}
-        </ul>
-      )}
+      <ProvidersStepBanners
+        providersError={c.providersError}
+        providersWarning={c.providersWarning}
+        probeGlobalError={c.probeGlobalError}
+        missingProviders={c.missingProviders}
+        onRetryProviders={c.onRetryProviders}
+        onReprobe={c.handleReprobe}
+      />
+
+      <ProvidersPresetSection
+        presetsLoading={c.presetsLoading}
+        presetsError={c.presetsError}
+        presets={c.presets}
+        probeResults={c.probeResults}
+        probeErrors={c.probeErrors}
+        probing={c.probing}
+        providers={c.providers}
+        onSelectCloud={c.handleSelectCloud}
+        onAddLocal={c.handleAddLocal}
+        onAddCloudCounterpart={c.handleAddCloudCounterpart}
+        onReprobe={c.handleReprobe}
+        onConfigureManually={c.handleConfigureManually}
+        onRetryPresets={c.onRetryPresets}
+      />
+
+      <ProviderFormModal
+        open={c.modalOpen}
+        onClose={() => c.setModalOpen(false)}
+        mode="create"
+        initialPreset={c.modalPreset}
+        overrides={c.modalOverrides}
+      />
+
+      <ProvidersValidationErrors validation={c.validation} />
     </div>
   )
 }

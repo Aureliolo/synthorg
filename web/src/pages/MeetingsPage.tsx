@@ -20,7 +20,25 @@ import { MeetingsSkeleton } from './meetings/MeetingsSkeleton'
 
 const VALID_STATUSES: ReadonlySet<string> = new Set(MEETING_STATUS_VALUES)
 
-export default function MeetingsPage() {
+type MeetingList = ReturnType<typeof useMeetingsData>['meetings']
+
+interface MeetingsPageController {
+  filtered: MeetingList
+  filters: MeetingPageFilters
+  handleFiltersChange: (filters: MeetingPageFilters) => void
+  meetingTypes: string[]
+  error: string | null
+  showDisconnected: boolean
+  wsSetupError: string | null
+  showSkeleton: boolean
+  triggering: boolean
+  triggerOpen: boolean
+  setTriggerOpen: (open: boolean) => void
+  handleTrigger: (eventName: string) => Promise<boolean>
+  emptyStateProps: ReturnType<typeof useEmptyStateProps>
+}
+
+function useMeetingsPageController(): MeetingsPageController {
   const {
     meetings,
     loading,
@@ -69,13 +87,11 @@ export default function MeetingsPage() {
     return true
   }, [triggerMeeting])
 
-  // Derived data
   const filtered = useMemo(() => filterMeetings(meetings, filters), [meetings, filters])
   const meetingTypes = useMemo(
     () => [...new Set(meetings.map((m) => m.meeting_type_name))].sort(),
     [meetings],
   )
-
   const hasFilters = !!(filters.status || filters.meetingType)
 
   // Centralise the "no data ever" vs "no data after filter" branching
@@ -98,8 +114,61 @@ export default function MeetingsPage() {
     },
   })
 
-  // Loading state
-  if (loading && meetings.length === 0) {
+  const showDisconnected =
+    (Boolean(wsSetupError) || (wasConnectedRef.current && !wsConnected)) && !loading
+  const showSkeleton = loading && meetings.length === 0
+
+  return {
+    filtered, filters, handleFiltersChange, meetingTypes, error, showDisconnected,
+    wsSetupError, showSkeleton, triggering, triggerOpen, setTriggerOpen, handleTrigger,
+    emptyStateProps,
+  }
+}
+
+function MeetingsBanners({
+  error,
+  showDisconnected,
+  wsSetupError,
+}: {
+  error: string | null
+  showDisconnected: boolean
+  wsSetupError: string | null
+}) {
+  return (
+    <>
+      {error && (
+        <ErrorBanner severity="error" title="Could not load meetings" description={error} />
+      )}
+      {showDisconnected && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
+      )}
+    </>
+  )
+}
+
+function MeetingsGrid({ meetings }: { meetings: MeetingList }) {
+  if (meetings.length === 0) return null
+  return (
+    <ErrorBoundary level="section">
+      <StaggerGroup className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+        {meetings.map((meeting) => (
+          <StaggerItem key={meeting.meeting_id}>
+            <MeetingCard meeting={meeting} />
+          </StaggerItem>
+        ))}
+      </StaggerGroup>
+    </ErrorBoundary>
+  )
+}
+
+export default function MeetingsPage() {
+  const c = useMeetingsPageController()
+
+  if (c.showSkeleton) {
     return <MeetingsSkeleton />
   }
 
@@ -107,55 +176,39 @@ export default function MeetingsPage() {
     <div className="space-y-section-gap">
       <ListHeader
         title="Meetings"
-        count={filtered.length}
-        primaryAction={<Button onClick={() => setTriggerOpen(true)}>Trigger meeting</Button>}
+        count={c.filtered.length}
+        primaryAction={<Button onClick={() => c.setTriggerOpen(true)}>Trigger meeting</Button>}
       />
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load meetings" description={error} />
-      )}
-
-      {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
+      <MeetingsBanners
+        error={c.error}
+        showDisconnected={c.showDisconnected}
+        wsSetupError={c.wsSetupError}
+      />
 
       <ErrorBoundary level="section">
-        <MeetingMetricCards meetings={filtered} />
+        <MeetingMetricCards meetings={c.filtered} />
       </ErrorBoundary>
 
       <MeetingFilterBar
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        meetingTypes={meetingTypes}
+        filters={c.filters}
+        onFiltersChange={c.handleFiltersChange}
+        meetingTypes={c.meetingTypes}
       />
 
       <ErrorBoundary level="section">
-        <MeetingTimeline meetings={filtered} />
+        <MeetingTimeline meetings={c.filtered} />
       </ErrorBoundary>
 
-      {filtered.length > 0 && (
-        <ErrorBoundary level="section">
-          <StaggerGroup className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((meeting) => (
-              <StaggerItem key={meeting.meeting_id}>
-                <MeetingCard meeting={meeting} />
-              </StaggerItem>
-            ))}
-          </StaggerGroup>
-        </ErrorBoundary>
-      )}
+      <MeetingsGrid meetings={c.filtered} />
 
-      {emptyStateProps && !error && <EmptyState {...emptyStateProps} />}
+      {c.emptyStateProps && !c.error && <EmptyState {...c.emptyStateProps} />}
 
       <TriggerMeetingDialog
-        open={triggerOpen}
-        onOpenChange={setTriggerOpen}
-        onConfirm={handleTrigger}
-        loading={triggering}
+        open={c.triggerOpen}
+        onOpenChange={c.setTriggerOpen}
+        onConfirm={c.handleTrigger}
+        loading={c.triggering}
       />
     </div>
   )

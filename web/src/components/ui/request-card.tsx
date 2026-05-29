@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button'
  * a per-request flight is reflected as a disabled action group
  * without re-rendering the whole queue.
  *
- * Extracted from {@link RequestQueuePage} per the
- * `web/CLAUDE.md` "no >8-line JSX inside .map()" rule (issue #1666).
+ * Kept as a standalone component (rather than inline JSX in the queue's
+ * `.map()`) per the web/CLAUDE.md "no >8-line JSX inside .map()" rule.
  */
 export interface RequestCardProps {
   request: ClientRequest

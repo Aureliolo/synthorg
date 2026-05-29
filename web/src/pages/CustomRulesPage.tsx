@@ -41,6 +41,146 @@ function PillBadge({ label, className }: { label: string; className?: string }) 
   )
 }
 
+function CustomRuleCard({
+  rule,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  rule: CustomRule
+  onToggle: (id: string) => void
+  onEdit: (rule: CustomRule) => void
+  onDelete: (id: string) => void
+}) {
+  return (
+    <SectionCard
+      title={rule.name}
+      action={
+        <div className="flex items-center gap-grid-gap">
+          <PillBadge label={rule.severity.toUpperCase()} className={SEVERITY_CLASSES[rule.severity]} />
+          <PillBadge
+            label={rule.enabled ? 'Active' : 'Disabled'}
+            className={
+              rule.enabled
+                ? 'bg-success/10 text-success border-success/20'
+                : 'bg-surface text-text-secondary border-border'
+            }
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onToggle(rule.id)}
+            aria-label={rule.enabled ? 'Disable rule' : 'Enable rule'}
+          >
+            <Power aria-hidden="true" className="size-4" />
+          </Button>
+          <Button variant="secondary" onClick={() => onEdit(rule)}>
+            Edit
+          </Button>
+          <Button variant="ghost" onClick={() => onDelete(rule.id)}>
+            Delete
+          </Button>
+        </div>
+      }
+    >
+      <p className="mb-grid-gap text-sm text-text-secondary">{rule.description}</p>
+      <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-text-secondary">Metric</dt>
+          <dd className="font-mono text-foreground">{rule.metric_path}</dd>
+        </div>
+        <div>
+          <dt className="text-text-secondary">Condition</dt>
+          <dd className="font-mono text-foreground">
+            {rule.comparator} {rule.threshold}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-text-secondary">Targets</dt>
+          <dd className="text-foreground">{rule.target_altitudes.join(', ') || 'none'}</dd>
+        </div>
+      </dl>
+    </SectionCard>
+  )
+}
+
+interface CustomRulesContentProps {
+  loading: boolean
+  rulesCount: number
+  sortedRules: readonly CustomRule[]
+  onToggle: (id: string) => void
+  onEdit: (rule: CustomRule) => void
+  onDelete: (id: string) => void
+  onCreate: () => void
+}
+
+function CustomRulesContent({
+  loading,
+  rulesCount,
+  sortedRules,
+  onToggle,
+  onEdit,
+  onDelete,
+  onCreate,
+}: CustomRulesContentProps) {
+  if (loading && rulesCount === 0) {
+    return (
+      <div className="flex flex-col gap-grid-gap">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-24 w-full" />
+        ))}
+      </div>
+    )
+  }
+  if (rulesCount === 0) {
+    return (
+      <EmptyState
+        title="No custom rules yet"
+        description="Custom rules let you trigger improvement proposals when an observed metric crosses a threshold."
+        action={{ label: 'Create your first rule', onClick: onCreate }}
+      />
+    )
+  }
+  return (
+    <ul className="flex flex-col gap-grid-gap">
+      {sortedRules.map((rule) => (
+        <li key={rule.id}>
+          <CustomRuleCard rule={rule} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function DeleteRuleDialog({
+  deletingId,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  deletingId: string | null
+  submitting: boolean
+  onCancel: () => void
+  onConfirm: (id: string) => Promise<void>
+}) {
+  return (
+    <ConfirmDialog
+      open={deletingId !== null}
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
+      title="Delete custom rule"
+      description="The rule will stop firing immediately. This cannot be undone."
+      variant="destructive"
+      confirmLabel={submitting ? 'Deleting…' : 'Delete'}
+      loading={submitting}
+      onConfirm={async () => {
+        if (deletingId !== null) await onConfirm(deletingId)
+      }}
+    />
+  )
+}
+
 export default function CustomRulesPage() {
   const rules = useCustomRulesStore((s) => s.rules)
   const loading = useCustomRulesStore((s) => s.loading)
@@ -91,96 +231,17 @@ export default function CustomRulesPage() {
 
       <WsConnectionBanner />
 
-      {loading && rules.length === 0 ? (
-        <div className="flex flex-col gap-grid-gap">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-      ) : rules.length === 0 ? (
-        <EmptyState
-          title="No custom rules yet"
-          description="Custom rules let you trigger improvement proposals when an observed metric crosses a threshold."
-          action={{
-            label: 'Create your first rule',
-            onClick: () => setCreateOpen(true),
-          }}
-        />
-      ) : (
-        <ul className="flex flex-col gap-grid-gap">
-          {sortedRules.map((rule) => (
-            <li key={rule.id}>
-              <SectionCard
-                title={rule.name}
-                action={
-                  <div className="flex items-center gap-grid-gap">
-                    <PillBadge
-                      label={rule.severity.toUpperCase()}
-                      className={SEVERITY_CLASSES[rule.severity]}
-                    />
-                    <PillBadge
-                      label={rule.enabled ? 'Active' : 'Disabled'}
-                      className={
-                        rule.enabled
-                          ? 'bg-success/10 text-success border-success/20'
-                          : 'bg-surface text-text-secondary border-border'
-                      }
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        void toggleRule(rule.id)
-                      }}
-                      aria-label={
-                        rule.enabled ? 'Disable rule' : 'Enable rule'
-                      }
-                    >
-                      <Power aria-hidden="true" className="size-4" />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setEditing(rule)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setDeletingId(rule.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                }
-              >
-                <p className="mb-grid-gap text-sm text-text-secondary">
-                  {rule.description}
-                </p>
-                <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="text-text-secondary">Metric</dt>
-                    <dd className="font-mono text-foreground">
-                      {rule.metric_path}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-text-secondary">Condition</dt>
-                    <dd className="font-mono text-foreground">
-                      {rule.comparator} {rule.threshold}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-text-secondary">Targets</dt>
-                    <dd className="text-foreground">
-                      {rule.target_altitudes.join(', ') || 'none'}
-                    </dd>
-                  </div>
-                </dl>
-              </SectionCard>
-            </li>
-          ))}
-        </ul>
-      )}
+      <CustomRulesContent
+        loading={loading}
+        rulesCount={rules.length}
+        sortedRules={sortedRules}
+        onToggle={(id) => {
+          void toggleRule(id)
+        }}
+        onEdit={setEditing}
+        onDelete={setDeletingId}
+        onCreate={() => setCreateOpen(true)}
+      />
 
       <CustomRuleFormDrawer
         open={createOpen}
@@ -196,22 +257,12 @@ export default function CustomRulesPage() {
         onClose={() => setEditing(null)}
       />
 
-      <ConfirmDialog
-        open={deletingId !== null}
-        onOpenChange={(next) => {
-          if (!next) setDeletingId(null)
-        }}
-        title="Delete custom rule"
-        description="The rule will stop firing immediately. This cannot be undone."
-        variant="destructive"
-        confirmLabel={submitting ? 'Deleting…' : 'Delete'}
-        loading={submitting}
-        onConfirm={async () => {
-          if (deletingId === null) {
-            setDeletingId(null)
-            return
-          }
-          const ok = await deleteRule(deletingId)
+      <DeleteRuleDialog
+        deletingId={deletingId}
+        submitting={submitting}
+        onCancel={() => setDeletingId(null)}
+        onConfirm={async (id) => {
+          const ok = await deleteRule(id)
           // Only dismiss on success; on failure the store has
           // already surfaced the error toast and we keep the
           // dialog open so the user can retry in context.

@@ -2,11 +2,6 @@ import { AlertTriangle, Check } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import type { WizardStep } from '@/stores/setup-wizard'
 
-interface StepConfig {
-  readonly key: WizardStep
-  readonly label: string
-}
-
 const STEP_LABELS: Record<WizardStep, string> = {
   account: 'Account',
   mode: 'Mode',
@@ -18,41 +13,85 @@ const STEP_LABELS: Record<WizardStep, string> = {
   complete: 'Done',
 }
 
-interface StepIndicatorProps {
-  step: StepConfig
+type StepVisual = 'active' | 'warning' | 'complete' | 'pending'
+
+function stepVisual(isActive: boolean, isComplete: boolean, showWarning: boolean): StepVisual {
+  if (isActive) return 'active'
+  if (showWarning) return 'warning'
+  if (isComplete) return 'complete'
+  return 'pending'
+}
+
+const CIRCLE_CLASS: Record<StepVisual, string> = {
+  active: 'bg-accent text-accent-foreground',
+  warning: 'bg-warning/20 text-warning',
+  complete: 'bg-success/20 text-success',
+  pending: 'bg-card text-muted-foreground border border-border',
+}
+
+const LABEL_CLASS: Record<StepVisual, string> = {
+  active: 'font-semibold text-foreground',
+  warning: 'text-warning',
+  complete: 'text-muted-foreground',
+  pending: 'text-muted-foreground',
+}
+
+interface StepView {
+  key: WizardStep
+  label: string
   index: number
   isActive: boolean
-  isComplete: boolean
-  needsRevalidation: boolean
   isAccessible: boolean
+  isComplete: boolean
+  showWarning: boolean
+  visual: StepVisual
   isLast: boolean
-  onStepClick: (step: WizardStep) => void
+}
+
+function StepCircle({ visual, isComplete, index }: { visual: StepVisual; isComplete: boolean; index: number }) {
+  return (
+    <div
+      className={cn(
+        'flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors',
+        CIRCLE_CLASS[visual],
+      )}
+    >
+      {visual === 'warning' ? (
+        <AlertTriangle className="size-4" aria-hidden="true" />
+      ) : isComplete ? (
+        <Check className="size-4" aria-hidden="true" />
+      ) : (
+        index + 1
+      )}
+    </div>
+  )
+}
+
+function StepConnector({ isComplete }: { isComplete: boolean }) {
+  return (
+    <div
+      className={cn('mx-1 h-px w-8', isComplete ? 'bg-success/40' : 'bg-border')}
+      aria-hidden="true"
+    />
+  )
 }
 
 function StepIndicator({
-  step,
-  index,
-  isActive,
-  isComplete,
-  needsRevalidation,
-  isAccessible,
-  isLast,
+  view,
   onStepClick,
-}: StepIndicatorProps) {
-  // Revalidation only renders when the step is also complete: an
-  // incomplete step's empty circle already telegraphs "you have work
-  // to do here", so the warning glyph would be redundant noise. The
-  // active step never carries the warning either, so the user does
-  // not see the alert on the screen they are about to fix.
-  const showWarning = isComplete && needsRevalidation && !isActive
+}: {
+  view: StepView
+  onStepClick: (step: WizardStep) => void
+}) {
+  const { key, label, index, isActive, isAccessible, isComplete, showWarning, visual, isLast } = view
   return (
     <div className="flex items-center">
       <button
         type="button"
-        onClick={() => onStepClick(step.key)}
+        onClick={() => onStepClick(key)}
         disabled={!isAccessible}
         aria-current={isActive ? 'step' : undefined}
-        aria-describedby={showWarning ? `${step.key}-needs-revalidation` : undefined}
+        aria-describedby={showWarning ? `${key}-needs-revalidation` : undefined}
         className={cn(
           'flex flex-col items-center gap-1',
           FOCUS_RING,
@@ -61,48 +100,15 @@ function StepIndicator({
           !isAccessible && 'cursor-not-allowed opacity-50',
         )}
       >
-        <div
-          className={cn(
-            'flex size-8 items-center justify-center rounded-full text-xs font-semibold transition-colors',
-            isActive && 'bg-accent text-accent-foreground',
-            isComplete && !isActive && !showWarning && 'bg-success/20 text-success',
-            showWarning && 'bg-warning/20 text-warning',
-            !isActive && !isComplete && 'bg-card text-muted-foreground border border-border',
-          )}
-        >
-          {showWarning ? (
-            <AlertTriangle className="size-4" aria-hidden="true" />
-          ) : isComplete ? (
-            <Check className="size-4" aria-hidden="true" />
-          ) : (
-            index + 1
-          )}
-        </div>
-        <span
-          className={cn(
-            'text-compact',
-            isActive && 'font-semibold text-foreground',
-            !isActive && !showWarning && 'text-muted-foreground',
-            showWarning && 'text-warning',
-          )}
-        >
-          {step.label}
-        </span>
+        <StepCircle visual={visual} isComplete={isComplete} index={index} />
+        <span className={cn('text-compact', LABEL_CLASS[visual])}>{label}</span>
         {showWarning && (
-          <span id={`${step.key}-needs-revalidation`} className="sr-only">
+          <span id={`${key}-needs-revalidation`} className="sr-only">
             Needs review: upstream changes may have invalidated this step.
           </span>
         )}
       </button>
-      {!isLast && (
-        <div
-          className={cn(
-            'mx-1 h-px w-8',
-            isComplete ? 'bg-success/40' : 'bg-border',
-          )}
-          aria-hidden="true"
-        />
-      )}
+      {!isLast && <StepConnector isComplete={isComplete} />}
     </div>
   )
 }
@@ -124,26 +130,29 @@ export function WizardProgress({
   canNavigateTo,
   onStepClick,
 }: WizardProgressProps) {
-  const steps: StepConfig[] = stepOrder.map((key) => ({
-    key,
-    label: STEP_LABELS[key],
-  }))
-
   return (
     <nav aria-label="Setup progress" className="flex items-center justify-center gap-0">
-      {steps.map((step, index) => (
-        <StepIndicator
-          key={step.key}
-          step={step}
-          index={index}
-          isActive={step.key === currentStep}
-          isComplete={stepsCompleted[step.key]}
-          needsRevalidation={stepsNeedRevalidation[step.key]}
-          isAccessible={canNavigateTo(step.key)}
-          isLast={index === steps.length - 1}
-          onStepClick={onStepClick}
-        />
-      ))}
+      {stepOrder.map((key, index) => {
+        const isActive = key === currentStep
+        const isComplete = stepsCompleted[key]
+        // The warning glyph only renders on a complete-but-stale step the
+        // user is NOT currently on: an incomplete step's empty circle
+        // already signals "work to do", and the active step is the one
+        // being fixed, so the alert would be redundant noise there.
+        const showWarning = isComplete && stepsNeedRevalidation[key] && !isActive
+        const view: StepView = {
+          key,
+          label: STEP_LABELS[key],
+          index,
+          isActive,
+          isAccessible: canNavigateTo(key),
+          isComplete,
+          showWarning,
+          visual: stepVisual(isActive, isComplete, showWarning),
+          isLast: index === stepOrder.length - 1,
+        }
+        return <StepIndicator key={key} view={view} onStepClick={onStepClick} />
+      })}
     </nav>
   )
 }

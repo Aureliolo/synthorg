@@ -12,6 +12,8 @@ import type { AgentSpendingRow } from '@/utils/budget'
 type SortKey = 'agentName' | 'totalCost' | 'budgetPercent' | 'taskCount' | 'costPerTask'
 type SortDirection = 'asc' | 'desc'
 
+const LOCALE = getLocale()
+
 export interface AgentSpendingTableProps {
   rows: readonly AgentSpendingRow[]
   currency?: string
@@ -47,7 +49,7 @@ function compareRows(
 ): number {
   let cmp = 0
   switch (key) {
-    case 'agentName': cmp = a.agentName.localeCompare(b.agentName, getLocale()); break
+    case 'agentName': cmp = a.agentName.localeCompare(b.agentName, LOCALE); break
     case 'totalCost': cmp = a.totalCost - b.totalCost; break
     case 'budgetPercent': cmp = a.budgetPercent - b.budgetPercent; break
     case 'taskCount': cmp = a.taskCount - b.taskCount; break

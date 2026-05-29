@@ -21,7 +21,7 @@ export function MeetingTimelineNode({ meeting, className }: MeetingTimelineNodeP
     <Link
       to={ROUTES.MEETING_DETAIL.replace(':meetingId', meeting.meeting_id)}
       className={cn(
-        'group flex shrink-0 flex-col items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-3',
+        'group flex shrink-0 flex-col items-center gap-1.5 rounded-lg border border-border bg-card p-card',
         'transition-colors duration-200 hover:bg-card-hover hover:border-bright',
         'w-36 snap-start',
         className,

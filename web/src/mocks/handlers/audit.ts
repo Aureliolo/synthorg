@@ -3,7 +3,7 @@ import type { listAuditEntries } from '@/api/endpoints/audit'
 import type { AuditEntry } from '@/api/types'
 import { paginatedFor } from './helpers'
 
-function entry(overrides: Partial<AuditEntry> = {}): AuditEntry {
+export function buildAuditEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
   // ``satisfies`` (not ``as``) so a missing or renamed field on
   // AuditEntry surfaces as a TypeScript error rather than letting
   // the mock drift silently out of lockstep with the contract.
@@ -32,8 +32,8 @@ export const auditHandlers = [
     HttpResponse.json(
       paginatedFor<typeof listAuditEntries>({
         data: [
-          entry({ id: 'audit_001' }),
-          entry({ id: 'audit_002', verdict: 'deny', reason: 'Risk too high.' }),
+          buildAuditEntry({ id: 'audit_001' }),
+          buildAuditEntry({ id: 'audit_002', verdict: 'deny', reason: 'Risk too high.' }),
         ],
         limit: 50,
         nextCursor: null,

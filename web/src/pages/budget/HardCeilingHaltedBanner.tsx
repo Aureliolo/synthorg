@@ -26,14 +26,55 @@ export interface HardCeilingHaltedBannerProps {
  * cost so resume is meaningful) and the engine resumes the parked
  * context.
  */
-export function HardCeilingHaltedBanner({
+function HaltedBannerSummary({
   accumulatedCost,
   ceilingAmount,
   currency,
   forecastId,
-  mutating = false,
+}: {
+  accumulatedCost: number
+  ceilingAmount: number
+  currency: string
+  forecastId: string | null
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <AlertOctagon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-danger" />
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold text-danger">
+          Run halted: hard ceiling exceeded
+        </span>
+        <span className="text-xs text-muted-foreground">
+          Accumulated{' '}
+          <span className="font-mono">{formatCurrency(accumulatedCost, currency)}</span>{' '}
+          crossed the{' '}
+          <span className="font-mono">{formatCurrency(ceilingAmount, currency)}</span>{' '}
+          ceiling. Raise the ceiling to resume.
+          {forecastId !== null ? (
+            <>
+              {' '}
+              <span className="text-text-muted">(forecast {forecastId.slice(0, 8)}…)</span>
+            </>
+          ) : null}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+interface RaiseCeilingFieldProps {
+  accumulatedCost: number
+  currency: string
+  mutating: boolean
+  onRaiseCeiling: (newCeiling: number) => void
+}
+
+function RaiseCeilingField({
+  accumulatedCost,
+  currency,
+  mutating,
   onRaiseCeiling,
-}: HardCeilingHaltedBannerProps) {
+}: RaiseCeilingFieldProps) {
   const suggested = Math.round(accumulatedCost * 1.5 * 100) / 100
   const [newCeiling, setNewCeiling] = useState<string>(String(suggested))
   // Re-suggest when a different parked run is shown in the same mounted
@@ -49,48 +90,8 @@ export function HardCeilingHaltedBanner({
   const valid = Number.isFinite(parsed) && parsed > accumulatedCost
 
   return (
-    <div
-      role="alert"
-      className={cn(
-        'flex flex-col gap-section-gap rounded-lg border p-card',
-        'border-danger/30 bg-danger/5 text-foreground',
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <AlertOctagon
-          aria-hidden="true"
-          className="mt-0.5 size-5 shrink-0 text-danger"
-        />
-        <div className="flex flex-col gap-1">
-          <span className="text-sm font-semibold text-danger">
-            Run halted: hard ceiling exceeded
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Accumulated{' '}
-            <span className="font-mono">
-              {formatCurrency(accumulatedCost, currency)}
-            </span>{' '}
-            crossed the{' '}
-            <span className="font-mono">
-              {formatCurrency(ceilingAmount, currency)}
-            </span>{' '}
-            ceiling. Raise the ceiling to resume.
-            {forecastId !== null ? (
-              <>
-                {' '}
-                <span className="text-text-muted">
-                  (forecast {forecastId.slice(0, 8)}…)
-                </span>
-              </>
-            ) : null}
-          </span>
-        </div>
-      </div>
-
-      <label
-        htmlFor="raise-ceiling-input"
-        className="flex flex-col gap-1 text-sm"
-      >
+    <>
+      <label htmlFor="raise-ceiling-input" className="flex flex-col gap-1 text-sm">
         <span className="font-medium text-foreground">New hard ceiling</span>
         <span className="text-xs text-muted-foreground">
           Must be strictly greater than the accumulated cost
@@ -119,6 +120,38 @@ export function HardCeilingHaltedBanner({
           Raise ceiling and resume
         </Button>
       </div>
+    </>
+  )
+}
+
+export function HardCeilingHaltedBanner({
+  accumulatedCost,
+  ceilingAmount,
+  currency,
+  forecastId,
+  mutating = false,
+  onRaiseCeiling,
+}: HardCeilingHaltedBannerProps) {
+  return (
+    <div
+      role="alert"
+      className={cn(
+        'flex flex-col gap-section-gap rounded-lg border p-card',
+        'border-danger/30 bg-danger/5 text-foreground',
+      )}
+    >
+      <HaltedBannerSummary
+        accumulatedCost={accumulatedCost}
+        ceilingAmount={ceilingAmount}
+        currency={currency}
+        forecastId={forecastId}
+      />
+      <RaiseCeilingField
+        accumulatedCost={accumulatedCost}
+        currency={currency}
+        mutating={mutating}
+        onRaiseCeiling={onRaiseCeiling}
+      />
     </div>
   )
 }

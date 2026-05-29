@@ -14,6 +14,28 @@ import { ScalingSkeleton } from './scaling/ScalingSkeleton'
 import { SignalGauges } from './scaling/SignalGauges'
 import { StrategyControls } from './scaling/StrategyControls'
 
+type EvaluateNow = ReturnType<typeof useScalingData>['evaluateNow']
+
+function evaluationResultToast(count: number): Parameters<ReturnType<typeof useToastStore.getState>['add']>[0] {
+  if (count > 0) {
+    return { variant: 'success', title: `Evaluation produced ${count} decision(s)` }
+  }
+  return { variant: 'info', title: 'Evaluation produced no decisions' }
+}
+
+function useEvaluateNow(evaluateNow: EvaluateNow): () => Promise<void> {
+  const addToast = useToastStore((s) => s.add)
+  return async () => {
+    try {
+      const results = await evaluateNow()
+      addToast(evaluationResultToast(results.length))
+    } catch (err) {
+      log.error('Evaluation failed', err)
+      addToast({ variant: 'error', title: 'Evaluation failed' })
+    }
+  }
+}
+
 export default function ScalingPage() {
   const {
     strategies,
@@ -27,30 +49,7 @@ export default function ScalingPage() {
     evaluateNow,
   } = useScalingData()
 
-  const addToast = useToastStore((s) => s.add)
-
-  const handleEvaluateNow = async () => {
-    try {
-      const results = await evaluateNow()
-      if (results.length > 0) {
-        addToast({
-          variant: 'success',
-          title: `Evaluation produced ${results.length} decision(s)`,
-        })
-      } else {
-        addToast({
-          variant: 'info',
-          title: 'Evaluation produced no decisions',
-        })
-      }
-    } catch (err) {
-      log.error('Evaluation failed', err)
-      addToast({
-        variant: 'error',
-        title: 'Evaluation failed',
-      })
-    }
-  }
+  const handleEvaluateNow = useEvaluateNow(evaluateNow)
 
   if (loading && strategies.length === 0) {
     return <ScalingSkeleton />

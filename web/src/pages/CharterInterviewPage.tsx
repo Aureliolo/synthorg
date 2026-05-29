@@ -8,7 +8,7 @@ import { useCharterStore } from '@/stores/charter'
 import { CharterDraftCard } from './charter/CharterDraftCard'
 import { InterviewChat } from './charter/InterviewChat'
 
-export default function CharterInterviewPage() {
+function useCharterInterview() {
   const messages = useCharterStore((s) => s.messages)
   const sending = useCharterStore((s) => s.sending)
   const conversationClosed = useCharterStore((s) => s.conversationClosed)
@@ -54,6 +54,26 @@ export default function CharterInterviewPage() {
       setMutating(false)
     })
   }, [draftCharter, cancel])
+
+  return {
+    messages, sending, conversationClosed, draftCharter, resetInterview,
+    mutating, handleSend, handleSave, handleApprove, handleCancel,
+  }
+}
+
+export default function CharterInterviewPage() {
+  const {
+    messages,
+    sending,
+    conversationClosed,
+    draftCharter,
+    resetInterview,
+    mutating,
+    handleSend,
+    handleSave,
+    handleApprove,
+    handleCancel,
+  } = useCharterInterview()
 
   return (
     <div className="space-y-section-gap">

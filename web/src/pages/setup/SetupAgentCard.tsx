@@ -20,25 +20,18 @@ export interface SetupAgentCardProps {
   onPersonalityChange: (index: number, preset: string) => Promise<void>
 }
 
-export function SetupAgentCard({
-  agent,
-  index,
-  providers,
-  personalityPresets,
-  onNameChange,
-  onModelChange,
-  onRandomizeName,
-  onPersonalityChange,
-}: SetupAgentCardProps) {
-  const personalityOptions = useMemo(
-    () =>
-      personalityPresets.map((p) => ({
-        value: p.name,
-        label: p.name.replaceAll('_', ' '),
-      })),
-    [personalityPresets],
-  )
+interface SetupAgentNameControls {
+  nameSaving: boolean
+  randomizeSaving: boolean
+  handleNameSave: (name: string) => Promise<void>
+  handleRandomize: () => Promise<void>
+}
 
+function useSetupAgentNameControls(
+  index: number,
+  onNameChange: (index: number, name: string) => Promise<void>,
+  onRandomizeName: (index: number) => Promise<void>,
+): SetupAgentNameControls {
   // Track the in-flight name save AND the in-flight randomize so we
   // can disable the adjacent button on either side of the race.
   // Without the randomizeSaving guard, rapid Randomize clicks enqueue
@@ -67,6 +60,30 @@ export function SetupAgentCard({
       setRandomizeSaving(false)
     }
   }, [index, nameSaving, onRandomizeName, randomizeSaving])
+  return { nameSaving, randomizeSaving, handleNameSave, handleRandomize }
+}
+
+export function SetupAgentCard({
+  agent,
+  index,
+  providers,
+  personalityPresets,
+  onNameChange,
+  onModelChange,
+  onRandomizeName,
+  onPersonalityChange,
+}: SetupAgentCardProps) {
+  const personalityOptions = useMemo(
+    () =>
+      personalityPresets.map((p) => ({
+        value: p.name,
+        label: p.name.replaceAll('_', ' '),
+      })),
+    [personalityPresets],
+  )
+
+  const { nameSaving, randomizeSaving, handleNameSave, handleRandomize } =
+    useSetupAgentNameControls(index, onNameChange, onRandomizeName)
 
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-card">

@@ -66,4 +66,14 @@ export const createCompanySlice: SliceCreator<CompanySlice> = (set, get) => ({
       })
     }
   },
+
+  clearCompanyError() {
+    // No-op while a submit is in flight: a long-running submit that
+    // completes after the user navigates away must still be allowed to
+    // land its error in the store for the next CompanyStep mount to
+    // surface. Clearing on mount instead would wipe such errors before
+    // the user could see them.
+    if (get().companyLoading) return
+    set({ companyError: null, companyErrorCode: null })
+  },
 })

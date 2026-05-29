@@ -395,6 +395,7 @@ currentColor
 customManager
 custom_header
 custom_rules
+cva
 cwd
 cyclomatic
 dagre

@@ -34,6 +34,84 @@ function StringList({ items }: { items: readonly string[] }) {
   )
 }
 
+function LabelledList({ label, items }: { label: string; items: readonly string[] }) {
+  return (
+    <div>
+      <h4 className="mb-1 text-sm font-medium">{label}</h4>
+      <StringList items={items} />
+    </div>
+  )
+}
+
+interface CharterBudgetRowProps {
+  amount: string
+  amountValid: boolean
+  disabled: boolean
+  ceiling: number
+  currency: string
+  onAmountChange: (value: string) => void
+}
+
+function CharterBudgetRow({
+  amount,
+  amountValid,
+  disabled,
+  ceiling,
+  currency,
+  onAmountChange,
+}: CharterBudgetRowProps) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <InputField
+        label="Budget"
+        type="number"
+        value={amount}
+        onValueChange={onAmountChange}
+        disabled={disabled}
+        error={amountValid ? undefined : 'Budget must be a positive number.'}
+      />
+      <div>
+        <h4 className="mb-1 text-sm font-medium">Approved ceiling</h4>
+        <p className="text-sm text-muted-foreground">
+          {formatCurrency(ceiling, currency)}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+interface CharterDraftActionsProps {
+  busy: boolean
+  dirty: boolean
+  amountValid: boolean
+  onSave: () => void
+  onApprove: () => void
+  onCancel: () => void
+}
+
+function CharterDraftActions({
+  busy,
+  dirty,
+  amountValid,
+  onSave,
+  onApprove,
+  onCancel,
+}: CharterDraftActionsProps) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button variant="outline" onClick={onSave} disabled={busy || !dirty || !amountValid}>
+        Save changes
+      </Button>
+      <Button onClick={onApprove} disabled={busy || dirty}>
+        Approve & start run
+      </Button>
+      <Button variant="ghost" onClick={onCancel} disabled={busy}>
+        Cancel charter
+      </Button>
+    </div>
+  )
+}
+
 export function CharterDraftCard({
   charter,
   busy,
@@ -49,6 +127,7 @@ export function CharterDraftCard({
   const [brief, setBrief] = useState(charter.brief)
   const [amount, setAmount] = useState(String(charter.envelope.amount))
   const isDraft = charter.status === 'drafted'
+  const editingDisabled = !isDraft || busy
   const parsedAmount = Number(amount)
   const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0
   const dirty = brief !== charter.brief || parsedAmount !== charter.envelope.amount
@@ -82,62 +161,32 @@ export function CharterDraftCard({
           rows={4}
           value={brief}
           onValueChange={setBrief}
-          disabled={!isDraft || busy}
+          disabled={editingDisabled}
         />
-        <div>
-          <h4 className="mb-1 text-sm font-medium">Goals</h4>
-          <StringList items={charter.goals} />
-        </div>
-        <div>
-          <h4 className="mb-1 text-sm font-medium">Constraints</h4>
-          <StringList items={charter.constraints} />
-        </div>
-        <div>
-          <h4 className="mb-1 text-sm font-medium">Success criteria</h4>
-          <StringList items={charter.success_criteria} />
-        </div>
+        <LabelledList label="Goals" items={charter.goals} />
+        <LabelledList label="Constraints" items={charter.constraints} />
+        <LabelledList label="Success criteria" items={charter.success_criteria} />
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <h4 className="mb-1 text-sm font-medium">In scope</h4>
-            <StringList items={charter.scope.in_scope} />
-          </div>
-          <div>
-            <h4 className="mb-1 text-sm font-medium">Out of scope</h4>
-            <StringList items={charter.scope.out_of_scope} />
-          </div>
+          <LabelledList label="In scope" items={charter.scope.in_scope} />
+          <LabelledList label="Out of scope" items={charter.scope.out_of_scope} />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <InputField
-            label="Budget"
-            type="number"
-            value={amount}
-            onValueChange={setAmount}
-            disabled={!isDraft || busy}
-            error={amountValid ? undefined : 'Budget must be a positive number.'}
-          />
-          <div>
-            <h4 className="mb-1 text-sm font-medium">Approved ceiling</h4>
-            <p className="text-sm text-muted-foreground">
-              {formatCurrency(charter.envelope.amount, charter.envelope.currency)}
-            </p>
-          </div>
-        </div>
+        <CharterBudgetRow
+          amount={amount}
+          amountValid={amountValid}
+          disabled={editingDisabled}
+          ceiling={charter.envelope.amount}
+          currency={charter.envelope.currency}
+          onAmountChange={setAmount}
+        />
         {isDraft && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={handleSave}
-              disabled={busy || !dirty || !amountValid}
-            >
-              Save changes
-            </Button>
-            <Button onClick={onApprove} disabled={busy || dirty}>
-              Approve & start run
-            </Button>
-            <Button variant="ghost" onClick={onCancel} disabled={busy}>
-              Cancel charter
-            </Button>
-          </div>
+          <CharterDraftActions
+            busy={busy}
+            dirty={dirty}
+            amountValid={amountValid}
+            onSave={handleSave}
+            onApprove={onApprove}
+            onCancel={onCancel}
+          />
         )}
       </div>
     </SectionCard>

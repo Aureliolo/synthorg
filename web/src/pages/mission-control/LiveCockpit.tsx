@@ -28,49 +28,81 @@ function statusLabel(activity: AgentActivity): string {
   return 'healthy'
 }
 
-function AgentRow({ activity }: { activity: AgentActivity }) {
+function statusText(activity: AgentActivity): string {
+  if (activity.is_runaway) return 'runaway'
+  if (activity.is_stuck) return 'stuck'
+  return activity.status
+}
+
+function statusDotClass(activity: AgentActivity): string {
+  if (activity.is_runaway) return 'bg-danger'
+  if (activity.is_stuck) return 'bg-warning'
+  return 'bg-success'
+}
+
+function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; headerId: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <span
+          role="img"
+          aria-label={`Status: ${statusLabel(activity)}`}
+          className={cn('size-2 rounded-full', statusDotClass(activity))}
+        />
+        <span id={headerId} className="font-medium text-foreground">
+          {activity.agent_id}
+        </span>
+        <span className="text-xs text-text-secondary">{activity.task_id}</span>
+      </div>
+      <div className="flex items-center gap-3 text-xs">
+        <span className="text-text-secondary">turn {activity.turn_count}</span>
+        <span className="font-mono text-foreground">
+          {formatCurrency(activity.cost, DEFAULT_CURRENCY)}
+        </span>
+        <span className={cn('uppercase', statusTone(activity))}>{statusText(activity)}</span>
+      </div>
+    </div>
+  )
+}
+
+function AgentHintControl({ activity }: { activity: AgentActivity }) {
   const [hint, setHint] = useState('')
-  const pause = useMissionControlStore((s) => s.pauseTaskAction)
-  const kill = useMissionControlStore((s) => s.killTaskAction)
   const sendHint = useMissionControlStore((s) => s.sendHintAction)
 
-  const headerId = `agent-row-${activity.task_id}`
+  if (activity.execution_id == null) return null
+
+  return (
+    <div className="flex items-center gap-2" aria-describedby={`agent-row-${activity.task_id}`}>
+      <InputField
+        label="Hint"
+        placeholder="Hint or redirect..."
+        value={hint}
+        onChange={(e) => setHint(e.target.value)}
+      />
+      <Button
+        variant="default"
+        size="sm"
+        disabled={hint.trim() === ''}
+        onClick={() => {
+          const executionId = activity.execution_id
+          if (executionId == null || hint.trim() === '') return
+          void sendHint(executionId, activity.agent_id, hint.trim())
+          setHint('')
+        }}
+      >
+        Send
+      </Button>
+    </div>
+  )
+}
+
+function AgentRow({ activity }: { activity: AgentActivity }) {
+  const pause = useMissionControlStore((s) => s.pauseTaskAction)
+  const kill = useMissionControlStore((s) => s.killTaskAction)
 
   return (
     <div className="rounded-lg border border-border bg-card p-card">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span
-            role="img"
-            aria-label={`Status: ${statusLabel(activity)}`}
-            className={cn(
-              'size-2 rounded-full',
-              activity.is_runaway
-                ? 'bg-danger'
-                : activity.is_stuck
-                  ? 'bg-warning'
-                  : 'bg-success',
-            )}
-          />
-          <span id={headerId} className="font-medium text-foreground">
-            {activity.agent_id}
-          </span>
-          <span className="text-xs text-text-secondary">{activity.task_id}</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-text-secondary">turn {activity.turn_count}</span>
-          <span className="font-mono text-foreground">
-            {formatCurrency(activity.cost, DEFAULT_CURRENCY)}
-          </span>
-          <span className={cn('uppercase', statusTone(activity))}>
-            {activity.is_runaway
-              ? 'runaway'
-              : activity.is_stuck
-                ? 'stuck'
-                : activity.status}
-          </span>
-        </div>
-      </div>
+      <AgentRowHeader activity={activity} headerId={`agent-row-${activity.task_id}`} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
@@ -87,74 +119,87 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
         >
           Kill
         </Button>
-        {activity.execution_id != null && (
-          <div className="flex items-center gap-2" aria-describedby={headerId}>
-            <InputField
-              label="Hint"
-              placeholder="Hint or redirect..."
-              value={hint}
-              onChange={(e) => setHint(e.target.value)}
-            />
-            <Button
-              variant="default"
-              size="sm"
-              disabled={hint.trim() === ''}
-              onClick={() => {
-                const executionId = activity.execution_id
-                if (executionId == null || hint.trim() === '') return
-                void sendHint(executionId, activity.agent_id, hint.trim())
-                setHint('')
-              }}
-            >
-              Send
-            </Button>
-          </div>
-        )}
+        <AgentHintControl activity={activity} />
       </div>
+    </div>
+  )
+}
+
+interface CockpitMetrics {
+  agents: readonly AgentActivity[]
+  activeCount: number
+  stuckCount: number
+  runawayCount: number
+  totalCost: number
+}
+
+function deriveCockpitMetrics(
+  snapshot: ReturnType<typeof useMissionControlData>['snapshot'],
+): CockpitMetrics {
+  if (!snapshot) {
+    return { agents: [], activeCount: 0, stuckCount: 0, runawayCount: 0, totalCost: 0 }
+  }
+  return {
+    agents: snapshot.agents ?? [],
+    activeCount: snapshot.active_count ?? 0,
+    stuckCount: snapshot.stuck_agents.length,
+    runawayCount: snapshot.runaway_agents.length,
+    totalCost: snapshot.total_cost ?? 0,
+  }
+}
+
+function CockpitMetricCards({ metrics }: { metrics: CockpitMetrics }) {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
+      <MetricCard label="Active agents" value={metrics.activeCount} animateValue />
+      <MetricCard
+        label="Spend (active)"
+        value={formatCurrency(metrics.totalCost, DEFAULT_CURRENCY)}
+      />
+      <MetricCard label="Stuck" value={metrics.stuckCount} animateValue />
+      <MetricCard label="Runaway" value={metrics.runawayCount} animateValue />
+    </div>
+  )
+}
+
+function CockpitAgentList({
+  agents,
+  loading,
+}: {
+  agents: readonly AgentActivity[]
+  loading: boolean
+}) {
+  if (agents.length === 0) {
+    return (
+      <EmptyState
+        icon={Activity}
+        title={loading ? 'Loading activity...' : 'No active work'}
+        description={
+          loading
+            ? 'Fetching the live org-activity snapshot.'
+            : 'When the company is working, agents and their tasks appear here.'
+        }
+      />
+    )
+  }
+  return (
+    <div className="space-y-grid-gap">
+      {agents.map((activity) => (
+        <AgentRow key={activity.task_id} activity={activity} />
+      ))}
     </div>
   )
 }
 
 export function LiveCockpit() {
   const { snapshot, loading, error } = useMissionControlData()
-
-  const agents = snapshot?.agents ?? []
-  const activeCount = snapshot?.active_count ?? 0
-  const stuckCount = snapshot?.stuck_agents.length ?? 0
-  const runawayCount = snapshot?.runaway_agents.length ?? 0
-  const totalCost = snapshot?.total_cost ?? 0
+  const metrics = deriveCockpitMetrics(snapshot)
 
   return (
     <div className="space-y-section-gap">
       {error != null && <ErrorBanner title="Failed to load activity" description={error} />}
-
-      <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
-        <MetricCard label="Active agents" value={activeCount} animateValue />
-        <MetricCard
-          label="Spend (active)"
-          value={formatCurrency(totalCost, DEFAULT_CURRENCY)}
-        />
-        <MetricCard label="Stuck" value={stuckCount} animateValue />
-        <MetricCard label="Runaway" value={runawayCount} animateValue />
-      </div>
-
-      {agents.length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title={loading ? 'Loading activity...' : 'No active work'}
-          description={
-            loading
-              ? 'Fetching the live org-activity snapshot.'
-              : 'When the company is working, agents and their tasks appear here.'
-          }
-        />
-      ) : (
-        <div className="space-y-grid-gap">
-          {agents.map((activity) => (
-            <AgentRow key={activity.task_id} activity={activity} />
-          ))}
-        </div>
-      )}
+      <CockpitMetricCards metrics={metrics} />
+      <CockpitAgentList agents={metrics.agents} loading={loading} />
     </div>
   )
 }

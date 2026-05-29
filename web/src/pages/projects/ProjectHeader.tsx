@@ -8,8 +8,8 @@ interface ProjectHeaderProps {
   project: Project
 }
 
-export function ProjectHeader({ project }: ProjectHeaderProps) {
-  const metadataItems = [
+function buildProjectMetadata(project: Project) {
+  return [
     {
       label: 'Status',
       value: <ProjectStatusBadge status={project.status ?? 'planning'} showLabel />,
@@ -38,6 +38,10 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       value: project.lead ?? '--',
     },
   ]
+}
+
+export function ProjectHeader({ project }: ProjectHeaderProps) {
+  const metadataItems = buildProjectMetadata(project)
 
   return (
     <SectionCard title={project.name}>

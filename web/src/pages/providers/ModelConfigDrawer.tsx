@@ -12,53 +12,88 @@ interface ModelConfigDrawerProps {
   onClose: () => void
 }
 
-function ModelConfigForm({
-  providerName,
-  model,
-  onClose,
-}: {
-  providerName: string
-  model: ProviderModelResponse
-  onClose: () => void
-}) {
-  const updateModelConfig = useProvidersStore((s) => s.updateModelConfig)
-  const params = model.local_params
+const EMPTY_LOCAL_PARAMS: LocalModelParams = {
+  num_ctx: null,
+  num_gpu_layers: null,
+  num_threads: null,
+  num_batch: null,
+  repeat_penalty: null,
+}
 
-  const [numCtx, setNumCtx] = useState(params?.num_ctx?.toString() ?? '')
-  const [numGpuLayers, setNumGpuLayers] = useState(params?.num_gpu_layers?.toString() ?? '')
-  const [numThreads, setNumThreads] = useState(params?.num_threads?.toString() ?? '')
-  const [numBatch, setNumBatch] = useState(params?.num_batch?.toString() ?? '')
-  const [repeatPenalty, setRepeatPenalty] = useState(params?.repeat_penalty?.toString() ?? '')
-  const [saving, setSaving] = useState(false)
+function numToInput(value: number | null): string {
+  return value === null ? '' : String(value)
+}
 
-  const handleSave = async () => {
-    setSaving(true)
-    const parseIntStrict = (val: string): number | null => {
-      const s = val.trim()
-      if (!s) return null
-      const n = Number(s)
-      return Number.isFinite(n) && Number.isInteger(n) ? n : null
-    }
-    const parseFloatStrict = (val: string): number | null => {
-      const s = val.trim()
-      if (!s) return null
-      const n = Number(s)
-      return Number.isFinite(n) ? n : null
-    }
-    const newParams: LocalModelParams = {
-      num_ctx: parseIntStrict(numCtx),
-      num_gpu_layers: parseIntStrict(numGpuLayers),
-      num_threads: parseIntStrict(numThreads),
-      num_batch: parseIntStrict(numBatch),
-      repeat_penalty: parseFloatStrict(repeatPenalty),
-    }
-    const success = await updateModelConfig(providerName, model.id, newParams)
-    setSaving(false)
-    if (success) onClose()
+function parseIntStrict(val: string): number | null {
+  const s = val.trim()
+  if (!s) return null
+  const n = Number(s)
+  return Number.isFinite(n) && Number.isInteger(n) ? n : null
+}
+
+function parseFloatStrict(val: string): number | null {
+  const s = val.trim()
+  if (!s) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+interface ModelConfigInputs {
+  numCtx: string
+  numGpuLayers: string
+  numThreads: string
+  numBatch: string
+  repeatPenalty: string
+}
+
+function initialModelParams(params: LocalModelParams | null): ModelConfigInputs {
+  const p = params ?? EMPTY_LOCAL_PARAMS
+  return {
+    numCtx: numToInput(p.num_ctx),
+    numGpuLayers: numToInput(p.num_gpu_layers),
+    numThreads: numToInput(p.num_threads),
+    numBatch: numToInput(p.num_batch),
+    repeatPenalty: numToInput(p.repeat_penalty),
   }
+}
 
+function buildLocalParams(inputs: ModelConfigInputs): LocalModelParams {
+  return {
+    num_ctx: parseIntStrict(inputs.numCtx),
+    num_gpu_layers: parseIntStrict(inputs.numGpuLayers),
+    num_threads: parseIntStrict(inputs.numThreads),
+    num_batch: parseIntStrict(inputs.numBatch),
+    repeat_penalty: parseFloatStrict(inputs.repeatPenalty),
+  }
+}
+
+interface ModelConfigFieldsProps {
+  numCtx: string
+  setNumCtx: (value: string) => void
+  numGpuLayers: string
+  setNumGpuLayers: (value: string) => void
+  numThreads: string
+  setNumThreads: (value: string) => void
+  numBatch: string
+  setNumBatch: (value: string) => void
+  repeatPenalty: string
+  setRepeatPenalty: (value: string) => void
+}
+
+function ModelConfigFields({
+  numCtx,
+  setNumCtx,
+  numGpuLayers,
+  setNumGpuLayers,
+  numThreads,
+  setNumThreads,
+  numBatch,
+  setNumBatch,
+  repeatPenalty,
+  setRepeatPenalty,
+}: ModelConfigFieldsProps) {
   return (
-    <div className="flex flex-col gap-section-gap">
+    <>
       <InputField
         label="Context window (num_ctx)"
         value={numCtx}
@@ -93,6 +128,51 @@ function ModelConfigForm({
         onValueChange={setRepeatPenalty}
         placeholder="1.1"
         hint="Penalize repeated tokens (1.0 = disabled)"
+      />
+    </>
+  )
+}
+
+function ModelConfigForm({
+  providerName,
+  model,
+  onClose,
+}: {
+  providerName: string
+  model: ProviderModelResponse
+  onClose: () => void
+}) {
+  const updateModelConfig = useProvidersStore((s) => s.updateModelConfig)
+  const initial = initialModelParams(model.local_params)
+
+  const [numCtx, setNumCtx] = useState(initial.numCtx)
+  const [numGpuLayers, setNumGpuLayers] = useState(initial.numGpuLayers)
+  const [numThreads, setNumThreads] = useState(initial.numThreads)
+  const [numBatch, setNumBatch] = useState(initial.numBatch)
+  const [repeatPenalty, setRepeatPenalty] = useState(initial.repeatPenalty)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    const newParams = buildLocalParams({ numCtx, numGpuLayers, numThreads, numBatch, repeatPenalty })
+    const success = await updateModelConfig(providerName, model.id, newParams)
+    setSaving(false)
+    if (success) onClose()
+  }
+
+  return (
+    <div className="flex flex-col gap-section-gap">
+      <ModelConfigFields
+        numCtx={numCtx}
+        setNumCtx={setNumCtx}
+        numGpuLayers={numGpuLayers}
+        setNumGpuLayers={setNumGpuLayers}
+        numThreads={numThreads}
+        setNumThreads={setNumThreads}
+        numBatch={numBatch}
+        setNumBatch={setNumBatch}
+        repeatPenalty={repeatPenalty}
+        setRepeatPenalty={setRepeatPenalty}
       />
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>

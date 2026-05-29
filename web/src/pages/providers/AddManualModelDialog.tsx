@@ -27,6 +27,176 @@ function parseNonNegFloat(raw: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
+type FieldParse = { ok: true; value: number | null } | { ok: false }
+
+/** Parse an optional numeric field: empty → null (use default), invalid → not-ok. */
+function parseOptionalField(raw: string, parse: (r: string) => number | null): FieldParse {
+  if (raw.trim() === '') return { ok: true, value: null }
+  const value = parse(raw)
+  return value === null ? { ok: false } : { ok: true, value }
+}
+
+interface ManualModelInputs {
+  modelId: string
+  alias: string
+  costInput: string
+  costOutput: string
+  maxContext: string
+  latencyMs: string
+}
+
+interface ParsedModelValues {
+  idTrimmed: string
+  alias: string
+  ctx: number | null
+  inCost: number | null
+  outCost: number | null
+  latency: number | null
+}
+
+function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
+  return {
+    id: v.idTrimmed,
+    alias: v.alias.trim() || null,
+    cost_per_1k_input: v.inCost ?? 0,
+    cost_per_1k_output: v.outCost ?? 0,
+    max_context: v.ctx ?? 200_000,
+    estimated_latency_ms: v.latency ?? null,
+    local_params: null,
+  }
+}
+
+type ManualModelValidation = { error: string } | { model: ProviderModelConfig }
+
+function validateManualModel(fields: ManualModelInputs): ManualModelValidation {
+  const idTrimmed = fields.modelId.trim()
+  if (idTrimmed === '') return { error: 'Model id is required.' }
+  const ctx = parseOptionalField(fields.maxContext, parsePositiveInt)
+  if (!ctx.ok) return { error: 'Max context must be a positive integer.' }
+  const inCost = parseOptionalField(fields.costInput, parseNonNegFloat)
+  if (!inCost.ok) return { error: 'Input cost must be a non-negative number.' }
+  const outCost = parseOptionalField(fields.costOutput, parseNonNegFloat)
+  if (!outCost.ok) return { error: 'Output cost must be a non-negative number.' }
+  const latency = parseOptionalField(fields.latencyMs, parsePositiveInt)
+  if (!latency.ok) return { error: 'Latency must be a positive integer (milliseconds).' }
+  return {
+    model: buildManualModel({
+      idTrimmed,
+      alias: fields.alias,
+      ctx: ctx.value,
+      inCost: inCost.value,
+      outCost: outCost.value,
+      latency: latency.value,
+    }),
+  }
+}
+
+interface ManualModelForm {
+  values: ManualModelInputs
+  setModelId: (value: string) => void
+  setAlias: (value: string) => void
+  setCostInput: (value: string) => void
+  setCostOutput: (value: string) => void
+  setMaxContext: (value: string) => void
+  setLatencyMs: (value: string) => void
+  submitting: boolean
+  setSubmitting: (value: boolean) => void
+  validationError: string | null
+  setValidationError: (value: string | null) => void
+  reset: () => void
+}
+
+function useManualModelForm(): ManualModelForm {
+  const [modelId, setModelId] = useState('')
+  const [alias, setAlias] = useState('')
+  const [costInput, setCostInput] = useState('')
+  const [costOutput, setCostOutput] = useState('')
+  const [maxContext, setMaxContext] = useState('')
+  const [latencyMs, setLatencyMs] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  const reset = (): void => {
+    setModelId('')
+    setAlias('')
+    setCostInput('')
+    setCostOutput('')
+    setMaxContext('')
+    setLatencyMs('')
+    setSubmitting(false)
+    setValidationError(null)
+  }
+
+  return {
+    values: { modelId, alias, costInput, costOutput, maxContext, latencyMs },
+    setModelId, setAlias, setCostInput, setCostOutput, setMaxContext, setLatencyMs,
+    submitting, setSubmitting, validationError, setValidationError, reset,
+  }
+}
+
+function ManualModelFields({ form, currency }: { form: ManualModelForm; currency: string }) {
+  const { values } = form
+  return (
+    <div className="mt-section-gap flex flex-col gap-grid-gap">
+      <InputField
+        label="Model id"
+        hint="The exact identifier the provider's API expects"
+        value={values.modelId}
+        onChange={(e) => form.setModelId(e.target.value)}
+        required
+      />
+      <InputField
+        label="Alias"
+        hint="Optional shorthand for routing rules"
+        value={values.alias}
+        onChange={(e) => form.setAlias(e.target.value)}
+      />
+      <div className="grid grid-cols-2 gap-grid-gap">
+        <InputField
+          label="Cost / 1k input tokens"
+          hint={`${currency}; leave blank for 0`}
+          type="number"
+          inputMode="decimal"
+          value={values.costInput}
+          onChange={(e) => form.setCostInput(e.target.value)}
+          min={0}
+          step="0.0001"
+        />
+        <InputField
+          label="Cost / 1k output tokens"
+          hint={`${currency}; leave blank for 0`}
+          type="number"
+          inputMode="decimal"
+          value={values.costOutput}
+          onChange={(e) => form.setCostOutput(e.target.value)}
+          min={0}
+          step="0.0001"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-grid-gap">
+        <InputField
+          label="Max context (tokens)"
+          hint="Defaults to 200k"
+          type="number"
+          inputMode="numeric"
+          value={values.maxContext}
+          onChange={(e) => form.setMaxContext(e.target.value)}
+          min={1}
+        />
+        <InputField
+          label="Latency (ms)"
+          hint="Optional; used by fastest routing"
+          type="number"
+          inputMode="numeric"
+          value={values.latencyMs}
+          onChange={(e) => form.setLatencyMs(e.target.value)}
+          min={1}
+        />
+      </div>
+    </div>
+  )
+}
+
 /**
  * Modal for the manual model add flow.  Bypasses discovery; the
  * operator types in the model id and pricing.  Conflict (model id
@@ -48,70 +218,27 @@ export function AddManualModelDialog({
     openRef.current = open
   }, [open])
 
-  const [modelId, setModelId] = useState('')
-  const [alias, setAlias] = useState('')
-  const [costInput, setCostInput] = useState('')
-  const [costOutput, setCostOutput] = useState('')
-  const [maxContext, setMaxContext] = useState('')
-  const [latencyMs, setLatencyMs] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [validationError, setValidationError] = useState<string | null>(null)
+  const form = useManualModelForm()
 
-  const reset = (): void => {
-    setModelId('')
-    setAlias('')
-    setCostInput('')
-    setCostOutput('')
-    setMaxContext('')
-    setLatencyMs('')
-    setSubmitting(false)
-    setValidationError(null)
+  const handleClose = (): void => {
+    form.reset()
+    onClose()
   }
 
   const handleSubmit = async (): Promise<void> => {
     if (!providerName) return
-    const idTrimmed = modelId.trim()
-    if (idTrimmed === '') {
-      setValidationError('Model id is required.')
+    const result = validateManualModel(form.values)
+    if ('error' in result) {
+      form.setValidationError(result.error)
       return
     }
-    const ctxValue = parsePositiveInt(maxContext)
-    if (maxContext.trim() !== '' && ctxValue === null) {
-      setValidationError('Max context must be a positive integer.')
-      return
-    }
-    const inputCost = parseNonNegFloat(costInput)
-    if (costInput.trim() !== '' && inputCost === null) {
-      setValidationError('Input cost must be a non-negative number.')
-      return
-    }
-    const outputCost = parseNonNegFloat(costOutput)
-    if (costOutput.trim() !== '' && outputCost === null) {
-      setValidationError('Output cost must be a non-negative number.')
-      return
-    }
-    const latency = parsePositiveInt(latencyMs)
-    if (latencyMs.trim() !== '' && latency === null) {
-      setValidationError('Latency must be a positive integer (milliseconds).')
-      return
-    }
-    const model: ProviderModelConfig = {
-      id: idTrimmed,
-      alias: alias.trim() || null,
-      cost_per_1k_input: inputCost ?? 0,
-      cost_per_1k_output: outputCost ?? 0,
-      max_context: ctxValue ?? 200_000,
-      estimated_latency_ms: latency ?? null,
-      local_params: null,
-    }
-    setValidationError(null)
-    setSubmitting(true)
-    const result = await addProviderModel(providerName, { model })
+    form.setValidationError(null)
+    form.setSubmitting(true)
+    const added = await addProviderModel(providerName, { model: result.model })
     if (!openRef.current) return
-    setSubmitting(false)
-    if (result !== null) {
-      reset()
-      onClose()
+    form.setSubmitting(false)
+    if (added !== null) {
+      handleClose()
     }
   }
 
@@ -119,10 +246,7 @@ export function AddManualModelDialog({
     <Dialog.Root
       open={open}
       onOpenChange={(next) => {
-        if (!next) {
-          reset()
-          onClose()
-        }
+        if (!next) handleClose()
       }}
     >
       <Dialog.Portal>
@@ -137,83 +261,20 @@ export function AddManualModelDialog({
             optional; leave them blank for free or unknown.
           </Dialog.Description>
 
-          {validationError && (
+          {form.validationError && (
             <div className="mt-section-gap">
-              <ErrorBanner severity="warning" title={validationError} />
+              <ErrorBanner severity="warning" title={form.validationError} />
             </div>
           )}
 
-          <div className="mt-section-gap flex flex-col gap-grid-gap">
-            <InputField
-              label="Model id"
-              hint="The exact identifier the provider's API expects"
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              required
-            />
-            <InputField
-              label="Alias"
-              hint="Optional shorthand for routing rules"
-              value={alias}
-              onChange={(e) => setAlias(e.target.value)}
-            />
-            <div className="grid grid-cols-2 gap-grid-gap">
-              <InputField
-                label="Cost / 1k input tokens"
-                hint={`${currency}; leave blank for 0`}
-                type="number"
-                inputMode="decimal"
-                value={costInput}
-                onChange={(e) => setCostInput(e.target.value)}
-                min={0}
-                step="0.0001"
-              />
-              <InputField
-                label="Cost / 1k output tokens"
-                hint={`${currency}; leave blank for 0`}
-                type="number"
-                inputMode="decimal"
-                value={costOutput}
-                onChange={(e) => setCostOutput(e.target.value)}
-                min={0}
-                step="0.0001"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-grid-gap">
-              <InputField
-                label="Max context (tokens)"
-                hint="Defaults to 200k"
-                type="number"
-                inputMode="numeric"
-                value={maxContext}
-                onChange={(e) => setMaxContext(e.target.value)}
-                min={1}
-              />
-              <InputField
-                label="Latency (ms)"
-                hint="Optional; used by fastest routing"
-                type="number"
-                inputMode="numeric"
-                value={latencyMs}
-                onChange={(e) => setLatencyMs(e.target.value)}
-                min={1}
-              />
-            </div>
-          </div>
+          <ManualModelFields form={form} currency={currency} />
 
           <div className="mt-section-gap flex justify-end gap-grid-gap">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                reset()
-                onClose()
-              }}
-              disabled={submitting}
-            >
+            <Button variant="secondary" onClick={handleClose} disabled={form.submitting}>
               Cancel
             </Button>
-            <Button onClick={() => void handleSubmit()} disabled={submitting}>
-              {submitting ? 'Adding…' : 'Add model'}
+            <Button onClick={() => void handleSubmit()} disabled={form.submitting}>
+              {form.submitting ? 'Adding…' : 'Add model'}
             </Button>
           </div>
         </Dialog.Popup>

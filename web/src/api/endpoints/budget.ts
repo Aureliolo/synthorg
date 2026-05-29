@@ -74,8 +74,8 @@ export async function getAgentSpending(agentId: string): Promise<AgentSpending> 
   return unwrap(response)
 }
 
-export async function getParetoFrontier(): Promise<ParetoFrontier> {
-  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto')
+export async function getParetoFrontier(signal?: AbortSignal): Promise<ParetoFrontier> {
+  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto', { signal })
   return unwrap(response)
 }
 

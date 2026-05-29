@@ -14,98 +14,119 @@ import { cn } from '@/lib/utils'
 const log = createLogger('setup')
 
 const DEFAULT_MIN_PASSWORD_LENGTH = 12
+const POLICY_TIMEOUT_MS = 5_000
+const POLICY_MAX_ATTEMPTS = 2
+const POLICY_BACKOFF_MS = 500
 
-export function AccountStep() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+/**
+ * Reject `work` if it does not settle within `timeoutMs`. Active timers
+ * are tracked in `timers` so an unmount can clear them eagerly instead
+ * of leaving zombies pinned to the event loop.
+ */
+function withTimeout<T>(work: Promise<T>, timers: Set<number>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      timers.delete(timer)
+      reject(new Error('password-policy fetch timed out'))
+    }, timeoutMs)
+    timers.add(timer)
+    work.then(
+      (value) => {
+        timers.delete(timer)
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        timers.delete(timer)
+        window.clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
+/** Tracked backoff sleep; the timer is registered so unmount can clear it. */
+function sleepTracked(timers: Set<number>, ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = window.setTimeout(() => {
+      timers.delete(timer)
+      resolve()
+    }, ms)
+    timers.add(timer)
+  })
+}
+
+type PolicyAttempt = { kind: 'ok'; minLength: number } | { kind: 'error'; message: string }
+
+async function attemptPolicyFetch(timers: Set<number>): Promise<PolicyAttempt> {
+  try {
+    const status = await withTimeout(getSetupStatus(), timers, POLICY_TIMEOUT_MS)
+    return { kind: 'ok', minLength: status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH }
+  } catch (err) {
+    return { kind: 'error', message: getErrorMessage(err) }
+  }
+}
+
+interface PasswordPolicy {
+  minPasswordLength: number
+  policyError: string | null
+  policyLoading: boolean
+  fetchPolicy: () => Promise<void>
+}
+
+/**
+ * Read the backend-configured min password length. Surfaced so users
+ * cannot submit under the default policy if the server has a stricter
+ * rule (otherwise the create-account POST fails with a confusing error).
+ * The fetch is wrapped in a 5-second timeout and retries once on
+ * transient failure; otherwise a slow / hung server would block the
+ * entire setup wizard with the form disabled and no recovery path.
+ */
+function usePasswordPolicy(): PasswordPolicy {
   const [minPasswordLength, setMinPasswordLength] = useState(DEFAULT_MIN_PASSWORD_LENGTH)
   const [policyError, setPolicyError] = useState<string | null>(null)
   const [policyLoading, setPolicyLoading] = useState(true)
 
-  const authSetup = useAuthStore((s) => s.setup)
-  const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
-  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
-
-  // Cancellation flag for ``fetchPolicy``: the effect below sets this
-  // ref to ``true`` on unmount so the timed-out / mid-retry response
-  // handler can no-op instead of writing setState into a torn-down
-  // component (matches the pattern used by CoordinationMetricsPage /
-  // MetaAnalyticsPage etc.). Stored in a ref so the
+  // Cancellation flag: the effect sets this ref to ``true`` on unmount
+  // so a timed-out / mid-retry response handler can no-op instead of
+  // writing setState into a torn-down component. Stored in a ref so the
   // ``useCallback``-memoised ``fetchPolicy`` reads the same flag the
   // effect's cleanup mutates without being re-created on every render.
   const cancelledRef = useRef(false)
   // Active timer IDs (policy-fetch timeout + retry backoff). Tracked so
-  // that an unmount can clear them eagerly instead of letting them
-  // tick to completion as zombies; the cancelledRef guard alone would
-  // prevent stray setState calls but leaves the underlying timeouts
-  // pinned to the event loop until they fire.
+  // an unmount can clear them eagerly rather than letting them tick to
+  // completion as zombies.
   const pendingTimersRef = useRef<Set<number>>(new Set())
 
-  // Read backend-configured min password length. Surfaced as an error so
-  // users cannot submit under the default policy if the server has a stricter
-  // rule (otherwise the create-account POST would fail with a confusing error).
-  // The fetch is wrapped in a 5-second timeout and retries once on transient
-  // failure; otherwise a slow / hung server would block the entire setup
-  // wizard with the form disabled and no recovery path.
   const fetchPolicy = useCallback(async () => {
     setPolicyLoading(true)
     setPolicyError(null)
-    const POLICY_TIMEOUT_MS = 5_000
     const timers = pendingTimersRef.current
-    function withTimeout<T>(work: Promise<T>): Promise<T> {
-      return new Promise<T>((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          timers.delete(timer)
-          reject(new Error('password-policy fetch timed out'))
-        }, POLICY_TIMEOUT_MS)
-        timers.add(timer)
-        work.then(
-          (value) => { timers.delete(timer); window.clearTimeout(timer); resolve(value) },
-          (err: unknown) => { timers.delete(timer); window.clearTimeout(timer); reject(err instanceof Error ? err : new Error(String(err))) },
-        )
-      })
-    }
-    let lastErr: unknown = null
     const attemptErrors: string[] = []
-    const MAX_ATTEMPTS = 2
-    const BACKOFF_MS = 500
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      try {
-        const status = await withTimeout(getSetupStatus())
-        if (cancelledRef.current) return
-        setMinPasswordLength(status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH)
+    for (let attempt = 0; attempt < POLICY_MAX_ATTEMPTS; attempt += 1) {
+      const result = await attemptPolicyFetch(timers)
+      if (cancelledRef.current) return
+      if (result.kind === 'ok') {
+        setMinPasswordLength(result.minLength)
         setPolicyLoading(false)
         return
-      } catch (err) {
+      }
+      attemptErrors.push(result.message)
+      if (attempt + 1 < POLICY_MAX_ATTEMPTS) {
+        // Small backoff so a transient back-pressure response is not
+        // hammered into a second failure inside the same event tick.
+        await sleepTracked(timers, POLICY_BACKOFF_MS)
         if (cancelledRef.current) return
-        lastErr = err
-        attemptErrors.push(getErrorMessage(err))
-        if (attempt + 1 < MAX_ATTEMPTS) {
-          // Small backoff so a transient back-pressure response is not
-          // hammered into a second failure inside the same event tick.
-          await new Promise<void>((resolve) => {
-            const timer = window.setTimeout(() => {
-              timers.delete(timer)
-              resolve()
-            }, BACKOFF_MS)
-            timers.add(timer)
-          })
-          if (cancelledRef.current) return
-        }
       }
     }
-    if (cancelledRef.current) return
-    // SEC-1: dynamic strings (``attemptErrors`` entries, ``lastErr``
-    // message) go through sanitizeForLog before reaching the log
-    // pipeline.
+    // SEC-1: dynamic strings (``attemptErrors`` entries) go through
+    // sanitizeForLog before reaching the log pipeline.
+    const lastError = attemptErrors[attemptErrors.length - 1] ?? 'unknown error'
     log.error('Failed to fetch setup status after retries', {
       attempts: attemptErrors.map((entry) => sanitizeForLog(entry)),
-      error: sanitizeForLog(getErrorMessage(lastErr)),
+      error: sanitizeForLog(lastError),
     })
-    setPolicyError(getErrorMessage(lastErr))
+    setPolicyError(lastError)
     setPolicyLoading(false)
   }, [])
 
@@ -120,7 +141,31 @@ export function AccountStep() {
     }
   }, [fetchPolicy])
 
-  const strength = getPasswordStrength(password)
+  return { minPasswordLength, policyError, policyLoading, fetchPolicy }
+}
+
+interface AccountForm {
+  username: string
+  setUsername: (value: string) => void
+  password: string
+  setPassword: (value: string) => void
+  confirmPassword: string
+  setConfirmPassword: (value: string) => void
+  error: string | null
+  loading: boolean
+  handleSubmit: () => Promise<void>
+}
+
+function useAccountForm(minPasswordLength: number): AccountForm {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const authSetup = useAuthStore((s) => s.setup)
+  const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
+  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
   const handleSubmit = useCallback(async () => {
     setError(null)
@@ -150,6 +195,97 @@ export function AccountStep() {
     }
   }, [username, password, confirmPassword, minPasswordLength, authSetup, setAccountCreated, markStepComplete])
 
+  return {
+    username, setUsername, password, setPassword, confirmPassword, setConfirmPassword,
+    error, loading, handleSubmit,
+  }
+}
+
+interface AccountFormFieldsProps {
+  username: string
+  setUsername: (value: string) => void
+  password: string
+  setPassword: (value: string) => void
+  confirmPassword: string
+  setConfirmPassword: (value: string) => void
+  minPasswordLength: number
+  loading: boolean
+  strength: ReturnType<typeof getPasswordStrength>
+}
+
+function AccountFormFields({
+  username,
+  setUsername,
+  password,
+  setPassword,
+  confirmPassword,
+  setConfirmPassword,
+  minPasswordLength,
+  loading,
+  strength,
+}: AccountFormFieldsProps) {
+  return (
+    <>
+      <InputField
+        label="Username"
+        required
+        value={username}
+        onChange={(e) => setUsername(e.currentTarget.value)}
+        placeholder="admin"
+        disabled={loading}
+      />
+
+      <PasswordVisibilityGroup>
+        <div className="space-y-1.5">
+          <InputField
+            label="Password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.currentTarget.value)}
+            placeholder={`Min ${minPasswordLength} characters`}
+            disabled={loading}
+            hint={`Min ${minPasswordLength} characters`}
+            autoComplete="new-password"
+          />
+          {password.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="h-1.5 flex-1 rounded-full bg-border">
+                <div
+                  className={cn('h-full rounded-full transition-all', strength.color)}
+                  style={{ width: `${strength.percent}%` }}
+                />
+              </div>
+              <span className="text-compact text-muted-foreground">{strength.label}</span>
+            </div>
+          )}
+        </div>
+
+        <InputField
+          label="Confirm Password"
+          type="password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.currentTarget.value)}
+          placeholder="Repeat password"
+          disabled={loading}
+          error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
+          autoComplete="new-password"
+        />
+      </PasswordVisibilityGroup>
+    </>
+  )
+}
+
+export function AccountStep() {
+  const { minPasswordLength, policyError, policyLoading, fetchPolicy } = usePasswordPolicy()
+  const {
+    username, setUsername, password, setPassword, confirmPassword, setConfirmPassword,
+    error, loading, handleSubmit,
+  } = useAccountForm(minPasswordLength)
+
+  const strength = getPasswordStrength(password)
+
   return (
     <div className="mx-auto max-w-md space-y-section-gap">
       <div className="space-y-2">
@@ -160,53 +296,17 @@ export function AccountStep() {
       </div>
 
       <div className="space-y-4 rounded-lg border border-border bg-card p-card">
-        <InputField
-          label="Username"
-          required
-          value={username}
-          onChange={(e) => setUsername(e.currentTarget.value)}
-          placeholder="admin"
-          disabled={loading}
+        <AccountFormFields
+          username={username}
+          setUsername={setUsername}
+          password={password}
+          setPassword={setPassword}
+          confirmPassword={confirmPassword}
+          setConfirmPassword={setConfirmPassword}
+          minPasswordLength={minPasswordLength}
+          loading={loading}
+          strength={strength}
         />
-
-        <PasswordVisibilityGroup>
-          <div className="space-y-1.5">
-            <InputField
-              label="Password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
-              placeholder={`Min ${minPasswordLength} characters`}
-              disabled={loading}
-              hint={`Min ${minPasswordLength} characters`}
-              autoComplete="new-password"
-            />
-            {password.length > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="h-1.5 flex-1 rounded-full bg-border">
-                  <div
-                    className={cn('h-full rounded-full transition-all', strength.color)}
-                    style={{ width: `${strength.percent}%` }}
-                  />
-                </div>
-                <span className="text-compact text-muted-foreground">{strength.label}</span>
-              </div>
-            )}
-          </div>
-
-          <InputField
-            label="Confirm Password"
-            type="password"
-            required
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-            placeholder="Repeat password"
-            disabled={loading}
-            error={confirmPassword.length > 0 && password !== confirmPassword ? 'Passwords do not match' : null}
-            autoComplete="new-password"
-          />
-        </PasswordVisibilityGroup>
 
         {policyError && (
           <ErrorBanner
