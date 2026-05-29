@@ -59,7 +59,12 @@ from synthorg.api.controllers.integration_health import (
 )
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
-from synthorg.api.controllers.memory import MemoryAdminController
+from synthorg.api.controllers.memory.checkpoints import (
+    MemoryCheckpointsController,
+)
+from synthorg.api.controllers.memory.embedder import MemoryEmbedderController
+from synthorg.api.controllers.memory.entries import MemoryEntriesController
+from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
@@ -175,7 +180,10 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     SetupPersonalityController,
     PersonalityPresetController,
     BackupController,
-    MemoryAdminController,
+    MemoryFineTuneController,
+    MemoryCheckpointsController,
+    MemoryEntriesController,
+    MemoryEmbedderController,
     TeamController,
     TemplatePackController,
     UserController,
@@ -307,7 +315,10 @@ __all__ = [
     "LivenessController",
     "MCPCatalogController",
     "MeetingController",
-    "MemoryAdminController",
+    "MemoryCheckpointsController",
+    "MemoryEmbedderController",
+    "MemoryEntriesController",
+    "MemoryFineTuneController",
     "MessageController",
     "MetaAnalyticsController",
     "MetaController",

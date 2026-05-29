@@ -496,7 +496,10 @@
     },
     {
       "controllers": [
-        "MemoryAdminController"
+        "MemoryFineTuneController",
+        "MemoryCheckpointsController",
+        "MemoryEntriesController",
+        "MemoryEmbedderController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/memory",
@@ -894,6 +897,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T17:53:33.573043Z",
+  "generated_at": "2026-05-29T18:16:01.962141Z",
   "schema_version": 1
 }

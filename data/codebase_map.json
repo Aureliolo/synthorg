@@ -366,7 +366,7 @@
     },
     {
       "kind": "code",
-      "loc": 313,
+      "loc": 324,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -653,9 +653,51 @@
     },
     {
       "kind": "code",
-      "loc": 1162,
+      "loc": 7,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/memory.py",
+      "module": "src/synthorg/api/controllers/memory/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 430,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/memory/_preflight.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 76,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/memory/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 289,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/memory/checkpoints.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 98,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/memory/embedder.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 69,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/memory/entries.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 290,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/memory/fine_tune.py",
       "owning_feature": "api_core"
     },
     {
@@ -8577,7 +8619,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 30,
       "loc_cap": 100,
       "module": "src/synthorg/memory/feature.py",
       "owning_feature": "memory"
