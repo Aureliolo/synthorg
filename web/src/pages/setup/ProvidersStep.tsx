@@ -7,7 +7,8 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
 import { useStepCompletionSync } from './_hooks'
-import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
+import { ProviderFormModal } from '@/pages/providers/ProviderFormModal'
+import type { ProviderFormOverrides } from '@/pages/providers/provider-form-helpers'
 
 const log = createLogger('setup:providers-step')
 
