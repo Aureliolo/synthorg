@@ -18,6 +18,9 @@ const SpendBurnChart = lazy(() =>
   import('./budget/SpendBurnChart').then((m) => ({ default: m.SpendBurnChart })),
 )
 
+type BudgetData = ReturnType<typeof useBudgetData>
+type ForecastData = BudgetData['forecast']
+
 function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   point: ForecastPoint
   cumulative: number
@@ -40,8 +43,6 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
     </tr>
   )
 }
-
-type ForecastData = ReturnType<typeof useBudgetData>['forecast']
 
 function useCumulativeValues(forecast: ForecastData): number[] {
   return useMemo(() => {
@@ -67,14 +68,17 @@ function useForecastMetricCards(
       },
       {
         label: 'DAYS UNTIL EXHAUSTED',
-        value: forecast.days_until_exhausted != null
-          ? String(forecast.days_until_exhausted)
-          : 'N/A',
+        value:
+          forecast.days_until_exhausted != null
+            ? String(forecast.days_until_exhausted)
+            : 'N/A',
         subText: computeExhaustionDate(forecast.days_until_exhausted ?? null) ?? undefined,
       },
       {
         label: 'CONFIDENCE',
-        value: Number.isFinite(forecast.confidence) ? `${Math.round(forecast.confidence * 100)}%` : '--',
+        value: Number.isFinite(forecast.confidence)
+          ? `${Math.round(forecast.confidence * 100)}%`
+          : '--',
       },
       {
         label: 'AVG DAILY SPEND',
@@ -123,6 +127,18 @@ function ForecastBanners({
         />
       )}
     </>
+  )
+}
+
+function ForecastMetricGrid({ cards }: { cards: BudgetMetricCardData[] }) {
+  return (
+    <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+      {cards.map((card) => (
+        <StaggerItem key={card.label}>
+          <MetricCard {...card} />
+        </StaggerItem>
+      ))}
+    </StaggerGroup>
   )
 }
 
@@ -180,9 +196,47 @@ function DailyProjections({
   return null
 }
 
+function ForecastChartSection({
+  data,
+  currency,
+  cumulativeValues,
+}: {
+  data: BudgetData
+  currency: string | undefined
+  cumulativeValues: readonly number[]
+}) {
+  const { overview, budgetConfig, forecast, trends, error } = data
+  return (
+    <>
+      <ErrorBoundary level="section">
+        <Suspense fallback={<SkeletonChart />}>
+          <SpendBurnChart
+            trendData={trends?.data_points ?? []}
+            forecast={forecast}
+            budgetTotal={budgetConfig?.total_monthly ?? 0}
+            budgetRemaining={overview?.budget_remaining}
+            alerts={budgetConfig?.alerts}
+            currency={currency}
+          />
+        </Suspense>
+      </ErrorBoundary>
+
+      <SectionCard title="Daily Projections" icon={Calendar}>
+        <DailyProjections
+          forecast={forecast}
+          cumulativeValues={cumulativeValues}
+          currency={currency}
+          totalMonthly={budgetConfig?.total_monthly ?? 0}
+          showEmpty={!error}
+        />
+      </SectionCard>
+    </>
+  )
+}
+
 export default function BudgetForecastPage() {
-  const { overview, budgetConfig, forecast, trends, loading, error, wsConnected, wsSetupError } =
-    useBudgetData()
+  const data = useBudgetData()
+  const { overview, budgetConfig, forecast, loading, error, wsConnected, wsSetupError } = data
 
   const currency = overview?.currency ?? budgetConfig?.currency
   const cumulativeValues = useCumulativeValues(forecast)
@@ -209,36 +263,13 @@ export default function BudgetForecastPage() {
         wsSetupError={wsSetupError}
       />
 
-      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
-        {metricCards.map((card) => (
-          <StaggerItem key={card.label}>
-            <MetricCard {...card} />
-          </StaggerItem>
-        ))}
-      </StaggerGroup>
+      <ForecastMetricGrid cards={metricCards} />
 
-      <ErrorBoundary level="section">
-        <Suspense fallback={<SkeletonChart />}>
-          <SpendBurnChart
-            trendData={trends?.data_points ?? []}
-            forecast={forecast}
-            budgetTotal={budgetConfig?.total_monthly ?? 0}
-            budgetRemaining={overview?.budget_remaining}
-            alerts={budgetConfig?.alerts}
-            currency={currency}
-          />
-        </Suspense>
-      </ErrorBoundary>
-
-      <SectionCard title="Daily Projections" icon={Calendar}>
-        <DailyProjections
-          forecast={forecast}
-          cumulativeValues={cumulativeValues}
-          currency={currency}
-          totalMonthly={budgetConfig?.total_monthly ?? 0}
-          showEmpty={!error}
-        />
-      </SectionCard>
+      <ForecastChartSection
+        data={data}
+        currency={currency}
+        cumulativeValues={cumulativeValues}
+      />
     </div>
   )
 }
