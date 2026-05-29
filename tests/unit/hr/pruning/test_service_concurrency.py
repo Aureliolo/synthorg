@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Concurrency regression tests for PruningService.
 
 ``_process_decided_approvals`` previously had a check-then-act race on
@@ -107,7 +107,7 @@ class TestProcessDecidedApprovalsConcurrency:
         # Fire two concurrent cycles. First one should start offboarding
         # while the second one observes the claim and skips.
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(service._process_decided_approvals())
+            _ = tg.create_task(service._process_decided_approvals())
             await offboarding.wait_started()
             # Task A is parked inside ``OffboardingService.offboard`` with
             # the approval id held in ``_in_flight_approvals`` (and the

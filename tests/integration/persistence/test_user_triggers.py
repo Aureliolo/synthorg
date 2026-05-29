@@ -80,7 +80,7 @@ class TestCEOUniqueness:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(5):
-                tg.create_task(try_create(i))
+                _ = tg.create_task(try_create(i))
 
         successes = [r for r in results if r is True]
         failures = [r for r in results if r is not True]
@@ -220,8 +220,8 @@ class TestLastOwnerTrigger:
                 results.append(exc.constraint)
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(try_revoke(owner1))
-            tg.create_task(try_revoke(owner2))
+            _ = tg.create_task(try_revoke(owner1))
+            _ = tg.create_task(try_revoke(owner2))
 
         successes = [r for r in results if r is True]
         failures = [r for r in results if r is not True]
@@ -293,8 +293,8 @@ class TestDeleteTriggers:
                 results.append(exc.constraint)
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(try_delete("owner-1"))
-            tg.create_task(try_delete("owner-2"))
+            _ = tg.create_task(try_delete("owner-1"))
+            _ = tg.create_task(try_delete("owner-2"))
 
         successes = [r for r in results if r is True]
         failures = [r for r in results if r is not True]

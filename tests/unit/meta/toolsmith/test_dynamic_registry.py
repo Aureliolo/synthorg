@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the dynamic registry, args-model materialisation, and layering."""
 
 from datetime import UTC, datetime

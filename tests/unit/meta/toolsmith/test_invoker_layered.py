@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """The real MCPToolInvoker dispatches authored tools via the layered surfaces."""
 
 import json

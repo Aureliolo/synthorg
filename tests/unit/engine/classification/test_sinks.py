@@ -352,7 +352,7 @@ class TestSlidingWindowRateLimiterRaceConditions:
         # missing-handle), so no task can unwind the group.
         async with asyncio.TaskGroup() as tg:
             for handle in handles:
-                tg.create_task(limiter.release("agent-A", handle))
+                _ = tg.create_task(limiter.release("agent-A", handle))
 
         # All slots should be free again.
         n_callers = 20

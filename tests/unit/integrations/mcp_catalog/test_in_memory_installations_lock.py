@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Race coverage: ``InMemoryMcpInstallationRepository._store`` is lock-guarded.
 
 The four async methods (`save`, `get`, `list_items`, `delete`) all
@@ -63,9 +63,9 @@ class TestInMemoryInstallationsConcurrency:
                 await repo.list_items(limit=200)
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(saver())
-            tg.create_task(deleter())
-            tg.create_task(lister())
+            _ = tg.create_task(saver())
+            _ = tg.create_task(deleter())
+            _ = tg.create_task(lister())
             # Tasks are scheduled but each is blocked on ``start_gate``.
             # Release the gate first to wake them, then release the lock
             # so they all contend for the same critical section.

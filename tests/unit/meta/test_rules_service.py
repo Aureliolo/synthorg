@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`CustomRulesService`.
 
 Conformance tests cover the end-to-end repository contract against

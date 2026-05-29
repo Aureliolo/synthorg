@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Smoke tests for agent domain MCP handlers.
 
 The handler universe is big and half of it shims onto services that

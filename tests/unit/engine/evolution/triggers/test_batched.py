@@ -74,9 +74,9 @@ class TestBatchedTrigger:
 
         async with asyncio.TaskGroup() as tg:
             for agent_id in agents:
-                tg.create_task(_writer(agent_id))
-                tg.create_task(_reader(agent_id))
-                tg.create_task(_writer(agent_id))
+                _ = tg.create_task(_writer(agent_id))
+                _ = tg.create_task(_reader(agent_id))
+                _ = tg.create_task(_writer(agent_id))
 
         assert set(trigger._last_run) == set(agents)
         for ts in trigger._last_run.values():
