@@ -174,7 +174,6 @@ function RateLimitsForm({
 interface RateLimitsBodyProps {
   providerName: string | null
   rateLimits: RateLimitsConfig | null
-  loading: boolean
   error: string | null
   isLoadedForActiveProvider: boolean
   onRetry: (name: string) => void
@@ -212,24 +211,49 @@ function RateLimitsSkeleton() {
   )
 }
 
+interface RateLimitsContentProps {
+  providerName: string | null
+  rateLimits: RateLimitsConfig | null
+  error: string | null
+  isLoadedForActiveProvider: boolean
+  onClose: () => void
+}
+
+// The form once the active provider's limits have loaded; otherwise the
+// skeleton while still loading, or nothing once an error banner has
+// taken over. A first-load failure leaves ``rateLimits`` null, so the
+// skeleton must yield to the banner instead of spinning forever.
+function RateLimitsContent({
+  providerName,
+  rateLimits,
+  error,
+  isLoadedForActiveProvider,
+  onClose,
+}: RateLimitsContentProps) {
+  if (isLoadedForActiveProvider && rateLimits !== null && providerName !== null) {
+    return (
+      <RateLimitsForm
+        key={`${providerName}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`}
+        providerName={providerName}
+        initial={rateLimits}
+        onClose={onClose}
+      />
+    )
+  }
+  return error === null ? <RateLimitsSkeleton /> : null
+}
+
 function RateLimitsBody({
   providerName,
   rateLimits,
-  loading,
   error,
   isLoadedForActiveProvider,
   onRetry,
   onClose,
 }: RateLimitsBodyProps) {
-  // A first-load failure leaves ``rateLimits`` null, so the banner must
-  // key off ``error`` alone (the parent already scopes it to the active
-  // provider); gating on ``isLoadedForActiveProvider`` would hide it and
-  // strand the user on a perpetual skeleton. The skeleton renders only
-  // while loading with no error.
-  const showSkeleton =
-    error === null
-    && (loading || !isLoadedForActiveProvider || rateLimits === null || providerName === null)
-
+  // Key the banner off ``error`` alone (the parent already scopes it to
+  // the active provider); gating on ``isLoadedForActiveProvider`` would
+  // hide a first-load failure, since ``rateLimits`` is still null then.
   return (
     <div className="flex flex-col gap-section-gap p-card">
       <RateLimitsErrorBanner
@@ -238,16 +262,13 @@ function RateLimitsBody({
         error={error}
         onRetry={onRetry}
       />
-      {showSkeleton ? (
-        <RateLimitsSkeleton />
-      ) : isLoadedForActiveProvider && rateLimits !== null && providerName !== null ? (
-        <RateLimitsForm
-          key={`${providerName}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`}
-          providerName={providerName}
-          initial={rateLimits}
-          onClose={onClose}
-        />
-      ) : null}
+      <RateLimitsContent
+        providerName={providerName}
+        rateLimits={rateLimits}
+        error={error}
+        isLoadedForActiveProvider={isLoadedForActiveProvider}
+        onClose={onClose}
+      />
     </div>
   )
 }
@@ -258,7 +279,6 @@ export function RateLimitsDrawer({
   onClose,
 }: RateLimitsDrawerProps) {
   const rateLimits = useProvidersStore((s) => s.rateLimits)
-  const loading = useProvidersStore((s) => s.rateLimitsLoading)
   const error = useProvidersStore((s) => s.rateLimitsError)
   const rateLimitsProviderName = useProvidersStore(
     (s) => s.rateLimitsProviderName,
@@ -293,7 +313,6 @@ export function RateLimitsDrawer({
       <RateLimitsBody
         providerName={providerName}
         rateLimits={rateLimits}
-        loading={loading}
         error={isActiveProvider ? error : null}
         isLoadedForActiveProvider={isLoadedForActiveProvider}
         onRetry={(name) => void fetchRateLimits(name)}
