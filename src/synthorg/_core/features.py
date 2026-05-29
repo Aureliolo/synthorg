@@ -51,6 +51,7 @@ from synthorg.settings.enums import (
 
 __all__ = [
     "BaseFeatureStateSlice",
+    "ConstructionWirer",
     "ControllerRegistration",
     "FeatureDependencyError",
     "FeatureManifest",
@@ -65,6 +66,13 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+
+# A feature's construction-phase wiring callback. The composition root passes
+# ``(app_state, deps)`` -- the live ``AppState`` and the construction-time
+# service bundle -- so the feature can swap its populated state slice in at
+# build time. Typed ``Callable[..., None]`` (like ``ControllerRegistration``'s
+# predicate) so the low-level substrate does not import ``api`` types.
+type ConstructionWirer = Callable[..., None]
 
 
 class FeatureDependencyError(DomainError):
@@ -218,6 +226,9 @@ class FeatureModule(Protocol):
     def lifecycle_hooks(self) -> tuple[ServiceLifecycleHook, ...]: ...
 
     @property
+    def construction_wirer(self) -> ConstructionWirer | None: ...
+
+    @property
     def ghost_wired_symbols(self) -> tuple[str, ...]: ...
 
     @property
@@ -294,6 +305,7 @@ class FeatureManifest(BaseModel):
     websocket_handlers: tuple[WebsocketRouteHandler, ...] = ()
     mcp_handlers: tuple[McpHandlerModule, ...] = ()
     lifecycle_hooks: tuple[ServiceLifecycleHook, ...] = ()
+    construction_wirer: ConstructionWirer | None = None
     ghost_wired_symbols: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
 

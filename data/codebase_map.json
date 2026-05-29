@@ -16,7 +16,7 @@
     },
     {
       "kind": "code",
-      "loc": 396,
+      "loc": 401,
       "loc_cap": 500,
       "module": "src/synthorg/_core/features.py",
       "owning_feature": null
@@ -404,6 +404,13 @@
       "loc": 359,
       "loc_cap": 500,
       "module": "src/synthorg/api/config.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 111,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/construction_wiring.py",
       "owning_feature": "api_core"
     },
     {
