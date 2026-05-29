@@ -6,7 +6,7 @@ Always read-only.
 
 import asyncio
 import re
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 import aiosqlite
 from pydantic import BaseModel
@@ -62,6 +62,7 @@ class SchemaInspectTool(BaseDatabaseTool):
             config=config,
         )
 
+    @override
     async def execute(
         self,
         *,

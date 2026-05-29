@@ -6,7 +6,7 @@ truncated at ``max_output_bytes``.
 """
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -105,6 +105,7 @@ class ShellCommandTool(BaseTerminalTool):
             )
         return cwd
 
+    @override
     async def execute(
         self,
         *,

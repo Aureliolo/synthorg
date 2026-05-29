@@ -23,7 +23,7 @@ import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast, override
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -208,6 +208,7 @@ class BrowserTool(BaseTool):
         self._owner_id = owner_id or f"browser-tool-{uuid4()}"
         self._settings = settings or BrowserSettings()
 
+    @override
     async def execute(
         self,
         *,

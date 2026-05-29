@@ -7,7 +7,7 @@ until the approval decision arrives.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -78,6 +78,7 @@ class RequestHumanApprovalTool(BaseTool):
         self._agent_id = agent_id
         self._task_id = task_id
 
+    @override
     async def execute(
         self,
         *,

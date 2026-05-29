@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
@@ -173,7 +173,8 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+    @override
+    def log_message(self, format: str, *args: object) -> None:
         """Log message."""
         # Suppress access logs.
 

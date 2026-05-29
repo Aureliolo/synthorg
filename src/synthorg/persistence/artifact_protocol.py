@@ -1,6 +1,6 @@
 """Artifact repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -57,6 +57,7 @@ class ArtifactRepository(
     observe "missing" and both report ``API_ARTIFACT_CREATED``.
     """
 
+    @override
     async def save(self, entity: Artifact) -> None:
         """Persist an artifact (insert or update by id).
 
@@ -91,6 +92,7 @@ class ArtifactRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Artifact | None:
         """Retrieve an artifact by its ID.
 
@@ -105,6 +107,7 @@ class ArtifactRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -128,6 +131,7 @@ class ArtifactRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ArtifactFilterSpec,
@@ -155,6 +159,7 @@ class ArtifactRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ArtifactFilterSpec) -> int:
         """Count artifacts matching the filter spec.
 
@@ -169,6 +174,7 @@ class ArtifactRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an artifact by ID.
 

@@ -10,7 +10,7 @@ and not worth normalising on its own.  This file is the preset
 slice.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -67,6 +67,7 @@ class PersonalityPresetRepository(
     (ADR-0001).
     """
 
+    @override
     async def save(self, entity: Preset) -> None:
         """Persist a custom preset (insert or update by name).
 
@@ -78,6 +79,7 @@ class PersonalityPresetRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Preset | None:
         """Retrieve a custom preset by name.
 
@@ -92,6 +94,7 @@ class PersonalityPresetRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -112,6 +115,7 @@ class PersonalityPresetRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: PresetFilterSpec,
@@ -134,6 +138,7 @@ class PersonalityPresetRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: PresetFilterSpec) -> int:
         """Count custom presets matching the filter spec.
 
@@ -148,6 +153,7 @@ class PersonalityPresetRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a custom preset by name.
 

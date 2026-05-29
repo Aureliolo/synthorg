@@ -21,7 +21,7 @@ scheduler keeps them for late-arriving completions until explicit
 cleanup -- the table is small (one row per sprint, ever).
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -76,6 +76,7 @@ class CeremonySchedulerStateRepository(
     conformance suite under ``tests/conformance/persistence/``.
     """
 
+    @override
     async def save(self, entity: CeremonySchedulerStateRecord) -> None:
         """Persist a state snapshot for one sprint (upsert by sprint_id).
 
@@ -88,6 +89,7 @@ class CeremonySchedulerStateRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
         """Load the snapshot for one sprint, or ``None`` if absent.
 
@@ -102,6 +104,7 @@ class CeremonySchedulerStateRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the snapshot for one sprint.
 
@@ -116,6 +119,7 @@ class CeremonySchedulerStateRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

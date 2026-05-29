@@ -4,7 +4,7 @@ import asyncio
 import itertools
 import re
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -268,6 +268,7 @@ class ListDirectoryTool(BaseFileSystemTool):
         }
         return output, metadata
 
+    @override
     async def execute(
         self,
         *,

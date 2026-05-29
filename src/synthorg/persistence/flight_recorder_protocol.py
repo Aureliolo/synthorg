@@ -8,7 +8,7 @@ frames, independent of the observability event log.
 """
 
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 from uuid import uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -174,6 +174,7 @@ class FlightRecorderFrameRepository(
     activity across many in-flight tasks.
     """
 
+    @override
     async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
         self, frame: FlightRecorderFrame
     ) -> None:
@@ -191,6 +192,7 @@ class FlightRecorderFrameRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: FlightRecorderFrameFilterSpec,
@@ -217,6 +219,7 @@ class FlightRecorderFrameRepository(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: AwareDatetime) -> int:
         """Delete frames with ``timestamp < threshold``. Returns rows removed.
 

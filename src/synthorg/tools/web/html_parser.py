@@ -6,7 +6,7 @@ stdlib ``html.parser`` module.
 """
 
 from html.parser import HTMLParser
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -38,20 +38,23 @@ class _TextExtractor(HTMLParser):
         self._chunks: list[str] = []
         self._skip_depth = 0
 
+    @override
     def handle_starttag(
         self,
         tag: str,
-        attrs: list[tuple[str, str | None]],  # noqa: ARG002
+        attrs: list[tuple[str, str | None]],
     ) -> None:
         """Handle starttag."""
         if tag in ("script", "style"):
             self._skip_depth += 1
 
+    @override
     def handle_endtag(self, tag: str) -> None:
         """Handle endtag."""
         if tag in ("script", "style") and self._skip_depth > 0:
             self._skip_depth -= 1
 
+    @override
     def handle_data(self, data: str) -> None:
         """Handle data."""
         if self._skip_depth == 0:
@@ -77,6 +80,7 @@ class _LinkExtractor(HTMLParser):
         self._current_href: str | None = None
         self._current_text_chunks: list[str] = []
 
+    @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Handle starttag."""
         if tag == "a":
@@ -84,6 +88,7 @@ class _LinkExtractor(HTMLParser):
             self._current_href = href or None
             self._current_text_chunks = []
 
+    @override
     def handle_data(self, data: str) -> None:
         """Handle data."""
         if self._current_href is not None:
@@ -91,6 +96,7 @@ class _LinkExtractor(HTMLParser):
             if stripped:
                 self._current_text_chunks.append(stripped)
 
+    @override
     def handle_endtag(self, tag: str) -> None:
         """Handle endtag."""
         if tag == "a" and self._current_href is not None:
@@ -117,6 +123,7 @@ class _MetadataExtractor(HTMLParser):
         self._title_chunks: list[str] = []
         self._meta: list[tuple[str, str]] = []
 
+    @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Handle starttag."""
         if tag == "title":
@@ -129,11 +136,13 @@ class _MetadataExtractor(HTMLParser):
             if name and content:
                 self._meta.append((name, content))
 
+    @override
     def handle_data(self, data: str) -> None:
         """Handle data."""
         if self._in_title:
             self._title_chunks.append(data.strip())
 
+    @override
     def handle_endtag(self, tag: str) -> None:
         """Handle endtag."""
         if tag == "title":
@@ -195,6 +204,7 @@ class HtmlParserTool(BaseWebTool):
             action_type=ActionType.CODE_READ,
         )
 
+    @override
     async def execute(
         self,
         *,

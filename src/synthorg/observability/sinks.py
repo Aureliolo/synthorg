@@ -11,7 +11,7 @@ import logging.handlers
 import sys
 from pathlib import Path as StdPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -37,6 +37,7 @@ from synthorg.observability.redaction import safe_error_description
 class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that flushes to disk after every emit."""
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
         try:
@@ -71,7 +72,8 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
             backupCount=backupCount,
         )
 
-    def doRollover(self) -> None:  # noqa: N802
+    @override
+    def doRollover(self) -> None:
         """Rotate with gzip-aware backup chain."""
         if not self._compress:
             super().doRollover()
@@ -155,6 +157,7 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
 class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
     """WatchedFileHandler that flushes to disk after every emit."""
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
         try:
@@ -240,6 +243,7 @@ class _LoggerNameFilter(logging.Filter):
         self._include = include_prefixes
         self._exclude = exclude_prefixes
 
+    @override
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True if *record* passes the prefix filters."""
         name = record.name
@@ -273,6 +277,7 @@ class _EventNameFilter(logging.Filter):
                 raise ValueError(msg)
         self._exclude = frozenset(exclude_events)
 
+    @override
     def filter(self, record: logging.LogRecord) -> bool:
         """Return ``True`` if *record* is not in the exclude set."""
         if not self._exclude:
@@ -294,6 +299,7 @@ class _ExactLevelFilter(logging.Filter):
         super().__init__()
         self._levelno = levelno
 
+    @override
     def filter(self, record: logging.LogRecord) -> bool:
         """Return ``True`` only when ``record.levelno`` matches."""
         return record.levelno == self._levelno

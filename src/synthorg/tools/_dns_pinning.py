@@ -15,7 +15,7 @@ duplicated.
 """
 
 import ssl
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 import httpcore
 import httpx
@@ -47,11 +47,12 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         self._hostname = hostname.lower()
         self._ip = ip
 
+    @override
     async def connect_tcp(
         self,
         host: str,
         port: int,
-        timeout: float | None = None,  # noqa: ASYNC109 -- AsyncNetworkBackend interface
+        timeout: float | None = None,
         local_address: str | None = None,
         socket_options: Iterable[SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
@@ -69,10 +70,11 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
             socket_options=socket_options,
         )
 
+    @override
     async def connect_unix_socket(
         self,
         path: str,
-        timeout: float | None = None,  # noqa: ASYNC109 -- AsyncNetworkBackend interface
+        timeout: float | None = None,
         socket_options: Iterable[SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
         """Connect unix socket.
@@ -86,6 +88,7 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
             socket_options=socket_options,
         )
 
+    @override
     async def sleep(self, seconds: float) -> None:
         """Delegate the cooperative sleep to the wrapped backend."""
         await self._inner.sleep(seconds)
@@ -109,6 +112,7 @@ class PinnedDnsTransport(httpx.AsyncBaseTransport):
             ),
         )
 
+    @override
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         """Handle async request.
 
@@ -143,6 +147,7 @@ class PinnedDnsTransport(httpx.AsyncBaseTransport):
             extensions=resp.extensions,
         )
 
+    @override
     async def aclose(self) -> None:
         """Close the underlying hostname-pinned connection pool."""
         await self._pool.aclose()
@@ -154,10 +159,12 @@ class PinnedDnsResponseStream(httpx.AsyncByteStream):
     def __init__(self, inner: AsyncIterable[bytes]) -> None:
         self._inner = inner
 
+    @override
     async def __aiter__(self) -> AsyncIterator[bytes]:
         async for part in self._inner:
             yield part
 
+    @override
     async def aclose(self) -> None:
         """Close the wrapped stream if it exposes an ``aclose`` coroutine."""
         aclose = getattr(self._inner, "aclose", None)

@@ -6,7 +6,7 @@ bodies are streamed and truncated at ``max_response_bytes`` to
 prevent memory exhaustion.
 """
 
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 import httpx
 from pydantic import BaseModel
@@ -92,6 +92,7 @@ class HttpRequestTool(BaseWebTool):
         )
         self._max_response_bytes = max_response_bytes
 
+    @override
     async def execute(
         self,
         *,

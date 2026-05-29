@@ -11,7 +11,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
@@ -75,6 +75,7 @@ class HttpBatchHandler(logging.Handler):
         )
         self._flusher.start()
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         """Queue a record for batched shipping."""
         try:
@@ -194,6 +195,7 @@ class HttpBatchHandler(logging.Handler):
                 return None
         return last_error
 
+    @override
     def close(self) -> None:
         """Signal shutdown, flush remaining records, stop thread."""
         self._shutdown.set()

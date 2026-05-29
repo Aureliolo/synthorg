@@ -1,6 +1,6 @@
 """Audit repository protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -86,6 +86,7 @@ class AuditRepository(
     for the retention-vs-forensic tradeoff.
     """
 
+    @override
     async def append(self, entry: AuditEntry) -> None:
         """Persist an audit entry (append-only).
 
@@ -98,6 +99,7 @@ class AuditRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: AuditFilterSpec,
@@ -123,6 +125,7 @@ class AuditRepository(
         """
         ...
 
+    @override
     async def purge_before(self, cutoff: AwareDatetime) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 

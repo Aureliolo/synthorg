@@ -601,83 +601,78 @@ disallow_any_explicit = false
 [[tool.mypy.overrides]]
 module = "synthorg.api.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.budget.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.communication.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.config.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.core.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.engine.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.integrations.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.knowledge.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.memory.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.meta.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 
 [[tool.mypy.overrides]]
 module = "synthorg.observability.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.ontology.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.persistence.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.providers.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.research.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.security.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.settings.*"
@@ -686,12 +681,11 @@ disallow_any_explicit = false
 [[tool.mypy.overrides]]
 module = "synthorg.templates.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.tools.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.workers.*"
@@ -712,7 +706,7 @@ module = [
     "synthorg.organization.*",
 ]
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable"]
+disable_error_code = ["unused-awaitable"]
 
 # Test code carries the residual strict++ exemptions that the original
 # tests.* override block lifted. This PR (#2061) narrowed the original

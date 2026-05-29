@@ -10,7 +10,7 @@ Concrete middleware for the coordination pipeline:
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import AutonomyLevel
@@ -60,6 +60,7 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
     def __init__(self, **_kwargs: object) -> None:
         super().__init__(name="task_ledger")
 
+    @override
     async def before_dispatch(
         self,
         ctx: CoordinationMiddlewareContext,
@@ -143,6 +144,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         super().__init__(name="progress_ledger")
         self._escalation_threshold = escalation_threshold
 
+    @override
     async def after_rollup(
         self,
         ctx: CoordinationMiddlewareContext,
@@ -405,6 +407,7 @@ class ReplanMiddleware(BaseCoordinationMiddleware):
         super().__init__(name="coordination_replan")
         self._hook = replan_hook or NoOpReplanHook()
 
+    @override
     async def after_rollup(
         self,
         ctx: CoordinationMiddlewareContext,
@@ -448,6 +451,7 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
         super().__init__(name="plan_review_gate")
         self._default_level = default_autonomy_level
 
+    @override
     async def before_dispatch(
         self,
         ctx: CoordinationMiddlewareContext,

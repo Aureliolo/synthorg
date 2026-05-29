@@ -10,7 +10,7 @@ All Mem0 SDK calls run in ``asyncio.to_thread()``.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
@@ -361,6 +361,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         """Maximum memories per agent from configuration."""
         return self._max_memories_per_agent
 
+    @override
     @property
     def supports_sparse_search(self) -> bool:
         """Whether BM25 sparse search is available."""
@@ -368,6 +369,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             self._mem0_config.sparse_search_enabled and self._qdrant_client is not None
         )
 
+    @override
     def _require_connected(self) -> Mem0Client:
         """Return the client or raise ``MemoryConnectionError``.
 
@@ -386,6 +388,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             raise MemoryConnectionError(msg)
         return self._client
 
+    @override
     def _validate_agent_id(
         self,
         agent_id: NotBlankStr,

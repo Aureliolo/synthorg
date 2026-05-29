@@ -17,7 +17,7 @@ buckets prematurely.
 import asyncio
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, override
 
 from synthorg.api.rate_limits.protocol import RateLimitOutcome, SlidingWindowStore
 from synthorg.core.clock import Clock, SystemClock
@@ -77,6 +77,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         self._meta_lock: asyncio.Lock = asyncio.Lock()
         self._acquires_since_gc: int = 0
 
+    @override
     async def acquire(
         self,
         key: str,
@@ -234,6 +235,7 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
                 return True
         return False
 
+    @override
     async def close(self) -> None:
         """Clear all buckets and locks."""
         async with self._meta_lock:

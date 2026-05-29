@@ -1,7 +1,7 @@
 """CostRecord repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +43,7 @@ class CostRecordRepository(
       invariant; the generic ``query`` cannot express aggregation.
     """
 
+    @override
     async def append(self, event: CostRecord) -> None:
         """Persist a cost record (append-only).
 
@@ -54,6 +55,7 @@ class CostRecordRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: CostRecordFilterSpec,
@@ -76,6 +78,7 @@ class CostRecordRepository(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: datetime) -> int:
         """Delete cost records with timestamp before threshold (retention).
 

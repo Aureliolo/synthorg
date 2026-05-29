@@ -7,7 +7,7 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -51,6 +51,7 @@ class CompactContextTool(BaseTool):
             category=ToolCategory.MEMORY,
         )
 
+    @override
     async def execute(
         self,
         *,

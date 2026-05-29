@@ -1,6 +1,6 @@
 """Training plan and result repository protocols."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +55,7 @@ class TrainingPlanRepository(
     queries that are called frequently by the training service.
     """
 
+    @override
     async def save(self, entity: TrainingPlan) -> None:
         """Persist a training plan (insert or update by id).
 
@@ -66,6 +67,7 @@ class TrainingPlanRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> TrainingPlan | None:
         """Retrieve a training plan by its ID.
 
@@ -80,6 +82,7 @@ class TrainingPlanRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a training plan by ID.
 
@@ -94,6 +97,7 @@ class TrainingPlanRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -114,6 +118,7 @@ class TrainingPlanRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: TrainingPlanFilterSpec,
@@ -136,6 +141,7 @@ class TrainingPlanRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: TrainingPlanFilterSpec) -> int:
         """Count plans matching the filter spec.
 
@@ -234,6 +240,7 @@ class TrainingResultRepository(
     lookups by the training service.
     """
 
+    @override
     async def save(self, entity: TrainingResult) -> None:
         """Persist a training result (insert or update by id).
 
@@ -245,6 +252,7 @@ class TrainingResultRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> TrainingResult | None:
         """Retrieve a training result by its ID.
 
@@ -259,6 +267,7 @@ class TrainingResultRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a training result by ID.
 
@@ -273,6 +282,7 @@ class TrainingResultRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

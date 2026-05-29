@@ -1,7 +1,7 @@
 """Custom exception hierarchy for configuration errors."""
 
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -50,6 +50,7 @@ class ConfigError(DomainError):
         self.locations = locations
         super().__init__(message)
 
+    @override
     def __str__(self) -> str:
         """Format error message with source locations."""
         if not self.locations:
@@ -113,6 +114,7 @@ class ConfigValidationError(ConfigError):
         super().__init__(message, locations)
         self.field_errors = field_errors
 
+    @override
     def __str__(self) -> str:
         """Format validation error with per-field details."""
         if not self.field_errors:

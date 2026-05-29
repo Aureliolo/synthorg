@@ -6,7 +6,7 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
-from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -113,6 +113,7 @@ class WebSearchTool(BaseWebTool):
         )
         self._provider = provider
 
+    @override
     async def execute(
         self,
         *,

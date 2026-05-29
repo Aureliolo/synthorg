@@ -6,7 +6,7 @@ forwards). Cross-project authority is checked by callers via the
 :class:`TrustService` seam, not by the tool itself.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -76,6 +76,7 @@ class WriteLivingDocTool(BaseTool):
         self._project_id = project_id
         self._author_agent_id = author_agent_id
 
+    @override
     async def execute(
         self,
         *,

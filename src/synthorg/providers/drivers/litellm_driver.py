@@ -10,7 +10,7 @@ from collections.abc import (
     Mapping,  # runtime annotation on driver method
 )
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 import litellm as _litellm
 from litellm.exceptions import (
@@ -210,6 +210,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             connection_name=self._config.connection_name,
         )
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -237,6 +238,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             raise self._map_exception(exc, model) from exc
         return self._map_response(response, model_config)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -270,6 +272,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -285,6 +288,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         model_config = self._resolve_model(model)
         return self._build_capabilities(model_config)
 
+    @override
     async def batch_get_capabilities(
         self,
         models: tuple[str, ...],

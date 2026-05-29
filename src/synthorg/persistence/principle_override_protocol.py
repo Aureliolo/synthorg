@@ -7,7 +7,7 @@ identifier from the YAML packs) and carries a ``restored_from`` field
 recording the rollback operation that produced it for forensic audit.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -48,6 +48,7 @@ class PrincipleOverrideRepository(
     access.
     """
 
+    @override
     async def save(self, entity: PrincipleOverride) -> None:
         """Insert or update the override at ``scope``.
 
@@ -59,6 +60,7 @@ class PrincipleOverrideRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> PrincipleOverride | None:
         """Retrieve the override at ``scope``.
 
@@ -70,6 +72,7 @@ class PrincipleOverrideRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Remove the override at ``scope``.
 
@@ -81,6 +84,7 @@ class PrincipleOverrideRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

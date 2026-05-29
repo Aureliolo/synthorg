@@ -1,6 +1,6 @@
 """Recall memory tools (read/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -49,6 +49,7 @@ class RecallMemoryReadTool(BaseTool):
         self._strategy = strategy
         self._agent_id = agent_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Execute a recall memory read via the self-editing strategy.
 
@@ -92,6 +93,7 @@ class RecallMemoryWriteTool(BaseTool):
         self._strategy = strategy
         self._agent_id = agent_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Execute a recall memory write via the self-editing strategy.
 

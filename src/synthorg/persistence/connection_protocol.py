@@ -5,7 +5,7 @@ authorization states, and webhook receipts.
 """
 
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,14 +46,17 @@ class ConnectionRepository(
     (ADR-0001). Entity is keyed by ``name`` field.
     """
 
+    @override
     async def save(self, entity: Connection) -> None:
         """Persist a connection (insert or upsert by name)."""
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Connection | None:
         """Retrieve a connection by name."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -66,6 +69,7 @@ class ConnectionRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ConnectionFilterSpec,
@@ -79,10 +83,12 @@ class ConnectionRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ConnectionFilterSpec) -> int:
         """Count connections matching the filter spec."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a connection by name.
 
@@ -131,14 +137,17 @@ class OAuthStateRepository(
     garbage collection).
     """
 
+    @override
     async def save(self, entity: OAuthState) -> None:
         """Persist an OAuth state."""
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> OAuthState | None:
         """Retrieve by state token."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -148,6 +157,7 @@ class OAuthStateRepository(
         """List all OAuth states with pagination."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a state token (consumed or expired)."""
         ...
@@ -212,10 +222,12 @@ class WebhookReceiptRepository(
     policy).
     """
 
+    @override
     async def save(self, entity: WebhookReceipt) -> None:
         """Persist a webhook receipt."""
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> WebhookReceipt | None:
         """Fetch a single receipt by ID, or ``None`` when absent.
 
@@ -224,6 +236,7 @@ class WebhookReceiptRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -233,6 +246,7 @@ class WebhookReceiptRepository(
         """List all webhook receipts with pagination."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a webhook receipt by ID.
 

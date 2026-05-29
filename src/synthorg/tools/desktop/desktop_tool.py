@@ -27,6 +27,7 @@ from typing import (
     LiteralString,
     assert_never,
     cast,
+    override,
 )
 from uuid import uuid4
 
@@ -174,6 +175,7 @@ class DesktopTool(BaseTool):
         self._owner_id = owner_id or f"desktop-tool-{uuid4()}"
         self._clock = clock or SystemClock()
 
+    @override
     async def execute(
         self,
         *,

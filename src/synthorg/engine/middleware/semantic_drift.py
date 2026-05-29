@@ -9,7 +9,7 @@ middleware chain explicitly.
 """
 
 import threading
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, override
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -87,6 +87,7 @@ class SemanticDriftDetector(BaseAgentMiddleware):
         super().__init__(name="semantic_drift_detector")
         self._config = config or SemanticDriftConfig()
 
+    @override
     async def wrap_model_call(
         self,
         ctx: AgentMiddlewareContext,

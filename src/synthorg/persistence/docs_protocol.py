@@ -7,7 +7,7 @@ on-boot replay job that re-indexes commits between
 ``last_indexed_commit_sha`` and ``head_commit_sha``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -68,6 +68,7 @@ class DocsRepository(
     the wiki sidebar surfaces the freshest docs without per-call sort.
     """
 
+    @override
     async def save(self, entity: DocMetadata) -> None:
         """Persist a doc metadata row via upsert.
 
@@ -79,6 +80,7 @@ class DocsRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: DocsRepositoryKey) -> DocMetadata | None:
         """Retrieve metadata by ``(project_id, slug)``.
 
@@ -93,6 +95,7 @@ class DocsRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -115,6 +118,7 @@ class DocsRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: DocsRepositoryKey) -> bool:
         """Delete a metadata row by ``(project_id, slug)``.
 
@@ -129,6 +133,7 @@ class DocsRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: DocsFilterSpec,
@@ -151,6 +156,7 @@ class DocsRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: DocsFilterSpec) -> int:
         """Count docs matching the filter spec.
 

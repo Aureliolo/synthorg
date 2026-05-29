@@ -6,7 +6,7 @@ tool binds its project scope per task; ``None`` ingests a global source.
 """
 
 import builtins
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -58,6 +58,7 @@ class IngestKnowledgeTool(BaseTool):
         self._service = service
         self._project_id = project_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Dispatch an ``ingest_knowledge`` invocation to the service.
 

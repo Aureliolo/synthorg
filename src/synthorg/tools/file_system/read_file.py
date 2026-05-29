@@ -5,7 +5,7 @@ file-size guard to prevent loading excessively large files into memory.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -210,6 +210,7 @@ class ReadFileTool(BaseFileSystemTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,

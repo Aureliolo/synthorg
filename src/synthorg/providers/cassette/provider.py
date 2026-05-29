@@ -23,7 +23,7 @@ from collections.abc import (
     Callable,
     Mapping,
 )
-from typing import Any
+from typing import Any, override
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -90,6 +90,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         """The shared cassette session backing this wrapper."""
         return self._session
 
+    @override
     def _provider_label(self) -> str:
         """Return the stable label used for keying and metrics."""
         return self._provider_name
@@ -125,6 +126,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
 
     # -- complete -----------------------------------------------------
 
+    @override
     async def complete(
         self,
         messages: list[ChatMessage],
@@ -214,6 +216,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
 
     # -- stream -------------------------------------------------------
 
+    @override
     async def stream(
         self,
         messages: list[ChatMessage],
@@ -364,6 +367,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
 
     # -- capabilities -------------------------------------------------
 
+    @override
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Record or replay a single-model capability lookup."""
         self._validate_model(model)
@@ -418,6 +422,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         )
         return capabilities
 
+    @override
     async def batch_get_capabilities(
         self,
         models: tuple[str, ...],
@@ -433,6 +438,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
 
     # -- unreachable hooks --------------------------------------------
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -445,6 +451,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         del messages, model, tools, config
         raise CassetteInternalError(CassetteInternalError.default_message)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -457,6 +464,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         del messages, model, tools, config
         raise CassetteInternalError(CassetteInternalError.default_message)
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,

@@ -13,7 +13,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, override
 
 import psycopg
 from psycopg.rows import dict_row
@@ -156,6 +156,7 @@ class PostgresEscalationRepository(EscalationQueueStore):
         """
         return self._pool
 
+    @override
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation row.
 
@@ -232,6 +233,7 @@ INSERT INTO conflict_escalations (
             )
             raise QueryError(msg) from exc
 
+    @override
     async def get(self, escalation_id: str) -> Escalation | None:
         """Fetch by ID.
 
@@ -265,6 +267,7 @@ INSERT INTO conflict_escalations (
             return None
         return _row_to_escalation(row)
 
+    @override
     async def list_items(
         self,
         *,
@@ -332,6 +335,7 @@ INSERT INTO conflict_escalations (
                 )
         return tuple(page_items), total
 
+    @override
     async def apply_decision(
         self,
         escalation_id: str,
@@ -351,6 +355,7 @@ INSERT INTO conflict_escalations (
             decision=decision,
         )
 
+    @override
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
         """Transition PENDING -> CANCELLED.
 
@@ -364,6 +369,7 @@ INSERT INTO conflict_escalations (
             decision=None,
         )
 
+    @override
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
         """Expire PENDING rows past their deadline.
 
@@ -414,6 +420,7 @@ INSERT INTO conflict_escalations (
         await self._publish_notifies(ids, "expired")
         return ids
 
+    @override
     async def close(self) -> None:
         """No-op: the pool is owned by the persistence backend."""
         return
@@ -497,6 +504,7 @@ INSERT INTO conflict_escalations (
         await self._publish_notify(escalation_id, new_status.value)
         return _row_to_escalation(updated_row)
 
+    @override
     @asynccontextmanager
     async def subscribe_notifications(
         self,

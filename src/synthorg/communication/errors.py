@@ -6,7 +6,7 @@ structured metadata, following the same pattern as ``ToolError``.
 
 import copy
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -52,6 +52,7 @@ class CommunicationError(DomainError):
         )
         super().__init__(message)
 
+    @override
     def __str__(self) -> str:
         """Format error with optional context metadata."""
         if self.context:

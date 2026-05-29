@@ -20,7 +20,7 @@ import asyncio
 import fnmatch
 import platform
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 import aiodocker
 import structlog.contextvars
@@ -208,6 +208,7 @@ class DockerSandbox(
         """Docker sandbox configuration."""
         return self._config
 
+    @override
     async def _track_container(
         self,
         container_id: str,
@@ -246,6 +247,7 @@ class DockerSandbox(
                 error=safe_error_description(exc),
             )
 
+    @override
     async def _untrack_container(self, container_id: str) -> None:
         """Untrack a container in-memory and (if configured) on disk."""
         self._tracked_containers.pop(container_id, None)
@@ -283,6 +285,7 @@ class DockerSandbox(
             resolver_type=type(resolver).__name__,
         )
 
+    @override
     async def _ensure_docker(self) -> aiodocker.Docker:
         """Lazily connect to the Docker daemon.
 
@@ -493,7 +496,8 @@ class DockerSandbox(
         merged = self._resolve_exec_env(env_overrides)
         return [f"{k}={v}" for k, v in merged.items()]
 
-    def _build_container_config(  # noqa: PLR0913
+    @override
+    def _build_container_config(
         self,
         *,
         command: str,
@@ -556,6 +560,7 @@ class DockerSandbox(
             "AttachStderr": True,
         }
 
+    @override
     def _validate_env(
         self,
         env_overrides: Mapping[str, str] | None,
@@ -638,6 +643,7 @@ class DockerSandbox(
             return self._runtime_resolver.resolve_runtime(category)
         return self._config.runtime
 
+    @override
     def _needs_sidecar(self) -> bool:
         """Return ``True`` if sidecar-based network enforcement is needed.
 
@@ -653,6 +659,7 @@ class DockerSandbox(
         )
         return has_rules and self._config.network != "none"
 
+    @override
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:
         """Parse a Docker memory limit string to bytes.

@@ -6,7 +6,7 @@ sinks (console, email, Slack, ntfy, etc.).
 """
 
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
@@ -100,6 +100,7 @@ class NotificationSenderTool(BaseCommunicationTool):
         )
         self._dispatcher = dispatcher
 
+    @override
     async def execute(
         self,
         *,

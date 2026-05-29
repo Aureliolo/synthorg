@@ -4,7 +4,7 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -225,6 +225,7 @@ class WriteFileTool(BaseFileSystemTool):
             },
         )
 
+    @override
     async def execute(
         self,
         *,

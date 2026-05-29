@@ -1,6 +1,6 @@
 """Repository protocol for workflow definition persistence."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,6 +41,7 @@ class WorkflowDefinitionRepository(
     audit semantics that the service layer depends on.
     """
 
+    @override
     async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a workflow definition (insert or update).
 
@@ -101,6 +102,7 @@ class WorkflowDefinitionRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> WorkflowDefinition | None:
         """Retrieve a workflow definition by its ID.
 
@@ -115,6 +117,7 @@ class WorkflowDefinitionRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -132,6 +135,7 @@ class WorkflowDefinitionRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: WorkflowDefinitionFilterSpec,
@@ -154,10 +158,12 @@ class WorkflowDefinitionRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
         """Count workflow definitions matching the filter spec."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a workflow definition by ID.
 

@@ -13,7 +13,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -65,6 +65,7 @@ class CostForecastRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def save(self, entity: Forecast) -> None:
         """Upsert a cost forecast row keyed by ``forecast_id``.
 
@@ -76,6 +77,7 @@ class CostForecastRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: UUID) -> Forecast | None:
         """Retrieve a forecast by ``forecast_id``, or ``None`` when absent.
 
@@ -84,6 +86,7 @@ class CostForecastRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: UUID) -> bool:
         """Delete a forecast by id. ``True`` iff a row existed.
 
@@ -106,6 +109,7 @@ class CostForecastRepository(
         """
         ...
 
+    @override
     async def transition_if(
         self,
         entity_id: UUID,
@@ -133,6 +137,7 @@ class CostForecastRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: CostForecastFilterSpec,
@@ -150,6 +155,7 @@ class CostForecastRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: CostForecastFilterSpec) -> int:
         """Count forecasts matching the filter spec.
 

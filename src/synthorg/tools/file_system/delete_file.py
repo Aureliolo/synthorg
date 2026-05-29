@@ -1,7 +1,7 @@
 """Delete file tool: removes a single file from the workspace."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -76,6 +76,7 @@ class DeleteFileTool(BaseFileSystemTool):
         """
         return True
 
+    @override
     async def execute(
         self,
         *,

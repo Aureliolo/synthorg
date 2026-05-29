@@ -3,7 +3,7 @@
 import hashlib
 import hmac as _hmac
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import jwt
 from litestar.enums import ScopeType
@@ -96,6 +96,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
     ``app.state["app_state"]``.
     """
 
+    @override
     async def authenticate_request(
         self,
         connection: ASGIConnection[Any, Any, Any, Any],

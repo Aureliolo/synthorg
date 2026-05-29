@@ -1,6 +1,6 @@
 """Project repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -82,6 +82,7 @@ class ProjectRepository(
         """
         ...
 
+    @override
     async def save(self, entity: Project) -> None:
         """Persist a project via upsert (insert or update).
 
@@ -98,6 +99,7 @@ class ProjectRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Project | None:
         """Retrieve a project by its ID.
 
@@ -112,6 +114,7 @@ class ProjectRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -132,6 +135,7 @@ class ProjectRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ProjectFilterSpec,
@@ -157,10 +161,12 @@ class ProjectRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ProjectFilterSpec) -> int:
         """Count projects matching the filter spec."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a project by ID.
 

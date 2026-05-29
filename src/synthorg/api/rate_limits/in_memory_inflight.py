@@ -17,7 +17,7 @@ acquire to bound memory growth.
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import Final
+from typing import Final, override
 
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
 from synthorg.core.critical_errors import reraise_critical
@@ -67,6 +67,7 @@ class InMemoryInflightStore(InflightStore):
         # :class:`InMemorySlidingWindowStore`.
         self._lock_refs: dict[str, int] = {}
 
+    @override
     def acquire(
         self,
         key: str,
@@ -226,6 +227,7 @@ class InMemoryInflightStore(InflightStore):
                     error=safe_error_description(ref_exc),
                 )
 
+    @override
     async def close(self) -> None:
         """Clear all counters and locks."""
         async with self._meta_lock:

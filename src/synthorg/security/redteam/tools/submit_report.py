@@ -13,7 +13,7 @@ prompt's brief block), so the same tool instance serves every red-team
 evaluation without per-evaluation construction overhead.
 """
 
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 from pydantic import BaseModel, ValidationError
 
@@ -89,6 +89,7 @@ class SubmitRedTeamReportTool(BaseTool):
         )
         self._report_repo = report_repo
 
+    @override
     async def execute(
         self,
         *,

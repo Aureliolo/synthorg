@@ -6,7 +6,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict, override
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
@@ -607,7 +607,8 @@ class AgentEngine(
                     provider=provider,
                 )
 
-    async def _execute(  # noqa: PLR0913
+    @override
+    async def _execute(
         self,
         *,
         identity: AgentIdentity,

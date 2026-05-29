@@ -3,7 +3,7 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -58,6 +58,7 @@ class CodeRunnerTool(BaseTool):
         )
         self._sandbox = sandbox
 
+    @override
     async def execute(
         self,
         *,

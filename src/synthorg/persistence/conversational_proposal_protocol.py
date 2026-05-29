@@ -12,7 +12,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -60,6 +60,7 @@ class ConversationalProposalRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def save(self, entity: ConversationalProposal) -> None:
         """Upsert a conversational proposal.
 
@@ -69,6 +70,7 @@ class ConversationalProposalRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ConversationalProposal | None:
         """Retrieve a proposal by id, or ``None`` when absent.
 
@@ -77,6 +79,7 @@ class ConversationalProposalRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a proposal by id. ``True`` iff a row existed.
 
@@ -99,6 +102,7 @@ class ConversationalProposalRepository(
         """
         ...
 
+    @override
     async def transition_if(
         self,
         entity_id: NotBlankStr,
@@ -121,6 +125,7 @@ class ConversationalProposalRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ConversationalProposalFilterSpec,
@@ -138,6 +143,7 @@ class ConversationalProposalRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ConversationalProposalFilterSpec) -> int:
         """Count proposals matching the filter spec.
 

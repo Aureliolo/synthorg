@@ -1,6 +1,6 @@
 """Risk override repository protocol."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
@@ -28,6 +28,7 @@ class RiskOverrideRepository(
     correlated columns that ``IdKeyedRepository`` cannot express.
     """
 
+    @override
     async def save(self, entity: RiskTierOverride) -> None:
         """Persist a new override (insert-only).
 
@@ -39,6 +40,7 @@ class RiskOverrideRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> RiskTierOverride | None:
         """Retrieve an override by ID.
 
@@ -50,6 +52,7 @@ class RiskOverrideRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -80,6 +83,7 @@ class RiskOverrideRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an override by ID.
 

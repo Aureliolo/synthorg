@@ -13,7 +13,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
@@ -122,6 +122,7 @@ class OtlpHandler(logging.Handler):
         if _start_flusher:
             self._flusher.start()
 
+    @override
     def emit(self, record: logging.LogRecord) -> None:
         """Queue a record for batched OTLP export.
 
@@ -363,6 +364,7 @@ class OtlpHandler(logging.Handler):
                 dropped_records=dropped,
             )
 
+    @override
     def close(self) -> None:
         """Signal shutdown, flush remaining records, stop thread."""
         self._shutdown.set()

@@ -8,7 +8,7 @@ validation shared by all tools.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -85,6 +85,7 @@ class GitStatusTool(_BaseGitTool):
             action_type=ActionType.VCS_READ,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -168,6 +169,7 @@ class GitLogTool(_BaseGitTool):
                 filter_args.append(f"{flag}={value}")
         return filter_args
 
+    @override
     async def execute(
         self,
         *,
@@ -251,6 +253,7 @@ class GitDiffTool(_BaseGitTool):
             sandbox=sandbox,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -367,6 +370,7 @@ class GitBranchTool(_BaseGitTool):
             args.append(start_point)
         return await self._run_git(args)
 
+    @override
     async def execute(
         self,
         *,
@@ -451,6 +455,7 @@ class GitCommitTool(_BaseGitTool):
             sandbox=sandbox,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -596,6 +601,7 @@ class GitCloneTool(_BaseGitTool):
             )
         return args
 
+    @override
     async def execute(
         self,
         *,

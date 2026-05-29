@@ -12,6 +12,7 @@ import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import override
 
 import aiosqlite
 from aiosqlite import Row
@@ -128,6 +129,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         self._db.row_factory = aiosqlite.Row
         self._write_context = write_context
 
+    @override
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation row.
 
@@ -177,6 +179,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 await self._db.rollback()
                 raise QueryError(msg) from exc
 
+    @override
     async def get(self, escalation_id: str) -> Escalation | None:
         """Fetch by ID.
 
@@ -203,6 +206,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             return None
         return _row_to_escalation(row)
 
+    @override
     async def list_items(
         self,
         *,
@@ -263,6 +267,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 )
         return tuple(page_items), total
 
+    @override
     async def apply_decision(
         self,
         escalation_id: str,
@@ -286,6 +291,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             allowed_from={EscalationStatus.PENDING},
         )
 
+    @override
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
         """Transition PENDING -> CANCELLED.
 
@@ -302,6 +308,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             allowed_from={EscalationStatus.PENDING},
         )
 
+    @override
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
         """Expire PENDING rows past their deadline.
 
@@ -351,14 +358,16 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             )
         return expired_ids
 
+    @override
     async def close(self) -> None:
         """No-op: the connection is owned by the persistence backend."""
         return
 
+    @override
     @asynccontextmanager
     async def subscribe_notifications(
         self,
-        channel: str,  # noqa: ARG002
+        channel: str,
     ) -> AsyncIterator[AsyncIterator[str]]:
         # The `@asynccontextmanager` decorator turns this generator into a
         # callable returning an `AbstractAsyncContextManager[AsyncIterator[str]]`

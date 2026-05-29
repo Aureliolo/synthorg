@@ -7,7 +7,7 @@ flag -- retry decisions are made at higher layers.
 
 import copy
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -57,6 +57,7 @@ class ToolError(DomainError):
         )
         super().__init__(message)
 
+    @override
     def __str__(self) -> str:
         """Format error with optional context metadata.
 

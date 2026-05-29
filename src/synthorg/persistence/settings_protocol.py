@@ -1,7 +1,7 @@
 """Settings repository protocol."""
 
 from collections.abc import Mapping, Sequence
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,6 +45,7 @@ class SettingsRepository(
     namespace-scoped operations that the generic surface cannot express.
     """
 
+    @override
     async def save(self, entity: SettingRow) -> None:
         """Persist a setting (upsert by composite key).
 
@@ -56,6 +57,7 @@ class SettingsRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: SettingRowKey) -> SettingRow | None:
         """Retrieve a setting by composite key.
 
@@ -70,6 +72,7 @@ class SettingsRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -90,6 +93,7 @@ class SettingsRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: SettingRowKey) -> bool:
         """Delete a setting by composite key.
 

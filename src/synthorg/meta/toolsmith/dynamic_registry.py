@@ -20,7 +20,7 @@ import keyword
 import re
 from collections.abc import Callable, Iterator, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -334,6 +334,7 @@ class LayeredHandlerMap(Mapping[str, ToolHandler]):
         self._static = static_handlers
         self._dynamic = dynamic_registry
 
+    @override
     def __getitem__(self, key: str) -> ToolHandler:
         """Resolve a handler, static layer first then dynamic.
 
@@ -350,6 +351,7 @@ class LayeredHandlerMap(Mapping[str, ToolHandler]):
             raise KeyError(key)
         return handler
 
+    @override
     def __iter__(self) -> Iterator[str]:
         """Iterate static handler keys then dynamic tool names."""
         seen = set(self._static)
@@ -358,6 +360,7 @@ class LayeredHandlerMap(Mapping[str, ToolHandler]):
             if name not in seen:
                 yield name
 
+    @override
     def __len__(self) -> int:
         """Return the count of distinct static + dynamic keys.
 

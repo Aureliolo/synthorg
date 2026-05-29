@@ -1,6 +1,6 @@
 """Codebase structure-map repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.codebase_structure_map import CodebaseStructureMap
 from synthorg.core.types import NotBlankStr
@@ -24,6 +24,7 @@ class CodebaseStructureMapRepository(
     re-scans in place.
     """
 
+    @override
     async def save(self, entity: CodebaseStructureMap) -> None:
         """Persist a structure map via upsert (insert or update).
 
@@ -36,6 +37,7 @@ class CodebaseStructureMapRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> CodebaseStructureMap | None:
         """Retrieve a structure map by owning project id.
 
@@ -50,6 +52,7 @@ class CodebaseStructureMapRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -71,6 +74,7 @@ class CodebaseStructureMapRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a structure map by owning project id.
 
