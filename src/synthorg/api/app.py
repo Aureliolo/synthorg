@@ -11,13 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
-from litestar.config.compression import CompressionConfig
-from litestar.config.cors import CORSConfig
-from litestar.datastructures import State
-from litestar.openapi import OpenAPIConfig
-from litestar.openapi.plugins import ScalarRenderPlugin
 
-from synthorg import __version__
 from synthorg.api.app_builders import (
     _bootstrap_app_logging,
     _build_configured_autonomy_change_strategy,
@@ -47,7 +41,6 @@ from synthorg.api.construction_wiring import (
 )
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
-from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.feature_composition import (
     collect_route_handlers,
     compose_feature_slices,
@@ -56,8 +49,6 @@ from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers.boot_resolvers import (
     build_default_approval_timeout_scheduler,
-    resolve_api_int,
-    resolve_api_str_tuple,
     resolve_budget_int,
     resolve_rate_limiter_enabled,
 )
@@ -71,15 +62,8 @@ from synthorg.api.lifecycle_helpers.startup_steps import (
     wire_brownfield_intake,
 )
 from synthorg.api.lifecycle_helpers.toolsmith_wiring import wire_toolsmith
-from synthorg.api.middleware import security_headers_hook
+from synthorg.api.litestar_assembly import build_litestar
 from synthorg.api.middleware_factory import _build_middleware
-from synthorg.api.rate_limits import (
-    build_inflight_store,
-    build_sliding_window_store,
-)
-from synthorg.api.rate_limits._subject import parse_trusted_networks
-from synthorg.api.rate_limits.inflight_protocol import InflightStore
-from synthorg.api.rate_limits.protocol import SlidingWindowStore
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.backup.factory import build_backup_service
@@ -970,99 +954,14 @@ def create_app(  # noqa: PLR0913
     if _skip_lifecycle_shutdown:
         shutdown = []
 
-    # Per-operation rate limiter.  Layered on top of the global
-    # two-tier limiter; read from app state by ``per_op_rate_limit``
-    # guards.  The store is built unconditionally so that operators who
-    # toggle ``api.per_op_rate_limit_enabled`` at runtime (the setting
-    # is marked runtime-editable) do not land on a wired-but-uncapped
-    # request path; the config's ``enabled`` flag short-circuits the
-    # guard when disabled.  Store construction is cheap (empty dicts +
-    # per-key locks materialise lazily on first acquire).
-    per_op_rate_limit_store: SlidingWindowStore = build_sliding_window_store(
-        api_config.per_op_rate_limit,
-    )
-    app_state.set_per_op_rate_limit_config(api_config.per_op_rate_limit)
-    # Honour ``_skip_lifecycle_shutdown`` so tests that share an
-    # app across multiple lifespans do not tear down the store
-    # (and its background GC) on the first teardown.
-    if not _skip_lifecycle_shutdown:
-        shutdown = [*shutdown, per_op_rate_limit_store.close]
-
-    # Per-operation inflight-concurrency limiter.
-    # Layered on top of the sliding-window per-op limiter; caps
-    # simultaneous long-running requests per (operation, subject).
-    # Enforced by ``PerOpConcurrencyMiddleware`` registered in the
-    # middleware stack.  Built unconditionally (same rationale as the
-    # sliding-window store): runtime toggling of
-    # ``api.per_op_concurrency_enabled`` must not encounter a missing
-    # store.  The middleware short-circuits when
-    # ``config.enabled`` is False without ever touching the store.
-    per_op_inflight_store: InflightStore = build_inflight_store(
-        api_config.per_op_concurrency,
-    )
-    app_state.set_per_op_concurrency_config(api_config.per_op_concurrency)
-    if not _skip_lifecycle_shutdown:
-        shutdown = [*shutdown, per_op_inflight_store.close]
-
-    _trusted_proxies = resolve_api_str_tuple("trusted_proxies")
-
-    return Litestar(
-        route_handlers=[api_router, *root_handlers],
-        # Disable Litestar's built-in logging config to preserve the
-        # structlog multi-file-sink pipeline set up by
-        # _bootstrap_app_logging() above.  Without this, Litestar calls
-        # dictConfig() at startup which triggers _clearExistingHandlers
-        # and replaces structlog's file sinks with a stdlib
-        # queue_listener, causing all runtime logs to go only to Docker
-        # stdout.
-        logging_config=None,
-        state=State(
-            {
-                "app_state": app_state,
-                "per_op_rate_limit_store": per_op_rate_limit_store,
-                "per_op_rate_limit_config": api_config.per_op_rate_limit,
-                # Inflight-concurrency state used by
-                # ``PerOpConcurrencyMiddleware``; mirrors the
-                # sliding-window store's wiring.
-                "per_op_inflight_store": per_op_inflight_store,
-                "per_op_inflight_config": api_config.per_op_concurrency,
-                # Mirrors the global limiter's trusted-proxy set so the
-                # per-op guard extracts the same "real" client IP behind
-                # reverse proxies instead of bucketing all traffic by
-                # the proxy's IP.  The raw frozenset is kept for
-                # diagnostic reads; the parsed tuple beside it is what
-                # the guards consult per-request.
-                "per_op_trusted_proxies": frozenset(_trusted_proxies),
-                "per_op_trusted_networks": parse_trusted_networks(
-                    frozenset(_trusted_proxies),
-                ),
-            },
-        ),
-        cors_config=CORSConfig(
-            allow_origins=list(resolve_api_str_tuple("cors_allowed_origins")),
-            allow_methods=list(api_config.cors.allow_methods),  # type: ignore[arg-type]
-            allow_headers=list(api_config.cors.allow_headers),
-            allow_credentials=api_config.cors.allow_credentials,
-        ),
-        compression_config=CompressionConfig(
-            backend="brotli",
-            minimum_size=resolve_api_int("compression_minimum_size_bytes"),
-        ),
-        # Must be >= artifact API max payload (50 MB) so endpoint-level
-        # validation can enforce exact storage limits.
-        request_max_body_size=resolve_api_int("request_max_body_size_bytes"),
-        before_send=[security_headers_hook],
+    return build_litestar(
+        app_state,
+        api_config=api_config,
+        api_router=api_router,
+        root_handlers=root_handlers,
         middleware=middleware,
         plugins=plugins,
-        exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
-        openapi_config=OpenAPIConfig(
-            title="SynthOrg API",
-            version=__version__,
-            path="/docs",
-            render_plugins=[
-                ScalarRenderPlugin(path="/api"),
-            ],
-        ),
-        on_startup=startup,
-        on_shutdown=shutdown,
+        startup=startup,
+        shutdown=shutdown,
+        skip_lifecycle_shutdown=_skip_lifecycle_shutdown,
     )

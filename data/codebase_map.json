@@ -177,7 +177,7 @@
     },
     {
       "kind": "code",
-      "loc": 764,
+      "loc": 704,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -1458,6 +1458,13 @@
     },
     {
       "kind": "code",
+      "loc": 118,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/litestar_assembly.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
       "loc": 343,
       "loc_cap": 500,
       "module": "src/synthorg/api/middleware.py",
@@ -1766,7 +1773,7 @@
     },
     {
       "kind": "code",
-      "loc": 11,
+      "loc": 9,
       "loc_cap": 500,
       "module": "src/synthorg/approval/_construction.py",
       "owning_feature": "approval"
