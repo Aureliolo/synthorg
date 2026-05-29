@@ -130,6 +130,24 @@ function SpendBurnStats({
   )
 }
 
+function BudgetReferenceLine({ budgetTotal }: { budgetTotal: number }) {
+  if (budgetTotal <= 0) return null
+  return (
+    <ReferenceLine
+      y={budgetTotal}
+      stroke="var(--so-danger)"
+      strokeDasharray="var(--so-dash-medium)"
+      strokeWidth="var(--so-stroke-hairline)"
+      label={{
+        value: 'Budget',
+        position: 'right',
+        fontSize: 'var(--so-text-micro)',
+        fill: 'var(--so-danger)',
+      }}
+    />
+  )
+}
+
 function AlertReferenceLines({
   alerts,
   budgetTotal,
@@ -227,21 +245,7 @@ function SpendBurnBody({
           />
           <Tooltip content={<ChartTooltipContent currency={currency} />} />
 
-          {budgetTotal > 0 && (
-            <ReferenceLine
-              y={budgetTotal}
-              stroke="var(--so-danger)"
-              strokeDasharray="var(--so-dash-medium)"
-              strokeWidth="var(--so-stroke-hairline)"
-              label={{
-                value: 'Budget',
-                position: 'right',
-                fontSize: 'var(--so-text-micro)',
-                fill: 'var(--so-danger)',
-              }}
-            />
-          )}
-
+          <BudgetReferenceLine budgetTotal={budgetTotal} />
           <AlertReferenceLines alerts={alerts} budgetTotal={budgetTotal} />
 
           <ReferenceLine
