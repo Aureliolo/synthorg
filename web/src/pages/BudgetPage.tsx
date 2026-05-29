@@ -46,34 +46,12 @@ import { useBudgetForecastStore } from '@/stores/budgetForecast'
 
 const log = createLogger('budget-page')
 
-export default function BudgetPage() {
-  const {
-    overview,
-    budgetConfig,
-    forecast,
-    costRecords,
-    trends,
-    activities,
-    agentNameMap,
-    agentDeptMap,
-    aggregationPeriod,
-    setAggregationPeriod,
-    loading,
-    error,
-    isRefetching,
-    wsConnected,
-    wsSetupError,
-  } = useBudgetData()
+type BudgetData = ReturnType<typeof useBudgetData>
+type CurrentForecast = ReturnType<typeof useBudgetForecastStore.getState>['current']
 
-  const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>('agent')
+function useParetoFrontier() {
   const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
   const [paretoLoading, setParetoLoading] = useState<boolean>(true)
-  const [forecastDialogOpen, setForecastDialogOpen] = useState(false)
-  const currentForecast = useBudgetForecastStore((s) => s.current)
-  const forecastMutating = useBudgetForecastStore((s) => s.mutating)
-  const approveForecast = useBudgetForecastStore((s) => s.approveForecast)
-  const rejectForecast = useBudgetForecastStore((s) => s.rejectForecast)
-  const raiseCeiling = useBudgetForecastStore((s) => s.raiseCeiling)
 
   useEffect(() => {
     let cancelled = false
@@ -93,60 +71,69 @@ export default function BudgetPage() {
     }
   }, [])
 
-  const currency = overview?.currency ?? budgetConfig?.currency
+  return { paretoFrontier, paretoLoading }
+}
+
+interface BudgetDerived {
+  currency: string | undefined
+  thresholdZone: ReturnType<typeof getThresholdZone>
+  metricCards: ReturnType<typeof computeBudgetMetricCards>
+  agentSpendingRows: ReturnType<typeof computeAgentSpending>
+  costBreakdown: ReturnType<typeof computeCostBreakdown>
+  categoryRatio: ReturnType<typeof computeCategoryBreakdown>
+  cfoEvents: ReturnType<typeof filterCfoEvents>
+}
+
+function useBudgetDerived(data: BudgetData, breakdownDimension: BreakdownDimension): BudgetDerived {
+  const { overview, budgetConfig, forecast, costRecords, activities, agentNameMap, agentDeptMap } =
+    data
 
   const thresholdZone = useMemo(
     () =>
       overview && budgetConfig
         ? getThresholdZone(overview.budget_used_percent, budgetConfig.alerts)
-        : 'normal' as const,
+        : ('normal' as const),
     [overview, budgetConfig],
   )
-
   const metricCards = useMemo(
     () => (overview ? computeBudgetMetricCards(overview, budgetConfig, forecast) : []),
     [overview, budgetConfig, forecast],
   )
-
   const agentSpendingRows = useMemo(
     () => computeAgentSpending(costRecords, budgetConfig?.total_monthly ?? 0, agentNameMap),
     [costRecords, budgetConfig, agentNameMap],
   )
-
   const costBreakdown = useMemo(
     () => computeCostBreakdown(costRecords, breakdownDimension, agentNameMap, agentDeptMap),
     [costRecords, breakdownDimension, agentNameMap, agentDeptMap],
   )
+  const categoryRatio = useMemo(() => computeCategoryBreakdown(costRecords), [costRecords])
+  const cfoEvents = useMemo(() => filterCfoEvents(activities), [activities])
 
-  const categoryRatio = useMemo(
-    () => computeCategoryBreakdown(costRecords),
-    [costRecords],
-  )
-
-  const cfoEvents = useMemo(
-    () => filterCfoEvents(activities),
-    [activities],
-  )
-
-  if (loading && !overview) {
-    return <BudgetSkeleton />
+  return {
+    currency: overview?.currency ?? budgetConfig?.currency,
+    thresholdZone,
+    metricCards,
+    agentSpendingRows,
+    costBreakdown,
+    categoryRatio,
+    cfoEvents,
   }
+}
 
+function BudgetBanners({
+  data,
+  thresholdZone,
+}: {
+  data: BudgetData
+  thresholdZone: ReturnType<typeof getThresholdZone>
+}) {
+  const { error, wsConnected, loading, wsSetupError, budgetConfig, overview } = data
   return (
-    <div className="space-y-section-gap">
-      <ListHeader
-        title="Budget"
-        description="Live spend, burn-rate forecast, and cost breakdowns."
-        refreshing={isRefetching}
-        primaryAction={
-          <PeriodSelector value={aggregationPeriod} onChange={setAggregationPeriod} />
-        }
-      />
-
+    <>
       {error && (
         <ErrorBanner severity="error" title="Could not load budget" description={error} />
       )}
-
       {!wsConnected && !loading && (
         <ErrorBanner
           variant="offline"
@@ -154,56 +141,113 @@ export default function BudgetPage() {
           description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
         />
       )}
-
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />
+    </>
+  )
+}
 
-      {currentForecast !== null && currentForecast.halt_context !== null ? (
-        <HardCeilingHaltedBanner
-          accumulatedCost={currentForecast.halt_context.accumulated_cost}
-          ceilingAmount={currentForecast.halt_context.ceiling_amount}
-          currency={currentForecast.halt_context.currency}
-          forecastId={currentForecast.forecast_id}
-          mutating={forecastMutating}
-          onRaiseCeiling={(newCeiling) => {
-            if (currentForecast.halt_context !== null) {
-              void raiseCeiling(currentForecast.forecast_id, {
-                new_ceiling: newCeiling,
-                accumulated_cost: currentForecast.halt_context.accumulated_cost,
-              })
-            }
-          }}
-        />
-      ) : null}
+interface ForecastActions {
+  forecastMutating: boolean
+  approveForecast: ReturnType<typeof useBudgetForecastStore.getState>['approveForecast']
+  rejectForecast: ReturnType<typeof useBudgetForecastStore.getState>['rejectForecast']
+  raiseCeiling: ReturnType<typeof useBudgetForecastStore.getState>['raiseCeiling']
+}
 
-      {currentForecast !== null
-      && currentForecast.halt_context === null
-      && currentForecast.decision === 'pending' ? (
-        <CostForecastApprovalCard
-          forecast={currentForecast}
-          mutating={forecastMutating}
-          onApprove={(ceiling) => {
-            void approveForecast(currentForecast.forecast_id, {
-              decided_by: 'operator',
-              ceiling_amount: ceiling,
-            })
-          }}
-          onReject={() => {
-            void rejectForecast(currentForecast.forecast_id, {
-              decided_by: 'operator',
-            })
-          }}
-          onOpenDetail={() => setForecastDialogOpen(true)}
-        />
-      ) : null}
+function useForecastActions(): ForecastActions {
+  return {
+    forecastMutating: useBudgetForecastStore((s) => s.mutating),
+    approveForecast: useBudgetForecastStore((s) => s.approveForecast),
+    rejectForecast: useBudgetForecastStore((s) => s.rejectForecast),
+    raiseCeiling: useBudgetForecastStore((s) => s.raiseCeiling),
+  }
+}
 
-      <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1279px]:grid-cols-3 max-[1023px]:grid-cols-2">
-        {metricCards.map((card) => (
-          <StaggerItem key={card.label}>
-            <MetricCard {...card} />
-          </StaggerItem>
-        ))}
-      </StaggerGroup>
+function ForecastBanners({
+  currentForecast,
+  actions,
+  onOpenDetail,
+}: {
+  currentForecast: CurrentForecast
+  actions: ForecastActions
+  onOpenDetail: () => void
+}) {
+  if (currentForecast === null) return null
+  const { forecastMutating, approveForecast, rejectForecast, raiseCeiling } = actions
 
+  if (currentForecast.halt_context !== null) {
+    const halt = currentForecast.halt_context
+    return (
+      <HardCeilingHaltedBanner
+        accumulatedCost={halt.accumulated_cost}
+        ceilingAmount={halt.ceiling_amount}
+        currency={halt.currency}
+        forecastId={currentForecast.forecast_id}
+        mutating={forecastMutating}
+        onRaiseCeiling={(newCeiling) => {
+          void raiseCeiling(currentForecast.forecast_id, {
+            new_ceiling: newCeiling,
+            accumulated_cost: halt.accumulated_cost,
+          })
+        }}
+      />
+    )
+  }
+
+  if (currentForecast.decision === 'pending') {
+    return (
+      <CostForecastApprovalCard
+        forecast={currentForecast}
+        mutating={forecastMutating}
+        onApprove={(ceiling) => {
+          void approveForecast(currentForecast.forecast_id, {
+            decided_by: 'operator',
+            ceiling_amount: ceiling,
+          })
+        }}
+        onReject={() => {
+          void rejectForecast(currentForecast.forecast_id, { decided_by: 'operator' })
+        }}
+        onOpenDetail={onOpenDetail}
+      />
+    )
+  }
+
+  return null
+}
+
+function BudgetMetricCards({ metricCards }: { metricCards: BudgetDerived['metricCards'] }) {
+  return (
+    <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1279px]:grid-cols-3 max-[1023px]:grid-cols-2">
+      {metricCards.map((card) => (
+        <StaggerItem key={card.label}>
+          <MetricCard {...card} />
+        </StaggerItem>
+      ))}
+    </StaggerGroup>
+  )
+}
+
+interface BudgetChartsProps {
+  data: BudgetData
+  derived: BudgetDerived
+  breakdownDimension: BreakdownDimension
+  onDimensionChange: (dimension: BreakdownDimension) => void
+  paretoFrontier: ParetoFrontier | null
+  paretoLoading: boolean
+}
+
+function BudgetCharts({
+  data,
+  derived,
+  breakdownDimension,
+  onDimensionChange,
+  paretoFrontier,
+  paretoLoading,
+}: BudgetChartsProps) {
+  const { overview, budgetConfig, forecast, trends, agentDeptMap } = data
+  const { currency, costBreakdown, categoryRatio, agentSpendingRows, cfoEvents } = derived
+  return (
+    <>
       <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
         <ErrorBoundary level="section">
           <BudgetGauge
@@ -235,7 +279,7 @@ export default function BudgetPage() {
             <CostBreakdownChart
               breakdown={costBreakdown}
               dimension={breakdownDimension}
-              onDimensionChange={setBreakdownDimension}
+              onDimensionChange={onDimensionChange}
               deptDisabled={agentDeptMap.size === 0}
               currency={currency}
             />
@@ -257,40 +301,113 @@ export default function BudgetPage() {
       <ErrorBoundary level="section">
         <CfoActivityFeed events={cfoEvents} />
       </ErrorBoundary>
+    </>
+  )
+}
 
-      <BudgetForecastDialog
-        open={forecastDialogOpen && currentForecast !== null}
-        onOpenChange={setForecastDialogOpen}
-        forecast={currentForecast}
-        mutating={forecastMutating}
-        onApprove={(ceiling) => {
-          if (currentForecast !== null) {
-            void approveForecast(currentForecast.forecast_id, {
-              decided_by: 'operator',
-              ceiling_amount: ceiling,
-            })
-            setForecastDialogOpen(false)
-          }
-        }}
-        onReject={() => {
-          if (currentForecast !== null) {
-            void rejectForecast(currentForecast.forecast_id, {
-              decided_by: 'operator',
-            })
-            setForecastDialogOpen(false)
-          }
-        }}
+function BudgetForecastDetailDialog({
+  open,
+  currentForecast,
+  actions,
+  onOpenChange,
+}: {
+  open: boolean
+  currentForecast: CurrentForecast
+  actions: ForecastActions
+  onOpenChange: (open: boolean) => void
+}) {
+  const { forecastMutating, approveForecast, rejectForecast } = actions
+  return (
+    <BudgetForecastDialog
+      open={open && currentForecast !== null}
+      onOpenChange={onOpenChange}
+      forecast={currentForecast}
+      mutating={forecastMutating}
+      onApprove={(ceiling) => {
+        if (currentForecast !== null) {
+          void approveForecast(currentForecast.forecast_id, {
+            decided_by: 'operator',
+            ceiling_amount: ceiling,
+          })
+          onOpenChange(false)
+        }
+      }}
+      onReject={() => {
+        if (currentForecast !== null) {
+          void rejectForecast(currentForecast.forecast_id, { decided_by: 'operator' })
+          onOpenChange(false)
+        }
+      }}
+    />
+  )
+}
+
+function BudgetVersionHistory() {
+  return (
+    <ErrorBoundary level="section">
+      <VersionHistorySection
+        client={budgetConfigVersionsClient}
+        title="Budget config history"
+        description="Read-only audit trail of budget configuration snapshots. Select two versions to compare."
+        emptyTitle="No budget config versions yet"
+        emptyDescription="Versions appear here after the first edit to the budget configuration."
+      />
+    </ErrorBoundary>
+  )
+}
+
+export default function BudgetPage() {
+  const data = useBudgetData()
+  const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>('agent')
+  const [forecastDialogOpen, setForecastDialogOpen] = useState(false)
+  const { paretoFrontier, paretoLoading } = useParetoFrontier()
+  const derived = useBudgetDerived(data, breakdownDimension)
+
+  const currentForecast = useBudgetForecastStore((s) => s.current)
+  const forecastActions = useForecastActions()
+
+  if (data.loading && !data.overview) {
+    return <BudgetSkeleton />
+  }
+
+  return (
+    <div className="space-y-section-gap">
+      <ListHeader
+        title="Budget"
+        description="Live spend, burn-rate forecast, and cost breakdowns."
+        refreshing={data.isRefetching}
+        primaryAction={
+          <PeriodSelector value={data.aggregationPeriod} onChange={data.setAggregationPeriod} />
+        }
       />
 
-      <ErrorBoundary level="section">
-        <VersionHistorySection
-          client={budgetConfigVersionsClient}
-          title="Budget config history"
-          description="Read-only audit trail of budget configuration snapshots. Select two versions to compare."
-          emptyTitle="No budget config versions yet"
-          emptyDescription="Versions appear here after the first edit to the budget configuration."
-        />
-      </ErrorBoundary>
+      <BudgetBanners data={data} thresholdZone={derived.thresholdZone} />
+
+      <ForecastBanners
+        currentForecast={currentForecast}
+        actions={forecastActions}
+        onOpenDetail={() => setForecastDialogOpen(true)}
+      />
+
+      <BudgetMetricCards metricCards={derived.metricCards} />
+
+      <BudgetCharts
+        data={data}
+        derived={derived}
+        breakdownDimension={breakdownDimension}
+        onDimensionChange={setBreakdownDimension}
+        paretoFrontier={paretoFrontier}
+        paretoLoading={paretoLoading}
+      />
+
+      <BudgetForecastDetailDialog
+        open={forecastDialogOpen}
+        currentForecast={currentForecast}
+        actions={forecastActions}
+        onOpenChange={setForecastDialogOpen}
+      />
+
+      <BudgetVersionHistory />
     </div>
   )
 }

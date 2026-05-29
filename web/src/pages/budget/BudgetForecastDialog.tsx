@@ -22,24 +22,21 @@ export interface BudgetForecastDialogProps {
   onReject: () => void
 }
 
-export function BudgetForecastDialog({
-  open,
-  onOpenChange,
-  forecast,
-  loading = false,
-  mutating = false,
-  onApprove,
-  onReject,
-}: BudgetForecastDialogProps) {
-  const suggested = forecast ? Math.round(forecast.upper_bound * 1.5 * 100) / 100 : 0
+interface ForecastBodyProps {
+  forecast: Forecast
+  mutating: boolean
+  onApprove: (ceilingAmount: number | null) => void
+  onReject: () => void
+}
+
+function ForecastBody({ forecast, mutating, onApprove, onReject }: ForecastBodyProps) {
+  const suggested = Math.round(forecast.upper_bound * 1.5 * 100) / 100
   const [ceilingInput, setCeilingInput] = useState<string>(String(suggested))
   // Reset the suggested ceiling when a different forecast is shown in the
   // same mounted dialog (React's set-state-during-render pattern); without
   // this the input keeps the first forecast's default.
-  const [trackedForecastId, setTrackedForecastId] = useState<string | null>(
-    forecast?.forecast_id ?? null,
-  )
-  if (forecast && forecast.forecast_id !== trackedForecastId) {
+  const [trackedForecastId, setTrackedForecastId] = useState<string>(forecast.forecast_id)
+  if (forecast.forecast_id !== trackedForecastId) {
     setTrackedForecastId(forecast.forecast_id)
     setCeilingInput(String(suggested))
   }
@@ -49,6 +46,58 @@ export function BudgetForecastDialog({
     onApprove(Number.isFinite(parsed) && parsed > 0 ? parsed : null)
   }
 
+  return (
+    <>
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-xs uppercase tracking-wide text-text-muted">Estimated cost</span>
+        <span className="font-mono text-2xl font-semibold text-foreground">
+          {formatCurrency(forecast.estimated_cost, forecast.currency)}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          range {formatCurrency(forecast.lower_bound, forecast.currency)}
+          {' – '}
+          {formatCurrency(forecast.upper_bound, forecast.currency)}
+        </span>
+      </div>
+
+      <label htmlFor="ceiling-input" className="flex flex-col gap-1 text-sm">
+        <span className="font-medium text-foreground">Hard ceiling</span>
+        <span className="text-xs text-muted-foreground">
+          Halts the org cleanly if cost crosses this line. Default is
+          1.5x the forecast upper bound; tighten or widen as needed.
+        </span>
+        <input
+          id="ceiling-input"
+          type="number"
+          min={0}
+          step={0.01}
+          value={ceilingInput}
+          onChange={(event) => setCeilingInput(event.target.value)}
+          className="mt-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
+        />
+      </label>
+
+      <div className="flex justify-end gap-2 border-t border-border pt-card-tight">
+        <Button variant="ghost" onClick={onReject} disabled={mutating}>
+          Reject
+        </Button>
+        <Button onClick={handleApprove} disabled={mutating}>
+          Approve
+        </Button>
+      </div>
+    </>
+  )
+}
+
+export function BudgetForecastDialog({
+  open,
+  onOpenChange,
+  forecast,
+  loading = false,
+  mutating = false,
+  onApprove,
+  onReject,
+}: BudgetForecastDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -66,56 +115,12 @@ export function BudgetForecastDialog({
           {loading || !forecast ? (
             <div className="h-24 animate-pulse rounded-lg border border-border bg-card" />
           ) : (
-            <>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-xs uppercase tracking-wide text-text-muted">
-                  Estimated cost
-                </span>
-                <span className="font-mono text-2xl font-semibold text-foreground">
-                  {formatCurrency(forecast.estimated_cost, forecast.currency)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  range {formatCurrency(forecast.lower_bound, forecast.currency)}
-                  {' – '}
-                  {formatCurrency(forecast.upper_bound, forecast.currency)}
-                </span>
-              </div>
-
-              <label
-                htmlFor="ceiling-input"
-                className="flex flex-col gap-1 text-sm"
-              >
-                <span className="font-medium text-foreground">
-                  Hard ceiling
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Halts the org cleanly if cost crosses this line. Default is
-                  1.5x the forecast upper bound; tighten or widen as needed.
-                </span>
-                <input
-                  id="ceiling-input"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={ceilingInput}
-                  onChange={(event) => setCeilingInput(event.target.value)}
-                  className="mt-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm text-foreground"
-                />
-              </label>
-
-              <div className="flex justify-end gap-2 border-t border-border pt-card-tight">
-                <Button
-                  variant="ghost"
-                  onClick={onReject}
-                  disabled={mutating}
-                >
-                  Reject
-                </Button>
-                <Button onClick={handleApprove} disabled={mutating}>
-                  Approve
-                </Button>
-              </div>
-            </>
+            <ForecastBody
+              forecast={forecast}
+              mutating={mutating}
+              onApprove={onApprove}
+              onReject={onReject}
+            />
           )}
         </div>
       </DialogContent>
