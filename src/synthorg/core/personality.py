@@ -180,8 +180,9 @@ def _conflict_score(a: ConflictApproach, b: ConflictApproach) -> float:
 
     Returns:
         A score in ``[0.2, 1.0]``: ``1.0`` when both approaches are
-        constructive, ``0.2`` for a known destructive pairing, and an
-        intermediate value for mixed combinations.
+        constructive, ``0.2`` for a known destructive pairing, ``0.6``
+        when exactly one approach is constructive, and ``0.4`` for other
+        mixed combinations.
     """
     if a in _CONSTRUCTIVE and b in _CONSTRUCTIVE:
         return 1.0

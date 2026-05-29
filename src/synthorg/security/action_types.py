@@ -117,7 +117,7 @@ class ActionTypeRegistry:
         """Check if an action type is known (built-in or custom).
 
         Returns:
-            ``True`` if the action type is registered.
+            ``True`` if the action type is registered, ``False`` otherwise.
         """
         return action_type in self._all_types
 
