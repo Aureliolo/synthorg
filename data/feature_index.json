@@ -16,7 +16,15 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "LivenessController",
+        "ReadinessController",
+        "CapabilitiesController",
+        "AuthController",
+        "UserController",
+        "SetupController",
+        "SetupPersonalityController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/api",
       "ghost_wired_symbols": [
@@ -839,7 +847,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ArtifactController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine/workspace",
       "ghost_wired_symbols": [
@@ -865,6 +875,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T17:05:27.827615Z",
+  "generated_at": "2026-05-29T17:08:28.000156Z",
   "schema_version": 1
 }

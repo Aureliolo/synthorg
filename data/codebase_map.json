@@ -1045,7 +1045,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 40,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -6260,7 +6260,7 @@
     },
     {
       "kind": "feature",
-      "loc": 26,
+      "loc": 27,
       "loc_cap": 100,
       "module": "src/synthorg/engine/workspace/feature.py",
       "owning_feature": "workspace"

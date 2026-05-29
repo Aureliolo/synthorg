@@ -3,19 +3,20 @@
 
 Declares the workspace feature's surface: the
 :class:`WorkspaceStateSlice` (project workspace + environment services,
-artifact storage, agent workspace root). The workspace domain has no
-dedicated settings namespace. Wiring stays hand-coded at boot; this
-manifest is declarative and feeds the navigation index.
+artifact storage, agent workspace root) and the artifact REST controller
+mounted by the composition root. The workspace domain has no dedicated
+settings namespace.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
+from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 
 FEATURE: FeatureModule = FeatureManifest(
     name="workspace",
     settings_namespace=None,
     state_slice=WorkspaceStateSlice,
-    controllers=(),
+    controllers=(ArtifactController,),
     mcp_handlers=(),
     lifecycle_hooks=(),
     ghost_wired_symbols=(
