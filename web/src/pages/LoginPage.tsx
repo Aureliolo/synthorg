@@ -13,26 +13,46 @@ const log = createLogger('LoginPage')
 
 type Mode = 'loading' | 'login' | 'setup'
 
-export default function LoginPage() {
+function validateLoginInputs(username: string, password: string): string | null {
+  if (!username.trim()) return 'Username is required'
+  if (!password) return 'Password is required'
+  return null
+}
+
+function validateSetupInputs(
+  username: string,
+  password: string,
+  confirmPassword: string,
+  minPasswordLength: number,
+): string | null {
+  if (!username.trim()) return 'Username is required'
+  if (password.length < minPasswordLength) {
+    return `Password must be at least ${minPasswordLength} characters`
+  }
+  // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation of user's own input
+  if (password !== confirmPassword) return 'Passwords do not match'
+  return null
+}
+
+function loginButtonLabel(submitting: boolean, mode: Mode): string {
+  if (submitting) return mode === 'setup' ? 'Creating Account...' : 'Signing In...'
+  return mode === 'setup' ? 'Create Account' : 'Sign In'
+}
+
+interface LoginMode {
+  mode: Mode
+  minPasswordLength: number
+}
+
+function useLoginMode(): LoginMode {
   const [mode, setMode] = useState<Mode>('loading')
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
   const [minPasswordLength, setMinPasswordLength] = useState(MIN_PASSWORD_LENGTH)
 
-  const login = useAuthStore((s) => s.login)
-  const setup = useAuthStore((s) => s.setup)
-  const { locked, checkAndClearLockout, recordFailure, reset } = useLoginLockout()
-
-  // Detect first-run vs normal login on mount.
-  // Fail-open on error: assume setup is complete so the login form
-  // still renders, then SetupGuard re-checks after authentication.
-  // Log structured context (status code, error message) so operators
-  // can diagnose pre-auth fetch failures instead of silently falling
-  // back to the login form. Without the log, a misconfigured API
-  // base URL or a 5xx during boot has no signal.
+  // Detect first-run vs normal login on mount. Fail-open on error:
+  // assume setup is complete so the login form still renders, then
+  // SetupGuard re-checks after authentication. Log structured context
+  // (status code, error message) so operators can diagnose pre-auth
+  // fetch failures instead of silently falling back to the login form.
   useEffect(() => {
     let cancelled = false
     getSetupStatus()
@@ -47,34 +67,59 @@ export default function LoginPage() {
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        // Wrap the dynamic error string with sanitizeForLog before
-        // embedding in the structured log payload (SEC-1: never let
-        // attacker-controlled bytes reach the log pipeline raw).
+        // SEC-1: wrap the dynamic error string with sanitizeForLog
+        // before embedding it in the structured log payload.
         log.error('LoginPage setup-status check failed', {
           error: sanitizeForLog(getErrorMessage(err)),
           statusCode: isAxiosError(err) ? err.response?.status ?? null : null,
         })
         setMode('login')
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const handleLogin = useCallback(async () => {
-    setError(null)
-    if (!username.trim()) {
-      setError('Username is required')
-      return
-    }
-    if (!password) {
-      setError('Password is required')
-      return
-    }
-    if (checkAndClearLockout()) return
+  return { mode, minPasswordLength }
+}
 
-    const trimmedUsername = username.trim()
+interface AuthForm {
+  username: string
+  setUsername: (value: string) => void
+  password: string
+  setPassword: (value: string) => void
+  confirmPassword: string
+  setConfirmPassword: (value: string) => void
+  error: string | null
+  submitting: boolean
+  locked: boolean
+  isLoginMode: boolean
+  disabled: boolean
+  handleSubmit: (e: React.FormEvent) => void
+}
+
+function useAuthForm({ mode, minPasswordLength }: LoginMode): AuthForm {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const login = useAuthStore((s) => s.login)
+  const setup = useAuthStore((s) => s.setup)
+  const { locked, checkAndClearLockout, recordFailure, reset } = useLoginLockout()
+
+  const handleLogin = useCallback(async () => {
+    const validationError = validateLoginInputs(username, password)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+    setError(null)
+    if (checkAndClearLockout()) return
     setSubmitting(true)
     try {
-      await login(trimmedUsername, password)
+      await login(username.trim(), password)
       reset()
     } catch (err) {
       const lockoutMsg = recordFailure(err)
@@ -85,25 +130,15 @@ export default function LoginPage() {
   }, [username, password, login, checkAndClearLockout, recordFailure, reset])
 
   const handleSetup = useCallback(async () => {
+    const validationError = validateSetupInputs(username, password, confirmPassword, minPasswordLength)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setError(null)
-    if (!username.trim()) {
-      setError('Username is required')
-      return
-    }
-    if (password.length < minPasswordLength) {
-      setError(`Password must be at least ${minPasswordLength} characters`)
-      return
-    }
-    // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation of user's own input
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-
-    const trimmedUsername = username.trim()
     setSubmitting(true)
     try {
-      await setup(trimmedUsername, password)
+      await setup(username.trim(), password)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -115,11 +150,8 @@ export default function LoginPage() {
     (e: React.FormEvent) => {
       e.preventDefault()
       if (mode === 'loading') return
-      if (mode === 'setup') {
-        void handleSetup()
-      } else {
-        void handleLogin()
-      }
+      if (mode === 'setup') void handleSetup()
+      else void handleLogin()
     },
     [mode, handleSetup, handleLogin],
   )
@@ -127,99 +159,133 @@ export default function LoginPage() {
   const isLoginMode = mode === 'login'
   const disabled = submitting || (locked && isLoginMode)
 
+  return {
+    username, setUsername, password, setPassword, confirmPassword, setConfirmPassword,
+    error, submitting, locked, isLoginMode, disabled, handleSubmit,
+  }
+}
+
+function LoginHeading({ mode }: { mode: Mode }) {
+  return (
+    <div className="space-y-1">
+      <h1 className="text-lg font-semibold text-foreground">
+        {mode === 'setup' ? 'Create Admin Account' : 'Sign In'}
+      </h1>
+      {mode === 'setup' && (
+        <p className="text-sm text-muted-foreground">
+          Set up your administrator account to get started.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function LoginAlerts({
+  error,
+  locked,
+  isLoginMode,
+}: {
+  error: string | null
+  locked: boolean
+  isLoginMode: boolean
+}) {
+  return (
+    <>
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
+        >
+          {error}
+        </div>
+      )}
+      {locked && isLoginMode && !error && (
+        <div
+          role="alert"
+          className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning"
+        >
+          Too many failed attempts. Please wait before trying again.
+        </div>
+      )}
+    </>
+  )
+}
+
+function LoginFields({
+  mode,
+  minPasswordLength,
+  form,
+}: {
+  mode: Mode
+  minPasswordLength: number
+  form: AuthForm
+}) {
+  return (
+    <>
+      <LoginHeading mode={mode} />
+
+      <div className="space-y-4">
+        <InputField
+          label="Username"
+          type="text"
+          value={form.username}
+          onChange={(e) => form.setUsername(e.currentTarget.value)}
+          disabled={form.disabled}
+          autoComplete="username"
+          autoFocus
+        />
+
+        <PasswordVisibilityGroup>
+          <InputField
+            label="Password"
+            type="password"
+            value={form.password}
+            onChange={(e) => form.setPassword(e.currentTarget.value)}
+            disabled={form.disabled}
+            autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
+            hint={mode === 'setup' ? `At least ${minPasswordLength} characters` : undefined}
+          />
+
+          {mode === 'setup' && (
+            <InputField
+              label="Confirm Password"
+              type="password"
+              value={form.confirmPassword}
+              onChange={(e) => form.setConfirmPassword(e.currentTarget.value)}
+              disabled={form.disabled}
+              autoComplete="new-password"
+            />
+          )}
+        </PasswordVisibilityGroup>
+      </div>
+
+      <LoginAlerts error={form.error} locked={form.locked} isLoginMode={form.isLoginMode} />
+
+      <Button type="submit" className="w-full" disabled={form.disabled}>
+        {loginButtonLabel(form.submitting, mode)}
+      </Button>
+    </>
+  )
+}
+
+export default function LoginPage() {
+  const { mode, minPasswordLength } = useLoginMode()
+  const form = useAuthForm({ mode, minPasswordLength })
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <form
-          onSubmit={handleSubmit}
+          onSubmit={form.handleSubmit}
           className="rounded-lg border border-border bg-card p-8 space-y-section-gap"
         >
           {/* Wordmark */}
-          <p className="text-center font-sans text-2xl font-bold text-accent">
-            SynthOrg
-          </p>
+          <p className="text-center font-sans text-2xl font-bold text-accent">SynthOrg</p>
 
           {mode === 'loading' ? (
-            <p className="text-center text-sm text-muted-foreground">
-              Checking setup status...
-            </p>
+            <p className="text-center text-sm text-muted-foreground">Checking setup status...</p>
           ) : (
-            <>
-              {/* Heading */}
-              <div className="space-y-1">
-                <h1 className="text-lg font-semibold text-foreground">
-                  {mode === 'setup' ? 'Create Admin Account' : 'Sign In'}
-                </h1>
-                {mode === 'setup' && (
-                  <p className="text-sm text-muted-foreground">
-                    Set up your administrator account to get started.
-                  </p>
-                )}
-              </div>
-
-              {/* Fields */}
-              <div className="space-y-4">
-                <InputField
-                  label="Username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.currentTarget.value)}
-                  disabled={disabled}
-                  autoComplete="username"
-                  autoFocus
-                />
-
-                <PasswordVisibilityGroup>
-                  <InputField
-                    label="Password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.currentTarget.value)}
-                    disabled={disabled}
-                    autoComplete={mode === 'setup' ? 'new-password' : 'current-password'}
-                    hint={mode === 'setup' ? `At least ${minPasswordLength} characters` : undefined}
-                  />
-
-                  {mode === 'setup' && (
-                    <InputField
-                      label="Confirm Password"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-                      disabled={disabled}
-                      autoComplete="new-password"
-                    />
-                  )}
-                </PasswordVisibilityGroup>
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div
-                  role="alert"
-                  className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
-                >
-                  {error}
-                </div>
-              )}
-
-              {/* Lockout warning (login mode only) */}
-              {locked && isLoginMode && !error && (
-                <div
-                  role="alert"
-                  className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning"
-                >
-                  Too many failed attempts. Please wait before trying again.
-                </div>
-              )}
-
-              {/* Submit */}
-              <Button type="submit" className="w-full" disabled={disabled}>
-                {submitting
-                  ? (mode === 'setup' ? 'Creating Account...' : 'Signing In...')
-                  : (mode === 'setup' ? 'Create Account' : 'Sign In')}
-              </Button>
-            </>
+            <LoginFields mode={mode} minPasswordLength={minPasswordLength} form={form} />
           )}
         </form>
       </div>

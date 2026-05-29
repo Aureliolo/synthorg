@@ -28,6 +28,11 @@ import { GrantRoleDialog } from './users/GrantRoleDialog'
 import { cn } from '@/lib/utils'
 import { ROLE_BADGE_COLORS } from '@/styles/status-colors'
 
+interface RevokeTarget {
+  user: UserResponse
+  role: OrgRole
+}
+
 function RolePill({
   role,
   scopedDepartments,
@@ -65,7 +70,151 @@ function RolePill({
   )
 }
 
-export default function UsersPage() {
+function UserCard({
+  user,
+  submitting,
+  onGrant,
+  onRevoke,
+}: {
+  user: UserResponse
+  submitting: boolean
+  onGrant: (user: UserResponse) => void
+  onRevoke: (target: RevokeTarget) => void
+}) {
+  return (
+    <SectionCard
+      title={user.username}
+      icon={ShieldCheck}
+      action={
+        <Button variant="secondary" onClick={() => onGrant(user)}>
+          <Plus aria-hidden="true" className="size-4" />
+          Grant role
+        </Button>
+      }
+    >
+      <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-text-secondary">Role</dt>
+          <dd className="text-foreground">{user.role}</dd>
+        </div>
+        <div>
+          <dt className="text-text-secondary">Created</dt>
+          <dd className="text-foreground">{formatDateTime(user.created_at)}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-text-secondary">Org roles</dt>
+          <dd className="mt-1 flex flex-wrap gap-1">
+            {user.org_roles.length === 0 && (
+              <span className="text-text-secondary">None granted</span>
+            )}
+            {user.org_roles.map((role) => (
+              <RolePill
+                key={role}
+                role={role}
+                scopedDepartments={role === 'department_admin' ? user.scoped_departments : undefined}
+                onRevoke={() => onRevoke({ user, role })}
+                busy={submitting}
+              />
+            ))}
+          </dd>
+        </div>
+      </dl>
+    </SectionCard>
+  )
+}
+
+interface UsersContentProps {
+  loading: boolean
+  usersCount: number
+  sortedUsers: readonly UserResponse[]
+  trimmedQuery: string
+  error: string | null
+  submitting: boolean
+  onGrant: (user: UserResponse) => void
+  onRevoke: (target: RevokeTarget) => void
+}
+
+function UsersContent({
+  loading,
+  usersCount,
+  sortedUsers,
+  trimmedQuery,
+  error,
+  submitting,
+  onGrant,
+  onRevoke,
+}: UsersContentProps) {
+  if (loading && usersCount === 0) {
+    return (
+      <div className="flex flex-col gap-grid-gap">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-20 w-full" />
+        ))}
+      </div>
+    )
+  }
+  // Use ``sortedUsers`` (the post-search-filter view) so an active query
+  // that yields nothing renders a search-empty message instead of a blank
+  // list. Gated on ``!error`` so a failed fetch doesn't render alongside
+  // the error banner as a misleading "No users" message.
+  if (!error && sortedUsers.length === 0) {
+    return (
+      <EmptyState
+        title={trimmedQuery ? 'No matching users' : 'No users'}
+        description={
+          trimmedQuery
+            ? 'Try a different search term or clear the field above.'
+            : "Human users with dashboard access will appear here once they're provisioned."
+        }
+      />
+    )
+  }
+  if (sortedUsers.length === 0) return null
+  return (
+    <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+      {sortedUsers.map((user) => (
+        <li key={user.id}>
+          <UserCard user={user} submitting={submitting} onGrant={onGrant} onRevoke={onRevoke} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function RevokeRoleDialog({
+  revokingTarget,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  revokingTarget: RevokeTarget | null
+  submitting: boolean
+  onCancel: () => void
+  onConfirm: (target: RevokeTarget) => Promise<void>
+}) {
+  return (
+    <ConfirmDialog
+      open={revokingTarget !== null}
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
+      title={
+        revokingTarget
+          ? `Revoke ${revokingTarget.role} from ${revokingTarget.user.username}?`
+          : 'Revoke role'
+      }
+      description="The user will lose this org role immediately."
+      variant="destructive"
+      confirmLabel={submitting ? 'Revoking…' : 'Revoke'}
+      loading={submitting}
+      onConfirm={async () => {
+        if (revokingTarget) await onConfirm(revokingTarget)
+      }}
+    />
+  )
+}
+
+function useUsersPageController() {
   const users = useUsersStore((s) => s.users)
   const loading = useUsersStore((s) => s.loading)
   const loadingMore = useUsersStore((s) => s.loadingMore)
@@ -77,49 +226,60 @@ export default function UsersPage() {
   const revokeOrgRole = useUsersStore((s) => s.revokeOrgRole)
 
   const [grantingFor, setGrantingFor] = useState<UserResponse | null>(null)
-  const [revokingTarget, setRevokingTarget] = useState<{
-    user: UserResponse
-    role: OrgRole
-  } | null>(null)
+  const [revokingTarget, setRevokingTarget] = useState<RevokeTarget | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     void fetchUsers()
   }, [fetchUsers])
 
-  // Trim once so both filtering and the empty-state copy agree on
-  // what counts as "active search". A whitespace-only query
-  // previously matched the unfiltered list yet rendered the
-  // "no matching users" empty-state copy (the raw ``searchQuery``
-  // was non-empty). The two now share the trimmed source of truth.
+  // Trim once so both filtering and the empty-state copy agree on what
+  // counts as "active search" (a whitespace-only query must not read as
+  // a filter).
   const trimmedQuery = searchQuery.trim()
   const sortedUsers = useMemo(() => {
     const q = trimmedQuery.toLowerCase()
     const filtered = q
       ? users.filter(
           (u) =>
-            u.username.toLowerCase().includes(q) ||
-            u.role.toLowerCase().includes(q),
+            u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q),
         )
       : users
     return [...filtered].sort((a, b) => a.username.localeCompare(b.username))
   }, [users, trimmedQuery])
+
+  const handleRevoke = async (target: RevokeTarget): Promise<void> => {
+    const ok = await revokeOrgRole(target.user.id, target.role)
+    // Only dismiss on success; on failure the store has already surfaced
+    // the error toast and we keep the dialog open so the user can retry.
+    if (ok) setRevokingTarget(null)
+  }
+
+  return {
+    users, loading, loadingMore, error, hasMore, submitting, fetchUsers, fetchMoreUsers,
+    grantingFor, setGrantingFor, revokingTarget, setRevokingTarget, searchQuery, setSearchQuery,
+    trimmedQuery, sortedUsers, handleRevoke,
+  }
+}
+
+export default function UsersPage() {
+  const c = useUsersPageController()
 
   return (
     <div className="space-y-section-gap">
       <ListHeader
         title="Users"
         description="Human operators with dashboard access and their org-role grants."
-        count={sortedUsers.length}
+        count={c.sortedUsers.length}
       />
 
-      {error && (
+      {c.error && (
         <ErrorBanner
           severity="error"
           title="Could not load users"
-          description={error}
+          description={c.error}
           onRetry={() => {
-            void fetchUsers()
+            void c.fetchUsers()
           }}
         />
       )}
@@ -127,147 +287,48 @@ export default function UsersPage() {
       <SearchFilterSort
         search={
           <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
+            value={c.searchQuery}
+            onChange={c.setSearchQuery}
             placeholder="Search users by name or role"
             ariaLabel="Search users"
           />
         }
       />
 
-      {loading && users.length === 0 ? (
-        <div className="flex flex-col gap-grid-gap">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20 w-full" />
-          ))}
-        </div>
-      ) : !error && sortedUsers.length === 0 ? (
-        // Use ``sortedUsers`` (the post-search-filter view) so an
-        // active query that yields nothing renders a search-empty
-        // message instead of a blank list. ``users.length === 0``
-        // would only fire on the truly-empty roster case and was
-        // hiding the "no matches" state behind a search.
-        // Also gated on ``!error`` so a failed fetch (which leaves
-        // ``users`` empty) doesn't render alongside the error banner
-        // as a misleading "No users" message.
-        <EmptyState
-          title={trimmedQuery ? 'No matching users' : 'No users'}
-          description={
-            trimmedQuery
-              ? 'Try a different search term or clear the field above.'
-              : "Human users with dashboard access will appear here once they're provisioned."
-          }
-        />
-      ) : sortedUsers.length > 0 ? (
-        // Grid mirrors ClientListPage's layout so the two list pages
-        // share visual rhythm; per-card header keeps the "Grant role"
-        // mutation prominent while the grid scales density on wider
-        // viewports.
-        <ul className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-          {sortedUsers.map((user) => (
-            <li key={user.id}>
-              <SectionCard
-                title={user.username}
-                icon={ShieldCheck}
-                action={
-                  <Button
-                    variant="secondary"
-                    onClick={() => setGrantingFor(user)}
-                  >
-                    <Plus aria-hidden="true" className="size-4" />
-                    Grant role
-                  </Button>
-                }
-              >
-                <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="text-text-secondary">Role</dt>
-                    <dd className="text-foreground">{user.role}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-text-secondary">Created</dt>
-                    <dd className="text-foreground">
-                      {formatDateTime(user.created_at)}
-                    </dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-text-secondary">Org roles</dt>
-                    <dd className="mt-1 flex flex-wrap gap-1">
-                      {user.org_roles.length === 0 && (
-                        <span className="text-text-secondary">
-                          None granted
-                        </span>
-                      )}
-                      {user.org_roles.map((role) => (
-                        <RolePill
-                          key={role}
-                          role={role}
-                          scopedDepartments={
-                            role === 'department_admin'
-                              ? user.scoped_departments
-                              : undefined
-                          }
-                          onRevoke={() =>
-                            setRevokingTarget({ user, role })
-                          }
-                          busy={submitting}
-                        />
-                      ))}
-                    </dd>
-                  </div>
-                </dl>
-              </SectionCard>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <UsersContent
+        loading={c.loading}
+        usersCount={c.users.length}
+        sortedUsers={c.sortedUsers}
+        trimmedQuery={c.trimmedQuery}
+        error={c.error}
+        submitting={c.submitting}
+        onGrant={c.setGrantingFor}
+        onRevoke={c.setRevokingTarget}
+      />
 
-      {hasMore && (
+      {c.hasMore && (
         <Button
           variant="secondary"
           onClick={() => {
-            void fetchMoreUsers()
+            void c.fetchMoreUsers()
           }}
-          disabled={loadingMore}
+          disabled={c.loadingMore}
         >
-          {loadingMore ? 'Loading…' : 'Load more'}
+          {c.loadingMore ? 'Loading…' : 'Load more'}
         </Button>
       )}
 
       <GrantRoleDialog
-        user={grantingFor}
-        open={grantingFor !== null}
-        onClose={() => setGrantingFor(null)}
+        user={c.grantingFor}
+        open={c.grantingFor !== null}
+        onClose={() => c.setGrantingFor(null)}
       />
 
-      <ConfirmDialog
-        open={revokingTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) setRevokingTarget(null)
-        }}
-        title={
-          revokingTarget
-            ? `Revoke ${revokingTarget.role} from ${revokingTarget.user.username}?`
-            : 'Revoke role'
-        }
-        description="The user will lose this org role immediately."
-        variant="destructive"
-        confirmLabel={submitting ? 'Revoking…' : 'Revoke'}
-        loading={submitting}
-        onConfirm={async () => {
-          if (!revokingTarget) {
-            setRevokingTarget(null)
-            return
-          }
-          const ok = await revokeOrgRole(
-            revokingTarget.user.id,
-            revokingTarget.role,
-          )
-          // Only dismiss on success; on failure the store has
-          // already surfaced the error toast and we keep the
-          // confirm dialog open so the user can retry in context.
-          if (ok) setRevokingTarget(null)
-        }}
+      <RevokeRoleDialog
+        revokingTarget={c.revokingTarget}
+        submitting={c.submitting}
+        onCancel={() => c.setRevokingTarget(null)}
+        onConfirm={c.handleRevoke}
       />
     </div>
   )

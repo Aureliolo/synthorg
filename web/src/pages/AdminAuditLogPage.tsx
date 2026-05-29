@@ -52,21 +52,29 @@ interface PageState {
 
 const EMPTY_STATE: PageState = { entries: [], nextCursor: null, hasMore: false }
 
-export default function AdminAuditLogPage() {
-  const [state, setState] = useState<PageState>(EMPTY_STATE)
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+interface AuditFilters {
+  agentIdFilter: string
+  setAgentIdFilter: (value: string) => void
+  toolFilter: string
+  setToolFilter: (value: string) => void
+  actionTypeFilter: string
+  setActionTypeFilter: (value: string) => void
+  verdictFilter: VerdictFilter
+  setVerdictFilter: (value: VerdictFilter) => void
+  filterParams: {
+    agentId: string | null
+    toolName: string | null
+    actionType: string | null
+    verdict: AuditEntry['verdict'] | null
+    limit: number
+  }
+}
+
+function useAuditFilters(): AuditFilters {
   const [agentIdFilter, setAgentIdFilter] = useState('')
   const [toolFilter, setToolFilter] = useState('')
   const [actionTypeFilter, setActionTypeFilter] = useState('')
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>('')
-  // Monotonic request id: typing into a filter field re-fires
-  // ``fetchFirstPage`` faster than the network can answer, and a
-  // slower in-flight response would otherwise clobber the freshest
-  // filter's result. Capture the id at call time and bail if the ref
-  // has advanced past it.
-  const requestSeqRef = useRef(0)
 
   const filterParams = useMemo(
     () => ({
@@ -79,6 +87,33 @@ export default function AdminAuditLogPage() {
     [agentIdFilter, toolFilter, actionTypeFilter, verdictFilter],
   )
 
+  return {
+    agentIdFilter, setAgentIdFilter, toolFilter, setToolFilter,
+    actionTypeFilter, setActionTypeFilter, verdictFilter, setVerdictFilter,
+    filterParams,
+  }
+}
+
+interface AuditLogState {
+  state: PageState
+  loading: boolean
+  loadingMore: boolean
+  error: string | null
+  handleLoadMore: () => Promise<void>
+}
+
+function useAuditLog(filterParams: AuditFilters['filterParams']): AuditLogState {
+  const [state, setState] = useState<PageState>(EMPTY_STATE)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Monotonic request id: typing into a filter field re-fires
+  // ``fetchFirstPage`` faster than the network can answer, and a
+  // slower in-flight response would otherwise clobber the freshest
+  // filter's result. Capture the id at call time and bail if the ref
+  // has advanced past it.
+  const requestSeqRef = useRef(0)
+
   const fetchFirstPage = useCallback(async () => {
     const seq = ++requestSeqRef.current
     setError(null)
@@ -86,11 +121,7 @@ export default function AdminAuditLogPage() {
     try {
       const result = await listAuditEntries(filterParams)
       if (seq !== requestSeqRef.current) return
-      setState({
-        entries: result.data,
-        nextCursor: result.nextCursor,
-        hasMore: result.hasMore,
-      })
+      setState({ entries: result.data, nextCursor: result.nextCursor, hasMore: result.hasMore })
     } catch (err) {
       if (seq !== requestSeqRef.current) return
       const message = getErrorMessage(err)
@@ -110,10 +141,7 @@ export default function AdminAuditLogPage() {
     setError(null)
     setLoadingMore(true)
     try {
-      const result = await listAuditEntries({
-        ...filterParams,
-        cursor: state.nextCursor,
-      })
+      const result = await listAuditEntries({ ...filterParams, cursor: state.nextCursor })
       if (seq !== requestSeqRef.current) return
       setState((prev) => ({
         entries: [...prev.entries, ...result.data],
@@ -134,6 +162,120 @@ export default function AdminAuditLogPage() {
     void fetchFirstPage()
   }, [fetchFirstPage])
 
+  return { state, loading, loadingMore, error, handleLoadMore }
+}
+
+function VerdictBadge({ verdict }: { verdict: AuditEntry['verdict'] }) {
+  const className =
+    verdict === 'deny'
+      ? 'rounded bg-danger/10 px-1.5 py-0.5 font-medium uppercase text-danger'
+      : verdict === 'escalate'
+        ? 'rounded bg-warning/10 px-1.5 py-0.5 font-medium uppercase text-warning'
+        : 'rounded bg-success/10 px-1.5 py-0.5 font-medium uppercase text-success'
+  return <span className={className}>{verdict}</span>
+}
+
+function AuditLogFilters({ filters }: { filters: AuditFilters }) {
+  return (
+    <SearchFilterSort
+      search={
+        <InputField
+          label="Tool name"
+          value={filters.toolFilter}
+          onValueChange={filters.setToolFilter}
+          placeholder="Filter by tool, e.g. file_system.write"
+        />
+      }
+      filters={
+        <div className="flex flex-wrap items-end gap-2">
+          <InputField
+            label="Agent ID"
+            value={filters.agentIdFilter}
+            onValueChange={filters.setAgentIdFilter}
+            placeholder="agent_..."
+          />
+          <InputField
+            label="Action type"
+            value={filters.actionTypeFilter}
+            onValueChange={filters.setActionTypeFilter}
+            placeholder="invoke_tool / approve / ..."
+          />
+          <SelectField
+            label="Verdict"
+            value={filters.verdictFilter}
+            onChange={(value) => filters.setVerdictFilter(value as VerdictFilter)}
+            options={VERDICT_OPTIONS}
+          />
+        </div>
+      }
+    />
+  )
+}
+
+function AuditLogTable({
+  entries,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+}: {
+  entries: readonly AuditEntry[]
+  hasMore: boolean
+  loadingMore: boolean
+  onLoadMore: () => void
+}) {
+  return (
+    <SectionCard title="Recent evaluations" icon={Shield}>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full table-fixed text-xs">
+          <thead className="bg-surface text-left text-text-secondary">
+            <tr>
+              <th className="w-44 px-3 py-2 font-medium">Time</th>
+              <th className="w-28 px-3 py-2 font-medium">Verdict</th>
+              <th className="w-28 px-3 py-2 font-medium">Risk</th>
+              <th className="w-44 px-3 py-2 font-medium">Agent</th>
+              <th className="w-48 px-3 py-2 font-medium">Action</th>
+              <th className="px-3 py-2 font-medium">Reason</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {entries.map((entry) => (
+              <tr key={entry.id} className="align-top">
+                <td className="px-3 py-2 font-mono text-micro text-text-secondary">
+                  {formatDateTime(entry.timestamp)}
+                </td>
+                <td className="px-3 py-2">
+                  <VerdictBadge verdict={entry.verdict} />
+                </td>
+                <td className="px-3 py-2 font-medium uppercase text-text-secondary">
+                  {entry.risk_level}
+                </td>
+                <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.agent_id ?? ''}>
+                  {entry.agent_id ?? '-'}
+                </td>
+                <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.tool_name}>
+                  {entry.tool_name}
+                </td>
+                <td className="px-3 py-2 text-text-secondary">{entry.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hasMore && (
+        <div className="mt-3 flex justify-center">
+          <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading...' : 'Load more'}
+          </Button>
+        </div>
+      )}
+    </SectionCard>
+  )
+}
+
+export default function AdminAuditLogPage() {
+  const filters = useAuditFilters()
+  const { state, loading, loadingMore, error, handleLoadMore } = useAuditLog(filters.filterParams)
+
   return (
     <div className="space-y-section-gap">
       <ListHeader
@@ -146,38 +288,7 @@ export default function AdminAuditLogPage() {
         <ErrorBanner severity="error" title="Could not load audit log" description={error} />
       )}
 
-      <SearchFilterSort
-        search={
-          <InputField
-            label="Tool name"
-            value={toolFilter}
-            onValueChange={setToolFilter}
-            placeholder="Filter by tool, e.g. file_system.write"
-          />
-        }
-        filters={
-          <div className="flex flex-wrap items-end gap-2">
-            <InputField
-              label="Agent ID"
-              value={agentIdFilter}
-              onValueChange={setAgentIdFilter}
-              placeholder="agent_..."
-            />
-            <InputField
-              label="Action type"
-              value={actionTypeFilter}
-              onValueChange={setActionTypeFilter}
-              placeholder="invoke_tool / approve / ..."
-            />
-            <SelectField
-              label="Verdict"
-              value={verdictFilter}
-              onChange={(value) => setVerdictFilter(value as VerdictFilter)}
-              options={VERDICT_OPTIONS}
-            />
-          </div>
-        }
-      />
+      <AuditLogFilters filters={filters} />
 
       {loading && state.entries.length === 0 ? (
         <div className="flex items-center justify-center py-12">
@@ -190,66 +301,12 @@ export default function AdminAuditLogPage() {
           description="Loosen the filters above, or wait for the next tool evaluation to record."
         />
       ) : (
-        <SectionCard title="Recent evaluations" icon={Shield}>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full table-fixed text-xs">
-              <thead className="bg-surface text-left text-text-secondary">
-                <tr>
-                  <th className="w-44 px-3 py-2 font-medium">Time</th>
-                  <th className="w-28 px-3 py-2 font-medium">Verdict</th>
-                  <th className="w-28 px-3 py-2 font-medium">Risk</th>
-                  <th className="w-44 px-3 py-2 font-medium">Agent</th>
-                  <th className="w-48 px-3 py-2 font-medium">Action</th>
-                  <th className="px-3 py-2 font-medium">Reason</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {state.entries.map((entry) => (
-                  <tr key={entry.id} className="align-top">
-                    <td className="px-3 py-2 font-mono text-micro text-text-secondary">
-                      {formatDateTime(entry.timestamp)}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={
-                          entry.verdict === 'deny'
-                            ? 'rounded bg-danger/10 px-1.5 py-0.5 font-medium uppercase text-danger'
-                            : entry.verdict === 'escalate'
-                              ? 'rounded bg-warning/10 px-1.5 py-0.5 font-medium uppercase text-warning'
-                              : 'rounded bg-success/10 px-1.5 py-0.5 font-medium uppercase text-success'
-                        }
-                      >
-                        {entry.verdict}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-medium uppercase text-text-secondary">
-                      {entry.risk_level}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.agent_id ?? ''}>
-                      {entry.agent_id ?? '-'}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-micro text-text-muted truncate" title={entry.tool_name}>
-                      {entry.tool_name}
-                    </td>
-                    <td className="px-3 py-2 text-text-secondary">{entry.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {state.hasMore && (
-            <div className="mt-3 flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void handleLoadMore()}
-                disabled={loadingMore}
-              >
-                {loadingMore ? 'Loading...' : 'Load more'}
-              </Button>
-            </div>
-          )}
-        </SectionCard>
+        <AuditLogTable
+          entries={state.entries}
+          hasMore={state.hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={() => void handleLoadMore()}
+        />
       )}
     </div>
   )
