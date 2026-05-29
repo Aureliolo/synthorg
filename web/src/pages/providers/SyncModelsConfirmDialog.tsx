@@ -68,18 +68,16 @@ export function SyncModelsConfirmDialog({
     }
   }
 
-  const summary =
-    result &&
-    `${result.added.length} added · ${result.removed.length} removed · ${result.updated.length} updated`
+  const handleCloseAndReset = (): void => {
+    reset()
+    onClose()
+  }
 
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) {
-          reset()
-          onClose()
-        }
+        if (!next) handleCloseAndReset()
       }}
       title="Sync models from provider"
       description={
@@ -100,25 +98,31 @@ export function SyncModelsConfirmDialog({
           onChange={setReplaceExisting}
           disabled={submitting || result !== null}
         />
-        {result && summary && (
-          <ErrorBanner
-            severity="info"
-            title="Sync complete"
-            description={summary}
-            action={
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  reset()
-                  onClose()
-                }}
-              >
-                Close
-              </Button>
-            }
-          />
-        )}
+        <SyncResultBanner result={result} onClose={handleCloseAndReset} />
       </div>
     </ConfirmDialog>
+  )
+}
+
+function SyncResultBanner({
+  result,
+  onClose,
+}: {
+  result: SyncModelsResponse | null
+  onClose: () => void
+}) {
+  if (!result) return null
+  const summary = `${result.added.length} added · ${result.removed.length} removed · ${result.updated.length} updated`
+  return (
+    <ErrorBanner
+      severity="info"
+      title="Sync complete"
+      description={summary}
+      action={
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      }
+    />
   )
 }
