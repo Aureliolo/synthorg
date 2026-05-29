@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from litestar import Controller, Litestar, Router
+from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
 from litestar.config.cors import CORSConfig
 from litestar.datastructures import State
@@ -48,12 +48,13 @@ from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     create_channels_plugin,
 )
-from synthorg.api.controllers import BASE_CONTROLLERS, OPTIONAL_CONTROLLERS
-from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-from synthorg.api.feature_composition import compose_feature_slices
+from synthorg.api.feature_composition import (
+    collect_route_handlers,
+    compose_feature_slices,
+)
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle_builder import _build_lifecycle
 from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
@@ -921,99 +922,24 @@ def create_app(  # noqa: PLR0913
         rate_limiter_enabled=rate_limiter_enabled,
     )
 
-    # Integration controllers add ~20 routes (~0.7s of Litestar
-    # registration per create_app). Skip them entirely when the
-    # integrations subsystem is disabled, so unit tests that do not
-    # exercise integration endpoints pay no registration cost.
-    #
-    # When enabled, gate each controller by its own collaborators
-    # instead of a single boolean. ``MCPCatalogController`` only
-    # needs ``mcp_catalog_service``; ``WebhooksController`` needs a
-    # bus; ``TunnelController`` needs ``tunnel_provider``. A single
-    # global gate either under-exposes controllers that are ready
-    # or over-exposes ones whose dependencies failed to auto-wire.
-    integration_controllers: tuple[type[Controller], ...] = ()
-    if effective_config.integrations.enabled:
-        from synthorg.api.controllers.connections import (  # noqa: PLC0415
-            ConnectionsController,
-        )
-        from synthorg.api.controllers.integration_health import (  # noqa: PLC0415
-            IntegrationHealthController,
-        )
-        from synthorg.api.controllers.mcp_catalog import (  # noqa: PLC0415
-            MCPCatalogController,
-        )
-        from synthorg.api.controllers.oauth import OAuthController  # noqa: PLC0415
-        from synthorg.api.controllers.tunnel import (  # noqa: PLC0415
-            TunnelController,
-        )
-        from synthorg.api.controllers.webhooks import (  # noqa: PLC0415
-            WebhooksController,
-        )
-
-        controller_readiness: tuple[
-            tuple[type[Controller], tuple[tuple[str, object], ...]], ...
-        ] = (
-            (
-                ConnectionsController,
-                (("connection_catalog", connection_catalog),),
-            ),
-            (
-                IntegrationHealthController,
-                (("connection_catalog", connection_catalog),),
-            ),
-            (
-                OAuthController,
-                (
-                    ("connection_catalog", connection_catalog),
-                    ("persistence", persistence),
-                ),
-            ),
-            (
-                WebhooksController,
-                (
-                    ("connection_catalog", connection_catalog),
-                    ("message_bus", message_bus),
-                ),
-            ),
-            (
-                MCPCatalogController,
-                (("mcp_catalog_service", mcp_catalog_service),),
-            ),
-            (
-                TunnelController,
-                (("tunnel_provider", tunnel_provider),),
-            ),
-        )
-        ready: list[type[Controller]] = []
-        for controller_cls, deps in controller_readiness:
-            missing = [name for name, value in deps if value is None]
-            if missing:
-                logger.warning(
-                    API_APP_STARTUP,
-                    note="skipping integration controller (missing deps)",
-                    controller=controller_cls.__name__,
-                    missing=missing,
-                )
-                continue
-            ready.append(controller_cls)
-        integration_controllers = tuple(ready)
+    # Integration controllers are discovery-registered from the
+    # integrations feature manifest. Each carries a readiness predicate
+    # (see ``api.route_predicates``) that short-circuits on
+    # ``integrations.enabled`` being false -- preserving both the
+    # ~0.7s-per-create_app registration saving when the subsystem is off
+    # and the per-collaborator 404 gate (catalog / bus / tunnel-provider)
+    # when it is on.
 
     # ── A2A gateway auto-wire ─────────────────────────────────────
-    a2a_controllers: tuple[type[Controller], ...] = ()
-    a2a_root_controllers: tuple[type[Controller], ...] = ()
+    # The a2a controllers are discovery-registered from the a2a feature
+    # manifest: the well-known Agent Card controller at the application
+    # root and the JSON-RPC gateway under the API prefix, each gated by a
+    # predicate reading the committed a2a state slice. This block builds
+    # the a2a collaborators and commits them to the slice on full success;
+    # a partial failure leaves the slice empty so the predicates keep both
+    # controllers unmounted (the historic build-all-then-commit guard).
     if effective_config.a2a.enabled:
-        # Build every A2A artefact into local variables FIRST so an
-        # exception anywhere in the construction chain leaves
-        # ``app_state`` untouched. Only commit to ``app_state`` and
-        # the controller tuples after every required object is
-        # successfully constructed -- otherwise a half-wired surface
-        # would survive a non-fatal failure (card builder set but
-        # client absent, peer registry registered but gateway
-        # controller missing, etc.).
         a2a_card_builder = None
-        a2a_root_pending: tuple[type[Controller], ...] = ()
-        a2a_pending: tuple[type[Controller], ...] = ()
         a2a_peer_registry = None
         a2a_client_obj = None
         try:
@@ -1021,9 +947,6 @@ def create_app(  # noqa: PLR0913
                 AgentCardBuilder,
             )
             from synthorg.a2a.models import A2AAuthSchemeInfo  # noqa: PLC0415
-            from synthorg.a2a.well_known import (  # noqa: PLC0415
-                WellKnownAgentCardController,
-            )
 
             auth_schemes = (
                 A2AAuthSchemeInfo(
@@ -1035,7 +958,6 @@ def create_app(  # noqa: PLR0913
             a2a_card_builder = AgentCardBuilder(
                 default_auth_schemes=auth_schemes,
             )
-            a2a_root_pending = (WellKnownAgentCardController,)
 
             # Outbound client + JSON-RPC gateway need the connection
             # catalog and integrations enabled.
@@ -1043,9 +965,6 @@ def create_app(  # noqa: PLR0913
                 import httpx  # noqa: PLC0415
 
                 from synthorg.a2a.client import A2AClient  # noqa: PLC0415
-                from synthorg.a2a.gateway import (  # noqa: PLC0415
-                    A2AGatewayController,
-                )
                 from synthorg.a2a.peer_registry import (  # noqa: PLC0415
                     PeerRegistry,
                 )
@@ -1070,7 +989,6 @@ def create_app(  # noqa: PLR0913
                     http_client=a2a_http_client,
                     timeout_seconds=a2a_client_timeout,
                 )
-                a2a_pending = (A2AGatewayController,)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -1081,13 +999,9 @@ def create_app(  # noqa: PLR0913
             )
         else:
             # Commit only on full success. Partial failures land in
-            # the except branch above with all ``app_state`` slots
-            # still empty.
+            # the except branch above with the slice still empty.
             from synthorg.a2a.state import A2aStateSlice  # noqa: PLC0415
 
-            a2a_root_controllers = a2a_root_pending
-            if a2a_peer_registry is not None and a2a_client_obj is not None:
-                a2a_controllers = a2a_pending
             app_state.swap_slice(
                 A2aStateSlice(
                     card_builder=a2a_card_builder,
@@ -1130,30 +1044,17 @@ def create_app(  # noqa: PLR0913
 
     app_state.wire(ClientStateSlice, simulation_state=client_simulation_state)
 
-    # Optional controllers gated on their primary collaborator service.
-    # Routes for unconfigured subsystems are not registered at all so
-    # the dashboard receives 404 (route does not exist) instead of the
-    # 503 it used to get for every poll cycle.  /capabilities reports
-    # which subsystems are wired so the dashboard can skip the polling
-    # loops at the source. Each predicate reads its feature's state
-    # slice; a typed ``Callable`` makes a missing predicate a type error
-    # rather than a runtime surprise.
-    _optional: list[type[Controller]] = [
-        controller_cls
-        for controller_cls, predicate in OPTIONAL_CONTROLLERS
-        if predicate(app_state)
-    ]
-    optional_controllers: tuple[type[Controller], ...] = tuple(_optional)
-
+    # Route registration is discovery-based: collect every feature
+    # manifest's controllers (api-mounted vs root-mounted) and websocket
+    # handlers, evaluating each ControllerRegistration predicate against
+    # the constructed AppState so a disabled or unwired subsystem's routes
+    # are not registered at all (404), exactly as the hand-maintained
+    # lists did. /capabilities reports which subsystems are wired so the
+    # dashboard skips polling at the source.
+    api_handlers, root_handlers = collect_route_handlers(app_state)
     api_router = Router(
         path=api_config.api_prefix,
-        route_handlers=[
-            *BASE_CONTROLLERS,
-            *integration_controllers,
-            *a2a_controllers,
-            *optional_controllers,
-            ws_handler,
-        ],
+        route_handlers=api_handlers,
         guards=[require_password_changed],
     )
 
@@ -1698,7 +1599,7 @@ def create_app(  # noqa: PLR0913
     _trusted_proxies = _resolve_api_str_tuple("trusted_proxies")
 
     return Litestar(
-        route_handlers=[api_router, *a2a_root_controllers],
+        route_handlers=[api_router, *root_handlers],
         # Disable Litestar's built-in logging config to preserve the
         # structlog multi-file-sink pipeline set up by
         # _bootstrap_app_logging() above.  Without this, Litestar calls
