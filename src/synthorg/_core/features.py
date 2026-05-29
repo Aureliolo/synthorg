@@ -230,9 +230,10 @@ class ControllerRegistration(BaseModel):
       returns ``True`` against the live ``AppState`` at route-assembly time.
       ``None`` mounts unconditionally. This preserves the historic
       404-when-unwired behaviour for integration / optional controllers (an
-      unmounted route 404s rather than 503-ing every dashboard poll). The
-      predicate is typed against ``object`` to keep the substrate free of an
-      ``api.state.AppState`` import cycle; callers pass the ``AppState``.
+      unmounted route 404s rather than 503-ing every dashboard poll). Typed
+      ``Callable[..., bool]`` so existing ``(AppState) -> bool`` readiness
+      predicates assign without forcing the substrate to import
+      ``api.state.AppState``; the composition root passes the ``AppState``.
     - ``mount``: ``"api"`` mounts under the API prefix (the default);
       ``"root"`` mounts at the application root (e.g. a2a ``/.well-known``).
     """
@@ -240,7 +241,7 @@ class ControllerRegistration(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     controller: type[Controller]
-    predicate: Callable[[object], bool] | None = None
+    predicate: Callable[..., bool] | None = None
     mount: Literal["api", "root"] = "api"
 
 

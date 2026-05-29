@@ -83,7 +83,12 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "BudgetController",
+        "ForecastBudgetController",
+        "BudgetConfigVersionController",
+        "ReportsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/budget",
       "ghost_wired_symbols": [
@@ -139,7 +144,11 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ClientController",
+        "SimulationController",
+        "RequestController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/client",
       "ghost_wired_symbols": [],
@@ -504,7 +513,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MetricsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/observability",
       "ghost_wired_symbols": [],
@@ -538,7 +549,14 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "CompanyController",
+        "CompanyVersionController",
+        "DepartmentController",
+        "TeamController",
+        "RoleVersionController",
+        "TemplatePackController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/organization",
       "ghost_wired_symbols": [],
@@ -708,7 +726,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "SettingsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
       "ghost_wired_symbols": [],
@@ -813,6 +833,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T16:46:13.543307Z",
+  "generated_at": "2026-05-29T17:01:15.225075Z",
   "schema_version": 1
 }
