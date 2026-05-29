@@ -73,7 +73,7 @@ function PlaybackControls({
   )
 }
 
-export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
+function useFlightReplay(initialExecutionId?: string | null) {
   const [executionId, setExecutionId] = useState(initialExecutionId ?? '')
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -85,12 +85,10 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
 
   // Frames arrive newest-first; show the timeline oldest-first for replay.
   const ordered = useMemo(() => [...frames].reverse(), [frames])
-  const current = ordered[index]
   const timelineFrames: readonly TimelineFrame[] = useMemo(
     () => ordered.map((f) => ({ turnIndex: f.turn_index, status: f.status })),
     [ordered],
   )
-
   const lastIndex = ordered.length - 1
 
   useEffect(() => {
@@ -114,6 +112,42 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
     setPlaying(false)
     void fetchFrames(executionId.trim())
   }
+
+  return {
+    executionId,
+    setExecutionId,
+    index,
+    setIndex,
+    playing,
+    setPlaying,
+    speed,
+    setSpeed,
+    framesError,
+    ordered,
+    current: ordered[index],
+    timelineFrames,
+    lastIndex,
+    loadFrames,
+  }
+}
+
+export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
+  const {
+    executionId,
+    setExecutionId,
+    index,
+    setIndex,
+    playing,
+    setPlaying,
+    speed,
+    setSpeed,
+    framesError,
+    ordered,
+    current,
+    timelineFrames,
+    lastIndex,
+    loadFrames,
+  } = useFlightReplay(initialExecutionId)
 
   return (
     <div className="space-y-section-gap">

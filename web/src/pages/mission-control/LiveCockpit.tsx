@@ -125,46 +125,78 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
   )
 }
 
+interface CockpitMetrics {
+  agents: readonly AgentActivity[]
+  activeCount: number
+  stuckCount: number
+  runawayCount: number
+  totalCost: number
+}
+
+function deriveCockpitMetrics(
+  snapshot: ReturnType<typeof useMissionControlData>['snapshot'],
+): CockpitMetrics {
+  return {
+    agents: snapshot?.agents ?? [],
+    activeCount: snapshot?.active_count ?? 0,
+    stuckCount: snapshot?.stuck_agents.length ?? 0,
+    runawayCount: snapshot?.runaway_agents.length ?? 0,
+    totalCost: snapshot?.total_cost ?? 0,
+  }
+}
+
+function CockpitMetricCards({ metrics }: { metrics: CockpitMetrics }) {
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
+      <MetricCard label="Active agents" value={metrics.activeCount} animateValue />
+      <MetricCard
+        label="Spend (active)"
+        value={formatCurrency(metrics.totalCost, DEFAULT_CURRENCY)}
+      />
+      <MetricCard label="Stuck" value={metrics.stuckCount} animateValue />
+      <MetricCard label="Runaway" value={metrics.runawayCount} animateValue />
+    </div>
+  )
+}
+
+function CockpitAgentList({
+  agents,
+  loading,
+}: {
+  agents: readonly AgentActivity[]
+  loading: boolean
+}) {
+  if (agents.length === 0) {
+    return (
+      <EmptyState
+        icon={Activity}
+        title={loading ? 'Loading activity...' : 'No active work'}
+        description={
+          loading
+            ? 'Fetching the live org-activity snapshot.'
+            : 'When the company is working, agents and their tasks appear here.'
+        }
+      />
+    )
+  }
+  return (
+    <div className="space-y-grid-gap">
+      {agents.map((activity) => (
+        <AgentRow key={activity.task_id} activity={activity} />
+      ))}
+    </div>
+  )
+}
+
 export function LiveCockpit() {
   const { snapshot, loading, error } = useMissionControlData()
-
-  const agents = snapshot?.agents ?? []
-  const activeCount = snapshot?.active_count ?? 0
-  const stuckCount = snapshot?.stuck_agents.length ?? 0
-  const runawayCount = snapshot?.runaway_agents.length ?? 0
-  const totalCost = snapshot?.total_cost ?? 0
+  const metrics = deriveCockpitMetrics(snapshot)
 
   return (
     <div className="space-y-section-gap">
       {error != null && <ErrorBanner title="Failed to load activity" description={error} />}
-
-      <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
-        <MetricCard label="Active agents" value={activeCount} animateValue />
-        <MetricCard
-          label="Spend (active)"
-          value={formatCurrency(totalCost, DEFAULT_CURRENCY)}
-        />
-        <MetricCard label="Stuck" value={stuckCount} animateValue />
-        <MetricCard label="Runaway" value={runawayCount} animateValue />
-      </div>
-
-      {agents.length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title={loading ? 'Loading activity...' : 'No active work'}
-          description={
-            loading
-              ? 'Fetching the live org-activity snapshot.'
-              : 'When the company is working, agents and their tasks appear here.'
-          }
-        />
-      ) : (
-        <div className="space-y-grid-gap">
-          {agents.map((activity) => (
-            <AgentRow key={activity.task_id} activity={activity} />
-          ))}
-        </div>
-      )}
+      <CockpitMetricCards metrics={metrics} />
+      <CockpitAgentList agents={metrics.agents} loading={loading} />
     </div>
   )
 }
