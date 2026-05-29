@@ -65,7 +65,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 38,
       "loc_cap": 100,
       "module": "src/synthorg/a2a/feature.py",
       "owning_feature": "a2a"
@@ -1293,6 +1293,13 @@
       "loc": 76,
       "loc_cap": 500,
       "module": "src/synthorg/api/responses.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 123,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/route_predicates.py",
       "owning_feature": "api_core"
     },
     {
@@ -4433,7 +4440,7 @@
     },
     {
       "kind": "feature",
-      "loc": 63,
+      "loc": 81,
       "loc_cap": 100,
       "module": "src/synthorg/engine/feature.py",
       "owning_feature": "engine"
@@ -7604,7 +7611,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 63,
       "loc_cap": 100,
       "module": "src/synthorg/integrations/feature.py",
       "owning_feature": "integrations"

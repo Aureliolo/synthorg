@@ -1,7 +1,10 @@
 {
   "features": [
     {
-      "controllers": [],
+      "controllers": [
+        "WellKnownAgentCardController",
+        "A2AGatewayController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/a2a",
       "ghost_wired_symbols": [],
@@ -305,7 +308,9 @@
         "WorkflowVersionController",
         "WorkflowExecutionController",
         "SubworkflowController",
-        "EvaluationConfigVersionController"
+        "EvaluationConfigVersionController",
+        "ObjectiveController",
+        "BrownfieldController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/engine",
@@ -428,7 +433,14 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ConnectionsController",
+        "IntegrationHealthController",
+        "OAuthController",
+        "WebhooksController",
+        "MCPCatalogController",
+        "TunnelController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/integrations",
       "ghost_wired_symbols": [],
@@ -875,6 +887,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T17:08:28.000156Z",
+  "generated_at": "2026-05-29T17:14:01.274805Z",
   "schema_version": 1
 }
