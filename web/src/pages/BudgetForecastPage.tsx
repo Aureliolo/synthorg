@@ -206,16 +206,20 @@ function ForecastChartSection({
   cumulativeValues: readonly number[]
 }) {
   const { overview, budgetConfig, forecast, trends, error } = data
+  const totalMonthly = budgetConfig?.total_monthly ?? 0
+  const trendPoints = trends?.data_points ?? []
+  const budgetRemaining = overview?.budget_remaining
+  const alerts = budgetConfig?.alerts
   return (
     <>
       <ErrorBoundary level="section">
         <Suspense fallback={<SkeletonChart />}>
           <SpendBurnChart
-            trendData={trends?.data_points ?? []}
+            trendData={trendPoints}
             forecast={forecast}
-            budgetTotal={budgetConfig?.total_monthly ?? 0}
-            budgetRemaining={overview?.budget_remaining}
-            alerts={budgetConfig?.alerts}
+            budgetTotal={totalMonthly}
+            budgetRemaining={budgetRemaining}
+            alerts={alerts}
             currency={currency}
           />
         </Suspense>
@@ -226,7 +230,7 @@ function ForecastChartSection({
           forecast={forecast}
           cumulativeValues={cumulativeValues}
           currency={currency}
-          totalMonthly={budgetConfig?.total_monthly ?? 0}
+          totalMonthly={totalMonthly}
           showEmpty={!error}
         />
       </SectionCard>
