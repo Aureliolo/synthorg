@@ -236,6 +236,81 @@ interface BudgetChartsProps {
   paretoLoading: boolean
 }
 
+function BudgetGaugeCell({ data, currency }: { data: BudgetData; currency: string | undefined }) {
+  const { overview, forecast } = data
+  return (
+    <ErrorBoundary level="section">
+      <BudgetGauge
+        usedPercent={overview?.budget_used_percent ?? 0}
+        budgetRemaining={overview?.budget_remaining ?? 0}
+        daysUntilExhausted={forecast?.days_until_exhausted ?? null}
+        currency={currency}
+      />
+    </ErrorBoundary>
+  )
+}
+
+function SpendBurnCell({ data, currency }: { data: BudgetData; currency: string | undefined }) {
+  const { overview, budgetConfig, forecast, trends } = data
+  return (
+    <ErrorBoundary level="section">
+      <div className="col-span-2 max-[1023px]:col-span-1">
+        <Suspense fallback={<SkeletonChart />}>
+          <SpendBurnChart
+            trendData={trends?.data_points ?? []}
+            forecast={forecast}
+            budgetTotal={budgetConfig?.total_monthly ?? 0}
+            budgetRemaining={overview?.budget_remaining}
+            alerts={budgetConfig?.alerts}
+            currency={currency}
+          />
+        </Suspense>
+      </div>
+    </ErrorBoundary>
+  )
+}
+
+function BudgetGaugeRow({ data, currency }: { data: BudgetData; currency: string | undefined }) {
+  return (
+    <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
+      <BudgetGaugeCell data={data} currency={currency} />
+      <SpendBurnCell data={data} currency={currency} />
+    </div>
+  )
+}
+
+function BudgetBreakdownRow({
+  data,
+  derived,
+  breakdownDimension,
+  onDimensionChange,
+}: {
+  data: BudgetData
+  derived: BudgetDerived
+  breakdownDimension: BreakdownDimension
+  onDimensionChange: (dimension: BreakdownDimension) => void
+}) {
+  const { currency, costBreakdown, categoryRatio } = derived
+  return (
+    <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
+      <ErrorBoundary level="section">
+        <Suspense fallback={<SkeletonChart aspectRatio={1} />}>
+          <CostBreakdownChart
+            breakdown={costBreakdown}
+            dimension={breakdownDimension}
+            onDimensionChange={onDimensionChange}
+            deptDisabled={data.agentDeptMap.size === 0}
+            currency={currency}
+          />
+        </Suspense>
+      </ErrorBoundary>
+      <ErrorBoundary level="section">
+        <CategoryBreakdown ratio={categoryRatio} currency={currency} />
+      </ErrorBoundary>
+    </div>
+  )
+}
+
 function BudgetCharts({
   data,
   derived,
@@ -244,51 +319,16 @@ function BudgetCharts({
   paretoFrontier,
   paretoLoading,
 }: BudgetChartsProps) {
-  const { overview, budgetConfig, forecast, trends, agentDeptMap } = data
-  const { currency, costBreakdown, categoryRatio, agentSpendingRows, cfoEvents } = derived
+  const { currency, agentSpendingRows, cfoEvents } = derived
   return (
     <>
-      <div className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
-        <ErrorBoundary level="section">
-          <BudgetGauge
-            usedPercent={overview?.budget_used_percent ?? 0}
-            budgetRemaining={overview?.budget_remaining ?? 0}
-            daysUntilExhausted={forecast?.days_until_exhausted ?? null}
-            currency={currency}
-          />
-        </ErrorBoundary>
-        <ErrorBoundary level="section">
-          <div className="col-span-2 max-[1023px]:col-span-1">
-            <Suspense fallback={<SkeletonChart />}>
-              <SpendBurnChart
-                trendData={trends?.data_points ?? []}
-                forecast={forecast}
-                budgetTotal={budgetConfig?.total_monthly ?? 0}
-                budgetRemaining={overview?.budget_remaining}
-                alerts={budgetConfig?.alerts}
-                currency={currency}
-              />
-            </Suspense>
-          </div>
-        </ErrorBoundary>
-      </div>
-
-      <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
-        <ErrorBoundary level="section">
-          <Suspense fallback={<SkeletonChart aspectRatio={1} />}>
-            <CostBreakdownChart
-              breakdown={costBreakdown}
-              dimension={breakdownDimension}
-              onDimensionChange={onDimensionChange}
-              deptDisabled={agentDeptMap.size === 0}
-              currency={currency}
-            />
-          </Suspense>
-        </ErrorBoundary>
-        <ErrorBoundary level="section">
-          <CategoryBreakdown ratio={categoryRatio} currency={currency} />
-        </ErrorBoundary>
-      </div>
+      <BudgetGaugeRow data={data} currency={currency} />
+      <BudgetBreakdownRow
+        data={data}
+        derived={derived}
+        breakdownDimension={breakdownDimension}
+        onDimensionChange={onDimensionChange}
+      />
 
       <ErrorBoundary level="section">
         <ParetoSection frontier={paretoFrontier} loading={paretoLoading} />
