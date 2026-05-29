@@ -107,9 +107,7 @@ _auth_mod._hasher = argon2.PasswordHasher(
 # seam for per-tier loop selection: it makes the choice explicit (so
 # subprocess-driving tiers can shadow it with ``ProactorEventLoop``)
 # and keeps the unit tier on a consistent loop type regardless of the
-# Python default. The IOCP teardown race that originally motivated
-# pinning could not be reproduced under ``--count=2``, but pinning
-# remains as the per-tier seam for consistency.
+# Python default.
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -167,8 +165,12 @@ def make_exception_handler_app(handler: Any) -> Litestar:
 # ── Auth helpers ────────────────────────────────────────────────
 
 # Cache password hashes by role so that make_auth_headers and
-# _seed_test_users produce identical pwd_sig claims.
+# _seed_test_users produce identical pwd_sig claims. The lock guards the
+# check-then-compute-then-store sequence: ``make_auth_headers`` runs at
+# module-import time across concurrently-collecting xdist workers, so two
+# threads could otherwise both miss the cache and race the write.
 _TEST_PASSWORD_HASHES: dict[str, str] = {}
+_TEST_PASSWORD_HASHES_LOCK = threading.Lock()
 
 
 def _make_test_auth_config() -> AuthConfig:
@@ -198,38 +200,41 @@ def _get_test_password_hash(
     from a running event loop``.  Detect that case and run the
     coroutine in a worker thread with its own loop instead.
     """
-    if role in _TEST_PASSWORD_HASHES:
+    with _TEST_PASSWORD_HASHES_LOCK:
+        if role in _TEST_PASSWORD_HASHES:
+            return _TEST_PASSWORD_HASHES[role]
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop -- safe to use asyncio.run directly.
+            _TEST_PASSWORD_HASHES[role] = asyncio.run(
+                auth_service.hash_password_async("test-password-12chars"),
+            )
+        else:
+            # Already inside a loop; run the hashing in a worker thread
+            # so we do not nest event loops on the same thread.
+            result: list[str] = []
+            errors: list[BaseException] = []
+
+            def _hash_in_thread() -> None:
+                try:
+                    result.append(
+                        asyncio.run(
+                            auth_service.hash_password_async(
+                                "test-password-12chars",
+                            ),
+                        ),
+                    )
+                except BaseException as exc:
+                    errors.append(exc)
+
+            thread = threading.Thread(target=_hash_in_thread)
+            thread.start()
+            thread.join()
+            if errors:
+                raise errors[0]
+            _TEST_PASSWORD_HASHES[role] = result[0]
         return _TEST_PASSWORD_HASHES[role]
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        # No running loop -- safe to use asyncio.run directly.
-        _TEST_PASSWORD_HASHES[role] = asyncio.run(
-            auth_service.hash_password_async("test-password-12chars"),
-        )
-    else:
-        # Already inside a loop; run the hashing in a worker thread
-        # so we do not nest event loops on the same thread.
-        result: list[str] = []
-        errors: list[BaseException] = []
-
-        def _hash_in_thread() -> None:
-            try:
-                result.append(
-                    asyncio.run(
-                        auth_service.hash_password_async("test-password-12chars"),
-                    ),
-                )
-            except BaseException as exc:
-                errors.append(exc)
-
-        thread = threading.Thread(target=_hash_in_thread)
-        thread.start()
-        thread.join()
-        if errors:
-            raise errors[0]
-        _TEST_PASSWORD_HASHES[role] = result[0]
-    return _TEST_PASSWORD_HASHES[role]
 
 
 def _make_test_user(
@@ -286,12 +291,13 @@ def make_auth_headers(
 #
 # The underlying service/app fixtures in this file are session-scoped:
 # created once per xdist worker and shared across tests.  The
-# ``test_client`` fixture is function-scoped, though, and performs
-# per-test clearing/reconnection.  The shared app uses
-# ``_skip_lifecycle_shutdown=True`` to prevent lifespan shutdown from
-# stopping/disconnecting shared services.  Tests that create their
-# own apps may disconnect/stop the shared persistence/bus, but
-# ``test_client`` re-connects them before each test.
+# ``async_test_client`` / ``ws_test_client`` fixtures are
+# function-scoped, though, and perform per-test clearing/reconnection.
+# The shared app uses ``_skip_lifecycle_shutdown=True`` to prevent
+# lifespan shutdown from stopping/disconnecting shared services.  Tests
+# that create their own apps may disconnect/stop the shared
+# persistence/bus, but the per-test reset re-connects them before each
+# test.
 
 
 @pytest.fixture(scope="session")
@@ -517,7 +523,7 @@ def _shared_app(  # noqa: PLR0913
     )
 
 
-# ── Function-scoped test_client with per-test reset ────────────
+# ── Function-scoped async_test_client / ws_test_client with reset ──
 
 
 def _restore_instance_patches(obj: object) -> None:
@@ -571,30 +577,16 @@ class _ResetServices:
     auth_service: AuthService
 
 
-def _pre_test_reset(
-    shared_app: Litestar,
-    services: _ResetServices,
-) -> tuple[dict[str, Any], dict[Any, Any]]:
-    """Clear shared mutable state and snapshot AppState (steps 1-6).
+def _reset_service_state(services: _ResetServices) -> None:
+    """Step 1: clear mutable service state and undo any method patches.
 
-    Returns the AppState primitive-slot snapshot and a copy of the slice
-    store so the caller can restore them after the test (see
-    :func:`_restore_app_state`). Shared by the sync and async client
-    context managers: the reset is identical regardless of client type
-    (it exists because the app + services are session-scoped, not
-    because of the client).
+    Restores original methods BEFORE ``clear()``: a prior test may have
+    monkeypatched ``svc.clear`` (or a method it calls) with a stub that
+    raises or corrupts state, so the real implementation must run.
+    ``AgentRegistryService`` / ``ApprovalStore`` ``clear`` are async, so
+    their sync test-only entry points are used to keep the reset sync.
     """
-    from synthorg.api.api_core_state import ApiCoreStateSlice
-    from synthorg.communication.state import CommunicationStateSlice
-    from synthorg.engine.state import EngineStateSlice
-    from synthorg.settings.state import SettingsStateSlice
-
-    fake_persistence = services.fake_persistence
-    fake_message_bus = services.fake_message_bus
-    auth_service = services.auth_service
-
-    # 1. Clear all mutable service state and undo method patches
-    _services = (
+    tracked = (
         services.cost_tracker,
         services.approval_store,
         services.performance_tracker,
@@ -605,17 +597,8 @@ def _pre_test_reset(
         services.audit_log,
         services.coordination_metrics_store,
     )
-    for svc in _services:
-        # Restore original methods BEFORE calling clear(): a prior
-        # test may have monkeypatched ``svc.clear`` itself (or a method
-        # that clear() invokes) with a stub that raises or corrupts
-        # state; we want the real ``clear`` implementation to run.
+    for svc in tracked:
         _restore_instance_patches(svc)
-        # AgentRegistryService.clear and ApprovalStore.clear are
-        # async; use the sync test-only entry points so this reset
-        # stays synchronous. AgentRegistryService no longer has a sync
-        # reset method on its production surface; the registry_testing
-        # module exposes one specifically for this use case.
         if isinstance(svc, AgentRegistryService):
             from synthorg.hr.registry_testing import reset_registry_for_test_sync
 
@@ -624,48 +607,52 @@ def _pre_test_reset(
             svc.reset_for_test_sync()
         else:
             svc.clear()
-    fake_persistence.clear()
-    fake_message_bus.clear()
+    services.fake_persistence.clear()
+    services.fake_message_bus.clear()
 
-    # 2. Re-connect persistence and reset task engine running state.
-    #    A previous test may have disconnected persistence via its own
-    #    app's lifespan shutdown.  The task engine's _running stays True
-    #    because _skip_lifecycle_shutdown prevents stop(), but its
-    #    internal asyncio tasks die when the previous test's event loop
-    #    closes.  Resetting _running lets the next startup create fresh
-    #    tasks on the new event loop.
-    fake_persistence._connected = True
-    app_state: AppState = shared_app.state.app_state
-    # Reset the task engine for the new event loop.  The session-scoped
-    # engine's queues accumulate pending put/get futures bound to the
-    # *previous* test's event loop; once that loop closes those futures
-    # are permanently unusable and block any further async interaction
-    # with the queue.  Recreate the queues and reset the running flag so
-    # the next startup creates fresh processing tasks on the new loop.
-    #    This step is still required under the portal-free async client:
-    #    pytest-asyncio's per-test loop closes after every test (loop
-    #    scope is "function"), so the same dead-loop problem applies.
+
+def _reset_task_engine(app_state: AppState) -> None:
+    """Step 2: rebind the session-scoped task engine to the next test's loop.
+
+    The engine's queues accumulate pending put/get futures bound to the
+    *previous* test's event loop; once that loop closes those futures are
+    permanently unusable and block any further async queue interaction.
+    Recreating the queues and resetting ``_running`` lets the next startup
+    create fresh processing tasks on the new loop. Still required under the
+    portal-free async client: pytest-asyncio's per-test loop closes after
+    every test (loop scope is "function"), so the same dead-loop applies.
+
+    ``asyncio.Queue`` does NOT bind to a loop at construction time (its
+    ``_loop`` is resolved lazily on the first ``put``/``get``). So even
+    though this runs inside the test's running loop, the fresh queues stay
+    unbound until the engine's processing tasks first drive them on the
+    next startup, binding them to that test's loop.
+    """
+    from synthorg.engine.state import EngineStateSlice
+
     task_engine = app_state.slice(EngineStateSlice).task_engine
-    if task_engine is not None:
-        task_engine._running = False
-        # asyncio.Queue lazily binds to the running event loop on first
-        # ``put``/``get``.  These fresh queues are built here (before the
-        # client enters the app's lifespan), so they bind to the next
-        # test's loop when the engine's processing tasks first drive them.
-        task_engine._queue = asyncio.Queue(maxsize=task_engine._config.max_queue_size)
-        task_engine._observer_queue = asyncio.Queue(
-            maxsize=task_engine._config.effective_observer_queue_size,
-        )
-        task_engine._versions = type(task_engine._versions)()
-        task_engine._observers.clear()
+    if task_engine is None:
+        return
+    task_engine._running = False
+    task_engine._queue = asyncio.Queue(maxsize=task_engine._config.max_queue_size)
+    task_engine._observer_queue = asyncio.Queue(
+        maxsize=task_engine._config.effective_observer_queue_size,
+    )
+    task_engine._versions = type(task_engine._versions)()
+    task_engine._observers.clear()
 
-    # 3. Clear AppState-internal stores and caches.
-    #    Session and lockout stores are kept (rebuilding them from
-    #    DB on every test is expensive); we clear their in-memory
-    #    caches in place so revoked-session / lockout state from a
-    #    prior test cannot bleed into the next one.  The
-    #    has_session_store / has_lockout_store guards in
-    #    _safe_startup() then correctly skip re-initialization.
+
+def _clear_appstate_stores(shared_app: Litestar, app_state: AppState) -> None:
+    """Step 3: clear AppState-internal caches + the per-op rate-limit store.
+
+    Session and lockout stores are kept (rebuilding from DB every test is
+    expensive); their in-memory caches are cleared in place so
+    revoked-session / lockout state cannot bleed across tests.
+    """
+    from synthorg.api.api_core_state import ApiCoreStateSlice
+    from synthorg.communication.state import CommunicationStateSlice
+    from synthorg.settings.state import SettingsStateSlice
+
     api_core = app_state.slice(ApiCoreStateSlice)
     if api_core.session_store is not None:
         api_core.session_store._revoked.clear()
@@ -694,9 +681,8 @@ def _pre_test_reset(
     if communication.escalation_registry is not None:
         communication.escalation_registry._futures.clear()
 
-    # Clear the per-op rate-limit sliding-window store so a prior
-    # test's 429 buckets (e.g. ``setup.complete`` at 5/3600s) cannot
-    # bleed into the next one.
+    # Clear the per-op rate-limit sliding-window store so a prior test's
+    # 429 buckets (e.g. ``setup.complete`` at 5/3600s) cannot bleed over.
     per_op_store = getattr(shared_app.state, "per_op_rate_limit_store", None)
     if per_op_store is not None:
         buckets = getattr(per_op_store, "_buckets", None)
@@ -706,31 +692,36 @@ def _pre_test_reset(
         if isinstance(locks, dict):
             locks.clear()
 
-    # 4. Re-seed test users
-    _seed_test_users(fake_persistence, auth_service)
 
-    # 5. Snapshot AppState primitive refs + the per-feature slice store
-    #    before the test. Primitives live in ``__slots__``; every domain
-    #    service now lives on a frozen feature slice in ``_slices``, so a
-    #    shallow copy of that mapping is enough to revert a test's
-    #    ``wire`` / ``swap_slice`` mutations (the slice *values* are
-    #    immutable, so they need no deep copy).
+def _snapshot_app_state(
+    app_state: AppState,
+) -> tuple[dict[str, Any], dict[Any, Any]]:
+    """Step 5: snapshot primitive slots + the per-feature slice store.
+
+    Primitives live in ``__slots__``; every domain service lives on a
+    frozen feature slice in ``_slices``, so a shallow copy of that mapping
+    is enough to revert a test's ``wire`` / ``swap_slice`` mutations (the
+    slice *values* are immutable, so they need no deep copy).
+    """
     saved: dict[str, Any] = {
         attr: getattr(app_state, attr)
         for attr in AppState.__slots__
         if attr.startswith("_")
     }
     saved_slices: dict[Any, Any] = dict(app_state._slices)
+    return saved, saved_slices
 
-    # 6. Clear Litestar-internal rate-limit stores to prevent 429s
-    #    from accumulating request counters across tests.  Reaches
-    #    into private attributes (``stores._stores`` and
-    #    ``store._store``) because Litestar has no public
-    #    bulk-clear API.  Guarded with ``hasattr`` so a Litestar
-    #    upgrade fails with a clear, actionable error instead of
-    #    a cryptic ``AttributeError`` deep in fixture setup.
-    _shared_stores = shared_app.stores
-    if not hasattr(_shared_stores, "_stores"):
+
+def _clear_litestar_stores(shared_app: Litestar) -> None:
+    """Step 6: clear Litestar-internal rate-limit stores.
+
+    Reaches into private attributes (``stores._stores`` / ``store._store``)
+    because Litestar has no public bulk-clear API. Guarded with ``hasattr``
+    so a Litestar upgrade fails with a clear, actionable error instead of a
+    cryptic ``AttributeError`` deep in fixture setup.
+    """
+    shared_stores = shared_app.stores
+    if not hasattr(shared_stores, "_stores"):
         msg = (
             "Test fixture expected Litestar app.stores to expose a "
             "private '_stores' mapping for rate-limit reset, but it "
@@ -739,7 +730,7 @@ def _pre_test_reset(
             "API if available."
         )
         raise RuntimeError(msg)
-    for store in _shared_stores._stores.values():
+    for store in shared_stores._stores.values():
         inner = getattr(store, "_store", None)
         if inner is None or not hasattr(inner, "clear"):
             msg = (
@@ -753,6 +744,31 @@ def _pre_test_reset(
             raise RuntimeError(msg)
         inner.clear()
 
+
+def _pre_test_reset(
+    shared_app: Litestar,
+    services: _ResetServices,
+) -> tuple[dict[str, Any], dict[Any, Any]]:
+    """Clear shared mutable state and snapshot AppState (steps 1-6).
+
+    Returns the AppState primitive-slot snapshot and a copy of the slice
+    store so the caller can restore them after the test (see
+    :func:`_restore_app_state`). Shared by the sync and async client
+    context managers: the reset is identical regardless of client type (it
+    exists because the app + services are session-scoped, not because of
+    the client).
+    """
+    app_state: AppState = shared_app.state.app_state
+    _reset_service_state(services)
+    # Re-connect persistence: a prior test's lifespan shutdown may have
+    # disconnected it (``_skip_lifecycle_shutdown`` keeps the engine's
+    # ``_running`` True, but its loop-bound tasks die with the old loop).
+    services.fake_persistence._connected = True
+    _reset_task_engine(app_state)
+    _clear_appstate_stores(shared_app, app_state)
+    _seed_test_users(services.fake_persistence, services.auth_service)
+    saved, saved_slices = _snapshot_app_state(app_state)
+    _clear_litestar_stores(shared_app)
     return saved, saved_slices
 
 
@@ -819,11 +835,15 @@ def _sync_shared_client(
 ) -> Iterator[TestClient[Any]]:
     """Reset state, enter a sync ``TestClient`` on the shared app, restore."""
     saved, saved_slices = _pre_test_reset(shared_app, services)
-    with TestClient(shared_app) as client:
-        _post_startup_reset(shared_app, services)
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
-    _restore_app_state(shared_app, saved, saved_slices)
+    try:
+        with TestClient(shared_app) as client:
+            _post_startup_reset(shared_app, services)
+            client.headers.update(make_auth_headers("ceo"))
+            yield client
+    finally:
+        # Restore even if client entry / post-startup reset raises, so a
+        # failed test cannot leak a wired slice store into the next test.
+        _restore_app_state(shared_app, saved, saved_slices)
 
 
 @contextlib.asynccontextmanager
@@ -838,11 +858,15 @@ async def _async_shared_client(
     one event loop and zero portals.
     """
     saved, saved_slices = _pre_test_reset(shared_app, services)
-    async with LoopAsyncClient(shared_app) as client:
-        _post_startup_reset(shared_app, services)
-        client.headers.update(make_auth_headers("ceo"))
-        yield client
-    _restore_app_state(shared_app, saved, saved_slices)
+    try:
+        async with LoopAsyncClient(shared_app) as client:
+            _post_startup_reset(shared_app, services)
+            client.headers.update(make_auth_headers("ceo"))
+            yield client
+    finally:
+        # Restore even if client entry / post-startup reset raises, so a
+        # failed test cannot leak a wired slice store into the next test.
+        _restore_app_state(shared_app, saved, saved_slices)
 
 
 @pytest.fixture
@@ -902,10 +926,12 @@ def ws_test_client(
 ) -> Iterator[TestClient[Any]]:
     """Yield a sync ``TestClient`` for websocket tests.
 
-    litestar 2.22's ``WebSocketTestSession`` is sync and portal-backed
-    (there is no async websocket test API), so websocket tests keep a
-    sync client. Only a handful of tests use this, so the per-test portal
-    it creates is a negligible ``socket.socketpair`` load.
+    litestar 2.22's ``WebSocketTestSession`` is sync and portal-backed in
+    its ``__enter__``/``__exit__`` contract regardless of whether it is
+    obtained from a sync or async client (``AsyncTestClient.websocket_connect``
+    returns the same session), so websocket tests keep a sync client. Only
+    a handful of tests use this, so the per-test portal it creates is a
+    negligible ``socket.socketpair`` load.
     """
     with _sync_shared_client(_shared_app, _reset_services) as client:
         yield client

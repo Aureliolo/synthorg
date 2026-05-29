@@ -102,6 +102,44 @@ async def e2e_client(
         yield client
 
 
+async def _create_client_and_submit_request(client: LoopAsyncClient) -> str:
+    """Create the e2e client and submit a requirement; return the request id.
+
+    Asserts both creations succeed and the request appears in the list.
+    """
+    create_resp = await client.post(
+        "/api/v1/clients/",
+        json={
+            "client_id": "e2e-client",
+            "name": "E2E Client",
+            "persona": "End-to-end simulation operator",
+            "expertise_domains": ["backend"],
+            "strictness_level": 0.6,
+        },
+    )
+    assert create_resp.status_code == 201
+    assert create_resp.json()["data"]["client_id"] == "e2e-client"
+
+    submit_resp = await client.post(
+        "/api/v1/requests/",
+        json={
+            "client_id": "e2e-client",
+            "requirement": {
+                "title": "E2E Feature",
+                "description": "Build a sample feature for the e2e run.",
+            },
+        },
+    )
+    assert submit_resp.status_code == 201
+    request_id: str = submit_resp.json()["data"]["request_id"]
+    assert submit_resp.json()["data"]["status"] == "submitted"
+
+    list_resp = await client.get("/api/v1/requests")
+    assert list_resp.status_code == 200
+    assert any(r["request_id"] == request_id for r in list_resp.json()["data"])
+    return request_id
+
+
 class TestClientSimulationE2E:
     """End-to-end client simulation loop via the HTTP API."""
 
@@ -111,39 +149,7 @@ class TestClientSimulationE2E:
     ) -> None:
         """Create client, submit request, reject it, then run a sim."""
         e2e_client.headers.update(make_auth_headers("ceo"))
-
-        # 1. Create a client.
-        create_resp = await e2e_client.post(
-            "/api/v1/clients/",
-            json={
-                "client_id": "e2e-client",
-                "name": "E2E Client",
-                "persona": "End-to-end simulation operator",
-                "expertise_domains": ["backend"],
-                "strictness_level": 0.6,
-            },
-        )
-        assert create_resp.status_code == 201
-        assert create_resp.json()["data"]["client_id"] == "e2e-client"
-
-        # 2. Submit a request and confirm it appears in the list.
-        submit_resp = await e2e_client.post(
-            "/api/v1/requests/",
-            json={
-                "client_id": "e2e-client",
-                "requirement": {
-                    "title": "E2E Feature",
-                    "description": "Build a sample feature for the e2e run.",
-                },
-            },
-        )
-        assert submit_resp.status_code == 201
-        request_id = submit_resp.json()["data"]["request_id"]
-        assert submit_resp.json()["data"]["status"] == "submitted"
-
-        list_resp = await e2e_client.get("/api/v1/requests")
-        assert list_resp.status_code == 200
-        assert any(r["request_id"] == request_id for r in list_resp.json()["data"])
+        request_id = await _create_client_and_submit_request(e2e_client)
 
         # 3. Reject the request (exercises the cancel transition).
         reject_resp = await e2e_client.post(

@@ -459,6 +459,44 @@ class TestAuthMiddlewareExcludePaths:
             assert resp.status_code == 200
 
 
+async def _mint_stray_pwd_sig_system_token(
+    svc: AuthService,
+    persistence: FakePersistenceBackend,
+) -> str:
+    """Seed a system user and mint a system JWT carrying a stray pwd_sig.
+
+    A legitimate system token (sub='system', iss='synthorg-cli') never
+    includes pwd_sig; this malformed one violates JwtClaims'
+    mutual-exclusion invariant and must be rejected at decode.
+    """
+    import jwt as pyjwt
+
+    now = datetime.now(UTC)
+    system_user = User(
+        id="system",
+        username="system",
+        password_hash=await svc.hash_password_async("random-password-12chars"),
+        role=HumanRole.SYSTEM,
+        must_change_password=False,
+        created_at=now,
+        updated_at=now,
+    )
+    await persistence.users.save(system_user)
+    return pyjwt.encode(
+        {
+            "sub": "system",
+            "iss": "synthorg-cli",
+            "aud": "synthorg-backend",
+            "pwd_sig": "stale-signature-",
+            "jti": "sys-jti-2",
+            "iat": now,
+            "exp": now + timedelta(seconds=60),
+        },
+        _SECRET,
+        algorithm="HS256",
+    )
+
+
 @pytest.mark.unit
 class TestAuthMiddlewareSystemUser:
     """System user JWTs (from CLI) skip pwd_sig validation."""
@@ -656,39 +694,10 @@ class TestAuthMiddlewareSystemUser:
         system tokens minted by the Go CLI never include pwd_sig, so
         this strictness only blocks malformed tokens.
         """
-        import jwt as pyjwt
-
         svc = _make_auth_service()
         persistence = FakePersistenceBackend()
         await persistence.connect()
-
-        now = datetime.now(UTC)
-        system_user = User(
-            id="system",
-            username="system",
-            password_hash=await svc.hash_password_async("random-password-12chars"),
-            role=HumanRole.SYSTEM,
-            must_change_password=False,
-            created_at=now,
-            updated_at=now,
-        )
-        await persistence.users.save(system_user)
-
-        # Stray pwd_sig on a system token violates the mutual-exclusion
-        # invariant: a malformed system token must not authenticate.
-        token = pyjwt.encode(
-            {
-                "sub": "system",
-                "iss": "synthorg-cli",
-                "aud": "synthorg-backend",
-                "pwd_sig": "stale-signature-",
-                "jti": "sys-jti-2",
-                "iat": now,
-                "exp": now + timedelta(seconds=60),
-            },
-            _SECRET,
-            algorithm="HS256",
-        )
+        token = await _mint_stray_pwd_sig_system_token(svc, persistence)
 
         app = _build_app(auth_service=svc, persistence=persistence)
         async with LoopAsyncClient(app) as client:

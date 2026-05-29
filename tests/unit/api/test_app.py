@@ -1,5 +1,6 @@
 """Tests for application factory."""
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,61 @@ from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import LoopAsyncClient, make_app_state
+
+
+def _build_startup_with_failing_settings_autowire(
+    monkeypatch: pytest.MonkeyPatch,
+    root_config: Any,
+) -> Callable[[], Awaitable[None]]:
+    """Build an on_startup hook whose ``auto_wire_settings`` step raises.
+
+    ``_safe_startup`` is mocked so the hook reaches the auto-wire stage,
+    and ``auto_wire_settings`` is patched to raise so the test can assert
+    the failure propagates (triggering ``_safe_shutdown`` cleanup).
+    """
+    from unittest.mock import AsyncMock
+
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.lifecycle_builder import _build_lifecycle
+    from tests.unit.api.conftest import FakeMessageBus, FakePersistenceBackend
+
+    persistence = FakePersistenceBackend()
+    bus = FakeMessageBus()
+    app_state = make_app_state(
+        config=root_config,
+        approval_store=ApprovalStore(),
+        persistence=persistence,
+        message_bus=bus,
+    )
+
+    async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
+        msg = "phase2 boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        "synthorg.api.auto_wire.auto_wire_settings",
+        failing_auto_wire,
+    )
+    startup, _shutdown = _build_lifecycle(
+        persistence,
+        bus,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        app_state,
+        should_auto_wire_settings=True,
+        effective_config=root_config,
+    )
+    # Mock _safe_startup so on_startup gets past the early stage.
+    safe_startup_mock = AsyncMock()
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_builder._safe_startup",
+        safe_startup_mock,
+    )
+    return startup[0]
 
 
 @pytest.mark.unit
@@ -931,56 +987,12 @@ class TestAutoWirePhase2ErrorPaths:
         root_config: Any,
     ) -> None:
         """On-startup auto-wire failure calls _safe_shutdown for cleanup."""
-        from unittest.mock import AsyncMock
-
-        from synthorg.api.approval_store import ApprovalStore
-        from synthorg.api.lifecycle_builder import _build_lifecycle
-        from tests.unit.api.conftest import (
-            FakeMessageBus,
-            FakePersistenceBackend,
+        startup_hook = _build_startup_with_failing_settings_autowire(
+            monkeypatch,
+            root_config,
         )
-
-        persistence = FakePersistenceBackend()
-        bus = FakeMessageBus()
-        app_state = make_app_state(
-            config=root_config,
-            approval_store=ApprovalStore(),
-            persistence=persistence,
-            message_bus=bus,
-        )
-
-        async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
-            msg = "phase2 boom"
-            raise RuntimeError(msg)
-
-        monkeypatch.setattr(
-            "synthorg.api.auto_wire.auto_wire_settings",
-            failing_auto_wire,
-        )
-
-        startup, _shutdown = _build_lifecycle(
-            persistence,
-            bus,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            app_state,
-            should_auto_wire_settings=True,
-            effective_config=root_config,
-        )
-
-        # Mock _safe_startup so on_startup gets past the early stage.
-        safe_startup_mock = AsyncMock()
-        monkeypatch.setattr(
-            "synthorg.api.lifecycle_builder._safe_startup",
-            safe_startup_mock,
-        )
-
         with pytest.raises(RuntimeError, match="phase2 boom"):
-            await startup[0]()
+            await startup_hook()
 
     async def test_auto_wired_dispatcher_stopped_on_shutdown(
         self,

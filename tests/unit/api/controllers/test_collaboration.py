@@ -37,17 +37,19 @@ def perf_tracker(
 
 
 @pytest.fixture
-async def _fake_persistence() -> FakePersistenceBackend:
+async def _fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
-async def _fake_message_bus() -> FakeMessageBus:
+async def _fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
     bus = FakeMessageBus()
     await bus.start()
-    return bus
+    yield bus
+    await bus.stop()
 
 
 @pytest.fixture

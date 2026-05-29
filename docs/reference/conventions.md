@@ -708,8 +708,9 @@ conftest's hook win.
 
 `tests/_shared/` is not a pytest suite and carries no `conftest.py`;
 it exposes the test-double ladder (`FakeClock`, `mock_of`,
-`SimpleNamespace`-bag helpers) as importable utilities consumed by
-fixtures declared elsewhere.
+`SimpleNamespace`-bag helpers) plus `LoopAsyncClient` (the portal-free
+async API test client backing the `async_test_client` fixture) as
+importable utilities consumed by fixtures declared elsewhere.
 
 ## 25. Settings-definitions structure
 

@@ -25,7 +25,7 @@ app's ``*.complete`` acknowledgement, exactly as an ASGI server would.
 import asyncio
 import contextlib
 from types import TracebackType
-from typing import Self, override
+from typing import Any, Self, override
 
 import httpx
 from litestar import Litestar
@@ -52,26 +52,17 @@ class LoopAsyncClient(httpx.AsyncClient):
     event loop, or ``socket.socketpair``).
     """
 
-    def __init__(
-        self,
-        app: Litestar,
-        *,
-        raise_app_exceptions: bool = True,
-    ) -> None:
+    def __init__(self, app: Litestar) -> None:
         """Build a client bound to ``app``.
 
         Args:
             app: The Litestar application under test.
-            raise_app_exceptions: When True (the default, matching
-                litestar's clients) an unhandled exception in the app
-                propagates out of the request call instead of being
-                wrapped in a 500 response.
         """
         self.app = app
         super().__init__(
             transport=httpx.ASGITransport(
                 app=app,  # type: ignore[arg-type] -- Litestar is ASGI-callable; httpx types scope as a broad MutableMapping
-                raise_app_exceptions=raise_app_exceptions,
+                raise_app_exceptions=True,
                 client=_TEST_CLIENT_ADDR,
             ),
             base_url=_BASE_URL,
@@ -96,13 +87,50 @@ class LoopAsyncClient(httpx.AsyncClient):
         }
         await self.app(scope, self._receive, self._send)
 
-    async def _discard_lifespan_task(self) -> None:
-        """Retire the lifespan task on the error/teardown path.
+    async def _await_app_message(self, *, phase: str) -> LifeSpanSendMessage:
+        """Await the app's next lifespan message, racing the lifespan task.
 
-        Any exception the task itself carries is the same failure
-        already surfaced by the caller from the ASGI ``lifespan.*.failed``
-        message, so it is intentionally not re-raised here (doing so
-        would mask the clearer ``RuntimeError`` the caller raises).
+        A plain ``self._from_app.get()`` blocks forever if the lifespan
+        task exits (crash or cancellation) without emitting a terminal
+        ``lifespan.*`` message; under the per-test timeout that becomes an
+        opaque 30s hang and ``os.abort``. Racing the queue read against
+        the task surfaces the task's failure as a ``RuntimeError`` instead.
+
+        Args:
+            phase: ``"startup"`` or ``"shutdown"`` for the error message.
+
+        Returns:
+            The message the app sent on the lifespan channel.
+        """
+        task = self._lifespan_task
+        if task is None:
+            msg = "lifespan task is not running"
+            raise RuntimeError(msg)
+        get_message: asyncio.Task[LifeSpanSendMessage] = asyncio.ensure_future(
+            self._from_app.get(),
+        )
+        waiters: set[asyncio.Future[Any]] = {get_message, task}
+        done, _ = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+        if get_message in done:
+            return get_message.result()
+        get_message.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await get_message
+        reason = f"ASGI lifespan task exited during {phase} without a message"
+        if not task.cancelled() and task.exception() is not None:
+            raise RuntimeError(reason) from task.exception()
+        raise RuntimeError(reason)
+
+    async def _discard_lifespan_task(self) -> None:
+        """Retire the lifespan task on the teardown path (best effort).
+
+        A still-running task is cancelled; the result of an already-done
+        task is awaited so asyncio does not warn about an unretrieved
+        exception. Any exception the task carries is intentionally NOT
+        re-raised here: a genuine app-side lifespan crash is surfaced by
+        ``__aexit__`` BEFORE this runs (when no test exception is in
+        flight), and re-raising during cleanup would mask the caller's
+        clearer error.
         """
         task = self._lifespan_task
         self._lifespan_task = None
@@ -120,9 +148,17 @@ class LoopAsyncClient(httpx.AsyncClient):
             self._run_lifespan(),
             name="loop-async-client-lifespan",
         )
-        startup: LifeSpanStartupEvent = {"type": "lifespan.startup"}
-        await self._to_app.put(startup)
-        message = await self._from_app.get()
+        # Guard the awaits: a cancellation or error after
+        # super().__aenter__() must not leak the half-entered httpx client
+        # or the orphaned lifespan task.
+        try:
+            startup: LifeSpanStartupEvent = {"type": "lifespan.startup"}
+            await self._to_app.put(startup)
+            message = await self._await_app_message(phase="startup")
+        except BaseException:
+            await self._discard_lifespan_task()
+            await super().__aexit__(None, None, None)
+            raise
         if message["type"] != "lifespan.startup.complete":
             detail = ""
             if message["type"] == "lifespan.startup.failed":
@@ -140,20 +176,30 @@ class LoopAsyncClient(httpx.AsyncClient):
         exc_value: BaseException | None = None,
         traceback: TracebackType | None = None,
     ) -> None:
+        task = self._lifespan_task
         try:
-            task = self._lifespan_task
             if task is not None and not task.done():
                 shutdown: LifeSpanShutdownEvent = {"type": "lifespan.shutdown"}
                 await self._to_app.put(shutdown)
-                ack = await self._from_app.get()
+                ack = await self._await_app_message(phase="shutdown")
                 if ack["type"] != "lifespan.shutdown.complete":
                     detail = ""
                     if ack["type"] == "lifespan.shutdown.failed":
                         detail = ack["message"]
                     reason = f"ASGI lifespan shutdown failed: {ack['type']} {detail}"
                     raise RuntimeError(reason.strip())
-                await task
-                self._lifespan_task = None
+            elif (
+                task is not None
+                and exc_type is None
+                and not task.cancelled()
+                and task.exception() is not None
+            ):
+                # The lifespan task finished before shutdown was driven:
+                # it crashed mid-test after startup.complete. Surface that
+                # crash, but only when the test body did not itself raise,
+                # so a real test failure is never masked.
+                reason = "ASGI lifespan task crashed during the test"
+                raise RuntimeError(reason) from task.exception()
         finally:
             await self._discard_lifespan_task()
             await super().__aexit__(exc_type, exc_value, traceback)

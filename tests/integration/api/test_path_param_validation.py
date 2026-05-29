@@ -75,6 +75,39 @@ class _InjectUserMiddleware(ASGIMiddleware):
         await next_app(scope, receive, send)
 
 
+def _build_path_param_app_state(
+    catalog: MagicMock | None,
+    mcp_service: MagicMock | None,
+    persistence: MagicMock | None,
+) -> MagicMock:
+    """Build the ``spec=AppState`` stub the path-param tests wire in.
+
+    ``spec=AppState`` restricts attribute access to the production
+    AppState surface so the stub cannot drift if the real state class
+    adds, renames, or removes a field. Each collaborator stub carries a
+    concrete spec so a rename/removal of any method on the underlying
+    interface fails the test instead of silently absorbing the access
+    (mock-spec gate).
+    """
+    from synthorg.api.cursor import CursorSecret
+    from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.config.schema import RootConfig
+    from synthorg.integrations.mcp_catalog.installations import (
+        McpInstallationRepository,
+    )
+
+    return MagicMock(
+        spec=AppState,
+        connection_catalog=catalog,
+        mcp_catalog_service=mcp_service,
+        mcp_installations_repo=MagicMock(spec=McpInstallationRepository),
+        persistence=persistence,
+        message_bus=MagicMock(spec=MessageBus),
+        cursor_secret=MagicMock(spec=CursorSecret),
+        config=MagicMock(spec=RootConfig),
+    )
+
+
 def _build_client(
     *,
     catalog: MagicMock | None = None,
@@ -93,29 +126,7 @@ def _build_client(
     from synthorg.api.controllers.oauth import OAuthController
     from synthorg.api.controllers.webhooks import WebhooksController
 
-    # spec=AppState restricts attribute access to the production
-    # AppState surface so the test's stub cannot drift if the real
-    # state class adds, renames, or removes a field. The collaborator
-    # stubs each carry a concrete spec so a rename/removal of any
-    # method on the underlying interface fails this test instead of
-    # silently absorbing the attribute access (mock-spec gate #1604).
-    from synthorg.api.cursor import CursorSecret
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.config.schema import RootConfig
-    from synthorg.integrations.mcp_catalog.installations import (
-        McpInstallationRepository,
-    )
-
-    app_state_stub = MagicMock(
-        spec=AppState,
-        connection_catalog=catalog,
-        mcp_catalog_service=mcp_service,
-        mcp_installations_repo=MagicMock(spec=McpInstallationRepository),
-        persistence=persistence,
-        message_bus=MagicMock(spec=MessageBus),
-        cursor_secret=MagicMock(spec=CursorSecret),
-        config=MagicMock(spec=RootConfig),
-    )
+    app_state_stub = _build_path_param_app_state(catalog, mcp_service, persistence)
 
     api_router = Router(
         path="/api/v1",

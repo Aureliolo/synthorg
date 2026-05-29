@@ -182,16 +182,18 @@ socket.getfqdn = _fast_getfqdn
 # selector, with default blocking I/O on the read side).
 #
 # Permanent Windows guard, not a tactical bridge. The API clients run
-# ASGI on the test's own loop (no ``BlockingPortal``), so ``--count=1``
-# is green without this wrapper. But every function-scoped async test
-# builds an event loop, and ``_make_self_pipe`` is an irreducible
-# ``socket.socketpair`` caller; that floor still saturates ``accept()``
-# at ``--count=2`` load. CPython closed 122797 without bounding
-# ``accept()`` (the 3.14 branch still ships the unguarded call), so
-# there is no upstream fix to inherit -- this wrapper IS that issue's
-# proposed hardening. Removing it would mean serialising the per-test
-# loops and sacrificing per-test isolation, a worse trade than a
-# Windows-only, semantically-invisible syscall guard.
+# ASGI on the test's own loop (no ``BlockingPortal``), which roughly
+# halves socketpair churn: at ``--count=1`` contention stays below the
+# 122797 saturation threshold, so the suite is green without this
+# wrapper. But every function-scoped async test still builds an event
+# loop, and ``_make_self_pipe`` is an irreducible ``socket.socketpair``
+# caller (one per such test); that floor still saturates ``accept()`` at
+# ``--count=2`` load. CPython closed 122797 without bounding ``accept()``
+# (the 3.14 branch still ships the unguarded call), so there is no
+# upstream fix to inherit -- this wrapper IS that issue's proposed
+# hardening. Removing it would mean serialising the per-test loops and
+# sacrificing per-test isolation, a worse trade than a Windows-only,
+# semantically-invisible syscall guard.
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 1.0
     _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 3

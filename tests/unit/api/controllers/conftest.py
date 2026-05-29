@@ -51,11 +51,9 @@ def setup_mock_providers(
 ) -> tuple[Any, Any]:
     """Patch ``app_state._provider_management`` with a stub.
 
-    Legacy entry point kept for tests that have not migrated to the
-    context-manager form. Prefer :func:`mock_providers` -- it
-    guarantees state restoration even when the test body raises.
-    Returns ``(app_state, original)`` so the caller can manually
-    restore in a ``finally`` block.
+    For callers that restore state manually in a ``finally`` block;
+    returns ``(app_state, original)``. Prefer :func:`mock_providers`,
+    which guarantees restoration even when the test body raises.
     """
     app_state = async_test_client.app.state.app_state
     original = app_state.slice(ProvidersStateSlice).management

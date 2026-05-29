@@ -8,6 +8,7 @@ CAS on BOTH departments AND agents, so any concurrent agents
 mutation rolls back the delete.
 """
 
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
@@ -30,10 +31,11 @@ def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-async def persistence() -> FakePersistenceBackend:
+async def persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture

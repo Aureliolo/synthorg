@@ -15,6 +15,7 @@ from synthorg.api.controllers.ws_protocol import channel_allowed, handle_message
 from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.core.auth.roles import HumanRole
+from tests._shared import LoopAsyncClient
 
 # Preserve the pre-split names so the (many) test bodies below read
 # naturally -- matches the legacy identifiers used before the protocol
@@ -274,53 +275,53 @@ class TestWsTicketAuth:
     sync test client).
     """
 
-    def test_ws_ticket_endpoint_returns_ticket(
+    async def test_ws_ticket_endpoint_returns_ticket(
         self,
-        ws_test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """POST /auth/ws-ticket returns a consumable ticket."""
-        response = ws_test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         assert response.status_code == 200
         data = response.json()["data"]
         assert "ticket" in data
         assert data["expires_in"] == 30
 
-    def test_ws_ticket_carries_ws_ticket_auth_method(
+    async def test_ws_ticket_carries_ws_ticket_auth_method(
         self,
-        ws_test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """The ticket user has auth_method=WS_TICKET."""
-        response = ws_test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = ws_test_client.app.state["app_state"]
+        app_state = async_test_client.app.state["app_state"]
         user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.auth_method == AuthMethod.WS_TICKET
 
-    def test_ws_ticket_single_use_via_store(
+    async def test_ws_ticket_single_use_via_store(
         self,
-        ws_test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """Ticket is consumed on first validate_and_consume."""
-        response = ws_test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = ws_test_client.app.state["app_state"]
+        app_state = async_test_client.app.state["app_state"]
         first = ticket_store_of(app_state).validate_and_consume(ticket)
         second = ticket_store_of(app_state).validate_and_consume(ticket)
         assert first is not None
         assert second is None
 
-    def test_ws_ticket_user_has_correct_identity(
+    async def test_ws_ticket_user_has_correct_identity(
         self,
-        ws_test_client: TestClient[Any],
+        async_test_client: LoopAsyncClient,
     ) -> None:
         """The ticket preserves the original user's identity."""
-        response = ws_test_client.post("/api/v1/auth/ws-ticket")
+        response = await async_test_client.post("/api/v1/auth/ws-ticket")
         ticket = response.json()["data"]["ticket"]
 
-        app_state = ws_test_client.app.state["app_state"]
+        app_state = async_test_client.app.state["app_state"]
         user = ticket_store_of(app_state).validate_and_consume(ticket)
         assert user is not None
         assert user.role == HumanRole.CEO

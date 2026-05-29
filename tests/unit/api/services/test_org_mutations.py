@@ -1,5 +1,7 @@
 """Tests for the OrgMutationService."""
 
+from collections.abc import AsyncGenerator
+
 import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
@@ -30,10 +32,11 @@ def _set_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-async def persistence() -> FakePersistenceBackend:
+async def persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
