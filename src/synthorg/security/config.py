@@ -186,6 +186,13 @@ class SecurityPolicyRule(BaseModel):
 
         Requires exactly one colon with non-empty, non-whitespace
         segments on each side.
+
+        Returns:
+            The validated policy.
+
+        Raises:
+            ValueError: If an entry lacks exactly one ':' or has an empty
+                segment on either side.
         """
         for at in self.action_types:
             parts = at.split(":")
@@ -566,11 +573,24 @@ class SecurityConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Overlay setting-namespace mirrors onto the raw input.
+
+        Returns:
+            The input data with mirrored settings applied.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _check_disjoint_action_types(self) -> SecurityConfig:
-        """Reject overlapping hard-deny and auto-approve action types."""
+        """Reject overlapping hard-deny and auto-approve action types.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If an action type is both hard-denied and
+                auto-approved.
+        """
         deny_set = set(self.hard_deny_action_types)
         approve_set = set(self.auto_approve_action_types)
         overlap = deny_set & approve_set
@@ -584,7 +604,14 @@ class SecurityConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_unique_custom_policy_names(self) -> SecurityConfig:
-        """Reject duplicate custom policy names."""
+        """Reject duplicate custom policy names.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If two custom policies share a name.
+        """
         seen: set[str] = set()
         for policy in self.custom_policies:
             if policy.name in seen:
@@ -602,6 +629,13 @@ class SecurityConfig(BaseModel):
         short-circuit the rule engine, so either would skip all
         security detectors (credential, path traversal, etc.).  Only
         DENY policies are safe in bypass position.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If any enabled custom policy yields ALLOW or
+                ESCALATE while bypass mode is enabled.
         """
         if not self.rule_engine.custom_allow_bypasses_detectors:
             return self

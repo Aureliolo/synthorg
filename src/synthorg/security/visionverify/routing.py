@@ -59,6 +59,10 @@ def compute_vision_verdict(
     * Empty: :data:`VisionVerdict.PASS`.
     * Any blocking finding: :data:`VisionVerdict.BLOCK`.
     * Otherwise: :data:`VisionVerdict.PASS_WITH_FINDINGS`.
+
+    Returns:
+        The aggregate ``VisionVerdict`` for the findings under the given
+        autonomy.
     """
     if not findings:
         return VisionVerdict.PASS

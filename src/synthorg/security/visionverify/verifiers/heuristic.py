@@ -49,7 +49,11 @@ class HeuristicVisionVerifier:
     """Deterministic verifier that checks structured visual expectations."""
 
     def __init__(self, *, workspace: Path) -> None:
-        """Bind the verifier to the workspace holding the screenshots."""
+        """Bind the verifier to the workspace holding the screenshots.
+
+        Raises:
+            ValueError: If ``workspace`` is not an absolute path.
+        """
         if not workspace.is_absolute():
             msg = f"workspace must be absolute, got {workspace!r}"
             raise ValueError(msg)
@@ -64,7 +68,12 @@ class HeuristicVisionVerifier:
         self,
         review_input: VisionReviewInput,
     ) -> VisionVerificationReport:
-        """Check every expectation against the final screenshot."""
+        """Check every expectation against the final screenshot.
+
+        Returns:
+            The verification report listing one finding per failed
+            expectation.
+        """
         target = review_input.screenshots[-1]
         path = resolve_screenshot(self._workspace, target.workspace_path)
         measured = mean_rgb(path)

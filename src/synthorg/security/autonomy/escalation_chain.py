@@ -53,7 +53,12 @@ class EscalationChainPromotionStrategy(BaseDelegatingStrategy):
         agent_id: NotBlankStr,
         target: AutonomyLevel,
     ) -> bool:
-        """Record the chain and return pending (never auto-grants)."""
+        """Record the chain and return pending (never auto-grants).
+
+        Returns:
+            Always ``False``; the promotion stays pending escalation-chain
+            approval.
+        """
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,

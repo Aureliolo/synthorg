@@ -29,7 +29,15 @@ class TimeoutAction(BaseModel):
 
     @model_validator(mode="after")
     def _validate_escalate_to(self) -> Self:
-        """Enforce ``escalate_to`` consistency with action type."""
+        """Enforce ``escalate_to`` consistency with action type.
+
+        Returns:
+            The validated action config.
+
+        Raises:
+            ValueError: If ``escalate_to`` is missing for an ESCALATE
+                action, or set for a non-ESCALATE action.
+        """
         if self.action == TimeoutActionType.ESCALATE and self.escalate_to is None:
             msg = "escalate_to is required when action is ESCALATE"
             raise ValueError(msg)

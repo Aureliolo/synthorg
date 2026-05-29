@@ -68,7 +68,14 @@ class TierConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_escalate(self) -> Self:
-        """Reject ESCALATE -- tier configs cannot provide a target."""
+        """Reject ESCALATE -- tier configs cannot provide a target.
+
+        Returns:
+            The validated tier config.
+
+        Raises:
+            ValueError: If ``on_timeout`` is ESCALATE.
+        """
         if self.on_timeout == TimeoutActionType.ESCALATE:
             msg = (
                 "on_timeout cannot be ESCALATE (no escalation target "
@@ -109,7 +116,14 @@ class TieredTimeoutConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tier_keys(self) -> Self:
-        """Ensure tier keys are valid ApprovalRiskLevel values."""
+        """Ensure tier keys are valid ApprovalRiskLevel values.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If a tier key is not an ``ApprovalRiskLevel``.
+        """
         valid_keys = {level.value for level in ApprovalRiskLevel}
         invalid = set(self.tiers) - valid_keys
         if invalid:
@@ -166,7 +180,15 @@ class EscalationChainConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_chain(self) -> Self:
-        """Validate chain constraints."""
+        """Validate chain constraints.
+
+        Returns:
+            The validated escalation policy.
+
+        Raises:
+            ValueError: If the chain is empty or ``on_chain_exhausted``
+                is ESCALATE.
+        """
         if not self.chain:
             msg = "escalation chain must have at least one step"
             raise ValueError(msg)
@@ -182,9 +204,11 @@ class EscalationChainConfig(BaseModel):
 def _timeout_discriminator(value: object) -> str:
     """Extract the ``policy`` discriminator from raw or model data.
 
-    Returns the raw ``policy`` value without a default so Pydantic
-    produces a clear "no match in discriminated union" error for
-    invalid or missing policy fields.
+    Returned without a default so Pydantic produces a clear "no match
+    in discriminated union" error for invalid or missing policy fields.
+
+    Returns:
+        The raw ``policy`` discriminator value.
     """
     if isinstance(value, dict):
         return str(value.get("policy", ""))

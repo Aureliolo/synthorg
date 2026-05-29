@@ -44,7 +44,12 @@ class InMemoryRedTeamReportRepository:
         execution_id: NotBlankStr,
         report: RedTeamReport,
     ) -> None:
-        """Persist ``report`` under ``execution_id`` (single-shot)."""
+        """Persist ``report`` under ``execution_id`` (single-shot).
+
+        Raises:
+            RedTeamReportAlreadyExistsError: If a report is already
+                stored under ``execution_id``.
+        """
         async with self._lock:
             if execution_id in self._reports:
                 raise RedTeamReportAlreadyExistsError(execution_id=execution_id)
@@ -55,7 +60,15 @@ class InMemoryRedTeamReportRepository:
         *,
         execution_id: NotBlankStr,
     ) -> RedTeamReport:
-        """Return the report stored for ``execution_id``."""
+        """Return the report stored for ``execution_id``.
+
+        Returns:
+            The stored ``RedTeamReport``.
+
+        Raises:
+            RedTeamReportNotFoundError: If no report is stored under
+                ``execution_id``.
+        """
         report = self._reports.get(execution_id)
         if report is None:
             raise RedTeamReportNotFoundError(execution_id=execution_id)

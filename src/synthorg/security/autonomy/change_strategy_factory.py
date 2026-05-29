@@ -53,6 +53,11 @@ def _build_human_only(
     _config: AutonomyStrategyConfig,
     deps: AutonomyStrategyDeps,
 ) -> AutonomyChangeStrategy:
+    """Build the HUMAN_ONLY strategy (the override-store-bearing base).
+
+    Returns:
+        The base ``HumanOnlyPromotionStrategy``.
+    """
     return _base(deps)
 
 
@@ -60,6 +65,15 @@ def _build_performance_gated(
     config: AutonomyStrategyConfig,
     deps: AutonomyStrategyDeps,
 ) -> AutonomyChangeStrategy:
+    """Build the PERFORMANCE_GATED strategy wrapping the base.
+
+    Returns:
+        A ``PerformanceGatedPromotionStrategy``.
+
+    Raises:
+        AutonomyStrategyConfigError: If no ``performance_signal`` was
+            provided.
+    """
     if deps.performance_signal is None:
         msg = (
             "PERFORMANCE_GATED autonomy strategy requires a "
@@ -77,6 +91,15 @@ def _build_budget_aware(
     config: AutonomyStrategyConfig,
     deps: AutonomyStrategyDeps,
 ) -> AutonomyChangeStrategy:
+    """Build the BUDGET_AWARE strategy wrapping the base.
+
+    Returns:
+        A ``BudgetAwarePromotionStrategy``.
+
+    Raises:
+        AutonomyStrategyConfigError: If no ``risk_budget_signal`` was
+            provided.
+    """
     if deps.risk_budget_signal is None:
         msg = (
             "BUDGET_AWARE autonomy strategy requires a "
@@ -94,6 +117,11 @@ def _build_escalation_chain(
     config: AutonomyStrategyConfig,
     deps: AutonomyStrategyDeps,
 ) -> AutonomyChangeStrategy:
+    """Build the ESCALATION_CHAIN strategy wrapping the base.
+
+    Returns:
+        An ``EscalationChainPromotionStrategy`` over the configured chain.
+    """
     return EscalationChainPromotionStrategy(
         base=_base(deps),
         chain=config.escalation_chain,

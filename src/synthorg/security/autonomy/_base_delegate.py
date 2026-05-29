@@ -35,20 +35,36 @@ class BaseDelegatingStrategy:
         reason: DowngradeReason,
         current_level: AutonomyLevel | None = None,
     ) -> AutonomyLevel:
-        """Delegate to the base downgrade map."""
+        """Delegate to the base downgrade map.
+
+        Returns:
+            The agent's autonomy level after the downgrade.
+        """
         return self._base.auto_downgrade(agent_id, reason, current_level)
 
     def request_recovery(self, agent_id: NotBlankStr) -> bool:
-        """Delegate recovery to the base (human approval)."""
+        """Delegate recovery to the base (human approval).
+
+        Returns:
+            ``True`` if a recovery request was recorded for the agent.
+        """
         return self._base.request_recovery(agent_id)
 
     def get_override(
         self,
         agent_id: NotBlankStr,
     ) -> AutonomyOverride | None:
-        """Delegate to the base override store."""
+        """Delegate to the base override store.
+
+        Returns:
+            The agent's override record, or ``None`` if none is set.
+        """
         return self._base.get_override(agent_id)
 
     def clear_override(self, agent_id: NotBlankStr) -> bool:
-        """Delegate to the base override store."""
+        """Delegate to the base override store.
+
+        Returns:
+            ``True`` if an override existed and was cleared.
+        """
         return self._base.clear_override(agent_id)

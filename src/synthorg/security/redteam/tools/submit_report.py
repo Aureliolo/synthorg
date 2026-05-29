@@ -95,7 +95,15 @@ class SubmitRedTeamReportTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Validate args, persist the :class:`RedTeamReport`, return ack."""
+        """Validate args, persist the :class:`RedTeamReport`, return ack.
+
+        Returns:
+            A ``ToolExecutionResult`` acknowledging the persisted report.
+
+        Raises:
+            RedTeamReportValidationError: If the payload fails validation
+                or is called outside a trusted red-team runtime context.
+        """
         try:
             args = parse_typed(
                 "agent.tool.submit_red_team_report",

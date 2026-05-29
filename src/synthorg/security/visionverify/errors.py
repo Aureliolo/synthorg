@@ -41,7 +41,12 @@ class VisionDomainError(DomainError):
 
     @override
     def __str__(self) -> str:
-        """Format the error with optional context metadata."""
+        """Format the error with optional context metadata.
+
+        Returns:
+            The message, suffixed with ``(key=value, ...)`` context when
+            present.
+        """
         if self.context:
             ctx = ", ".join(f"{k}={v!r}" for k, v in self.context.items())
             return f"{self.message} ({ctx})"

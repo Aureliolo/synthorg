@@ -59,10 +59,13 @@ class RedTeamToolSeed(NamedTuple):
 def build_red_team_tool_seed(*, config: RedTeamConfig) -> RedTeamToolSeed:
     """Build the boot-phase-1 seed for the red-team tool + repo.
 
-    Returns a seed with empty ``extra_tools`` (and ``None`` for repo /
-    tool) when the gate is disabled. The runtime-builder appends
-    ``extra_tools`` to its config-driven tool list before constructing
-    the agent engine, so the seed must be built first.
+    The runtime-builder appends ``extra_tools`` to its config-driven
+    tool list before constructing the agent engine, so the seed must be
+    built first.
+
+    Returns:
+        A ``RedTeamToolSeed``; empty ``extra_tools`` (and ``None`` for
+        repo / tool) when the gate is disabled.
     """
     if not config.enabled:
         return RedTeamToolSeed(
@@ -133,6 +136,10 @@ def build_red_team_runtime(
         :class:`RedTeamRuntime` on success, ``None`` when the gate is
         disabled. ``None`` is the safe default: the review gate's
         constructor accepts ``red_team_gate=None`` as "feature off".
+
+    Raises:
+        RedTeamRuntimeSeedIncompleteError: If ``config.enabled`` is True
+            but the seed is missing its ``report_repo`` / ``submit_tool``.
     """
     if not config.enabled:
         logger.info(

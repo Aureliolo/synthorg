@@ -95,7 +95,12 @@ def _evidence_excerpt(
     *,
     max_chars: int = _MAX_EVIDENCE_EXCERPT_CHARS,
 ) -> str:
-    """Truncate a claim's excerpt to a bounded length for finding evidence."""
+    """Truncate a claim's excerpt to a bounded length for finding evidence.
+
+    Returns:
+        The excerpt, truncated with an ellipsis when it exceeds
+        ``max_chars``.
+    """
     if len(claim.excerpt) <= max_chars:
         return claim.excerpt
     return f"{claim.excerpt[: max_chars - _ELLIPSIS_OVERHEAD]}{_ELLIPSIS}"
@@ -107,6 +112,10 @@ def _claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:
     Always at or below :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW)
     so the stub cannot block on its own; only the LLM agent or a
     substrate-backed checker may file blocking grounding findings.
+
+    Returns:
+        A ``RedTeamFinding`` for the grounding surface, capped at the
+        heuristic max severity.
     """
     return RedTeamFinding(
         attack_surface=RedTeamAttackSurface.GROUNDING,
@@ -164,6 +173,10 @@ class RedTeamGateService:
         informational finding on the audit trail. The gate raises only
         when the input itself is malformed (caught by Pydantic at the
         boundary, not here).
+
+        Returns:
+            The ``RedTeamGateResult`` with the verdict, merged report,
+            grounding claims, and elapsed time.
         """
         started_at = self._clock.monotonic()
         logger.info(
@@ -220,6 +233,15 @@ class RedTeamGateService:
         Only :class:`RedTeamDispatchError` from the runner (and the
         engine's own non-cancellation faults wrapped by it) trigger the
         fail-OPEN policy.
+
+        Returns:
+            The agent's filed report, or a synthetic fail-OPEN report
+            when the agent failed, the report was missing, or its
+            execution/task ids did not match.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the agent run or
+                report fetch is cancelled.
         """
         logger.info(
             RED_TEAM_AGENT_INVOKED,
@@ -292,6 +314,14 @@ class RedTeamGateService:
         treated as fail-OPEN (heuristic stub is best-effort, substrate
         implementations should not block the gate on transient corpus
         failures).
+
+        Returns:
+            The grounding claims, or an empty tuple on non-cancellation
+            failure (fail-OPEN).
+
+        Raises:
+            asyncio.CancelledError: Propagated when the grounding check
+                is cancelled.
         """
         logger.info(
             RED_TEAM_GROUNDING_CHECK_STARTED,
@@ -326,7 +356,12 @@ class RedTeamGateService:
 
     @staticmethod
     def _fail_open_report(review_input: RedTeamReviewInput) -> RedTeamReport:
-        """Build the synthetic report we return when the agent fails to file."""
+        """Build the synthetic report we return when the agent fails to file.
+
+        Returns:
+            A ``RedTeamReport`` carrying a single INFO agent-failed
+            finding.
+        """
         synthetic_finding = RedTeamFinding(
             attack_surface=RedTeamAttackSurface.CORRECTNESS,
             severity=RedTeamSeverity.INFO,

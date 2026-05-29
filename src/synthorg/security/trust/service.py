@@ -350,6 +350,11 @@ class TrustService:
 
         If a strategy recommends ELEVATED but doesn't flag human
         approval, override it.
+
+        Returns:
+            The result, forced to require human approval when an
+            unguarded elevated promotion was detected; otherwise
+            unchanged.
         """
         if (
             result.recommended_level == ToolAccessLevel.ELEVATED
@@ -371,7 +376,11 @@ class TrustService:
         agent_id: NotBlankStr,
         result: TrustEvaluationResult,
     ) -> None:
-        """Create an approval item for trust level promotion."""
+        """Create an approval item for trust level promotion.
+
+        Raises:
+            TrustEvaluationError: If no approval store is configured.
+        """
         if self._approval_store is None:
             msg = (
                 f"Cannot create trust approval for agent {agent_id!r}: "
@@ -422,6 +431,9 @@ class TrustService:
 
         Distinguishes promotions from demotions: demotions use
         TRUST_DECAY, promotions use strategy-specific reasons.
+
+        Returns:
+            The inferred ``TrustChangeReason`` for the level change.
         """
         from synthorg.security.trust.levels import (  # noqa: PLC0415
             TRUST_LEVEL_RANK,

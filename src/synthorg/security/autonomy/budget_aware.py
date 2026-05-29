@@ -55,7 +55,12 @@ class BudgetAwarePromotionStrategy(BaseDelegatingStrategy):
         agent_id: NotBlankStr,
         target: AutonomyLevel,
     ) -> bool:
-        """Deny under budget stress; otherwise delegate to the base."""
+        """Deny under budget stress; otherwise delegate to the base.
+
+        Returns:
+            ``False`` when risk-budget headroom is below the warn
+            fraction; otherwise the base strategy's decision.
+        """
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,

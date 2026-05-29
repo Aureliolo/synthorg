@@ -60,8 +60,11 @@ class PolicyValidator:
     ) -> SecurityVerdict | None:
         """Check action type against policy lists.
 
-        Hard deny takes priority over auto approve. Returns None
-        if the action type is in neither list.
+        Hard deny takes priority over auto approve.
+
+        Returns:
+            A DENY or ALLOW verdict when the action type matches a
+            policy list, or ``None`` when it is in neither.
         """
         if context.action_type in self._hard_deny:
             logger.info(

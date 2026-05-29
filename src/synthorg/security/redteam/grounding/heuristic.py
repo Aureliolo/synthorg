@@ -82,12 +82,20 @@ def _strip_code_blocks(text: str) -> str:
     URLs inside code blocks are examples, not citations. Replacing
     keeps offsets stable so any future caller using character offsets
     sees consistent indices, but blanks the content from regex view.
+
+    Returns:
+        The text with code regions replaced by equal-length runs of
+        spaces.
     """
     return _CODE_FENCE_RE.sub(lambda m: " " * len(m.group(0)), text)
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Crude sentence splitter (ASCII English)."""
+    """Crude sentence splitter (ASCII English).
+
+    Returns:
+        The non-empty, stripped sentences; an empty list for blank input.
+    """
     stripped = text.strip()
     if not stripped:
         return []
@@ -121,7 +129,12 @@ class HeuristicGroundingChecker:
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,  # noqa: ARG002 -- reserved for cache key
     ) -> tuple[UngroundedClaim, ...]:
-        """Scan ``deliverable_content`` for assertive claims without citations."""
+        """Scan ``deliverable_content`` for assertive claims without citations.
+
+        Returns:
+            The ungrounded claims found (at most one per sentence,
+            deduplicated by excerpt); an empty tuple when none are found.
+        """
         cleaned = _strip_code_blocks(deliverable_content)
         sentences = _split_sentences(cleaned)
         if not sentences:

@@ -125,7 +125,14 @@ class VisualExpectation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rgb_bounds(self) -> Self:
-        """Reject channel values outside 0-255."""
+        """Reject channel values outside 0-255.
+
+        Returns:
+            The validated expectation.
+
+        Raises:
+            ValueError: If any ``expected_rgb`` channel is out of range.
+        """
         for channel in self.expected_rgb:
             if channel < _RGB_MIN or channel > _RGB_MAX:
                 msg = f"expected_rgb channels must be {_RGB_MIN}-{_RGB_MAX}"
@@ -147,7 +154,14 @@ class VisionFinding(BaseModel):
 
     @model_validator(mode="after")
     def _require_evidence_when_blocking(self) -> Self:
-        """High-severity findings must carry at least one evidence entry."""
+        """High-severity findings must carry at least one evidence entry.
+
+        Returns:
+            The validated finding.
+
+        Raises:
+            ValueError: If a high-severity finding carries no evidence.
+        """
         if (
             severity_rank(self.severity) >= severity_rank(_EVIDENCE_REQUIRED_FROM)
             and not self.evidence
@@ -195,7 +209,15 @@ class VisionVerificationReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_report(self) -> Self:
-        """Bound findings and reject self-evaluation."""
+        """Bound findings and reject self-evaluation.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: If the findings exceed the per-report cap, or the
+                evaluator is also the generator.
+        """
         if len(self.findings) > MAX_FINDINGS_PER_REPORT:
             msg = (
                 f"VisionVerificationReport carries {len(self.findings)} "
@@ -242,7 +264,15 @@ class VisionReviewInput(BaseModel):
 
     @model_validator(mode="after")
     def _reject_self_evaluation(self) -> Self:
-        """Reject a verifier that is the deliverable's own generator."""
+        """Reject a verifier that is the deliverable's own generator.
+
+        Returns:
+            The validated review input.
+
+        Raises:
+            ValueError: If ``evaluator_agent_id`` equals
+                ``generator_agent_id``.
+        """
         if self.evaluator_agent_id == self.generator_agent_id:
             msg = (
                 "Self-evaluation rejected: evaluator_agent_id must differ "

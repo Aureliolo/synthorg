@@ -69,6 +69,13 @@ class UngroundedClaim(BaseModel):
         and the gate's routing layer caps their severity, but enforcing
         the bound at construction prevents a buggy heuristic from
         accidentally smuggling a high-confidence flag past the cap.
+
+        Returns:
+            The validated claim.
+
+        Raises:
+            ValueError: If a heuristic-source claim's confidence falls
+                outside the floor/ceiling band.
         """
         if self.source == "heuristic" and not (
             HEURISTIC_CONFIDENCE_FLOOR

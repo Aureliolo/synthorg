@@ -97,7 +97,11 @@ class UncertaintyResult(BaseModel):
 
 
 def _tokenize(text: str) -> set[str]:
-    """Tokenize text into lowercase word set."""
+    """Tokenize text into lowercase word set.
+
+    Returns:
+        The set of lowercased word tokens found in ``text``.
+    """
     return set(_WORD_RE.findall(text.lower()))
 
 
@@ -187,7 +191,12 @@ def _compute_tfidf_cosine_similarity(responses: list[str]) -> float:
 
 
 def _cosine_sim(a: dict[str, float], b: dict[str, float]) -> float:
-    """Cosine similarity between two sparse vectors."""
+    """Cosine similarity between two sparse vectors.
+
+    Returns:
+        The cosine similarity in ``[0.0, 1.0]``; ``0.0`` when either
+        vector is empty.
+    """
     if not a or not b:
         return 0.0
 
@@ -377,6 +386,11 @@ class UncertaintyChecker:
         of this method made every provider drift toward generic
         analysis instead of real responses, which broke the
         cross-provider agreement signal entirely.
+
+        Returns:
+            The collected provider responses; providers that failed are
+            logged and skipped, so the list may be shorter than
+            ``candidates``.
         """
         from synthorg.providers.enums import MessageRole  # noqa: PLC0415
 
@@ -410,6 +424,10 @@ class UncertaintyChecker:
             the TaskGroup will wrap them in an ``ExceptionGroup``
             which is strictly preferable to silently swallowing
             resource exhaustion that the operator needs to see.
+
+            Returns:
+                The provider's response text, or ``None`` when the call
+                failed (timeout or provider error).
             """
             driver: BaseCompletionProvider = self._registry.get(
                 candidate.provider_name,

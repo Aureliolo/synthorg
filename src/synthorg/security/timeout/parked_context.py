@@ -52,7 +52,14 @@ class ParkedContext(BaseModel):
 
     @model_validator(mode="after")
     def _validate_and_protect(self) -> Self:
-        """Validate context_json and deep-copy metadata."""
+        """Validate context_json and deep-copy metadata.
+
+        Returns:
+            The validated, metadata-protected context.
+
+        Raises:
+            ValueError: If ``context_json`` is not valid JSON.
+        """
         try:
             json.loads(self.context_json)
         except (json.JSONDecodeError, TypeError) as exc:

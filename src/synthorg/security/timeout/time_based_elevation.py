@@ -64,13 +64,24 @@ class TimeBasedRiskElevationClassifier:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     def classify(self, action_type: str) -> ApprovalRiskLevel:
-        """Classify, elevating one tier inside the off-hours window."""
+        """Classify, elevating one tier inside the off-hours window.
+
+        Returns:
+            The base risk level, elevated one tier when the current
+            time falls inside the off-hours window.
+        """
         level = self._base.classify(action_type)
         if self._is_elevated_window():
             return elevate_one_tier(level)
         return level
 
     def _is_elevated_window(self) -> bool:
+        """Report whether the current time is in the off-hours window.
+
+        Returns:
+            ``True`` during the weekend (when enabled) or inside the
+            configured off-hours window (which may wrap midnight).
+        """
         now = self._clock.now()
         if self._weekend_elevation and now.weekday() >= _SATURDAY:
             return True

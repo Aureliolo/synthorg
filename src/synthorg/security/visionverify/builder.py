@@ -35,6 +35,10 @@ def build_vision_verifier_gate(  # noqa: PLR0913 -- verifier deps are intrinsic
 ) -> VisionVerifierGate | None:
     """Build the vision gate, or ``None`` when the subsystem is disabled.
 
+    Returns:
+        The configured ``VisionVerifierGate``, or ``None`` when vision
+        verification is disabled.
+
     Raises:
         VisionVerifyConfigError: When ``llm_vision`` is selected without
             its required provider / tier resolver.

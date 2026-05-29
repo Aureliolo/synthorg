@@ -43,6 +43,10 @@ def build_user_text(review_input: VisionReviewInput) -> str:
 
     The screenshots are attached separately as image parts; this text
     carries only the (untrusted) brief and acceptance criteria.
+
+    Returns:
+        The user-message text with the fenced brief and acceptance
+        criteria.
     """
     criteria_json = json.dumps(list(review_input.acceptance_criteria))
     return (

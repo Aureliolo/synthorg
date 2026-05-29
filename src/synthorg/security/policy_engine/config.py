@@ -48,7 +48,14 @@ class SecurityPolicyConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_cedar_requirements(self) -> Self:
-        """Ensure cedar engine has policy files."""
+        """Ensure cedar engine has policy files.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If ``engine='cedar'`` but no policy files are set.
+        """
         if self.engine == "cedar" and not self.policy_files:
             msg = "engine='cedar' requires at least one entry in policy_files"
             raise ValueError(msg)

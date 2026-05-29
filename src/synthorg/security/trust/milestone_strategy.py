@@ -38,7 +38,9 @@ _WINDOW_DAYS_SUFFIX: Final[str] = "d"
 def _parse_window_days(window_size: str) -> int | None:
     """Extract day count from a window-size label like '7d'.
 
-    Returns None if the label doesn't match the expected format.
+    Returns:
+        The day count, or ``None`` if the label does not match the
+        expected ``<N>d`` format.
     """
     if window_size.endswith(_WINDOW_DAYS_SUFFIX):
         try:
@@ -171,7 +173,12 @@ class MilestoneTrustStrategy:
         state: TrustState,
         now: AwareDatetime,
     ) -> bool:
-        """Check whether all milestone criteria are met."""
+        """Check whether all milestone criteria are met.
+
+        Returns:
+            ``True`` only when task/quality and time/history criteria
+            are all satisfied.
+        """
         if not self._check_tasks_and_quality(milestone, snapshot):
             return False
 
@@ -187,7 +194,12 @@ class MilestoneTrustStrategy:
         milestone: MilestoneCriteria,
         snapshot: AgentPerformanceSnapshot,
     ) -> bool:
-        """Check task count and quality criteria."""
+        """Check task count and quality criteria.
+
+        Returns:
+            ``True`` when the best single-window task count and quality
+            score meet the milestone's thresholds.
+        """
         # Best single-window task count (not cumulative total)
         max_tasks_completed = 0
         for window in snapshot.windows:
@@ -209,7 +221,12 @@ class MilestoneTrustStrategy:
         state: TrustState,
         now: AwareDatetime,
     ) -> bool:
-        """Check time active and clean history criteria."""
+        """Check time active and clean history criteria.
+
+        Returns:
+            ``True`` when the agent has been active long enough and has
+            a clean-enough history over the required windows.
+        """
         if milestone.time_active_days > 0:
             # Use created_at (agent tenure) rather than last_evaluated_at
             if state.created_at is None:
@@ -247,7 +264,9 @@ class MilestoneTrustStrategy:
     ) -> ToolAccessLevel | None:
         """Check for trust decay conditions.
 
-        Returns the demoted level if decay should occur, else None.
+        Returns:
+            The demoted access level if decay should occur, or ``None``
+            when no decay applies.
         """
         current_rank = TRUST_LEVEL_RANK.get(state.global_level, 0)
         if current_rank <= 0:

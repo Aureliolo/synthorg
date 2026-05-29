@@ -76,7 +76,15 @@ class WeightedTrustWeights(BaseModel):
 
     @model_validator(mode="after")
     def _validate_weights_sum(self) -> Self:
-        """Ensure weights sum to 1.0 (within tolerance)."""
+        """Ensure weights sum to 1.0 (within tolerance).
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If the trust-signal weights do not sum to 1.0
+                within tolerance.
+        """
         total = (
             self.task_difficulty
             + self.completion_rate
@@ -170,7 +178,15 @@ class MilestoneCriteria(BaseModel):
 
     @model_validator(mode="after")
     def _validate_approval_flags(self) -> Self:
-        """Enforce mutual exclusivity of auto_promote and requires_human."""
+        """Enforce mutual exclusivity of auto_promote and requires_human.
+
+        Returns:
+            The validated criteria.
+
+        Raises:
+            ValueError: If both ``auto_promote`` and
+                ``requires_human_approval`` are set.
+        """
         if self.auto_promote and self.requires_human_approval:
             msg = "auto_promote and requires_human_approval are mutually exclusive"
             logger.warning(
@@ -279,6 +295,13 @@ class TrustConfig(BaseModel):
 
         This is a hard security constraint that cannot be overridden
         regardless of strategy.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If the ``standard_to_elevated`` threshold does
+                not require human approval.
         """
         threshold_key = "standard_to_elevated"
 
@@ -336,7 +359,15 @@ class TrustConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_strategy_specific_fields(self) -> Self:
-        """Validate that active strategy has its required configuration."""
+        """Validate that active strategy has its required configuration.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If the active strategy is missing its required
+                configuration (e.g. PER_CATEGORY without initial levels).
+        """
         if (
             self.strategy == TrustStrategyType.PER_CATEGORY
             and not self.initial_category_levels
@@ -381,6 +412,13 @@ class TrustConfig(BaseModel):
 
         Categories with criteria but no initial level would be silently
         skipped during evaluation.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If a ``category_criteria`` key has no matching
+                entry in ``initial_category_levels``.
         """
         if self.strategy != TrustStrategyType.PER_CATEGORY:
             return self

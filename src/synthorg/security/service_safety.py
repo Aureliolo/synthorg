@@ -46,7 +46,12 @@ class SecOpsServiceSafetyMixin:
         base_reason: str,
         metadata: dict[str, str],
     ) -> str:
-        """Build DENY reason -- retry hint when tracker signals RETRY."""
+        """Build DENY reason -- retry hint when tracker signals RETRY.
+
+        Returns:
+            The DENY reason string, with a retry hint when the tracker
+            signals RETRY.
+        """
         if metadata.get("denial_action") == DenialAction.RETRY:
             return f"{base_reason} (blocked -- agent may retry with safer approach)"
         return f"{base_reason} (auto-rejected: safety classifier blocked)"
@@ -59,9 +64,12 @@ class SecOpsServiceSafetyMixin:
     ) -> bool:
         """Run the safety classifier and populate metadata.
 
-        Returns ``True`` if the action should be auto-rejected,
-        ``False`` otherwise.  SAFE_TOOL tier bypasses the classifier.
-        On error, returns ``False`` (fail-safe: proceed to review).
+        SAFE_TOOL tier bypasses the classifier. On error, returns
+        ``False`` (fail-safe: proceed to review).
+
+        Returns:
+            ``True`` if the action should be auto-rejected, ``False``
+            otherwise.
         """
         assert self._safety_classifier is not None  # noqa: S101 -- caller guarantees
 
@@ -109,7 +117,12 @@ class SecOpsServiceSafetyMixin:
         reason: str,
         metadata: dict[str, str],
     ) -> bool:
-        """Process classification: denial tracking + consecutive reset."""
+        """Process classification: denial tracking + consecutive reset.
+
+        Returns:
+            ``True`` when a BLOCKED classification triggers auto-reject,
+            ``False`` otherwise.
+        """
         agent_id = context.agent_id or "unknown"
 
         if (
@@ -143,9 +156,10 @@ class SecOpsServiceSafetyMixin:
     ) -> bool:
         """Handle BLOCKED with denial tracking.
 
-        Returns ``True`` when the request should be auto-rejected
-        and ``False`` when max denials are reached and the action
-        should proceed to human approval instead.
+        Returns:
+            ``True`` when the request should be auto-rejected; ``False``
+            when max denials are reached and the action should proceed to
+            human approval instead.
         """
         if self._denial_tracker is None:
             logger.warning(

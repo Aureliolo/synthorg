@@ -105,7 +105,14 @@ class SecurityVerdict(BaseModel):
 
     @model_validator(mode="after")
     def _check_approval_id(self) -> SecurityVerdict:
-        """Enforce that approval_id is only set on ESCALATE verdicts."""
+        """Enforce that approval_id is only set on ESCALATE verdicts.
+
+        Returns:
+            The validated verdict.
+
+        Raises:
+            ValueError: If ``approval_id`` is set on a non-ESCALATE verdict.
+        """
         if (
             self.verdict != SecurityVerdictType.ESCALATE
             and self.approval_id is not None
@@ -142,7 +149,14 @@ class SecurityContext(BaseModel):
 
     @model_validator(mode="after")
     def _check_action_type_format(self) -> SecurityContext:
-        """Validate that action_type uses ``category:action`` format."""
+        """Validate that action_type uses ``category:action`` format.
+
+        Returns:
+            The validated context.
+
+        Raises:
+            ValueError: If ``action_type`` lacks a ``:`` separator.
+        """
         if ":" not in self.action_type:
             msg = (
                 f"action_type {self.action_type!r} must use "
@@ -224,7 +238,15 @@ class OutputScanResult(BaseModel):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> OutputScanResult:
-        """Enforce consistency between fields."""
+        """Enforce consistency between fields.
+
+        Returns:
+            The validated scan result.
+
+        Raises:
+            ValueError: If findings, redacted content, or outcome are set
+                while ``has_sensitive_data`` is ``False``.
+        """
         if not self.has_sensitive_data:
             if self.findings:
                 msg = "findings must be empty when has_sensitive_data is False"

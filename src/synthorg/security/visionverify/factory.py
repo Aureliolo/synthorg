@@ -83,7 +83,15 @@ def _build_llm_vision(
     tier_resolver: TierResolver | None,
     cost_tracker: CostTracker | None,
 ) -> VisionVerifier:
-    """Construct the ``llm_vision`` verifier, failing fast on missing deps."""
+    """Construct the ``llm_vision`` verifier, failing fast on missing deps.
+
+    Returns:
+        A configured ``LLMVisionVerifier``.
+
+    Raises:
+        VisionVerifyConfigError: If the provider or tier resolver is
+            missing, or the tier resolves to no model id.
+    """
     if provider is None or tier_resolver is None:
         msg = (
             "llm_vision verifier requires a CompletionProvider and a "

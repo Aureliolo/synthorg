@@ -142,6 +142,9 @@ class LLMVisionVerifier:
             workspace: Workspace root holding the screenshots to encode.
             cost_tracker: Optional cost tracker for the verification call.
             max_tokens: Generation cap for the verdict tool call.
+
+        Raises:
+            ValueError: If ``workspace`` is not an absolute path.
         """
         if not workspace.is_absolute():
             msg = f"workspace must be absolute, got {workspace!r}"
@@ -161,7 +164,12 @@ class LLMVisionVerifier:
         self,
         review_input: VisionReviewInput,
     ) -> VisionVerificationReport:
-        """Send screenshots + brief to the model and parse its verdict."""
+        """Send screenshots + brief to the model and parse its verdict.
+
+        Returns:
+            The parsed verification report (a degraded INFO report when
+            the model response is malformed).
+        """
         await self._require_vision_support(review_input)
         image_parts = self._encode_screenshots(review_input)
         messages = [
@@ -191,7 +199,12 @@ class LLMVisionVerifier:
         return report
 
     async def _require_vision_support(self, review_input: VisionReviewInput) -> None:
-        """Raise when the model does not accept image inputs."""
+        """Raise when the model does not accept image inputs.
+
+        Raises:
+            VisionModelUnsupportedError: If the model lacks vision
+                support.
+        """
         capabilities = await self._provider.get_model_capabilities(self._model_id)
         if not capabilities.supports_vision:
             logger.warning(
@@ -206,7 +219,12 @@ class LLMVisionVerifier:
         self,
         review_input: VisionReviewInput,
     ) -> tuple[ImagePart, ...]:
-        """Read each referenced screenshot into a PNG ``ImagePart``."""
+        """Read each referenced screenshot into a PNG ``ImagePart``.
+
+        Returns:
+            One base64-encoded PNG ``ImagePart`` per referenced
+            screenshot.
+        """
         parts: list[ImagePart] = []
         for ref in review_input.screenshots:
             path = resolve_screenshot(self._workspace, ref.workspace_path)
@@ -223,7 +241,12 @@ class LLMVisionVerifier:
         messages: list[ChatMessage],
         review_input: VisionReviewInput,
     ) -> dict[str, Any]:
-        """Invoke the provider with the verdict tool; return its arguments."""
+        """Invoke the provider with the verdict tool; return its arguments.
+
+        Returns:
+            The verdict tool call's arguments, or an empty dict when the
+            model did not call the tool.
+        """
         tool = ToolDefinition(
             name=_VERDICT_TOOL_NAME,
             description=_VERDICT_TOOL_DESCRIPTION,
@@ -258,6 +281,10 @@ class LLMVisionVerifier:
 
         A malformed response degrades to a non-blocking INFO finding
         rather than raising, so a model fault never blocks completion.
+
+        Returns:
+            The structured report, or a degraded INFO report when the
+            arguments fail validation.
         """
         try:
             verdict = parse_typed("vision.verdict", arguments, _VerdictArgs)
@@ -286,7 +313,11 @@ class LLMVisionVerifier:
 
     @staticmethod
     def _to_finding(entry: _FindingArgs) -> VisionFinding:
-        """Map one validated finding entry to a ``VisionFinding``."""
+        """Map one validated finding entry to a ``VisionFinding``.
+
+        Returns:
+            The ``VisionFinding`` built from the validated entry.
+        """
         return VisionFinding(
             category=entry.category,
             severity=entry.severity,
@@ -299,7 +330,12 @@ class LLMVisionVerifier:
         self,
         review_input: VisionReviewInput,
     ) -> VisionVerificationReport:
-        """Build the non-blocking report returned on a model fault."""
+        """Build the non-blocking report returned on a model fault.
+
+        Returns:
+            A ``VisionVerificationReport`` carrying a single INFO
+            degraded finding.
+        """
         finding = VisionFinding(
             category=VisionFindingCategory.VISUAL_DEFECT,
             severity=VisionSeverity.INFO,
