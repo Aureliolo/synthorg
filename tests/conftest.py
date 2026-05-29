@@ -158,18 +158,17 @@ def _fast_getfqdn(name: str = "") -> str:
 socket.getfqdn = _fast_getfqdn
 
 
-# ── socket.socketpair: bounded retry on Windows (tactical) ───────────
+# ── socket.socketpair: bounded retry on Windows (permanent guard) ───
 #
 # CPython https://github.com/python/cpython/issues/122797: the
 # post-CVE-2024-3219 ``socket._fallback_socketpair`` creates a TCP
 # listener on loopback, ``setblocking(False)``, ``connect()``, then a
 # blocking ``lsock.accept()`` -- with NO timeout and NO retry. Under
-# heavy concurrent socketpair creation on Windows (8 xdist workers each
-# spawning litestar ``TestClient`` instances via
-# ``anyio.start_blocking_portal`` -> a fresh asyncio loop ->
-# ``_make_self_pipe`` -> ``socket.socketpair`` per test, ~500k calls per
-# ``--count=2`` unit run), the listener's backlog occasionally fails to
-# deliver the connection to ``accept()`` before the 30s
+# heavy concurrent socketpair creation on Windows (8 xdist workers, each
+# function-scoped async test building a fresh asyncio event loop whose
+# ``_make_self_pipe`` calls ``socket.socketpair`` -- tens of thousands of
+# calls per ``--count=2`` unit run), the listener's backlog occasionally
+# fails to deliver the connection to ``accept()`` before the 30s
 # ``pytest-timeout`` fires; the worker then ``os.abort``s inside
 # ``_timeout_timer_with_faulthandler``.
 #
@@ -182,10 +181,17 @@ socket.getfqdn = _fast_getfqdn
 # (asyncio's ``_make_self_pipe`` reads/writes a single byte to wake the
 # selector, with default blocking I/O on the read side).
 #
-# Tactical bridge. Long-term cure: drop the per-test BlockingPortal
-# pattern in ``litestar.TestClient.__enter__`` (migrate to
-# ``AsyncTestClient``); the socketpair stops being called per-test and
-# this wrapper becomes dead code. Delete this block in that same PR.
+# Permanent Windows guard, not a tactical bridge. The API clients run
+# ASGI on the test's own loop (no ``BlockingPortal``), so ``--count=1``
+# is green without this wrapper. But every function-scoped async test
+# builds an event loop, and ``_make_self_pipe`` is an irreducible
+# ``socket.socketpair`` caller; that floor still saturates ``accept()``
+# at ``--count=2`` load. CPython closed 122797 without bounding
+# ``accept()`` (the 3.14 branch still ships the unguarded call), so
+# there is no upstream fix to inherit -- this wrapper IS that issue's
+# proposed hardening. Removing it would mean serialising the per-test
+# loops and sacrificing per-test isolation, a worse trade than a
+# Windows-only, semantically-invisible syscall guard.
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     _SOCKETPAIR_ACCEPT_TIMEOUT_SECONDS: Final[float] = 1.0
     _SOCKETPAIR_MAX_ATTEMPTS: Final[int] = 3
