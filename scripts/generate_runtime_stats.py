@@ -4,7 +4,6 @@
 Sources (best-effort; failures keep the previously-stored value):
 
 * ``tests``                 -- ``uv run python -m pytest --collect-only -q``
-* ``mem0_stars``            -- ``gh api repos/mem0ai/mem0 --jq .stargazers_count``
 * ``providers_curated``     -- ``len(synthorg.providers.presets.list_featured_presets())``
 * ``providers_via_litellm`` -- ``len(litellm.models_by_provider)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
@@ -15,7 +14,7 @@ Run before ``zensical build``::
     uv run python scripts/generate_runtime_stats.py
 
 The script is offline-tolerant for *fetcher failures*: when a source call
-fails (network down, ``gh`` unauthenticated, ``litellm`` not importable,
+fails (``pytest`` collection error, ``litellm`` not importable,
 shallow checkout without ``.git``) it logs a warning to stderr and
 preserves the prior value from the existing YAML. Every run rewrites the
 schema header, timestamp, and generator revision regardless.
@@ -48,14 +47,10 @@ _SCHEMA_VERSION: Final[int] = 1
 # Round test count to nearest 1,000 so headline prose stays stable
 # across normal CI variance (a few new tests per PR).
 _TESTS_ROUND_TO: Final[int] = 1000
-# Round star count to nearest 1,000 so the rendered "Nk+" string is stable
-# across normal day-to-day star drift.
-_STARS_ROUND_TO: Final[int] = 1000
 # Round the LiteLLM provider count down to the nearest 5 so the rendered
 # "N+" stays stable across minor LiteLLM dependency bumps.
 _LITELLM_PROVIDER_ROUND_TO: Final[int] = 5
 
-_GH_TIMEOUT_SECONDS: Final[int] = 30
 _PYTEST_TIMEOUT_SECONDS: Final[int] = 120
 _GIT_TIMEOUT_SECONDS: Final[int] = 5
 
@@ -65,7 +60,6 @@ _PYTEST_SUMMARY_RE: Final[re.Pattern[str]] = re.compile(
 
 _SOURCES: Final[dict[str, str]] = {
     "tests": "uv run python -m pytest --collect-only -q",
-    "mem0_stars": "gh api repos/mem0ai/mem0 --jq .stargazers_count",
     "providers_curated": "synthorg.providers.presets.list_featured_presets",
     "providers_via_litellm": "len(litellm.models_by_provider)",
     "subagents": "glob .claude/agents/*.md",
@@ -116,14 +110,6 @@ def _format_thousands_plus(value: int) -> str:
     return f"{value:,}+"
 
 
-def _format_k_plus(value: int) -> str:
-    """Render *value* compactly as ``Nk+``.
-
-    Used for the ``mem0_stars`` stat -- ``"54k+"`` style.
-    """
-    return f"{value // _STARS_ROUND_TO}k+"
-
-
 def _run(
     cmd: list[str], timeout: int, *, stat_name: str, source: str
 ) -> subprocess.CompletedProcess[str]:
@@ -170,31 +156,6 @@ def _fetch_tests() -> StatEntry:
         "raw": raw,
         "rounded": rounded,
         "display": _format_thousands_plus(rounded),
-    }
-
-
-def _fetch_mem0_stars() -> StatEntry:
-    """Read Mem0's star count via ``gh api`` and round down to nearest 1000."""
-    name = "mem0_stars"
-    source = _SOURCES[name]
-    result = _run(
-        ["gh", "api", "repos/mem0ai/mem0", "--jq", ".stargazers_count"],
-        timeout=_GH_TIMEOUT_SECONDS,
-        stat_name=name,
-        source=source,
-    )
-    raw_str = result.stdout.strip()
-    try:
-        raw = int(raw_str)
-    except ValueError as exc:
-        raise _StatFetchError(
-            name, source, f"stargazers_count returned non-integer: {raw_str!r}"
-        ) from exc
-    rounded = _round_floor(raw, _STARS_ROUND_TO)
-    return {
-        "raw": raw,
-        "rounded": rounded,
-        "display": _format_k_plus(rounded),
     }
 
 
@@ -309,7 +270,6 @@ def _fetch_convention_gates() -> StatEntry:
 
 _FETCHERS: dict[str, Callable[[], StatEntry]] = {
     "tests": _fetch_tests,
-    "mem0_stars": _fetch_mem0_stars,
     "providers_curated": _fetch_providers_curated,
     "providers_via_litellm": _fetch_providers_via_litellm,
     "subagents": _fetch_subagents,

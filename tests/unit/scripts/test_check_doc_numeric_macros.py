@@ -123,10 +123,6 @@ class TestScanTextMacroPasses:
         text = "Tested with <!--RS:tests-->27,000+<!--/RS--> tests, 80%+ coverage."
         assert gate.scan_text(text, file_label="README.md") == []
 
-    def test_marker_around_star_count(self) -> None:
-        text = "Production-ready (v1.0+, <!--RS:mem0_stars-->54k+<!--/RS--> stars)."
-        assert gate.scan_text(text, file_label="docs/architecture/decisions.md") == []
-
     def test_marker_around_provider_count(self) -> None:
         text = "<!--RS:providers_via_litellm-->100+<!--/RS--> LLMs via LiteLLM."
         assert gate.scan_text(text, file_label="README.md") == []

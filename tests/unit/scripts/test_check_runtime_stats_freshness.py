@@ -47,7 +47,6 @@ def _good_yaml_payload(timestamp_iso: str) -> dict[str, Any]:
         "generator_revision": "test",
         "stats": {
             "tests": {"raw": 17995, "rounded": 17000, "display": "17,000+"},
-            "mem0_stars": {"raw": 54312, "rounded": 54000, "display": "54k+"},
             "providers_curated": {"raw": 19, "display": "19"},
             "providers_via_litellm": {"raw": 100, "display": "100+"},
             "subagents": {"raw": 7, "display": "7"},
@@ -61,7 +60,6 @@ def _deterministic_fetchers() -> dict[str, Callable[[], dict[str, Any]]]:
     """Fetchers that return the values from :func:`_good_yaml_payload`."""
     return {
         "tests": lambda: {"raw": 17995, "rounded": 17000, "display": "17,000+"},
-        "mem0_stars": lambda: {"raw": 54312, "rounded": 54000, "display": "54k+"},
         "providers_curated": lambda: {"raw": 19, "display": "19"},
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
         "subagents": lambda: {"raw": 7, "display": "7"},
@@ -154,16 +152,16 @@ class TestValueDrift:
     ) -> None:
         """Raw drift with stable display does not trip the gate.
 
-        External counters (mem0 stars, etc.) flap on ``raw`` between push
+        Rounded counters (test count, etc.) flap on ``raw`` between push
         and CI run; only the rounded ``display`` value appears in docs, so
         only ``display`` drift is actionable.
         """
         _seed_fresh_yaml(yaml_path)
         fetchers = _deterministic_fetchers()
-        fetchers["mem0_stars"] = lambda: {
-            "raw": 54399,
-            "rounded": 54000,
-            "display": "54k+",
+        fetchers["tests"] = lambda: {
+            "raw": 17999,
+            "rounded": 17000,
+            "display": "17,000+",
         }
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main([]) == 0
@@ -207,18 +205,18 @@ class TestOfflineToleranceForFailingFetcher:
         _seed_fresh_yaml(yaml_path)
         fetchers = _deterministic_fetchers()
 
-        stat_name = "mem0_stars"
+        stat_name = "providers_via_litellm"
 
         def _raise() -> dict[str, Any]:
-            raise gen._StatFetchError(stat_name, "gh api", "rate limited")
+            raise gen._StatFetchError(stat_name, "import litellm", "not importable")
 
-        fetchers["mem0_stars"] = _raise
+        fetchers["providers_via_litellm"] = _raise
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main([]) == 0
         captured = capsys.readouterr()
         # Informational note on stderr; no actual drift violation reported.
-        assert "stats.mem0_stars.display drift" not in captured.err
-        assert "note: skipping drift check for mem0_stars" in captured.err
+        assert "stats.providers_via_litellm.display drift" not in captured.err
+        assert "note: skipping drift check for providers_via_litellm" in captured.err
 
 
 @pytest.mark.unit
@@ -270,7 +268,6 @@ class TestSkipNetworkFlag:
             return _trap
 
         fetchers["tests"] = _make_trap("tests", "subprocess pytest")
-        fetchers["mem0_stars"] = _make_trap("mem0_stars", "gh api")
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main(["--skip-network"]) == 0
         assert called == []
@@ -288,7 +285,7 @@ class TestNetworkStatsInventory:
         # Hard-pin the known network-backed stats; if the generator
         # adds another subprocess fetcher, this test enforces a
         # deliberate decision on whether to add it to the network set.
-        expected = frozenset({"tests", "mem0_stars"})
+        expected = frozenset({"tests"})
         assert expected == check._NETWORK_STATS
 
 
@@ -390,10 +387,10 @@ class TestFetcherUnexpectedException:
             msg = "unexpected boom"
             raise RuntimeError(msg)
 
-        fetchers["mem0_stars"] = _raise_runtime
+        fetchers["providers_via_litellm"] = _raise_runtime
         with patch.object(gen, "_FETCHERS", fetchers):
             assert check.main([]) == 0
         captured = capsys.readouterr()
-        assert "stats.mem0_stars.display drift" not in captured.err
-        assert "mem0_stars" in captured.err
+        assert "stats.providers_via_litellm.display drift" not in captured.err
+        assert "providers_via_litellm" in captured.err
         assert "RuntimeError" in captured.err
