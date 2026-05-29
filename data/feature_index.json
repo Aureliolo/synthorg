@@ -25,7 +25,11 @@
         "CapabilitiesController",
         "AuthController",
         "UserController",
-        "SetupController",
+        "SetupStatusController",
+        "SetupCompanyController",
+        "SetupAgentsController",
+        "SetupLocalesController",
+        "SetupCompletionController",
         "SetupPersonalityController"
       ],
       "depends_on": [],
@@ -899,6 +903,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T18:28:02.764682Z",
+  "generated_at": "2026-05-29T18:43:06.638062Z",
   "schema_version": 1
 }

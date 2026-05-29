@@ -106,8 +106,8 @@ async def post_setup_reinit(app_state: AppState) -> None:
     retry after fixing the underlying provider config.
 
     The matching call site in
-    :func:`SetupController.complete_setup` only persists the completion
-    flag when this function returns without raising.
+    :func:`SetupCompletionController.complete_setup` only persists the
+    completion flag when this function returns without raising.
 
     Args:
         app_state: Application state containing services.

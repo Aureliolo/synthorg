@@ -17,7 +17,11 @@ from synthorg.api.controllers.health import (
     LivenessController,
     ReadinessController,
 )
-from synthorg.api.controllers.setup_controller import SetupController
+from synthorg.api.controllers.setup.agents import SetupAgentsController
+from synthorg.api.controllers.setup.company import SetupCompanyController
+from synthorg.api.controllers.setup.completion import SetupCompletionController
+from synthorg.api.controllers.setup.locales import SetupLocalesController
+from synthorg.api.controllers.setup.status import SetupStatusController
 from synthorg.api.controllers.setup_personality import SetupPersonalityController
 from synthorg.api.controllers.users import UserController
 from synthorg.api.controllers.ws import ws_handler
@@ -33,7 +37,11 @@ FEATURE: FeatureModule = FeatureManifest(
         CapabilitiesController,
         AuthController,
         UserController,
-        SetupController,
+        SetupStatusController,
+        SetupCompanyController,
+        SetupAgentsController,
+        SetupLocalesController,
+        SetupCompletionController,
         SetupPersonalityController,
     ),
     websocket_handlers=(ws_handler,),

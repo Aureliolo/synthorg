@@ -108,7 +108,11 @@ from synthorg.api.controllers.settings.observability import (
     SettingsObservabilityController,
 )
 from synthorg.api.controllers.settings.security import SettingsSecurityController
-from synthorg.api.controllers.setup_controller import SetupController
+from synthorg.api.controllers.setup.agents import SetupAgentsController
+from synthorg.api.controllers.setup.company import SetupCompanyController
+from synthorg.api.controllers.setup.completion import SetupCompletionController
+from synthorg.api.controllers.setup.locales import SetupLocalesController
+from synthorg.api.controllers.setup.status import SetupStatusController
 from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
@@ -182,7 +186,11 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     SettingsCoreController,
     SettingsObservabilityController,
     SettingsSecurityController,
-    SetupController,
+    SetupStatusController,
+    SetupCompanyController,
+    SetupAgentsController,
+    SetupLocalesController,
+    SetupCompletionController,
     SetupPersonalityController,
     PersonalityPresetController,
     BackupController,
@@ -353,8 +361,12 @@ __all__ = [
     "SettingsCoreController",
     "SettingsObservabilityController",
     "SettingsSecurityController",
-    "SetupController",
+    "SetupAgentsController",
+    "SetupCompanyController",
+    "SetupCompletionController",
+    "SetupLocalesController",
     "SetupPersonalityController",
+    "SetupStatusController",
     "SimulationController",
     "SubworkflowController",
     "TaskController",

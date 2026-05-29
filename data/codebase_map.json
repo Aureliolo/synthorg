@@ -366,7 +366,7 @@
     },
     {
       "kind": "code",
-      "loc": 332,
+      "loc": 344,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -919,7 +919,7 @@
     },
     {
       "kind": "code",
-      "loc": 8,
+      "loc": 14,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup/__init__.py",
       "owning_feature": "api_core"
@@ -932,6 +932,20 @@
       "owning_feature": "api_core"
     },
     {
+      "kind": "controller",
+      "loc": 312,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/setup/agents.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 114,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/setup/company.py",
+      "owning_feature": "api_core"
+    },
+    {
       "kind": "code",
       "loc": 392,
       "loc_cap": 500,
@@ -939,17 +953,31 @@
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
-      "loc": 493,
-      "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/setup_agents.py",
+      "kind": "controller",
+      "loc": 209,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/setup/completion.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 128,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/setup/locales.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 141,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/setup/status.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 778,
+      "loc": 493,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/setup_controller.py",
+      "module": "src/synthorg/api/controllers/setup_agents.py",
       "owning_feature": "api_core"
     },
     {
@@ -1171,7 +1199,7 @@
     },
     {
       "kind": "feature",
-      "loc": 40,
+      "loc": 48,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
