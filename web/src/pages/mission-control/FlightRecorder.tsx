@@ -25,6 +25,54 @@ interface FlightRecorderProps {
   initialExecutionId?: string | null
 }
 
+interface PlaybackControlsProps {
+  index: number
+  lastIndex: number
+  total: number
+  playing: boolean
+  speed: string
+  onStepBack: () => void
+  onTogglePlay: () => void
+  onStepForward: () => void
+  onSpeedChange: (value: string) => void
+}
+
+function PlaybackControls({
+  index,
+  lastIndex,
+  total,
+  playing,
+  speed,
+  onStepBack,
+  onTogglePlay,
+  onStepForward,
+  onSpeedChange,
+}: PlaybackControlsProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" disabled={index <= 0} onClick={onStepBack}>
+        Prev
+      </Button>
+      <Button variant="default" size="sm" disabled={total === 0} onClick={onTogglePlay}>
+        {playing ? 'Pause' : 'Play'}
+      </Button>
+      <Button variant="outline" size="sm" disabled={index >= lastIndex} onClick={onStepForward}>
+        Next
+      </Button>
+      <SegmentedControl
+        label="Playback speed"
+        size="sm"
+        options={SPEED_OPTIONS}
+        value={speed}
+        onChange={onSpeedChange}
+      />
+      <span className="text-xs text-text-secondary">
+        Step {index + 1} of {total}
+      </span>
+    </div>
+  )
+}
+
 export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
   const [executionId, setExecutionId] = useState(initialExecutionId ?? '')
   const [index, setIndex] = useState(0)
@@ -104,48 +152,23 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
             }}
           />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={index <= 0}
-              onClick={() => {
-                setPlaying(false)
-                setIndex((p) => Math.max(0, p - 1))
-              }}
-            >
-              Prev
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              disabled={ordered.length === 0}
-              onClick={() => setPlaying((p) => !p)}
-            >
-              {playing ? 'Pause' : 'Play'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={index >= lastIndex}
-              onClick={() => {
-                setPlaying(false)
-                setIndex((p) => Math.min(lastIndex, p + 1))
-              }}
-            >
-              Next
-            </Button>
-            <SegmentedControl
-              label="Playback speed"
-              size="sm"
-              options={SPEED_OPTIONS}
-              value={speed}
-              onChange={setSpeed}
-            />
-            <span className="text-xs text-text-secondary">
-              Step {index + 1} of {ordered.length}
-            </span>
-          </div>
+          <PlaybackControls
+            index={index}
+            lastIndex={lastIndex}
+            total={ordered.length}
+            playing={playing}
+            speed={speed}
+            onStepBack={() => {
+              setPlaying(false)
+              setIndex((p) => Math.max(0, p - 1))
+            }}
+            onTogglePlay={() => setPlaying((p) => !p)}
+            onStepForward={() => {
+              setPlaying(false)
+              setIndex((p) => Math.min(lastIndex, p + 1))
+            }}
+            onSpeedChange={setSpeed}
+          />
 
           {current != null && <FrameDetail frame={current} />}
         </>

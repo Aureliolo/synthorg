@@ -21,13 +21,14 @@ export interface OauthAppCardProps {
   className?: string
 }
 
-export function OauthAppCard({
-  connection,
-  onEdit,
-  onDelete,
-  onConnect,
-  className,
-}: OauthAppCardProps) {
+interface OauthSecretReveal {
+  revealedSecret: string | null
+  revealing: boolean
+  handleReveal: () => Promise<void>
+  handleRevealClientId: () => Promise<void>
+}
+
+function useOauthSecretReveal(connectionName: string): OauthSecretReveal {
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null)
   const [revealing, setRevealing] = useState(false)
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -50,10 +51,7 @@ export function OauthAppCard({
     }
     setRevealing(true)
     try {
-      const response = await revealConnectionSecret(
-        connection.name,
-        'client_secret',
-      )
+      const response = await revealConnectionSecret(connectionName, 'client_secret')
       setRevealedSecret(response.value)
       useToastStore.getState().add({
         variant: 'info',
@@ -78,12 +76,9 @@ export function OauthAppCard({
 
   async function handleRevealClientId() {
     try {
-      const response = await revealConnectionSecret(connection.name, 'client_id')
+      const response = await revealConnectionSecret(connectionName, 'client_id')
       await navigator.clipboard.writeText(response.value)
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Client ID copied',
-      })
+      useToastStore.getState().add({ variant: 'success', title: 'Client ID copied' })
     } catch (err) {
       log.warn('Copy client_id failed:', sanitizeForLog(err))
       useToastStore.getState().add({
@@ -94,6 +89,112 @@ export function OauthAppCard({
     }
   }
 
+  return { revealedSecret, revealing, handleReveal, handleRevealClientId }
+}
+
+function OauthCardHeader({ name, onEdit }: { name: string; onEdit: () => void }) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <KeyRound className="size-4 shrink-0 text-text-secondary" aria-hidden />
+        <span className="truncate font-mono text-sm text-foreground">{name}</span>
+      </div>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`More actions for ${name}`}
+        onClick={onEdit}
+      >
+        <MoreVertical className="size-4" aria-hidden />
+      </Button>
+    </div>
+  )
+}
+
+function OauthClientIdRow({ onCopy }: { onCopy: () => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-text-secondary">Client ID</span>
+        <Button type="button" size="sm" variant="ghost" onClick={onCopy}>
+          Copy
+        </Button>
+      </div>
+      <code className="truncate rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs text-text-muted">
+        ••••••••
+      </code>
+    </div>
+  )
+}
+
+interface OauthSecretRowProps {
+  revealedSecret: string | null
+  revealing: boolean
+  onToggle: () => void
+}
+
+function OauthSecretRow({ revealedSecret, revealing, onToggle }: OauthSecretRowProps) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-text-secondary">Client secret</span>
+        <Button type="button" size="sm" variant="ghost" onClick={onToggle} disabled={revealing}>
+          {revealedSecret !== null ? (
+            <>
+              <EyeOff className="mr-1 size-3" aria-hidden /> Hide
+            </>
+          ) : (
+            <>
+              <Eye className="mr-1 size-3" aria-hidden /> Reveal
+            </>
+          )}
+        </Button>
+      </div>
+      <code className="truncate rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs text-text-muted">
+        {revealedSecret ?? '••••••••••••••••'}
+      </code>
+    </div>
+  )
+}
+
+function OauthCardActions({
+  onConnect,
+  onDelete,
+}: {
+  onConnect?: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="mt-3 flex justify-end gap-2">
+      {onConnect && (
+        <Button type="button" size="sm" variant="default" onClick={onConnect}>
+          Connect
+        </Button>
+      )}
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={onDelete}
+        className="text-danger hover:text-danger"
+      >
+        Delete
+      </Button>
+    </div>
+  )
+}
+
+export function OauthAppCard({
+  connection,
+  onEdit,
+  onDelete,
+  onConnect,
+  className,
+}: OauthAppCardProps) {
+  const { revealedSecret, revealing, handleReveal, handleRevealClientId } =
+    useOauthSecretReveal(connection.name)
+
   return (
     <div
       className={cn(
@@ -103,89 +204,18 @@ export function OauthAppCard({
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <KeyRound className="size-4 shrink-0 text-text-secondary" aria-hidden />
-          <span className="truncate font-mono text-sm text-foreground">
-            {connection.name}
-          </span>
-        </div>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          aria-label={`More actions for ${connection.name}`}
-          onClick={onEdit}
-        >
-          <MoreVertical className="size-4" aria-hidden />
-        </Button>
-      </div>
+      <OauthCardHeader name={connection.name} onEdit={onEdit} />
 
       <div className="mt-3 flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-text-secondary">
-              Client ID
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => void handleRevealClientId()}
-            >
-              Copy
-            </Button>
-          </div>
-          <code className="truncate rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs text-text-muted">
-            ••••••••
-          </code>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-text-secondary">
-              Client secret
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => void handleReveal()}
-              disabled={revealing}
-            >
-              {revealedSecret !== null ? (
-                <>
-                  <EyeOff className="mr-1 size-3" aria-hidden /> Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="mr-1 size-3" aria-hidden /> Reveal
-                </>
-              )}
-            </Button>
-          </div>
-          <code className="truncate rounded-md border border-border bg-surface px-2 py-1 font-mono text-xs text-text-muted">
-            {revealedSecret ?? '••••••••••••••••'}
-          </code>
-        </div>
+        <OauthClientIdRow onCopy={() => void handleRevealClientId()} />
+        <OauthSecretRow
+          revealedSecret={revealedSecret}
+          revealing={revealing}
+          onToggle={() => void handleReveal()}
+        />
       </div>
 
-      <div className="mt-3 flex justify-end gap-2">
-        {onConnect && (
-          <Button type="button" size="sm" variant="default" onClick={onConnect}>
-            Connect
-          </Button>
-        )}
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={onDelete}
-          className="text-danger hover:text-danger"
-        >
-          Delete
-        </Button>
-      </div>
+      <OauthCardActions onConnect={onConnect} onDelete={onDelete} />
     </div>
   )
 }

@@ -28,49 +28,81 @@ function statusLabel(activity: AgentActivity): string {
   return 'healthy'
 }
 
-function AgentRow({ activity }: { activity: AgentActivity }) {
+function statusText(activity: AgentActivity): string {
+  if (activity.is_runaway) return 'runaway'
+  if (activity.is_stuck) return 'stuck'
+  return activity.status
+}
+
+function statusDotClass(activity: AgentActivity): string {
+  if (activity.is_runaway) return 'bg-danger'
+  if (activity.is_stuck) return 'bg-warning'
+  return 'bg-success'
+}
+
+function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; headerId: string }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <span
+          role="img"
+          aria-label={`Status: ${statusLabel(activity)}`}
+          className={cn('size-2 rounded-full', statusDotClass(activity))}
+        />
+        <span id={headerId} className="font-medium text-foreground">
+          {activity.agent_id}
+        </span>
+        <span className="text-xs text-text-secondary">{activity.task_id}</span>
+      </div>
+      <div className="flex items-center gap-3 text-xs">
+        <span className="text-text-secondary">turn {activity.turn_count}</span>
+        <span className="font-mono text-foreground">
+          {formatCurrency(activity.cost, DEFAULT_CURRENCY)}
+        </span>
+        <span className={cn('uppercase', statusTone(activity))}>{statusText(activity)}</span>
+      </div>
+    </div>
+  )
+}
+
+function AgentHintControl({ activity }: { activity: AgentActivity }) {
   const [hint, setHint] = useState('')
-  const pause = useMissionControlStore((s) => s.pauseTaskAction)
-  const kill = useMissionControlStore((s) => s.killTaskAction)
   const sendHint = useMissionControlStore((s) => s.sendHintAction)
 
-  const headerId = `agent-row-${activity.task_id}`
+  if (activity.execution_id == null) return null
+
+  return (
+    <div className="flex items-center gap-2" aria-describedby={`agent-row-${activity.task_id}`}>
+      <InputField
+        label="Hint"
+        placeholder="Hint or redirect..."
+        value={hint}
+        onChange={(e) => setHint(e.target.value)}
+      />
+      <Button
+        variant="default"
+        size="sm"
+        disabled={hint.trim() === ''}
+        onClick={() => {
+          const executionId = activity.execution_id
+          if (executionId == null || hint.trim() === '') return
+          void sendHint(executionId, activity.agent_id, hint.trim())
+          setHint('')
+        }}
+      >
+        Send
+      </Button>
+    </div>
+  )
+}
+
+function AgentRow({ activity }: { activity: AgentActivity }) {
+  const pause = useMissionControlStore((s) => s.pauseTaskAction)
+  const kill = useMissionControlStore((s) => s.killTaskAction)
 
   return (
     <div className="rounded-lg border border-border bg-card p-card">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span
-            role="img"
-            aria-label={`Status: ${statusLabel(activity)}`}
-            className={cn(
-              'size-2 rounded-full',
-              activity.is_runaway
-                ? 'bg-danger'
-                : activity.is_stuck
-                  ? 'bg-warning'
-                  : 'bg-success',
-            )}
-          />
-          <span id={headerId} className="font-medium text-foreground">
-            {activity.agent_id}
-          </span>
-          <span className="text-xs text-text-secondary">{activity.task_id}</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-text-secondary">turn {activity.turn_count}</span>
-          <span className="font-mono text-foreground">
-            {formatCurrency(activity.cost, DEFAULT_CURRENCY)}
-          </span>
-          <span className={cn('uppercase', statusTone(activity))}>
-            {activity.is_runaway
-              ? 'runaway'
-              : activity.is_stuck
-                ? 'stuck'
-                : activity.status}
-          </span>
-        </div>
-      </div>
+      <AgentRowHeader activity={activity} headerId={`agent-row-${activity.task_id}`} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
@@ -87,29 +119,7 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
         >
           Kill
         </Button>
-        {activity.execution_id != null && (
-          <div className="flex items-center gap-2" aria-describedby={headerId}>
-            <InputField
-              label="Hint"
-              placeholder="Hint or redirect..."
-              value={hint}
-              onChange={(e) => setHint(e.target.value)}
-            />
-            <Button
-              variant="default"
-              size="sm"
-              disabled={hint.trim() === ''}
-              onClick={() => {
-                const executionId = activity.execution_id
-                if (executionId == null || hint.trim() === '') return
-                void sendHint(executionId, activity.agent_id, hint.trim())
-                setHint('')
-              }}
-            >
-              Send
-            </Button>
-          </div>
-        )}
+        <AgentHintControl activity={activity} />
       </div>
     </div>
   )
