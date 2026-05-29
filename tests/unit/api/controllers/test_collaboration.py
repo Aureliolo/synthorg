@@ -300,9 +300,13 @@ class TestOverrideStoreNotConfigured:
             auth_service=auth_service,
             performance_tracker=tracker,
         )
-        async with LoopAsyncClient(app) as client:
-            client.headers.update(make_auth_headers("ceo"))
-            yield client
+        try:
+            async with LoopAsyncClient(app) as client:
+                client.headers.update(make_auth_headers("ceo"))
+                yield client
+        finally:
+            await fake_bus.stop()
+            await fake_persistence.disconnect()
 
     @pytest.mark.parametrize(
         ("method", "json_body"),
