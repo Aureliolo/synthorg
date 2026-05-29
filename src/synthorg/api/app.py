@@ -15,7 +15,6 @@ from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
     _build_configured_trust_service,
     _build_performance_tracker,
-    _build_telemetry_collector,
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
@@ -44,22 +43,15 @@ from synthorg.api.feature_composition import (
     compose_feature_slices,
 )
 from synthorg.api.integrations_wiring import auto_wire_integrations
-from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_assembly import assemble_lifespan_hooks
 from synthorg.api.lifecycle_helpers.boot_resolvers import (
     build_default_approval_timeout_scheduler,
     resolve_budget_int,
     resolve_rate_limiter_enabled,
 )
-from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
 from synthorg.api.lifecycle_helpers.settings_dispatcher import (
     _build_settings_dispatcher,
 )
-from synthorg.api.lifecycle_helpers.startup_steps import (
-    install_runtime_services,
-    resolve_runtime_security_settings,
-    wire_brownfield_intake,
-)
-from synthorg.api.lifecycle_helpers.toolsmith_wiring import wire_toolsmith
 from synthorg.api.litestar_assembly import build_litestar
 from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.state import AppState
@@ -369,7 +361,6 @@ def create_app(  # noqa: PLR0913
     # re-runs this idempotently (skips already-composed slices).
     compose_feature_slices(app_state)
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
-    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.communication.state import (  # noqa: PLC0415
         CommunicationStateSlice,
     )
@@ -717,152 +708,25 @@ def create_app(  # noqa: PLR0913
     # auto-decides. Operators swap in DenyOnTimeout / Tiered /
     # EscalationChain via the security.* settings at runtime.
 
-    startup, shutdown = _build_lifecycle(
-        persistence,
-        message_bus,
-        bridge,
-        settings_dispatcher,
-        task_engine,
-        meeting_scheduler,
-        backup_service,
-        approval_timeout_scheduler,
+    startup, shutdown = assemble_lifespan_hooks(
         app_state,
+        persistence=persistence,
+        message_bus=message_bus,
+        bridge=bridge,
+        settings_dispatcher=settings_dispatcher,
+        task_engine=task_engine,
+        meeting_scheduler=meeting_scheduler,
+        backup_service=backup_service,
+        approval_timeout_scheduler=approval_timeout_scheduler,
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
+        connection_catalog=connection_catalog,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+        approval_store=effective_approval_store,
+        performance_tracker=performance_tracker,
+        notification_dispatcher=notification_dispatcher,
     )
-
-    _runtime_services_installed = False
-
-    async def _install_runtime_services() -> None:
-        # Installs the worker execution service AND the multi-agent
-        # coordinator behind the single provider-present switch, both
-        # sharing one boot AgentEngine. Appended first (runs immediately
-        # after the core startup hooks that connect persistence and
-        # wire SettingsService / ConfigResolver), and before any other
-        # appended hook, so the once-only ``set_worker_execution_service``
-        # / ``set_coordinator`` cannot lose a race with the
-        # worker-service property's lazy lifecycle-only default. With no
-        # provider this installs the empty-company backstop and no
-        # coordinator (``/coordinate`` honestly 503s); a provider added
-        # later swaps both in via ``post_setup_reinit`` (no restart). The
-        # closure flag keeps the one-shot ``set_`` calls idempotent
-        # across a lifespan re-entry (shared-app test fixtures),
-        # mirroring ``_wire_chief_of_staff_chat``.
-        nonlocal _runtime_services_installed
-        if _runtime_services_installed:
-            return
-        await install_runtime_services(
-            app_state,
-            connection_catalog=connection_catalog,
-        )
-        _runtime_services_installed = True
-
-    _brownfield_intake_installed = False
-
-    async def _wire_brownfield_intake() -> None:
-        nonlocal _brownfield_intake_installed
-        if _brownfield_intake_installed:
-            return
-        _brownfield_intake_installed = await wire_brownfield_intake(app_state)
-
-    async def _compose_feature_slices() -> None:
-        compose_feature_slices(app_state)
-
-    # ``_compose_feature_slices`` runs FIRST so every feature's empty state
-    # slice exists before any wiring hook (including the persistence-phase
-    # ``_safe_startup`` hooks) composes/swaps a populated slice.
-    async def _wire_features() -> None:
-        await wire_features_on_startup(
-            app_state,
-            provider_registry=provider_registry,
-            persistence=persistence,
-            cost_tracker=cost_tracker,
-            effective_approval_store=effective_approval_store,
-        )
-
-    startup = [
-        _compose_feature_slices,
-        *startup,
-        _install_runtime_services,
-        _wire_features,
-        _wire_brownfield_intake,
-    ]
-
-    # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
-    # opt-in, defaults to disabled). Attach to app_state so the health
-    # endpoint can report the state, and hook start()/shutdown() into the
-    # Litestar lifespan. Telemetry is SynthOrg-owned and silent on
-    # failure: a broken reporter falls back to noop and never affects
-    # the app.
-    #
-    # Shutdown is appended (runs LAST), not prepended: critical
-    # infrastructure (task engine drain, persistence disconnect, bus
-    # stop) must complete first so the session-summary event emitted
-    # by ``telemetry_collector.shutdown`` reflects final state, and so
-    # a hanging Logfire flush never blocks cleanup of load-bearing
-    # resources.
-    telemetry_collector = _build_telemetry_collector(effective_config.telemetry)
-    from synthorg.telemetry.state import TelemetryStateSlice  # noqa: PLC0415
-
-    app_state.swap_slice(TelemetryStateSlice(collector=telemetry_collector))
-    startup = [*startup, telemetry_collector.start]
-    shutdown = [*shutdown, telemetry_collector.shutdown]
-
-    # Automated report service: wired from the cost tracker + budget config
-    # so the ``POST /api/v1/reports/generate`` endpoint can serve the
-    # documented inputs instead of returning 503 unconfigured. Risk and
-    # performance trackers are optional; the service degrades to empty
-    # per-tracker reports when either is absent (see
-    # ``AutomatedReportService.generate_*_report`` for the None-tolerant
-    # paths). When ``cost_tracker`` is itself absent (degenerate test
-    # configurations) we skip the wire and the controller falls back to
-    # 503 ServiceUnavailableError -- which is the honest status code for
-    # "feature unavailable", not the AttributeError it used to surface.
-    if cost_tracker is not None:
-        from synthorg.budget.automated_reports import (  # noqa: PLC0415
-            AutomatedReportService,
-        )
-        from synthorg.budget.reports import ReportGenerator  # noqa: PLC0415
-
-        report_generator = ReportGenerator(
-            cost_tracker=cost_tracker,
-            budget_config=effective_config.budget,
-        )
-        report_service = AutomatedReportService(
-            report_generator=report_generator,
-            cost_tracker=cost_tracker,
-            risk_tracker=None,
-            performance_tracker=performance_tracker,
-        )
-        from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
-
-        app_state.wire(BudgetStateSlice, report_service=report_service)
-
-    async def _wire_toolsmith() -> None:
-        await wire_toolsmith(
-            app_state,
-            provider_registry=provider_registry,
-            persistence=persistence,
-            approval_store=effective_approval_store,
-            cost_tracker=cost_tracker,
-        )
-
-    startup = [*startup, _wire_toolsmith]
-
-    # Bring up the notification dispatcher's HTTP-bearing sinks
-    # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle
-    # locks. Stateless sinks (console/email) implement no-op
-    # start()/close() so the fan-out treats every adapter uniformly.
-    # Shutdown registration lives in ``lifecycle_builder._safe_shutdown``
-    # via ``notification_dispatcher.aclose`` so audit-style shutdown
-    # notifications can fire during service teardown before sink
-    # close() runs.
-    startup = [*startup, notification_dispatcher.start]
-
-    async def _resolve_runtime_security_settings() -> None:
-        await resolve_runtime_security_settings(app_state)
-
-    startup = [*startup, _resolve_runtime_security_settings]
 
     if _skip_lifecycle_shutdown:
         shutdown = []

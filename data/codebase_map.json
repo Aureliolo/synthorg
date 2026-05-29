@@ -177,7 +177,7 @@
     },
     {
       "kind": "code",
-      "loc": 633,
+      "loc": 562,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -1356,6 +1356,13 @@
       "loc": 796,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 166,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_assembly.py",
       "owning_feature": "api_core"
     },
     {
