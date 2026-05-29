@@ -406,6 +406,11 @@ class BaseCompletionProvider(ABC):
         Subclasses that expose a cheaper bulk source (e.g. a static
         preset catalog) should override this to avoid the per-model
         round trip.
+
+        Returns:
+            A mapping of model identifier to its ``ModelCapabilities``,
+            with ``None`` for each model whose individual lookup failed
+            with a per-model error.
         """
         if not models:
             return {}
@@ -531,6 +536,14 @@ class BaseCompletionProvider(ABC):
 
         Holds the slot for the full stream lifetime. Pauses the limiter
         on ``RateLimitError`` with ``retry_after`` before re-raising.
+
+        Returns:
+            The return value of ``func``, or an async-iterator wrapper
+            that holds the limiter slot until the stream is exhausted.
+
+        Raises:
+            RateLimitError: Re-raised after pausing the limiter with the
+                provider's ``retry_after``.
         """
         acquired = False
         if self._rate_limiter is not None:

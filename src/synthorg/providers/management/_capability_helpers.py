@@ -39,6 +39,10 @@ def mask_secret(secret: str) -> str:
     (``"********"``) -- at exactly 8 chars the first-4 and last-4
     windows already cover every byte of the secret, so any
     "partial" masking would in fact reveal the whole value.
+
+    Returns:
+        A masked string of the form ``"abcd***xyz9"``, or ``"********"``
+        for secrets of length 8 or shorter.
     """
     if len(secret) <= _SECRET_SHORT_THRESHOLD:
         return "*" * 8
@@ -52,6 +56,11 @@ def credentials_update_fields(
 
     Returns ``(field_updates, masked_secret_for_audit)``. The masked
     secret is suitable for direct inclusion in audit-row payloads.
+
+    Returns:
+        A ``(field_updates, masked_secret)`` tuple: the update map for
+        ``ProviderConfig.model_copy(update=...)`` and an audit-safe
+        masked secret.
     """
     auth_type = request.auth_type
     if auth_type == AuthType.API_KEY:

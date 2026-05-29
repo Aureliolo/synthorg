@@ -109,6 +109,14 @@ class CassetteOutcome(BaseModel):
         terminal :class:`ProviderError` raised *after* some chunks were
         already emitted, so replay can re-emit those chunks faithfully
         and only then re-raise.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the payload field required by ``kind`` is
+                ``None``, or a payload field for a different ``kind`` is
+                set (except a ``STREAM`` outcome carrying an ``error``).
         """
         by_kind: dict[CassetteOutcomeKind, object] = {
             CassetteOutcomeKind.RESPONSE: self.response,
@@ -134,7 +142,12 @@ class CassetteOutcome(BaseModel):
 
     @classmethod
     def from_response(cls, response: CompletionResponse) -> Self:
-        """Build a response outcome."""
+        """Build a response outcome.
+
+        Returns:
+            A ``CassetteOutcome`` with ``kind=RESPONSE`` wrapping the
+            given ``CompletionResponse``.
+        """
         return cls(kind=CassetteOutcomeKind.RESPONSE, response=response)
 
     @classmethod
@@ -150,6 +163,10 @@ class CassetteOutcome(BaseModel):
         ``context`` is the (already scrubbed) ``ProviderError.context``;
         it is persisted so a replayed exception carries the original
         payload that callers may branch on.
+
+        Returns:
+            A ``CassetteOutcome`` with ``kind=ERROR`` populated from the
+            scrubbed description and context.
         """
         return cls(
             kind=CassetteOutcomeKind.ERROR,
@@ -172,6 +189,10 @@ class CassetteOutcome(BaseModel):
         ``error`` records a terminal :class:`ProviderError` raised after
         the recorded chunks were emitted, so replay re-emits the chunks
         and only then re-raises.
+
+        Returns:
+            A ``CassetteOutcome`` with ``kind=STREAM`` wrapping the chunk
+            tuple and any terminal ``error``.
         """
         return cls(
             kind=CassetteOutcomeKind.STREAM,
@@ -181,7 +202,12 @@ class CassetteOutcome(BaseModel):
 
     @classmethod
     def from_capabilities(cls, capabilities: ModelCapabilities) -> Self:
-        """Build a capability-lookup outcome."""
+        """Build a capability-lookup outcome.
+
+        Returns:
+            A ``CassetteOutcome`` with ``kind=CAPABILITIES`` wrapping the
+            given ``ModelCapabilities``.
+        """
         return cls(
             kind=CassetteOutcomeKind.CAPABILITIES,
             capabilities=capabilities,
@@ -354,6 +380,10 @@ class CassetteSession:
         recorded ``request_repr`` is never consulted (it is the
         redacted human copy).
 
+        Returns:
+            The next ``CassetteOutcome`` in FIFO order for the matching
+            ``(request_hash, lane)`` key.
+
         Raises:
             CassetteReplayMissError: No recorded interaction for the
                 request key in the current lane.
@@ -399,6 +429,10 @@ class CassetteSession:
         is stored verbatim; ``ProviderError.context`` is the single
         outcome field that can carry a secret (e.g. a debug header
         bag), so it is redacted exactly like the request copy.
+
+        Returns:
+            A new ``CassetteOutcome`` with the error context scrubbed, or
+            the original outcome when there is no error or empty context.
         """
         error = outcome.error
         if error is None or not error.context:
@@ -431,6 +465,10 @@ class CassetteSession:
         Returns ``None`` when not recording. Offloaded to a worker
         thread by :meth:`record_interaction`; the *snapshot* is taken
         on the loop so it cannot race a concurrent append.
+
+        Returns:
+            A canonical JSON string of the cassette document, or ``None``
+            when the session mode is not ``RECORD``.
         """
         if self._mode is not CassetteMode.RECORD:
             return None

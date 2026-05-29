@@ -80,6 +80,9 @@ class ModelCapabilities(BaseModel):
             - supports_streaming_tool_calls requires both supports_tools
               and supports_streaming.
 
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
         Raises:
             ValueError: If any cross-field constraint is violated.
         """

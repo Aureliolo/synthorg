@@ -52,7 +52,11 @@ _REDACTED_KEYS: frozenset[str] = frozenset(
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """Check if a context key should be redacted (case-insensitive)."""
+    """Check if a context key should be redacted (case-insensitive).
+
+    Returns:
+        ``True`` when *key* names a sensitive field that must be redacted.
+    """
     return key.lower() in _REDACTED_KEYS
 
 
@@ -112,6 +116,10 @@ class ProviderError(DomainError):
 
         Sensitive keys (api_key, token, etc.) are redacted to prevent
         accidental secret leakage in logs and tracebacks.
+
+        Returns:
+            ``"<message> (<key>=<val>, ...)"`` with sensitive context
+            keys redacted, or just ``"<message>"`` when context is empty.
         """
         if self.context:
             ctx = ", ".join(
@@ -155,6 +163,9 @@ class RateLimitError(ProviderError):
             retry_after: Seconds to wait before retrying, if provided
                 by the provider.
             context: Arbitrary metadata about the error.
+
+        Raises:
+            ValueError: If ``retry_after`` is negative or non-finite.
         """
         if retry_after is not None and (
             retry_after < 0 or not math.isfinite(retry_after)

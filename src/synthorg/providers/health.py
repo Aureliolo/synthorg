@@ -77,7 +77,15 @@ class ProviderHealthRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:
-        """Ensure error_message consistency with success flag."""
+        """Ensure error_message consistency with success flag.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``success=True`` but ``error_message`` is set,
+                or ``success=False`` but ``error_message`` is ``None``.
+        """
         if self.success and self.error_message is not None:
             msg = "error_message must be None when success is True"
             raise ValueError(msg)
@@ -144,7 +152,15 @@ class ProviderHealthSummary(BaseModel):
 
     @model_validator(mode="after")
     def _validate_zero_calls_consistency(self) -> Self:
-        """Ensure zero calls implies no average response time."""
+        """Ensure zero calls implies no average response time.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``calls_last_24h == 0`` but
+                ``avg_response_time_ms`` is set.
+        """
         if self.calls_last_24h == 0 and self.avg_response_time_ms is not None:
             msg = "avg_response_time_ms must be None when calls_last_24h is 0"
             raise ValueError(msg)
@@ -160,7 +176,12 @@ class ProviderHealthSummary(BaseModel):
 
 
 def _derive_health_status(error_rate: float) -> ProviderHealthStatus:
-    """Derive health status from error rate percentage."""
+    """Derive health status from error rate percentage.
+
+    Returns:
+        The ``ProviderHealthStatus`` (``UP``, ``DEGRADED``, or ``DOWN``)
+        for the given error rate.
+    """
     if error_rate >= _DOWN_THRESHOLD:
         return ProviderHealthStatus.DOWN
     if error_rate >= _DEGRADED_THRESHOLD:
@@ -407,7 +428,11 @@ class ProviderHealthTracker:
             return tuple(self._records)
 
     def _prune_before(self, cutoff: datetime) -> int:
-        """Remove records older than *cutoff*.  Caller must hold ``_lock``."""
+        """Remove records older than *cutoff*.  Caller must hold ``_lock``.
+
+        Returns:
+            The number of records removed that were older than *cutoff*.
+        """
         if not self._records:
             return 0
         before = len(self._records)

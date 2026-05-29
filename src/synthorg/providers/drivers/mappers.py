@@ -36,7 +36,11 @@ def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:
 
 
 def _message_to_dict(message: ChatMessage) -> dict[str, object]:
-    """Convert a single ``ChatMessage`` to a dict."""
+    """Convert a single ``ChatMessage`` to a dict.
+
+    Returns:
+        A chat-completion message dict for the given ``ChatMessage``.
+    """
     result: dict[str, object] = {"role": message.role.value}
 
     match message.role:
@@ -74,6 +78,10 @@ def _multimodal_content(message: ChatMessage) -> list[dict[str, object]]:
     Emits a leading ``text`` part only when ``content`` is non-empty,
     followed by one ``image_url`` part per attached image (order
     preserved).
+
+    Returns:
+        A list of content-part dicts (text and image_url) for the
+        message's multimodal payload.
     """
     parts: list[dict[str, object]] = []
     if message.content:
@@ -105,7 +113,11 @@ def tools_to_dicts(tools: list[ToolDefinition]) -> list[dict[str, object]]:
 
 
 def _tool_to_dict(tool: ToolDefinition) -> dict[str, object]:
-    """Convert a single ``ToolDefinition`` to a chat-completion tool dict."""
+    """Convert a single ``ToolDefinition`` to a chat-completion tool dict.
+
+    Returns:
+        A chat-completion tool dict for the given ``ToolDefinition``.
+    """
     return {
         "type": "function",
         "function": {
@@ -196,7 +208,12 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
 
 
 def _get(obj: Any, key: str, default: Any) -> Any:
-    """Get a value from a dict or object attribute."""
+    """Get a value from a dict or object attribute.
+
+    Returns:
+        The value for *key* from a dict or object attribute, or *default*
+        when absent.
+    """
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)

@@ -43,7 +43,15 @@ class CassetteConfig(BaseModel):
 
     @model_validator(mode="after")
     def _require_path_when_active(self) -> Self:
-        """Reject an active mode without a cassette path."""
+        """Reject an active mode without a cassette path.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the mode is ``RECORD`` or ``REPLAY`` but
+                ``path`` is ``None``.
+        """
         if self.mode is not CassetteMode.OFF and self.path is None:
             msg = f"cassette path is required when mode is {self.mode.value!r}"
             raise ValueError(msg)

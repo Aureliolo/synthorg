@@ -213,7 +213,12 @@ def resolve_currency(cost_tracker: CostTracker) -> CurrencyCode:
 
 
 def _is_zero_usage(usage: TokenUsage) -> bool:
-    """True when a response has zero cost AND zero tokens."""
+    """True when a response has zero cost AND zero tokens.
+
+    Returns:
+        ``True`` when the cost and both token counts of *usage* are all
+        exactly zero; ``False`` otherwise.
+    """
     return usage.cost == 0.0 and usage.input_tokens == 0 and usage.output_tokens == 0
 
 
@@ -226,6 +231,11 @@ def _extract_provider_metadata(
     with each value coerced to its expected type or ``None`` when absent
     or mistyped.  Mirrors the extraction in
     :func:`synthorg.engine.loop_helpers.make_turn_record`.
+
+    Returns:
+        A ``(latency_ms, cache_hit, retry_count, retry_reason)`` tuple,
+        each field coerced to its typed value or ``None`` when absent or
+        of unexpected type.
     """
     md = metadata or {}
     latency_raw = md.get("_synthorg_latency_ms")
@@ -277,6 +287,10 @@ def _is_successful_finish(finish_reason: object) -> bool:
     surfaced as an error finish) -- record the cost (we still paid for
     the tokens) but mark the record as ``success=False`` so analytics
     can break out failed-but-billed calls.
+
+    Returns:
+        ``True`` when the finish reason is absent or any value other than
+        ``ERROR``; ``False`` for an ``ERROR`` finish.
     """
     if finish_reason is None:
         return True
@@ -291,7 +305,12 @@ def _build_cost_record(
     model: str,
     provider: str,
 ) -> CostRecord:
-    """Construct a CostRecord from the active context + response."""
+    """Construct a CostRecord from the active context + response.
+
+    Returns:
+        A ``CostRecord`` populated from the active context, the response
+        usage/cost, and the extracted provider metadata.
+    """
     latency_ms, cache_hit, retry_count, retry_reason = _extract_provider_metadata(
         response.provider_metadata,
     )

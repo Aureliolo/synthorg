@@ -142,6 +142,13 @@ class SequencedResponseStrategy:
 
         The check-and-advance is guarded so concurrent agent runs
         sharing one scripted provider cannot skip or replay a response.
+
+        Returns:
+            The next ``CompletionResponse`` from the scripted sequence.
+
+        Raises:
+            ScriptedProviderExhaustedError: If the call count exceeds the
+                number of scripted responses.
         """
         del messages, model, tools, config
         with self._lock:
@@ -250,7 +257,12 @@ class ScriptedDriver(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Decompose the scripted completion into stream chunks."""
+        """Decompose the scripted completion into stream chunks.
+
+        Returns:
+            An async iterator of ``StreamChunk`` objects derived from the
+            next scripted ``CompletionResponse``.
+        """
         response = self._strategy.next_response(messages, model, tools, config)
 
         async def _chunks() -> AsyncIterator[StreamChunk]:
