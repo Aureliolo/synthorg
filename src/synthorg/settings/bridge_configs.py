@@ -111,6 +111,17 @@ class NotificationsBridgeConfig(BaseModel):
     @field_validator("slack_default_webhook_url")
     @classmethod
     def _validate_slack_default_webhook_url(cls, value: str) -> str:
+        """Validate the Slack default webhook URL is canonical (or empty).
+
+        Returns:
+            The unchanged *value* (empty string permitted to mean "no
+            default webhook configured").
+
+        Raises:
+            ValueError: If *value* is non-empty and has surrounding
+                whitespace, a non-numeric or reserved port, or is not a
+                canonical ``http(s)`` URL.
+        """
         if value == "":
             return value
         if value != value.strip():
@@ -292,6 +303,17 @@ class ApiBridgeConfig(BaseModel):
         cls,
         value: tuple[str, ...],
     ) -> tuple[str, ...]:
+        """Validate every CSP docs origin is a canonical ``http(s)`` origin.
+
+        Returns:
+            The unchanged *value* tuple once every entry validates.
+
+        Raises:
+            ValueError: If the tuple is empty, or any entry has a
+                non-numeric/reserved port or is not a bare canonical
+                origin (scheme + host + optional port, no userinfo,
+                path, query, or fragment).
+        """
         if not value:
             msg = (
                 "csp_docs_external_origins must contain at least one"
@@ -345,6 +367,15 @@ class ApiBridgeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_approval_urgency_thresholds(self) -> ApiBridgeConfig:
+        """Validate the critical urgency threshold fires before the high one.
+
+        Returns:
+            The validated ``ApiBridgeConfig`` instance.
+
+        Raises:
+            ValueError: If ``approval_urgency_critical_seconds`` is not
+                strictly less than ``approval_urgency_high_seconds``.
+        """
         if self.approval_urgency_critical_seconds >= self.approval_urgency_high_seconds:
             msg = (
                 "approval_urgency_critical_seconds"
@@ -359,6 +390,16 @@ class ApiBridgeConfig(BaseModel):
     @field_validator("error_docs_base_url")
     @classmethod
     def _validate_error_docs_base_url(cls, value: str) -> str:
+        """Validate the error-docs base URL is a canonical HTTPS URL.
+
+        Returns:
+            The unchanged *value* once it validates.
+
+        Raises:
+            ValueError: If *value* has a non-numeric/reserved port, is
+                not HTTPS, lacks a host, or carries userinfo, query, or
+                fragment components.
+        """
         parsed = urlsplit(value)
         try:
             port = parsed.port

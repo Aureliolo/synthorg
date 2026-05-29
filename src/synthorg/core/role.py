@@ -71,6 +71,12 @@ class Skill(BaseModel):
         and would confuse routing dedup logic downstream.  Reject at
         construction so the issue surfaces in the API response rather than
         as a subtle ranking bug.
+
+        Returns:
+            The unchanged *value* tuple once uniqueness is confirmed.
+
+        Raises:
+            ValueError: If *value* contains any duplicate entry.
         """
         field_name = getattr(info, "field_name", "value")
         validate_unique_strings(value, field_name)
@@ -216,7 +222,16 @@ class CustomRole(BaseModel):
     @field_validator("department")
     @classmethod
     def _department_not_empty(cls, v: DepartmentName | str) -> DepartmentName | str:
-        """Ensure department is not empty and strip surrounding whitespace."""
+        """Ensure department is not empty and strip surrounding whitespace.
+
+        Returns:
+            The ``DepartmentName`` unchanged, or the whitespace-stripped
+            department string.
+
+        Raises:
+            ValueError: If the department string is empty or
+                whitespace-only.
+        """
         if isinstance(v, DepartmentName):
             return v
         stripped = v.strip()

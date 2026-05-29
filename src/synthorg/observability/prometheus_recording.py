@@ -187,6 +187,11 @@ class RecordingMixin:
             route: Route template string; ``"__unmatched__"`` for 404s.
             status_code: Response status code (100-599).
             duration_sec: Wall-clock duration in seconds.
+
+        Raises:
+            ValueError: If ``status_code`` maps to a class outside
+                1xx-5xx, or ``duration_sec`` is negative, NaN, or
+                infinite.
         """
         sc = status_class(status_code)
         if sc not in VALID_STATUS_CLASSES:
@@ -322,6 +327,10 @@ class RecordingMixin:
         (:data:`VALID_API_ERROR_CATEGORIES`, mirroring
         :class:`synthorg.api.errors.ErrorCategory`); 2xx/3xx status
         codes are rejected so the counter only covers real failures.
+
+        Raises:
+            ValueError: If ``category`` is not a known error category,
+                or ``status_code`` does not map to ``"4xx"`` or ``"5xx"``.
         """
         require_label("api error category", category, VALID_API_ERROR_CATEGORIES)
         sc = status_class(status_code)
@@ -472,6 +481,10 @@ class RecordingMixin:
         Args:
             department: Department name owning the escalation queue.
             depth: Current count of pending escalations.
+
+        Raises:
+            ValueError: If ``department`` is empty or not in the registry
+                snapshot, or ``depth`` is negative, NaN, or infinite.
         """
         if not department:
             logger.warning(
@@ -498,6 +511,11 @@ class RecordingMixin:
         ``ValueError`` and are dropped by the metrics-hub safe-record
         decorator. ``change_type`` is bounded by
         :data:`VALID_IDENTITY_CHANGE_TYPES`.
+
+        Raises:
+            ValueError: If ``agent_id`` is empty or not in the registry
+                snapshot, or ``change_type`` is not a known identity
+                change type.
         """
         if not agent_id:
             logger.warning(
@@ -532,6 +550,12 @@ class RecordingMixin:
         snapshot validator additionally rejects ids that aren't in
         the active workflow-definition repository so an orphan
         execution can't bloat label cardinality.
+
+        Raises:
+            ValueError: If ``workflow_definition_id`` is empty or not in
+                the registry snapshot, ``status`` is not a known
+                execution status, or ``duration_seconds`` is negative,
+                NaN, or infinite.
         """
         if not workflow_definition_id:
             logger.warning(

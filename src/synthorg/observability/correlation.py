@@ -38,7 +38,12 @@ def _build_bindings(
     agent_id: str | None,
     project_id: str | None = None,
 ) -> dict[str, str]:
-    """Build a contextvars bindings dict from non-None correlation IDs."""
+    """Build a contextvars bindings dict from non-None correlation IDs.
+
+    Returns:
+        A dict mapping each correlation-ID key name to its string value,
+        omitting any ID that is ``None``.
+    """
     bindings: dict[str, str] = {}
     if request_id is not None:
         bindings["request_id"] = request_id
@@ -257,6 +262,11 @@ def with_correlation_async(
 
         @functools.wraps(func)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            """Run the wrapped coroutine with correlation IDs bound.
+
+            Returns:
+                The wrapped coroutine's result, unchanged.
+            """
             bindings = _build_bindings(request_id, task_id, agent_id, project_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return await func(*args, **kwargs)

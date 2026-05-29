@@ -25,7 +25,12 @@ def _check_numeric_field(
     name: str,
     setting_type: SettingType,
 ) -> None:
-    """Validate a numeric constraint field (min_value/max_value)."""
+    """Validate a numeric constraint field (min_value/max_value).
+
+    Raises:
+        ValueError: If a bound is supplied for a non-numeric
+            ``setting_type``, or the bound is non-finite (NaN/inf).
+    """
     if value is None:
         return
     if setting_type not in (SettingType.INTEGER, SettingType.FLOAT):
@@ -128,7 +133,20 @@ class SettingDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _check_cross_field_constraints(self) -> SettingDefinition:
-        """Validate cross-field invariants at construction time."""
+        """Validate cross-field invariants at construction time.
+
+        Returns:
+            The validated ``SettingDefinition`` (Pydantic
+            ``model_validator(mode="after")`` contract).
+
+        Raises:
+            ValueError: If an ENUM setting has empty ``enum_values``;
+                ``read_only_post_init`` is set without
+                ``restart_required``; a numeric bound is invalid or
+                non-finite; ``min_value`` exceeds ``max_value``;
+                ``validator_pattern`` is not a valid regex; or the
+                default value fails any of these constraints.
+        """
         if self.type == SettingType.ENUM and not self.enum_values:
             msg = (
                 f"ENUM setting {self.namespace}/{self.key}"
@@ -165,7 +183,13 @@ class SettingDefinition(BaseModel):
         return self
 
     def _validate_default(self) -> None:
-        """Validate that the default value is consistent with the type."""
+        """Validate that the default value is consistent with the type.
+
+        Raises:
+            ValueError: If the default is not parseable as the declared
+                type, falls outside the declared numeric range, or does
+                not match the ``validator_pattern`` regex.
+        """
         default = self.default
         if default is None:
             return
@@ -189,6 +213,11 @@ def _validate_default_type(
     (ADR-0002). STRING has no parse check; ENUM is a membership check
     that needs ``defn.enum_values``, so both fall through the
     registry-miss branch rather than being registered.
+
+    Raises:
+        ValueError: If ``default`` is not a member of ``enum_values``
+            for an ENUM type, or is not parseable as the declared
+            scalar type.
     """
     try:
         check = _DEFAULT_TYPE_CHECK_REGISTRY.get(setting_type)
@@ -201,6 +230,11 @@ def _validate_default_type(
 
 
 def _check_default_int(default: str) -> None:
+    """Check that *default* parses as an integer.
+
+    Raises:
+        ValueError: If *default* is not a valid integer string.
+    """
     try:
         int(default)
     except ValueError:
@@ -209,6 +243,12 @@ def _check_default_int(default: str) -> None:
 
 
 def _check_default_float(default: str) -> None:
+    """Check that *default* parses as a finite float.
+
+    Raises:
+        ValueError: If *default* is not a valid float string, or parses
+            to a non-finite value (NaN/inf).
+    """
     try:
         val = float(default)
     except ValueError:
@@ -220,12 +260,23 @@ def _check_default_float(default: str) -> None:
 
 
 def _check_default_bool(default: str) -> None:
+    """Check that *default* is a recognised boolean spelling.
+
+    Raises:
+        ValueError: If *default* is not ``true``/``false``/``1``/``0``
+            (case-insensitive).
+    """
     if default.lower() not in ("true", "false", "1", "0"):
         msg = f"default {default!r} is not a valid boolean"
         raise ValueError(msg)
 
 
 def _check_default_json(default: str) -> None:
+    """Check that *default* parses as JSON.
+
+    Raises:
+        ValueError: If *default* is not valid JSON.
+    """
     try:
         json.loads(default)
     except json.JSONDecodeError:
@@ -252,7 +303,12 @@ def _validate_default_range(
     default: str,
     defn: SettingDefinition,
 ) -> None:
-    """Check numeric range constraints on a default value."""
+    """Check numeric range constraints on a default value.
+
+    Raises:
+        ValueError: If the numeric default is below ``min_value`` or
+            above ``max_value``.
+    """
     if defn.type not in (SettingType.INTEGER, SettingType.FLOAT):
         return
     val = float(default)

@@ -136,6 +136,7 @@ class OtlpHandler(logging.Handler):
         self._enqueue(record)
 
     def _enqueue(self, record: logging.LogRecord) -> None:
+        """Enqueue *record* for the background flusher, tracking pending count."""
         try:
             self._queue.put_nowait(record)
             with self._pending_lock:
@@ -399,6 +400,9 @@ def build_otlp_handler(
 
     Returns:
         A configured ``OtlpHandler`` with JSON formatting.
+
+    Raises:
+        ValueError: If ``sink.otlp_endpoint`` is absent or empty.
     """
     if not sink.otlp_endpoint:
         msg = "OTLP sink requires a non-empty otlp_endpoint"

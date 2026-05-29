@@ -90,6 +90,10 @@ class StrategyRegistry[T]:
 
         Keys may be plain strings or ``StrEnum`` members; enum keys are
         stored under their ``.value`` so lookups accept either form.
+
+        Raises:
+            ValueError: If *factories* is empty (a registry must have at
+                least one factory).
         """
         if not factories:
             msg = f"StrategyRegistry({kind!r}) requires at least one factory"

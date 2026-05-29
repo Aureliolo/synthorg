@@ -81,11 +81,15 @@ class CASRetryHandler:
         by ``read`` (``NotFoundError``, ``ConflictError``,
         ``ValidationError``) propagate immediately without retry.
 
-        Returns the persisted value on success.
+        Returns:
+            The persisted value (the ``new_value`` from the winning
+            ``read``) once ``write`` succeeds.
 
         Raises:
             VersionConflictError: When all attempts collide; the
                 final exception is the one raised by ``write``.
+            AssertionError: If the retry loop exits without returning or
+                raising (an unreachable-state guard).
         """
         for attempt in range(self._max_attempts):
             new_value, version = await read()

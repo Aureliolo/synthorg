@@ -39,6 +39,7 @@ class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
+        """Emit *record* via the base handler, then flush to disk."""
         super().emit(record)
         try:
             self.flush()
@@ -115,7 +116,12 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                 src.rename(dst)
 
     def _rotate_current_log(self) -> str:
-        """Rotate the current log to .1 and return the path."""
+        """Rotate the current log to .1 and return the path.
+
+        Returns:
+            The path of the rotated ``.1`` file after the current log is
+            moved there.
+        """
         dfn = self.rotation_filename(
             f"{self.baseFilename}.1",
         )
@@ -159,6 +165,7 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
+        """Emit *record* via the base handler, then flush to disk."""
         super().emit(record)
         try:
             self.flush()
@@ -381,6 +388,10 @@ def _build_formatter(
     JSON sinks include ``format_exc_info`` to serialize exception tuples.
     Console sinks omit it because ``ConsoleRenderer`` handles exceptions
     natively.
+
+    Returns:
+        A ``ProcessorFormatter`` configured with JSON or console
+        rendering and the matching exception-info processor for the sink.
     """
     renderer: Any
     if sink.json_format:
@@ -463,6 +474,11 @@ def build_handler(
 
     Returns:
         A configured :class:`logging.Handler` with formatter attached.
+
+    Raises:
+        ValueError: If an HTTP sink has an empty ``http_url`` or a SYSLOG
+            sink has an empty ``syslog_host`` (raised by the dedicated
+            sub-builders).
     """
     effective_routing = routing if routing is not None else SINK_ROUTING
 

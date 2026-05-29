@@ -33,6 +33,12 @@ def _validate_string(definition: SettingDefinition, value: str) -> None:
 
 
 def _validate_integer(definition: SettingDefinition, value: str) -> None:
+    """Validate that *value* parses as an integer within range.
+
+    Raises:
+        SettingValidationError: If *value* is not an integer, or it falls
+            outside the definition's ``min_value`` / ``max_value`` bounds.
+    """
     try:
         int_val = int(value)
     except ValueError as exc:
@@ -46,6 +52,13 @@ def _validate_integer(definition: SettingDefinition, value: str) -> None:
 
 
 def _validate_float(definition: SettingDefinition, value: str) -> None:
+    """Validate that *value* parses as a finite float within range.
+
+    Raises:
+        SettingValidationError: If *value* is not a float, is non-finite
+            (NaN/inf), or falls outside the definition's ``min_value`` /
+            ``max_value`` bounds.
+    """
     try:
         float_val = float(value)
     except ValueError as exc:
@@ -62,6 +75,12 @@ def _validate_float(definition: SettingDefinition, value: str) -> None:
 
 
 def _validate_boolean(definition: SettingDefinition, value: str) -> None:
+    """Validate that *value* is a recognised boolean spelling.
+
+    Raises:
+        SettingValidationError: If *value* is not one of ``true``,
+            ``false``, ``1`` or ``0`` (case-insensitive).
+    """
     if value.lower() not in ("true", "false", "1", "0"):
         display = _SENSITIVE_MASK if definition.sensitive else repr(value)
         msg = f"Expected boolean, got {display}"
@@ -69,6 +88,12 @@ def _validate_boolean(definition: SettingDefinition, value: str) -> None:
 
 
 def _validate_enum(definition: SettingDefinition, value: str) -> None:
+    """Validate that *value* is one of the definition's allowed enum values.
+
+    Raises:
+        SettingValidationError: If *value* is not in
+            ``definition.enum_values``.
+    """
     if value not in definition.enum_values:
         display = _SENSITIVE_MASK if definition.sensitive else repr(value)
         msg = f"Invalid enum value {display}. Allowed: {definition.enum_values}"
@@ -76,6 +101,17 @@ def _validate_enum(definition: SettingDefinition, value: str) -> None:
 
 
 def _validate_json(definition: SettingDefinition, value: str) -> None:
+    """Validate that *value* is parseable JSON of the registered shape.
+
+    Parseability is checked first; a successful parse is then passed to
+    any per-setting shape validator from :mod:`json_validators`. Both
+    failure modes surface as ``SettingValidationError`` so the write-time
+    error surface stays uniform, with sensitive payloads masked.
+
+    Raises:
+        SettingValidationError: If *value* is not valid JSON, or the
+            per-setting shape validator rejects the parsed payload.
+    """
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as exc:
@@ -113,7 +149,12 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
 
 
 def _check_range(definition: SettingDefinition, value: int | float) -> None:
-    """Check numeric range constraints."""
+    """Check numeric range constraints.
+
+    Raises:
+        SettingValidationError: If *value* is below ``min_value`` or above
+            ``max_value`` when those bounds are set.
+    """
     display = _SENSITIVE_MASK if definition.sensitive else str(value)
     if definition.min_value is not None and value < definition.min_value:
         msg = f"Value {display} below minimum {definition.min_value}"

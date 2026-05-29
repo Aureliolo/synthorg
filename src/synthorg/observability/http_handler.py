@@ -167,7 +167,12 @@ class HttpBatchHandler(logging.Handler):
         self,
         request: urllib.request.Request,
     ) -> Exception | None:
-        """Attempt to send *request*, returning the last error or None."""
+        """Attempt to send *request*, returning the last error or None.
+
+        Returns:
+            ``None`` when the send succeeds, or the last ``Exception``
+            instance when every attempt failed.
+        """
         last_error: Exception | None = None
         # See docs/reference/retry-patterns.md: Pattern C/Sync -- this
         # method runs inside a stdlib logging-handler thread using
@@ -224,6 +229,9 @@ def build_http_handler(
 
     Returns:
         A configured ``HttpBatchHandler`` with JSON formatting.
+
+    Raises:
+        ValueError: If ``sink.http_url`` is absent or empty.
     """
     if not sink.http_url:
         msg = "HTTP sink requires a non-empty http_url"

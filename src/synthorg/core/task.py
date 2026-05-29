@@ -209,13 +209,26 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> Self:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            The instance with ``metadata`` deep-copied so a caller's
+            original dict cannot mutate the frozen model.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self
 
     @model_validator(mode="after")
     def _validate_deadline_format(self) -> Self:
-        """Validate deadline format if present."""
+        """Validate deadline format if present.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``deadline`` is whitespace-only or not a valid
+                ISO 8601 string.
+        """
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
@@ -229,7 +242,15 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:
-        """Validate self-dependency and uniqueness."""
+        """Validate self-dependency and uniqueness.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the task depends on itself, or ``dependencies``
+                or ``reviewers`` contain duplicate entries.
+        """
         if self.id in self.dependencies:
             msg = f"Task {self.id!r} cannot depend on itself"
             raise ValueError(msg)
@@ -245,7 +266,16 @@ class Task(BaseModel):
 
     @model_validator(mode="after")
     def _validate_delegation_fields(self) -> Self:
-        """Validate delegation-related field constraints."""
+        """Validate delegation-related field constraints.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the task is its own parent, ``delegation_chain``
+                has duplicates, or ``assigned_to`` also appears in the
+                delegation chain.
+        """
         if self.parent_task_id is not None and self.parent_task_id == self.id:
             msg = f"Task {self.id!r} cannot be its own parent"
             raise ValueError(msg)
@@ -271,6 +301,13 @@ class Task(BaseModel):
         ``COMPLETED``, ``AUTH_REQUIRED``) require ``assigned_to`` to be set.
         ``BLOCKED``, ``FAILED``, ``CANCELLED``, and ``REJECTED`` may or may
         not have an assignee.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``CREATED`` carries an assignee, or a status
+                that requires an assignee has ``assigned_to=None``.
         """
         requires_assignee = {
             TaskStatus.ASSIGNED,

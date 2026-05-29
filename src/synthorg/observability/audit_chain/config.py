@@ -172,6 +172,14 @@ class AuditChainConfig(BaseModel):
         entirely when no roots are supplied, which would silently
         downgrade a configuration that asked for verification. Forcing
         operators to supply roots per preset prevents that foot-gun.
+
+        Returns:
+            The validated ``AuditChainConfig`` instance.
+
+        Raises:
+            ValueError: If ``tsa_preset`` is ``CUSTOM`` without a
+                ``tsa_url``, or a non-``NONE`` preset enables signature
+                verification without a ``tsa_trusted_roots_path``.
         """
         if self.tsa_preset == TsaPreset.CUSTOM and self.tsa_url is None:
             msg = "tsa_preset=CUSTOM requires tsa_url to be set"

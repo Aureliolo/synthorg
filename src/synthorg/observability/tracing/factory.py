@@ -32,6 +32,11 @@ def _redact_endpoint(endpoint: str) -> str:
     ``?token=...`` query parameters. Returning only
     ``scheme://host[:port]/path`` keeps the log useful for operators
     without leaking secrets.
+
+    Returns:
+        The endpoint reduced to ``scheme://host[:port]/path`` (no
+        userinfo or query), or ``"<unparseable>"`` when the URL cannot
+        be parsed.
     """
     try:
         parts = urlsplit(endpoint)

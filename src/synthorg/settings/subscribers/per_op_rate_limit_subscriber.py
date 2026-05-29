@@ -64,11 +64,17 @@ def _strict_int(value: Any, *, field: str) -> int:
     """Coerce ``value`` to ``int`` without silent bool/float widening.
 
     Accepts a plain ``int`` (excluding ``bool`` -- ``isinstance(True,
-    int) is True`` in Python) or a digit string (``"5"`` /
-    ``"-3"``).  Everything else raises ``ValueError`` -- the caller
-    turns that into a swap-failed log so the operator sees the
-    specific malformed value instead of the Pydantic downstream's
-    generic failure.
+    int) is True`` in Python) or a digit string (``"5"`` / ``"-3"``).
+    The caller turns the rejection into a swap-failed log so the
+    operator sees the specific malformed value instead of the Pydantic
+    downstream's generic failure.
+
+    Returns:
+        The coerced integer.
+
+    Raises:
+        TypeError: If *value* is a ``bool``, a non-digit string, or any
+            type other than ``int`` / digit-string.
     """
     if isinstance(value, bool):
         msg = f"{field} must be an integer, got bool {value!r}"
@@ -207,12 +213,20 @@ class PerOpRateLimitSettingsSubscriber:
     async def _read_bool(self, key: str) -> bool:
         """Read a boolean setting, rejecting anything but ``"true"``/``"false"``.
 
-        Any other value (empty string, typo, None, ``"yes"``, etc.)
-        raises ``ValueError`` -- silently treating unrecognised text
-        as ``False`` would let a typo disable the guard without the
-        operator realising, so the subscriber surfaces the malformed
-        value through ``SETTINGS_SERVICE_SWAP_FAILED`` and keeps the
-        existing config in place instead.
+        Silently treating unrecognised text as ``False`` would let a
+        typo disable the guard without the operator realising, so the
+        subscriber surfaces the malformed value through
+        ``SETTINGS_SERVICE_SWAP_FAILED`` and keeps the existing config
+        in place instead.
+
+        Returns:
+            ``True`` or ``False`` for a recognised ``"true"`` / ``"false"``
+            value (case-insensitive).
+
+        Raises:
+            ValueError: If the setting value is anything other than
+                ``"true"`` or ``"false"`` (empty string, typo, ``None``,
+                ``"yes"``, etc.).
         """
         result = await self._settings_service.get(_NAMESPACE, key)
         raw = str(result.value) if result.value is not None else ""
@@ -228,7 +242,12 @@ class PerOpRateLimitSettingsSubscriber:
         raise ValueError(msg)
 
     async def _read_json(self, key: str) -> Any:
-        """Read a JSON-typed setting and parse into Python objects."""
+        """Read a JSON-typed setting and parse into Python objects.
+
+        Returns:
+            The parsed JSON value (``dict`` for object settings, ``{}``
+            when the stored value is empty).
+        """
         result = await self._settings_service.get(_NAMESPACE, key)
         raw = str(result.value) if result.value is not None else "{}"
         return json.loads(raw) if raw else {}
@@ -246,9 +265,18 @@ class PerOpRateLimitSettingsSubscriber:
         rejected by the Pydantic validator downstream, but we enforce
         it here too so the ``SETTINGS_SERVICE_SWAP_FAILED`` log
         identifies the offending operator/key directly instead of a
-        generic Pydantic error).  Non-dict / malformed inputs raise
-        ``ValueError``/``TypeError``; the caller turns that into a
+        generic Pydantic error).  The caller turns the rejection into a
         swap-failed log without clobbering the existing config.
+
+        Returns:
+            A mapping of operation name to its ``(max_requests,
+            window_seconds)`` rate-limit tuple.
+
+        Raises:
+            TypeError: If *raw* is not a JSON object, or a component is
+                not an integer (via :func:`_strict_int`).
+            ValueError: If an entry is not a 2-element array or has a
+                negative component.
         """
         if not isinstance(raw, dict):
             msg = (
@@ -294,6 +322,13 @@ class PerOpRateLimitSettingsSubscriber:
         also enforces this, but surfacing the violation here makes
         the ``SETTINGS_SERVICE_SWAP_FAILED`` log name the offending
         operation instead of emitting a generic Pydantic traceback.
+
+        Returns:
+            A mapping of operation name to its concurrency limit.
+
+        Raises:
+            TypeError: If *raw* is not a JSON object.
+            ValueError: If any value is not a non-negative integer.
         """
         if not isinstance(raw, dict):
             msg = (

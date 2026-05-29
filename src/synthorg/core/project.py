@@ -67,7 +67,15 @@ class Project(BaseModel):
 
     @model_validator(mode="after")
     def _validate_deadline_format(self) -> Self:
-        """Validate deadline format if present."""
+        """Validate deadline format if present.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``deadline`` is whitespace-only or not a valid
+                ISO 8601 string.
+        """
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
@@ -81,7 +89,15 @@ class Project(BaseModel):
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:
-        """Validate collection uniqueness."""
+        """Validate collection uniqueness.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``team`` or ``task_ids`` contain duplicate
+                entries.
+        """
         if len(self.team) != len(set(self.team)):
             dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
             msg = f"Duplicate entries in team: {dupes}"

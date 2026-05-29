@@ -24,7 +24,14 @@ PersonalityMode = Literal["full", "condensed", "minimal"]
 
 
 def _check_not_whitespace(value: str) -> str:
-    """Reject whitespace-only strings."""
+    """Reject whitespace-only strings.
+
+    Returns:
+        The unchanged *value* once it is confirmed non-blank.
+
+    Raises:
+        ValueError: If *value* is empty or whitespace-only.
+    """
     if not value.strip():
         msg = "must not be whitespace-only"
         raise ValueError(msg)

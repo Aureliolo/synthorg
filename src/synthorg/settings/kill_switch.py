@@ -13,7 +13,6 @@ This helper concentrates that shape so per-subsystem gates stay terse
 and consistent across the codebase.
 """
 
-import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
@@ -64,14 +63,11 @@ async def resolve_bool_with_fallback(
         return fallback
     try:
         return await resolver.get_bool(namespace, key)
-    except MemoryError, RecursionError, asyncio.CancelledError:
-        # MemoryError + RecursionError are out-of-budget and cannot be
-        # safely handled here. CancelledError must propagate so task
-        # cancellation works; swallowing it would convert an aborted
-        # await into a "settings outage" log + fallback, masking the
-        # real semantic.
-        raise
     except Exception as exc:
+        # reraise_critical re-raises MemoryError / RecursionError before any
+        # logging or fallback runs. asyncio.CancelledError is a BaseException,
+        # so this broad ``except Exception`` never catches it: an aborted await
+        # propagates untouched rather than being masked as a settings outage.
         reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,

@@ -283,6 +283,11 @@ def with_actor_async(
 
         @functools.wraps(func)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            """Run the wrapped coroutine inside ``actor_scope(actor)``.
+
+            Returns:
+                The wrapped coroutine's result, unchanged.
+            """
             with actor_scope(actor):
                 return await func(*args, **kwargs)
 

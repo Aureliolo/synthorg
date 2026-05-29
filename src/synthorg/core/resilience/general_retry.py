@@ -188,7 +188,12 @@ class GeneralRetryHandler:
         ``KeyboardInterrupt``, and ``SystemExit`` propagate
         immediately without being run through ``self._retryable``.
 
-        Returns the return value of the first successful attempt.
+        Returns:
+            The return value of the first successful ``op`` attempt.
+
+        Raises:
+            AssertionError: If the retry loop exits without returning or
+                raising (an unreachable-state guard).
         """
         safe_ctx = self._safe_log_ctx(log_ctx)
         for attempt in range(self._max_attempts):
@@ -229,6 +234,10 @@ class GeneralRetryHandler:
         / ``error_type`` / ``retry_decision``) get a ``ctx_`` prefix so
         the handler's own diagnostic fields cannot be silently
         overwritten in the structured log record.
+
+        Returns:
+            A copy of *log_ctx* with any reserved keys renamed under a
+            ``ctx_`` prefix.
         """
         return {
             (f"ctx_{k}" if k in _RESERVED_LOG_KWARGS else k): v
@@ -267,6 +276,10 @@ class GeneralRetryHandler:
         opt into immediate retries without sleeping; LLM self-correction
         loops are an explicit non-goal of this helper (see the carve-out
         list at the top of the module).
+
+        Returns:
+            The backoff delay in seconds (exponential, capped, optional
+            jitter), or ``0.0`` when the configured base is ``0``.
         """
         if self._base == 0:
             return 0.0

@@ -288,6 +288,10 @@ def log_exception_redacted(
         exc: The exception instance being logged.
         **kwargs: Additional structured fields. ``error_type`` and
             ``error`` are reserved and cannot be supplied here.
+
+    Raises:
+        TypeError: If the caller supplies a reserved ``error_type``,
+            ``error``, or ``exc_info`` key in ``**kwargs``.
     """
     if "error_type" in kwargs or "error" in kwargs:
         msg = (

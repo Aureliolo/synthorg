@@ -83,7 +83,12 @@ class ApprovalItem(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
-        """Deep-copy metadata to prevent external mutation."""
+        """Deep-copy metadata to prevent external mutation.
+
+        Returns:
+            The instance with ``metadata`` deep-copied so a caller's
+            original dict cannot mutate the frozen model.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self
 
@@ -94,6 +99,15 @@ class ApprovalItem(BaseModel):
         - APPROVED/REJECTED require ``decided_at`` and ``decided_by``.
         - REJECTED additionally requires a non-empty ``decision_reason``.
         - PENDING/EXPIRED must NOT have ``decided_at`` or ``decided_by``.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If an APPROVED/REJECTED status lacks
+                ``decided_at``/``decided_by``, a REJECTED status lacks a
+                ``decision_reason``, or a non-decided status carries
+                decision fields.
         """
         decided_statuses = {ApprovalStatus.APPROVED, ApprovalStatus.REJECTED}
 
@@ -118,7 +132,15 @@ class ApprovalItem(BaseModel):
 
     @model_validator(mode="after")
     def _validate_expiry(self) -> Self:
-        """Ensure ``expires_at`` is after ``created_at`` when set."""
+        """Ensure ``expires_at`` is after ``created_at`` when set.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``expires_at`` is set but not strictly after
+                ``created_at``.
+        """
         if self.expires_at is not None and self.expires_at <= self.created_at:
             msg = "expires_at must be after created_at"
             raise ValueError(msg)
@@ -132,6 +154,13 @@ class ApprovalItem(BaseModel):
         lifecycle), so a consumed approval can never be PENDING, REJECTED,
         or EXPIRED. Enforcing this at construction keeps the one-shot
         invariant a type guarantee, not just a store-side convention.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``consumed_at`` is set while the status is not
+                APPROVED.
         """
         if self.consumed_at is not None and self.status is not ApprovalStatus.APPROVED:
             msg = (

@@ -161,6 +161,13 @@ class SkillSet(BaseModel):
         entry when duplicates exist.  Reject at construction so
         ambiguous configurations surface as validation errors instead of
         order-dependent ranking artifacts.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any skill ID is duplicated within or across
+                the primary and secondary tiers.
         """
         primary_ids = [s.id for s in self.primary]
         secondary_ids = [s.id for s in self.secondary]
@@ -280,7 +287,15 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retention_consistency(self) -> Self:
-        """Ensure retention fields are unset when memory type is NONE."""
+        """Ensure retention fields are unset when memory type is NONE.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``retention_days`` or ``retention_overrides``
+                are set while the memory type is ``NONE``.
+        """
         if self.type is MemoryLevel.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
             logger.warning(
@@ -306,7 +321,14 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_override_categories(self) -> Self:
-        """Ensure each category appears at most once in overrides."""
+        """Ensure each category appears at most once in overrides.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any retention-override category is duplicated.
+        """
         categories = [rule.category for rule in self.retention_overrides]
         if len(categories) != len(set(categories)):
             seen: set[MemoryCategory] = set()
@@ -372,6 +394,13 @@ class ToolPermissions(BaseModel):
         """Ensure no tool appears in both allowed and denied lists.
 
         Comparison is case-insensitive.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any tool appears in both the allowed and
+                denied lists (case-insensitive).
         """
         allowed_normalized = {normalize_identifier(t) for t in self.allowed}
         denied_normalized = {normalize_identifier(t) for t in self.denied}
@@ -395,6 +424,13 @@ class ToolPermissions(BaseModel):
         Accepted formats: ``"domain:action"``, ``"domain:*"``,
         ``"*:action"``, ``"*"``.  Components must be lowercase
         alphanumeric with underscores.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any MCP capability does not match the accepted
+                ``domain:action`` pattern grammar.
         """
         pattern = re.compile(r"^(?:\*|[a-z][a-z0-9_]*):(?:\*|[a-z][a-z0-9_]*)$|^\*$")
         for cap in self.mcp_capabilities:
@@ -492,7 +528,15 @@ class AgentIdentity(BaseModel):
 
     @model_validator(mode="after")
     def _validate_seniority_autonomy(self) -> Self:
-        """Reject JUNIOR agents with FULL autonomy (D6)."""
+        """Reject JUNIOR agents with FULL autonomy (D6).
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a JUNIOR-level agent is configured with FULL
+                autonomy (the spec caps JUNIOR at SEMI).
+        """
         if (
             self.autonomy_level == AutonomyLevel.FULL
             and self.level == SeniorityLevel.JUNIOR

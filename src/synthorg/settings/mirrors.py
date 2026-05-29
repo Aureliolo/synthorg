@@ -38,6 +38,11 @@ def parse_bool(raw: str) -> bool | None:
     """Parse a boolean env token.
 
     Accepts ``true``, ``false``, ``1``, ``0``, ``yes``, ``no`` (case-insensitive).
+
+    Returns:
+        ``True`` or ``False`` for a recognised token, or ``None`` when the
+        token is not a recognised boolean spelling (caller falls back to
+        the registered default).
     """
     token = normalize_ascii_lowercase(raw)
     if token in _BOOL_TRUE:
@@ -48,7 +53,11 @@ def parse_bool(raw: str) -> bool | None:
 
 
 def parse_int(raw: str) -> int | None:
-    """Parse an integer env token."""
+    """Parse an integer env token.
+
+    Returns:
+        The parsed integer, or ``None`` when *raw* is not a valid integer.
+    """
     try:
         return int(raw)
     except ValueError:
@@ -66,13 +75,21 @@ def resolve_init_int(namespace: SettingNamespace, key: str) -> int:
     construction time. This is the single sanctioned int-resolver so
     boot sites do not each re-implement ``resolve_init_value`` +
     ``parse_int`` + ``int(...)``.
+
+    Returns:
+        The resolved integer: the environment override when set and
+        parseable, otherwise the registered default.
     """
     resolved = resolve_init_value(namespace, key, parse=parse_int)
     return int(resolved.value)
 
 
 def parse_float(raw: str) -> float | None:
-    """Parse a float env token."""
+    """Parse a float env token.
+
+    Returns:
+        The parsed float, or ``None`` when *raw* is not a valid float.
+    """
     try:
         return float(raw)
     except ValueError:
@@ -80,7 +97,12 @@ def parse_float(raw: str) -> float | None:
 
 
 def parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
-    """Parse a JSON list-of-strings env token into a tuple."""
+    """Parse a JSON list-of-strings env token into a tuple.
+
+    Returns:
+        The tuple of strings, or ``None`` when *raw* is not a JSON array
+        whose every element is a string.
+    """
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
@@ -95,10 +117,13 @@ def parse_str_tuple_json(raw: str) -> tuple[str, ...] | None:
 def parse_json_int_pair_dict(raw: str) -> dict[str, list[int]] | None:
     """Parse a JSON ``{op_name: [int, int]}`` env token.
 
-    Returns the raw ``dict[str, list[int]]`` produced by ``json.loads``;
-    the owning Pydantic config's ``mode="before"`` validator promotes
+    The owning Pydantic config's ``mode="before"`` validator promotes
     inner lists to tuples and rejects malformed values, so this parser
     only enforces top-level JSON shape (object with string keys).
+
+    Returns:
+        The raw ``dict[str, list[int]]`` produced by ``json.loads``, or
+        ``None`` when *raw* is not a JSON object keyed by strings.
     """
     try:
         parsed = json.loads(raw)
@@ -114,9 +139,12 @@ def parse_json_int_pair_dict(raw: str) -> dict[str, list[int]] | None:
 def parse_json_int_dict(raw: str) -> dict[str, int] | None:
     """Parse a JSON ``{op_name: int}`` env token.
 
-    Returns the raw ``dict[str, int]`` from ``json.loads``. The owning
-    Pydantic validator rejects non-int and negative values, so this
-    parser only enforces top-level JSON shape (object with string keys).
+    The owning Pydantic validator rejects non-int and negative values, so
+    this parser only enforces top-level JSON shape (object with string keys).
+
+    Returns:
+        The raw ``dict[str, int]`` from ``json.loads``, or ``None`` when
+        *raw* is not a JSON object keyed by strings.
     """
     try:
         parsed = json.loads(raw)

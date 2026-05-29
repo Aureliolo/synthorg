@@ -53,7 +53,15 @@ class RotationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_compress_with_external(self) -> Self:
-        """Reject compress_rotated with non-builtin strategy."""
+        """Reject compress_rotated with non-builtin strategy.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``compress_rotated`` is set with a non-``BUILTIN``
+                rotation strategy.
+        """
         if self.compress_rotated and self.strategy != RotationStrategy.BUILTIN:
             msg = "compress_rotated is only supported with builtin rotation strategy"
             raise ValueError(msg)
@@ -80,7 +88,12 @@ class RotationConfig(BaseModel):
 
 
 def _is_private_ip(addr_str: str) -> bool:
-    """Check whether an IP address string is private/loopback/link-local."""
+    """Check whether an IP address string is private/loopback/link-local.
+
+    Returns:
+        ``True`` if *addr_str* parses as a private, loopback, or
+        link-local IP; ``False`` for public IPs or unparseable strings.
+    """
     import ipaddress  # noqa: PLC0415
 
     try:
@@ -101,6 +114,11 @@ def _validate_otlp_endpoint_safety(
     Checks both IP literals and DNS-resolved addresses (best-effort).
     Localhost (127.0.0.1, ::1, ``localhost``) is always allowed as a
     standard local OTLP collector endpoint.
+
+    Raises:
+        ValueError: If the hostname is a non-localhost private/loopback
+            IP literal, or resolves via DNS to a private/loopback
+            address.
     """
     localhost_names = {"localhost", "127.0.0.1", "::1"}
 
@@ -271,7 +289,15 @@ class SinkConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_sink_type_fields(self) -> Self:
-        """Enforce required/rejected fields per sink type."""
+        """Enforce required/rejected fields per sink type.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the sink omits a field required for its type
+                or sets a field forbidden for its type.
+        """
         match self.sink_type:
             case SinkType.FILE:
                 self._validate_file_fields()
@@ -307,6 +333,12 @@ class SinkConfig(BaseModel):
         return self
 
     def _validate_file_fields(self) -> None:
+        """Validate the FILE-sink fields (and reject foreign-type fields).
+
+        Raises:
+            ValueError: If ``file_path`` is missing, blank, absolute, or
+                contains ``..``, or a syslog/http field is set.
+        """
         if self.file_path is None:
             msg = "file_path is required for FILE sinks"
             raise ValueError(msg)
@@ -328,6 +360,12 @@ class SinkConfig(BaseModel):
         self._reject_http_fields("FILE")
 
     def _reject_file_fields(self, sink_label: str) -> None:
+        """Reject FILE-only fields on a non-FILE sink.
+
+        Raises:
+            ValueError: If ``file_path`` or ``rotation`` is set on a
+                ``sink_label`` sink.
+        """
         if self.file_path is not None:
             msg = f"file_path must be None for {sink_label} sinks"
             raise ValueError(msg)
@@ -336,6 +374,11 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
 
     def _validate_syslog_fields(self) -> None:
+        """Validate the required SYSLOG-sink fields.
+
+        Raises:
+            ValueError: If ``syslog_host`` is missing or blank.
+        """
         if self.syslog_host is None:
             msg = "syslog_host is required for SYSLOG sinks"
             raise ValueError(msg)
@@ -344,6 +387,12 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
 
     def _reject_syslog_fields(self, sink_label: str) -> None:
+        """Reject SYSLOG-only fields on a non-SYSLOG sink.
+
+        Raises:
+            ValueError: If ``syslog_host`` is set or any syslog field
+                differs from its default on a ``sink_label`` sink.
+        """
         if self.syslog_host is not None:
             msg = f"syslog_host must be None for {sink_label} sinks"
             raise ValueError(msg)
@@ -358,6 +407,12 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
 
     def _validate_http_fields(self) -> None:
+        """Validate the required HTTP-sink fields.
+
+        Raises:
+            ValueError: If ``http_url`` is missing, blank, lacks an
+                ``http(s)`` scheme or host, or a header name is empty.
+        """
         if self.http_url is None:
             msg = "http_url is required for HTTP sinks"
             raise ValueError(msg)
@@ -381,6 +436,12 @@ class SinkConfig(BaseModel):
                 raise ValueError(msg)
 
     def _reject_http_fields(self, sink_label: str) -> None:
+        """Reject HTTP-only fields on a non-HTTP sink.
+
+        Raises:
+            ValueError: If ``http_url`` is set or any http field differs
+                from its default on a ``sink_label`` sink.
+        """
         if self.http_url is not None:
             msg = f"http_url must be None for {sink_label} sinks"
             raise ValueError(msg)
@@ -404,11 +465,24 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
 
     def _require_json_format(self, sink_label: str) -> None:
+        """Require ``json_format=True`` for an always-JSON sink type.
+
+        Raises:
+            ValueError: If ``json_format`` is ``False`` for a
+                ``sink_label`` sink.
+        """
         if not self.json_format:
             msg = f"json_format must be True for {sink_label} sinks (always JSON)"
             raise ValueError(msg)
 
     def _validate_otlp_fields(self) -> None:
+        """Validate the required OTLP-sink fields.
+
+        Raises:
+            ValueError: If gRPC transport is requested, ``otlp_endpoint``
+                is missing/blank/non-``http(s)``/host-less, or a header
+                name is empty or contains CRLF.
+        """
         if self.otlp_protocol == OtlpProtocol.GRPC:
             msg = "OTLP gRPC transport is not supported; use HTTP_JSON"
             raise ValueError(msg)
@@ -447,6 +521,12 @@ class SinkConfig(BaseModel):
                 raise ValueError(msg)
 
     def _reject_otlp_fields(self, sink_label: str) -> None:
+        """Reject OTLP-only fields on a non-OTLP sink.
+
+        Raises:
+            ValueError: If ``otlp_endpoint`` is set or any OTLP field
+                differs from its default on a ``sink_label`` sink.
+        """
         if self.otlp_endpoint is not None:
             msg = f"otlp_endpoint must be None for {sink_label} sinks"
             raise ValueError(msg)
@@ -581,7 +661,14 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_sink(self) -> Self:
-        """Ensure at least one sink is configured."""
+        """Ensure at least one sink is configured.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the ``sinks`` tuple is empty.
+        """
         if not self.sinks:
             msg = "At least one sink must be configured"
             raise ValueError(msg)
@@ -589,7 +676,15 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_logger_names(self) -> Self:
-        """Ensure no duplicate logger names in ``logger_levels``."""
+        """Ensure no duplicate logger names in ``logger_levels``.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two entries in ``logger_levels`` share a
+                logger name.
+        """
         names = [name for name, _ in self.logger_levels]
         counts = Counter(names)
         dupes = sorted(n for n, c in counts.items() if c > 1)
@@ -600,7 +695,14 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_file_paths(self) -> Self:
-        """Ensure no duplicate file paths across FILE sinks."""
+        """Ensure no duplicate file paths across FILE sinks.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two FILE sinks share a ``file_path``.
+        """
         paths = [
             s.file_path
             for s in self.sinks
@@ -615,7 +717,14 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_syslog_endpoints(self) -> Self:
-        """Ensure no duplicate syslog ``(host, port)`` pairs."""
+        """Ensure no duplicate syslog ``(host, port)`` pairs.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two SYSLOG sinks share a ``(host, port)`` pair.
+        """
         endpoints = [
             (s.syslog_host.strip() if s.syslog_host else "", s.syslog_port)
             for s in self.sinks
@@ -630,7 +739,14 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_http_urls(self) -> Self:
-        """Ensure no duplicate HTTP URLs."""
+        """Ensure no duplicate HTTP URLs.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two HTTP sinks share an ``http_url``.
+        """
         urls = [
             s.http_url
             for s in self.sinks
@@ -645,7 +761,14 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_log_dir_safe(self) -> Self:
-        """Ensure ``log_dir`` has no path traversal."""
+        """Ensure ``log_dir`` has no path traversal.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``log_dir`` contains ``..`` path components.
+        """
         path = PurePath(self.log_dir)
         if ".." in path.parts:
             msg = f"log_dir must not contain '..' components: {self.log_dir}"

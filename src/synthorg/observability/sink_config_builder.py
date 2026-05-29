@@ -125,7 +125,11 @@ def _reject_unknown_fields(
     allowed: frozenset[str],
     context: str,
 ) -> None:
-    """Raise ValueError if *fields* contains keys not in *allowed*."""
+    """Raise ValueError if *fields* contains keys not in *allowed*.
+
+    Raises:
+        ValueError: If *fields* contains any key not present in *allowed*.
+    """
     unknown = set(fields) - allowed
     if unknown:
         msg = f"Unknown fields in {context}: {sorted(unknown)}"
@@ -134,6 +138,9 @@ def _reject_unknown_fields(
 
 def _parse_bool(raw: Any, *, field_name: str) -> bool:
     """Require an actual JSON boolean.
+
+    Returns:
+        The boolean value of *raw*.
 
     Raises:
         ValueError: If *raw* is not a ``bool``.
@@ -148,7 +155,14 @@ def _parse_bool(raw: Any, *, field_name: str) -> bool:
 
 
 def _parse_json(raw: str, label: str) -> Any:
-    """Parse a JSON string, raising ValueError on failure."""
+    """Parse a JSON string, raising ValueError on failure.
+
+    Returns:
+        The deserialized Python object.
+
+    Raises:
+        ValueError: If the string is not valid JSON.
+    """
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -227,6 +241,9 @@ def _parse_custom_sinks(raw: str) -> list[dict[str, Any]]:
 def _parse_level(raw: Any) -> LogLevel:
     """Convert a level value to LogLevel (case-insensitive).
 
+    Returns:
+        The ``LogLevel`` member matching *raw* (case-insensitive).
+
     Raises:
         ValueError: If *raw* is not a string or not a recognized level.
     """
@@ -249,6 +266,10 @@ def _parse_rotation_override(
 
     Only fields present in *raw* are overridden; others are preserved
     from *base* (or defaults if base is None).
+
+    Returns:
+        A merged ``RotationConfig`` with *raw*'s fields applied over the
+        *base* defaults.
 
     Raises:
         ValueError: If *raw* is not a dict, contains unknown fields,
@@ -363,8 +384,14 @@ def _build_custom_sink(
     Dispatches to type-specific builders based on ``sink_type`` field.
     Defaults to ``"file"`` when ``sink_type`` is omitted.
 
+    Returns:
+        A ``SinkConfig`` built by the file, syslog, or http type-specific
+        builder.
+
     Raises:
-        ValueError: If required fields are missing or invalid.
+        ValueError: If ``sink_type`` is not a string or not one of
+            ``"file"``, ``"syslog"``, ``"http"``, or required fields are
+            missing or invalid.
     """
     raw_type = entry.get("sink_type", "file")
     if not isinstance(raw_type, str):
@@ -410,7 +437,16 @@ def _build_custom_file_sink(
     entry: dict[str, Any],
     index: int,
 ) -> SinkConfig:
-    """Build a FILE SinkConfig from a custom sink entry."""
+    """Build a FILE SinkConfig from a custom sink entry.
+
+    Returns:
+        A ``SinkConfig`` for a FILE sink built from the entry.
+
+    Raises:
+        ValueError: If ``file_path`` is absent, not a non-empty string,
+            or fails ``SinkConfig`` validation (absolute path, traversal,
+            etc.).
+    """
     if "file_path" not in entry:
         msg = f"custom_sinks[{index}] is missing required field 'file_path'"
         raise ValueError(msg)
@@ -455,7 +491,15 @@ def _parse_enum_field(
     label: str,
     context: str,
 ) -> Any:
-    """Parse a string field as an enum via a lookup map."""
+    """Parse a string field as an enum via a lookup map.
+
+    Returns:
+        The enum member that *entry[key]* maps to (case-insensitive).
+
+    Raises:
+        ValueError: If the value is not a string or does not match any
+            entry in *mapping*.
+    """
     raw = entry[key]
     if not isinstance(raw, str):
         msg = f"{context}.{key} must be a string"
@@ -508,7 +552,15 @@ def _parse_int_field(
     key: str,
     context: str,
 ) -> int:
-    """Parse a strict integer field (rejects booleans)."""
+    """Parse a strict integer field (rejects booleans).
+
+    Returns:
+        The integer value of *entry[key]*.
+
+    Raises:
+        ValueError: If the value is not a plain ``int`` (a ``bool`` is
+            rejected).
+    """
     val = entry[key]
     if not isinstance(val, int) or isinstance(val, bool):
         msg = f"{context}.{key} must be an integer"
@@ -521,7 +573,15 @@ def _parse_number_field(
     key: str,
     context: str,
 ) -> float:
-    """Parse a numeric field (int or float, rejects booleans)."""
+    """Parse a numeric field (int or float, rejects booleans).
+
+    Returns:
+        The value of *entry[key]* coerced to ``float``.
+
+    Raises:
+        ValueError: If the value is not ``int`` or ``float`` (a ``bool``
+            is rejected).
+    """
     val = entry[key]
     if not isinstance(val, int | float) or isinstance(val, bool):
         msg = f"{context}.{key} must be a number"
@@ -533,7 +593,12 @@ def _build_custom_syslog_sink(
     entry: dict[str, Any],
     index: int,
 ) -> SinkConfig:
-    """Build a SYSLOG SinkConfig from a custom sink entry."""
+    """Build a SYSLOG SinkConfig from a custom sink entry.
+
+    Returns:
+        A ``SinkConfig`` for a SYSLOG sink (delegated to the shared
+        syslog builder implementation).
+    """
     return _build_custom_syslog_sink_impl(
         entry,
         index,
@@ -547,7 +612,12 @@ def _build_custom_http_sink(
     entry: dict[str, Any],
     index: int,
 ) -> SinkConfig:
-    """Build an HTTP SinkConfig from a custom sink entry."""
+    """Build an HTTP SinkConfig from a custom sink entry.
+
+    Returns:
+        A ``SinkConfig`` for an HTTP sink (delegated to the shared http
+        builder implementation).
+    """
     return _build_custom_http_sink_impl(
         entry,
         index,
@@ -599,7 +669,12 @@ def _extract_routing(
 def _merge_default_sinks(
     overrides: dict[str, dict[str, Any]],
 ) -> list[SinkConfig]:
-    """Apply overrides to DEFAULT_SINKS, returning the merged list."""
+    """Apply overrides to DEFAULT_SINKS, returning the merged list.
+
+    Returns:
+        A list of ``SinkConfig`` objects with per-sink overrides applied,
+        omitting any sink disabled via its override.
+    """
     merged: list[SinkConfig] = []
     for sink in DEFAULT_SINKS:
         identifier = cast(
@@ -620,7 +695,17 @@ def _process_custom_entries(
     custom_entries: list[dict[str, Any]],
     merged: list[SinkConfig],
 ) -> MappingProxyType[str, tuple[str, ...]]:
-    """Build custom sinks, append to *merged*, return routing overrides."""
+    """Build custom sinks, append to *merged*, return routing overrides.
+
+    Returns:
+        A ``MappingProxyType`` mapping each custom FILE sink's
+        ``file_path`` to its routing-prefix tuple (empty when no routing
+        was specified).
+
+    Raises:
+        ValueError: If a custom FILE sink's ``file_path`` conflicts with
+            a default sink or is duplicated within ``custom_sinks``.
+    """
     used_paths = DEFAULT_FILE_PATHS  # reserved even if disabled
     custom_paths: set[str] = set()
     routing_overrides: dict[str, tuple[str, ...]] = {}

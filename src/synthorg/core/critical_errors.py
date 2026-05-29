@@ -57,16 +57,15 @@ def reraise_critical(exc: BaseException) -> None:
     or recovery logic. Returns silently when ``exc`` is not critical so
     the caller can continue with its normal error-handling flow.
 
+    Returns silently (no value) when ``exc`` is not ``MemoryError`` or
+    ``RecursionError``, so the caller continues with its own logging /
+    cleanup / re-raise logic.
+
     Args:
         exc: The caught exception. May be any ``BaseException`` instance;
             the helper is permissive about the input type so that a
             future broadening of the surrounding ``except`` clause does
             not silently bypass the re-raise.
-
-    Returns:
-        ``None`` when ``exc`` is not ``MemoryError`` or ``RecursionError``.
-        The caller is expected to continue with its own logging /
-        cleanup / re-raise logic.
 
     Raises:
         MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.

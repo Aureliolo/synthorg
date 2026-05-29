@@ -71,6 +71,13 @@ class OtlpHttpTraceConfig(BaseModel):
         from config files or env vars. A stray ``\n`` would let a
         malicious value inject additional headers or split the
         request -- cheap to prevent at config-load time.
+
+        Returns:
+            The validated ``OtlpHttpTraceConfig`` instance.
+
+        Raises:
+            ValueError: If any header name or value contains a carriage
+                return or newline.
         """
         for name, value in self.headers:
             for field_name, field_value in (("name", name), ("value", value)):
@@ -90,6 +97,13 @@ class OtlpHttpTraceConfig(BaseModel):
         ``max_export_batch_size <= max_queue_size``. Catching this
         at config-load time gives a clear error instead of an
         opaque SDK exception at trace-handler build time.
+
+        Returns:
+            The validated ``OtlpHttpTraceConfig`` instance.
+
+        Raises:
+            ValueError: If ``batch_max_export_batch_size`` exceeds
+                ``batch_max_queue_size``.
         """
         if self.batch_max_export_batch_size > self.batch_max_queue_size:
             msg = (

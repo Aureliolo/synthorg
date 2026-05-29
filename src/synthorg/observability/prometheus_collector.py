@@ -64,6 +64,10 @@ def _agent_ids_from_agents(
     raised) so the snapshot merge can carry the previous allowlist
     forward; returns the (possibly empty) frozenset of stringified
     agent ids otherwise.
+
+    Returns:
+        ``None`` when *agents* is ``None`` (fetch failed), otherwise a
+        frozenset of stringified agent IDs (possibly empty).
     """
     if agents is None:
         return None
@@ -79,6 +83,11 @@ async def _fetch_workflow_definitions(
     merge treats that as a "successful fetch with zero entries"), the
     real id set on success, or ``None`` on a registry-fetch exception
     so the merge step keeps the previous allowlist.
+
+    Returns:
+        ``frozenset()`` when the repo is not wired, the live frozenset of
+        definition ID strings on success, or ``None`` on a fetch
+        exception so the merge preserves the previous allowlist.
     """
     try:
         persistence = app_state.slice(PersistenceStateSlice).backend
@@ -118,6 +127,11 @@ async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
     empty frozenset for "service not wired", real set on success,
     ``None`` on exception so the merge step preserves the previous
     allowlist.
+
+    Returns:
+        ``frozenset()`` when the department service is not wired, the
+        live frozenset of department-name strings on success, or
+        ``None`` on a fetch exception.
     """
     try:
         dept_service = app_state.slice(OrganizationStateSlice).department_service
@@ -144,6 +158,11 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
     cannot raise meaningfully today, but the registry exposure path
     may grow async I/O later (plugin lazy-load, MCP server discovery)
     so this is wrapped for symmetry with the other registry fetchers.
+
+    Returns:
+        ``frozenset()`` when the tool registry is not wired, the live
+        frozenset of registered tool-name strings on success, or
+        ``None`` on a fetch exception.
     """
     try:
         registry = getattr(app_state, "tool_registry", None)

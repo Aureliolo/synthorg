@@ -59,7 +59,16 @@ class User(BaseModel):
 
     @model_validator(mode="after")
     def _validate_scoped_departments(self) -> User:
-        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN."""
+        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``scoped_departments`` is set without the
+                ``DEPARTMENT_ADMIN`` org role, or that role is present
+                without any scoped departments.
+        """
         if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
             msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
             raise ValueError(msg)
@@ -128,7 +137,16 @@ class AuthenticatedUser(BaseModel):
 
     @model_validator(mode="after")
     def _validate_scoped_departments(self) -> AuthenticatedUser:
-        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN."""
+        """Reject non-empty scoped_departments without DEPARTMENT_ADMIN.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``scoped_departments`` is set without the
+                ``DEPARTMENT_ADMIN`` org role, or that role is present
+                without any scoped departments.
+        """
         if self.scoped_departments and OrgRole.DEPARTMENT_ADMIN not in self.org_roles:
             msg = "scoped_departments requires DEPARTMENT_ADMIN in org_roles"
             raise ValueError(msg)

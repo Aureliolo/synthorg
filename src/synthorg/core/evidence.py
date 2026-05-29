@@ -143,7 +143,14 @@ class EvidencePackage(StructuredArtifact):
 
     @model_validator(mode="after")
     def _validate_signature_uniqueness(self) -> Self:
-        """Reject duplicate approver_id values in signatures."""
+        """Reject duplicate approver_id values in signatures.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two signatures share an ``approver_id``.
+        """
         ids = [sig.approver_id for sig in self.signatures]
         if len(ids) != len(set(ids)):
             msg = "signatures must contain unique approver_id values"
@@ -152,6 +159,11 @@ class EvidencePackage(StructuredArtifact):
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
-        """Deep-copy metadata to prevent external mutation."""
+        """Deep-copy metadata to prevent external mutation.
+
+        Returns:
+            The instance with ``metadata`` deep-copied so a caller's
+            original dict cannot mutate the frozen model.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self

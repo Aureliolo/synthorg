@@ -105,7 +105,13 @@ class ObservabilitySettingsSubscriber:
             await self._rebuild_pipeline(key)
 
     async def _read_all_settings(self) -> tuple[Any, ...]:
-        """Read all 4 observability settings in parallel."""
+        """Read all 4 observability settings in parallel.
+
+        Returns:
+            A 4-tuple of resolved results for ``root_log_level``,
+            ``enable_correlation``, ``sink_overrides`` and
+            ``custom_sinks`` (in that order).
+        """
         return await asyncio.gather(
             self._settings_service.get("observability", "root_log_level"),
             self._settings_service.get(
@@ -121,7 +127,13 @@ class ObservabilitySettingsSubscriber:
         results: tuple[Any, ...],
         key: str,
     ) -> SinkBuildResult | None:
-        """Parse settings and build log config.  ``None`` on failure."""
+        """Parse settings and build log config.
+
+        Returns:
+            A :class:`SinkBuildResult` with the rebuilt log configuration,
+            or ``None`` when any setting value fails validation (the
+            failure is logged and the existing config is kept).
+        """
         root_result, corr_result, over_result, cust_result = results
 
         try:

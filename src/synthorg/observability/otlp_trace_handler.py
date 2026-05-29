@@ -196,7 +196,13 @@ def _reset_for_testing() -> None:
 
 
 def _resolve_traces_endpoint(base_endpoint: str) -> str:
-    """Append ``/v1/traces`` to *base_endpoint* if not already present."""
+    """Append ``/v1/traces`` to *base_endpoint* if not already present.
+
+    Returns:
+        The endpoint guaranteed to end with ``/v1/traces`` (unchanged
+        when already present, otherwise the suffix appended after
+        stripping a trailing slash).
+    """
     if base_endpoint.endswith(_TRACES_ENDPOINT_SUFFIX):
         return base_endpoint
     return strip_trailing_slash(base_endpoint) + _TRACES_ENDPOINT_SUFFIX

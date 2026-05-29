@@ -56,6 +56,11 @@ def build_syslog_handler(
 
     Returns:
         A configured ``SysLogHandler`` with JSON formatting.
+
+    Raises:
+        ValueError: If ``sink.syslog_host`` is absent or blank.
+        RuntimeError: If the OS-level socket connection to the syslog
+            endpoint fails.
     """
     if not sink.syslog_host or not sink.syslog_host.strip():
         msg = "SYSLOG sink requires a non-empty syslog_host"

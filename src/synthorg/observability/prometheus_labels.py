@@ -85,6 +85,9 @@ def require_label(label: str, value: str, valid: frozenset[str]) -> None:
     grow to hundreds of entries, use :func:`require_label_summary`
     instead -- sorting and serializing the full set on every
     rejection is wasteful at scale.
+
+    Raises:
+        ValueError: If *value* is not a member of *valid*.
     """
     if value not in valid:
         logger.warning(
@@ -110,6 +113,9 @@ def require_label_summary(label: str, value: str, valid: frozenset[str]) -> None
     serialization cost of the full set on the rare unknown-label
     path, which would otherwise scale with registry size on every
     rejection.
+
+    Raises:
+        ValueError: If *value* is not a member of *valid*.
     """
     if value not in valid:
         logger.warning(
@@ -133,6 +139,9 @@ def require_finite(label: str, value: float | int) -> None:
     on rate() or quantile aggregations break silently when they
     arrive, so every numeric input goes through this guard before
     hitting ``Counter.inc()`` / ``Histogram.observe()``.
+
+    Raises:
+        ValueError: If *value* is NaN or infinite.
     """
     if not math.isfinite(value):
         logger.warning(
@@ -150,6 +159,9 @@ def require_non_negative(label: str, value: float | int) -> None:
 
     Calls :func:`require_finite` first so NaN values (which compare
     ``!= 0`` in both directions) are caught before the sign test.
+
+    Raises:
+        ValueError: If *value* is negative, NaN, or infinite.
     """
     require_finite(label, value)
     if value < 0:
@@ -238,6 +250,10 @@ def status_class(status_code: int) -> str:
     Returns a string outside :data:`VALID_STATUS_CLASSES` on
     out-of-range input so the caller's guard raises clearly rather
     than silently bucketing garbage into ``"5xx"``.
+
+    Returns:
+        The ``Nxx`` class string (e.g. ``"2xx"``) for codes 100-599, or
+        ``"invalid"`` for out-of-range input.
     """
     if 100 <= status_code < 600:  # noqa: PLR2004
         return f"{status_code // 100}xx"

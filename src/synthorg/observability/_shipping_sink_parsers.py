@@ -26,7 +26,12 @@ def _parse_syslog_optional_fields(
     parse_int: Any,
     parse_enum: Any,
 ) -> tuple[int, SyslogFacility, SyslogProtocol]:
-    """Parse optional syslog fields from a custom sink entry."""
+    """Parse optional syslog fields from a custom sink entry.
+
+    Returns:
+        A ``(port, facility, protocol)`` tuple, using the syslog defaults
+        (514, USER, UDP) for any key absent from the entry.
+    """
     port = parse_int(entry, "syslog_port", ctx) if "syslog_port" in entry else 514
     facility = (
         parse_enum(
@@ -61,7 +66,14 @@ def build_custom_syslog_sink(
     parse_int: Any,
     parse_enum: Any,
 ) -> SinkConfig:
-    """Build a SYSLOG SinkConfig from a custom sink entry."""
+    """Build a SYSLOG SinkConfig from a custom sink entry.
+
+    Returns:
+        A ``SinkConfig`` for a SYSLOG sink built from the entry.
+
+    Raises:
+        ValueError: If ``syslog_host`` is absent or not a non-empty string.
+    """
     ctx = f"custom_sinks[{index}]"
     if "syslog_host" not in entry:
         msg = f"{ctx} is missing required field 'syslog_host' for syslog sink"
@@ -98,7 +110,16 @@ def _parse_http_headers(
     entry: dict[str, Any],
     index: int,
 ) -> tuple[tuple[str, str], ...]:
-    """Parse and validate HTTP headers from a custom sink entry."""
+    """Parse and validate HTTP headers from a custom sink entry.
+
+    Returns:
+        An immutable tuple of ``(name, value)`` string pairs.
+
+    Raises:
+        ValueError: If ``http_headers`` is not a list, an element is not
+            a 2-element ``[str, str]`` pair, or a header name is empty
+            after stripping.
+    """
     raw_headers = entry["http_headers"]
     if not isinstance(raw_headers, list):
         msg = f"custom_sinks[{index}].http_headers must be an array"
@@ -132,7 +153,14 @@ def build_custom_http_sink(
     parse_int: Any,
     parse_number: Any,
 ) -> SinkConfig:
-    """Build an HTTP SinkConfig from a custom sink entry."""
+    """Build an HTTP SinkConfig from a custom sink entry.
+
+    Returns:
+        A ``SinkConfig`` for an HTTP sink built from the entry.
+
+    Raises:
+        ValueError: If ``http_url`` is absent or not a non-empty string.
+    """
     ctx = f"custom_sinks[{index}]"
     if "http_url" not in entry:
         msg = f"{ctx} is missing required field 'http_url' for http sink"

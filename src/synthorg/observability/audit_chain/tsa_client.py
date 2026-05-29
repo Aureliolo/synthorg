@@ -305,6 +305,9 @@ class TsaClient:
         ``asyncio.run`` invocations / different event loops. Callers
         that want connection pooling supply their own client and
         manage its lifetime.
+
+        Returns:
+            The raw DER-encoded timestamp-response body from the TSA.
         """
         if self._http_client is not None:
             return await self._do_post(self._http_client, body)
@@ -320,7 +323,20 @@ class TsaClient:
             return await self._do_post(client, body)
 
     async def _do_post(self, client: httpx.AsyncClient, body: bytes) -> bytes:
-        """Issue the POST against ``client`` and validate the response."""
+        """Issue the POST against ``client`` and validate the response.
+
+        Returns:
+            The raw DER-encoded timestamp-response body once the HTTP
+            status and Content-Type are validated.
+
+        Raises:
+            TsaTimeoutError: If the request exceeds the configured
+                timeout.
+            TsaTransportError: On any non-timeout HTTP/transport error or
+                a non-2xx status.
+            TsaProtocolError: If the response Content-Type is not the
+                expected timestamp-reply media type.
+        """
         try:
             response = await client.post(
                 self._tsa_url,
@@ -387,6 +403,14 @@ class TsaClient:
 
 
 def _decode_response(raw: bytes) -> Any:
+    """Decode a raw TSA response into an ASN.1 ``TimeStampResp``.
+
+    Returns:
+        The decoded ``rfc3161_client`` timestamp-response object.
+
+    Raises:
+        TsaProtocolError: If *raw* is not a valid ASN.1 ``TimeStampResp``.
+    """
     try:
         return rfc3161_client.decode_timestamp_response(raw)
     except Exception as exc:
@@ -403,6 +427,12 @@ def _decode_response(raw: bytes) -> Any:
 
 
 def _check_pki_status(response: Any, tsa_url: str) -> None:
+    """Verify the TSA granted the timestamp request.
+
+    Raises:
+        TsaProtocolError: If the PKI status is not ``GRANTED`` or
+            ``GRANTED_WITH_MODS``.
+    """
     status = response.status
     if status in {
         _rfc_tsp.PKIStatus.GRANTED,
@@ -434,6 +464,11 @@ def _check_hash_binding(
     match the caller's request, and the audit chain would accept
     it. Digest comparison is done with
     :func:`hmac.compare_digest` for constant-time semantics.
+
+    Raises:
+        TsaHashMismatchError: If the response ``hashAlgorithm`` OID
+            differs from the requested algorithm, or the digest bytes do
+            not match.
     """
     message_imprint = tst_info.message_imprint
     # Algorithm (hashAlgorithm field) match -- the rfc3161_client
@@ -483,6 +518,10 @@ def _check_nonce(tst_info: Any, expected_nonce: int, tsa_url: str) -> None:
 
     Nonces are public values echoed in the request and response;
     plain ``!=`` is safe here (no timing-oracle concern).
+
+    Raises:
+        TsaNonceMismatchError: If the response nonce (or its absence)
+            does not equal the nonce embedded in the request.
     """
     actual = int(tst_info.nonce) if tst_info.nonce is not None else None
     if actual != expected_nonce:
@@ -508,6 +547,10 @@ def _verify_signature(
     Uses :class:`rfc3161_client.VerifierBuilder` which validates the
     TSA cert chain and the SignedData signature over TSTInfo. Any
     failure raises :exc:`TsaSignatureError`.
+
+    Raises:
+        TsaSignatureError: If ``rfc3161_client.VerifierBuilder``
+            verification fails (cert chain, signature, or structure).
     """
     try:
         builder = rfc3161_client.VerifierBuilder()
@@ -529,6 +572,9 @@ def _verify_signature(
 
 def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
     """Parse a PEM-encoded certificate into an :class:`x509.Certificate`.
+
+    Returns:
+        The parsed ``x509.Certificate``.
 
     Raises:
         ValueError: If *pem_bytes* does not contain a valid PEM
@@ -554,7 +600,15 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
 
 
 def _gen_time_to_datetime(gen_time: Any) -> datetime:
-    """Coerce a TSTInfo ``gen_time`` into a UTC-aware datetime."""
+    """Coerce a TSTInfo ``gen_time`` into a UTC-aware datetime.
+
+    Returns:
+        A UTC-aware ``datetime`` (naive inputs are stamped UTC; aware
+        non-UTC inputs are converted).
+
+    Raises:
+        TsaProtocolError: If ``gen_time`` is not a ``datetime`` instance.
+    """
     if isinstance(gen_time, datetime):
         if gen_time.tzinfo is None:
             return gen_time.replace(tzinfo=UTC)

@@ -229,8 +229,9 @@ class AuditChainSink(logging.Handler):
     def chain(self) -> HashChain:
         """Read-only snapshot of the chain's entries.
 
-        Returns a new ``HashChain`` populated with a copy of the
-        current entries so callers cannot mutate the live chain.
+        Returns:
+            A new ``HashChain`` populated with a copy of the current
+            entries so callers cannot mutate the live chain.
         """
         with self._lock:
             return self._chain.snapshot()
@@ -248,6 +249,10 @@ class AuditChainSink(logging.Handler):
         is read between those calls, and an interleaved sign/append
         would move the tail before the TSA stamps the binding
         payload, breaking the payload contract.
+
+        Returns:
+            A ``(signed, ts_result)`` pair: the signer's signed result
+            and the timestamp provider's result over the binding payload.
         """
         signed = await self._signer.sign(data)
         binding_payload = _build_binding_payload(

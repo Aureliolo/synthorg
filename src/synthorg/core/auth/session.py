@@ -44,7 +44,15 @@ class Session(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_ordering(self) -> Self:
-        """Ensure ``created_at <= last_active_at <= expires_at``."""
+        """Ensure ``created_at <= last_active_at <= expires_at``.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the timestamps are not ordered
+                ``created_at <= last_active_at <= expires_at``.
+        """
         if self.created_at > self.expires_at:
             msg = "created_at must not be after expires_at"
             raise ValueError(msg)

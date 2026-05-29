@@ -219,17 +219,40 @@ class AuthConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_secret_length(self) -> Self:
-        """Reject non-empty secrets shorter than the minimum."""
+        """Reject non-empty secrets shorter than the minimum.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``jwt_secret`` is non-empty but shorter than
+                the minimum length (via ``_require_valid_secret``).
+        """
         _require_valid_secret(self.jwt_secret)
         return self
 
     @model_validator(mode="after")
     def _validate_refresh_expiry(self) -> Self:
-        """Ensure refresh token outlives the access token."""
+        """Ensure refresh token outlives the access token.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If refresh tokens are enabled but
+                ``jwt_refresh_expiry_minutes`` is not greater than
+                ``jwt_expiry_minutes``.
+        """
         if (
             self.jwt_refresh_enabled
             and self.jwt_refresh_expiry_minutes <= self.jwt_expiry_minutes
@@ -248,6 +271,14 @@ class AuthConfig(BaseModel):
         - ``SameSite=None`` requires ``Secure=True`` (browser
           requirement).
         - Cookie names must be distinct to avoid collisions.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``cookie_samesite`` is ``"none"`` without
+                ``cookie_secure``, or the session/CSRF/refresh cookie
+                names are not all distinct.
         """
         if self.cookie_samesite == "none" and not self.cookie_secure:
             msg = (
