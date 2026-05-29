@@ -76,7 +76,11 @@ class ConnectionService:
         base_url: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> Connection:
-        """Create and return a new connection, auditing the event."""
+        """Create and return a new connection, auditing the event.
+
+        Returns:
+            The newly created and persisted ``Connection``.
+        """
         connection = await self._catalog.create(
             name=name,
             connection_type=connection_type,
@@ -121,7 +125,12 @@ class ConnectionService:
         *,
         name: NotBlankStr,
     ) -> Connection | None:
-        """Probe the catalog for the latest health status."""
+        """Probe the catalog for the latest health status.
+
+        Returns:
+            The ``Connection`` with its last-known health status, or
+            ``None`` when the connection is not in the catalog.
+        """
         connection = await self._catalog.get(name)
         logger.info(
             COMMUNICATION_CONNECTION_HEALTH_CHECKED,

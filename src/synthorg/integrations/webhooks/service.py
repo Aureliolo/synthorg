@@ -68,7 +68,11 @@ class WebhookService:
         definition: WebhookDefinition,
         actor_id: NotBlankStr,
     ) -> WebhookDefinition:
-        """Persist a new definition."""
+        """Persist a new definition.
+
+        Returns:
+            The same ``WebhookDefinition`` after it has been persisted.
+        """
         await self._store.add(definition)
         logger.info(
             COMMUNICATION_WEBHOOK_CREATED,
@@ -84,7 +88,12 @@ class WebhookService:
         definition: WebhookDefinition,
         actor_id: NotBlankStr,
     ) -> WebhookDefinition:
-        """Replace an existing definition (by ID)."""
+        """Replace an existing definition (by ID).
+
+        Returns:
+            A copy of the definition with ``updated_at`` refreshed to the
+            current UTC time, after the store replace succeeds.
+        """
         refreshed = definition.model_copy(
             update={"updated_at": datetime.now(UTC)},
         )
@@ -109,6 +118,9 @@ class WebhookService:
         The audit event is only emitted when something was actually
         deleted; a miss returns ``False`` without logging a destructive
         operation that never happened.
+
+        Returns:
+            ``True`` when a definition was removed; ``False`` on a miss.
         """
         removed = await self._store.delete(definition_id)
         if not removed:

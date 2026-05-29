@@ -55,7 +55,11 @@ _IDENTITY_KEYS: frozenset[str] = frozenset(
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from text via the shared LLM JSON helper."""
+    """Extract a JSON object from text via the shared LLM JSON helper.
+
+    Returns:
+        The parsed JSON object, or ``None`` if none was found.
+    """
     return extract_json_from_llm_response(text)
 
 
@@ -129,7 +133,11 @@ class StructuredComparisonDetector:
             return False
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:
-        """Extract JSON object from text."""
+        """Extract JSON object from text.
+
+        Returns:
+            The parsed JSON object, or ``None`` if none was found.
+        """
         return _extract_json_object(text)
 
     def _get_positions(
@@ -139,6 +147,9 @@ class StructuredComparisonDetector:
         """Extract positions from parsed JSON.
 
         Looks for "positions" (plural) or "position" (singular) fields.
+
+        Returns:
+            The list of position dicts (empty if none are present).
         """
         if "positions" in data:
             positions = data["positions"]
@@ -158,9 +169,11 @@ class StructuredComparisonDetector:
     ) -> bool:
         """Check if any top-level field differs between positions.
 
-        Compares all pairs of positions. Returns True if any position
-        has a different value for any top-level field compared to
-        another position.
+        Compares all pairs of positions.
+
+        Returns:
+            ``True`` if any position differs from another on any
+            top-level field.
         """
         for i in range(len(positions)):
             for j in range(i + 1, len(positions)):
@@ -251,7 +264,11 @@ class LlmJudgeDetector:
         return KeywordConflictDetector().detect(response_content)
 
     def _extract_json(self, text: str) -> dict[str, Any] | None:
-        """Extract JSON object from text."""
+        """Extract JSON object from text.
+
+        Returns:
+            The parsed JSON object, or ``None`` if none was found.
+        """
         return _extract_json_object(text)
 
 
@@ -392,7 +409,12 @@ class AutoDetector:
         return self.keyword_detector.detect(response_content)
 
     def _is_structured_json(self, text: str) -> bool:
-        """Check if text is JSON with position field."""
+        """Check if text is JSON with position field.
+
+        Returns:
+            ``True`` if the text parses as JSON carrying a
+            ``position``/``positions`` field.
+        """
         parsed = _extract_json_object(text)
         if parsed is not None:
             return "position" in parsed or "positions" in parsed

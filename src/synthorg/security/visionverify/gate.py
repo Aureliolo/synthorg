@@ -76,6 +76,10 @@ class VisionVerifierGateService:
         with a synthetic INFO report so a fault never blocks completion.
         Only :class:`asyncio.CancelledError` (and unexpected programming
         errors caught by the runtime) propagate.
+
+        Returns:
+            The ``VisionGateResult`` with the verdict, report, and
+            elapsed time.
         """
         started_at = self._clock.monotonic()
         logger.info(
@@ -119,6 +123,14 @@ class VisionVerifierGateService:
         """Run the verifier with a fail-OPEN fallback report.
 
         Cancellation propagates so the awaiting parent observes it.
+
+        Returns:
+            The verifier's report, or a synthetic fail-OPEN report when
+            the verifier raised a non-cancellation error.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the verifier run is
+                cancelled.
         """
         logger.info(
             VISION_VERIFIER_INVOKED,
@@ -146,7 +158,12 @@ class VisionVerifierGateService:
         self,
         review_input: VisionReviewInput,
     ) -> VisionVerificationReport:
-        """Build the synthetic report returned when the verifier raises."""
+        """Build the synthetic report returned when the verifier raises.
+
+        Returns:
+            A ``VisionVerificationReport`` carrying a single INFO
+            verifier-failed finding.
+        """
         finding = VisionFinding(
             category=VisionFindingCategory.VISUAL_DEFECT,
             severity=VisionSeverity.INFO,

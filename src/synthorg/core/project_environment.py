@@ -63,6 +63,14 @@ class ProjectEnvironment(BaseModel):
         Only the ``DEVCONTAINER`` image-build path carries an
         ``image_ref``; the bootstrap (manifest / nix) paths must not. A
         re-provision never predates the first provision.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a ``DEVCONTAINER`` environment lacks an
+                ``image_ref``, a non-devcontainer environment sets one,
+                or ``updated_at`` predates ``provisioned_at``.
         """
         if self.environment_type == EnvironmentType.DEVCONTAINER:
             if self.image_ref is None:

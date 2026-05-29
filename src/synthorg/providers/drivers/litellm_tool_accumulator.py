@@ -67,6 +67,10 @@ class _ToolCallAccumulator:
         Returns ``None`` if either ``id`` or ``name`` is still empty
         (malformed/incomplete streaming deltas), or if the argument JSON
         could not be parsed.
+
+        Returns:
+            A fully assembled ``ToolCall`` when ``id`` and ``name`` are
+            both set and arguments parse as JSON, or ``None`` otherwise.
         """
         if not self.id or not self.name:
             if self.arguments:
@@ -111,6 +115,10 @@ def emit_pending_tool_calls(
     Although the event type is ``TOOL_CALL_DELTA``, each chunk contains
     a fully assembled ``ToolCall`` (not a partial delta).  The stream
     protocol reuses the delta event type for final tool call delivery.
+
+    Returns:
+        A list of ``TOOL_CALL_DELTA`` ``StreamChunk`` objects (one per
+        successfully built ``ToolCall``), ordered by accumulator index.
     """
     result: list[StreamChunk] = []
     for idx in sorted(pending):

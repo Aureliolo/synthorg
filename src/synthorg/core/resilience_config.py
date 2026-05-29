@@ -55,7 +55,14 @@ class RetryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_delay_ordering(self) -> Self:
-        """Ensure base_delay does not exceed max_delay."""
+        """Ensure base_delay does not exceed max_delay.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``base_delay`` is greater than ``max_delay``.
+        """
         if self.base_delay > self.max_delay:
             msg = (
                 f"base_delay ({self.base_delay}) must be"

@@ -48,7 +48,11 @@ _TRAVERSAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 
 def _scan_value(value: str) -> str | None:
-    """Scan a single string for traversal patterns."""
+    """Scan a single string for traversal patterns.
+
+    Returns:
+        The matching pattern name, or ``None`` if none matched.
+    """
     for pattern_name, pattern in _TRAVERSAL_PATTERNS:
         if pattern.search(value):
             return pattern_name
@@ -73,7 +77,9 @@ class PathTraversalDetector:
     ) -> SecurityVerdict | None:
         """Scan arguments for path traversal patterns.
 
-        Returns DENY with CRITICAL risk if traversal is detected.
+        Returns:
+            A DENY verdict with CRITICAL risk when traversal is
+            detected, or ``None`` when the arguments are clean.
         """
         findings = [
             match

@@ -80,6 +80,8 @@ class AgentEngineRunner:
         repository after this call returns.
 
         Raises:
+            asyncio.CancelledError: Propagated when the agent run is
+                cancelled (never converted to a fail-OPEN finding).
             RedTeamDispatchError: When :class:`AgentEngine.run` itself
                 raises. The gate translates this into a fail-OPEN
                 informational finding.
@@ -110,7 +112,12 @@ class AgentEngineRunner:
         review_input: RedTeamReviewInput,
         prompt: NotBlankStr,
     ) -> Task:
-        """Construct the transient :class:`Task` the agent sees."""
+        """Construct the transient :class:`Task` the agent sees.
+
+        Returns:
+            The transient ``Task`` carrying the red-team prompt and
+            acceptance criteria.
+        """
         criteria = tuple(
             AcceptanceCriterion(description=criterion)
             for criterion in review_input.acceptance_criteria

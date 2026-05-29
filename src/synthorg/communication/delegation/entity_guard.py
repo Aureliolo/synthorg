@@ -58,7 +58,15 @@ class EntityGuardOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> Self:
-        """Enforce pass/fail message consistency."""
+        """Enforce pass/fail message consistency.
+
+        Returns:
+            The validated result.
+
+        Raises:
+            ValueError: If ``message`` is set when passed, or absent when
+                not passed.
+        """
         if self.passed and self.message:
             msg = "message must be empty when passed is True"
             raise ValueError(msg)

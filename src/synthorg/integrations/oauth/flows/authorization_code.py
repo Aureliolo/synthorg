@@ -160,6 +160,11 @@ class AuthorizationCodeFlow:
     ) -> OAuthToken:
         """Exchange authorization code for tokens.
 
+        Returns:
+            An ``OAuthToken`` with the raw ``access_token``, optional
+            ``refresh_token``, ``token_type``, ``expires_at``,
+            ``scope_granted``, and optional ``id_token``.
+
         Raises:
             TokenExchangeFailedError: If the exchange fails.
         """
@@ -219,6 +224,11 @@ class AuthorizationCodeFlow:
     ) -> OAuthToken:
         """Refresh an access token.
 
+        Returns:
+            An ``OAuthToken`` with the refreshed ``access_token``,
+            optional new ``refresh_token``, ``token_type``,
+            ``expires_at``, and ``scope_granted``.
+
         Raises:
             TokenRefreshFailedError: If the refresh fails or the
                 response cannot be parsed.
@@ -273,6 +283,16 @@ class AuthorizationCodeFlow:
         ``refresh_token`` populated. The caller is responsible
         for persisting them via
         ``ConnectionCatalog.store_oauth_tokens``.
+
+        Returns:
+            An ``OAuthToken`` parsed from the provider response, with raw
+            ``access_token`` and optional fields populated.
+
+        Raises:
+            TokenExchangeFailedError: If the response is not a dict or an
+                optional field (``refresh_token`` / ``token_type`` /
+                ``scope`` / ``id_token``) has a malformed (non-string)
+                value.
         """
         if not isinstance(data, dict):
             msg = (

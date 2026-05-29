@@ -41,7 +41,11 @@ class PolicyActionRequest(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_context(self) -> Self:
-        """Deep-copy and recursively freeze context."""
+        """Deep-copy and recursively freeze context.
+
+        Returns:
+            The model with its context deep-copied and frozen.
+        """
         object.__setattr__(
             self,
             "context",
@@ -51,7 +55,12 @@ class PolicyActionRequest(BaseModel):
 
 
 def _recursive_freeze(obj: object) -> object:
-    """Recursively freeze mutable containers."""
+    """Recursively freeze mutable containers.
+
+    Returns:
+        An immutable view of ``obj`` (``MappingProxyType`` for dicts,
+        tuples for lists), recursing into nested containers.
+    """
     if isinstance(obj, dict):
         return MappingProxyType(
             {k: _recursive_freeze(v) for k, v in obj.items()},

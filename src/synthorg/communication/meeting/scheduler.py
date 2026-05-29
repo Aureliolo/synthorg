@@ -434,12 +434,13 @@ class MeetingScheduler:
                 )
 
     def _drop_cross_loop_tasks(self, current_loop: asyncio.AbstractEventLoop) -> bool:
-        """Discard tasks bound to a dead loop. True iff state was reset.
+        """Discard tasks bound to a dead loop.
 
-        Returns ``True`` when every recorded task is bound to a loop
-        other than *current_loop* (or ``self._tasks`` is empty), which
-        means a ``stop()`` call has nothing to cancel/drain on this
-        loop and should short-circuit.
+        Returns:
+            ``True`` when every recorded task is bound to a loop other
+            than *current_loop* (or ``self._tasks`` is empty), so a
+            ``stop()`` call has nothing to cancel/drain here and should
+            short-circuit; ``False`` otherwise.
         """
         if not self._tasks:
             return False
@@ -454,6 +455,10 @@ class MeetingScheduler:
 
         Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
         partially-constructed ``start()``.
+
+        Raises:
+            TimeoutError: If the drain exceeds the hard stop deadline;
+                the scheduler is marked unrestartable.
         """
         async with self._lifecycle_lock_for_current_loop():
             if not self._running:
@@ -481,6 +486,12 @@ class MeetingScheduler:
                 # but does not prevent ``stop()`` from exiting and
                 # releasing ``_lifecycle_lock``.
                 async def _drain() -> list[BaseException | None]:
+                    """Gather the cancelled periodic tasks, capturing errors.
+
+                    Returns:
+                        Each task's result or its exception (gathered with
+                        ``return_exceptions=True``).
+                    """
                     return await asyncio.gather(
                         *self._tasks,
                         return_exceptions=True,
@@ -623,6 +634,12 @@ class MeetingScheduler:
 
         Args:
             meeting_type: The meeting type configuration.
+
+        Raises:
+            TypeError: If ``meeting_type`` has no frequency (not a
+                scheduled type).
+            asyncio.CancelledError: Propagated on stop so the periodic
+                task exits cleanly.
         """
         if meeting_type.frequency is None:
             msg = (
@@ -879,6 +896,9 @@ def _format_ctx_value(value: Any) -> str:
 
     Lists/tuples/sets are comma-joined; scalars use ``str()``.
     Strings and bytes are not treated as iterables.
+
+    Returns:
+        The human-readable string form of the context value.
     """
     if isinstance(value, str):
         return value

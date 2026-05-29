@@ -41,7 +41,12 @@ class WorkloadAdaptiveRiskClassifier:
         self._threshold = threshold
 
     def classify(self, action_type: str) -> ApprovalRiskLevel:
-        """Classify, elevating one tier when in-flight load is high."""
+        """Classify, elevating one tier when in-flight load is high.
+
+        Returns:
+            The base risk level, elevated one tier when the in-flight
+            probe meets or exceeds the threshold.
+        """
         level = self._base.classify(action_type)
         if self._inflight_probe() >= self._threshold:
             return elevate_one_tier(level)

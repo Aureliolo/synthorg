@@ -31,7 +31,12 @@ class StrategyFactoryError(DomainError):
 
     @override
     def __str__(self) -> str:
-        """Render with context for log output."""
+        """Render with context for log output.
+
+        Returns:
+            The message alone when no context is attached, otherwise the
+            message followed by the context key/value pairs.
+        """
         if not self.context:
             return self.message
         ctx = ", ".join(f"{k}={v!r}" for k, v in self.context.items())

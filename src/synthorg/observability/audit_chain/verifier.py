@@ -41,7 +41,15 @@ class ChainVerificationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> Self:
-        """Ensure break position aligns with validity."""
+        """Ensure break position aligns with validity.
+
+        Returns:
+            The validated ``ChainVerificationResult`` instance.
+
+        Raises:
+            ValueError: If ``first_break_position`` is set when
+                ``valid=True`` or absent when ``valid=False``.
+        """
         if self.valid and self.first_break_position is not None:
             msg = "first_break_position must be None when valid=True"
             raise ValueError(msg)
@@ -99,7 +107,13 @@ class AuditChainVerifier:
         self,
         chain: HashChain,
     ) -> ChainVerificationResult:
-        """Core verification body; metric emission lives in ``verify_chain``."""
+        """Core verification body; metric emission lives in ``verify_chain``.
+
+        Returns:
+            A ``ChainVerificationResult`` recording whether every hash
+            link and signature is intact, with the position of the first
+            break when one is found.
+        """
         logger.debug(
             SECURITY_AUDIT_CHAIN_VERIFY_START,
             entry_count=len(chain.entries),

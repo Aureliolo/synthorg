@@ -114,6 +114,10 @@ class ApprovalTimeoutScheduler:
         Erring on the side of "same loop" prevents spurious task drops
         in unit tests; the genuine cross-loop scenario in production
         always returns a real ``AbstractEventLoop``.
+
+        Returns:
+            ``True`` when the existing task is alive on the current loop
+            (or cannot be introspected); ``False`` otherwise.
         """
         if self._task is None or self._task.done():
             return False
@@ -283,6 +287,10 @@ class ApprovalTimeoutScheduler:
         ``RecursionError``.  ``self._wake_event`` is always non-None
         here because ``start()`` initialises it before spawning the
         task that drives this coroutine.
+
+        Raises:
+            RuntimeError: If invoked before ``start()`` initialised the
+                wake event (defensive; should not happen in practice).
         """
         wake_event = self._wake_event
         if wake_event is None:  # defensive; start() guarantees non-None

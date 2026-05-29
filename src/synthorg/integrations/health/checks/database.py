@@ -29,7 +29,13 @@ class DatabaseHealthCheck:
         self._clock = clock or SystemClock()
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Verify database connection metadata is valid."""
+        """Verify database connection metadata is valid.
+
+        Returns:
+            A ``HealthReport`` with ``HEALTHY`` status when both
+            ``dialect`` and ``database`` metadata are present and
+            non-blank, or ``UNKNOWN`` when either is missing.
+        """
         start = self._clock.monotonic()
         raw_dialect = connection.metadata.get("dialect")
         raw_database = connection.metadata.get("database")

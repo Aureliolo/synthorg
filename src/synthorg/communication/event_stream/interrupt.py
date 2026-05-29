@@ -151,7 +151,14 @@ class Interrupt(BaseModel):
 
     @model_validator(mode="after")
     def _validate_type_fields(self) -> Self:
-        """Enforce required fields per interrupt type via the rule table."""
+        """Enforce required fields per interrupt type via the rule table.
+
+        Returns:
+            The validated interrupt.
+
+        Raises:
+            ValueError: If the interrupt type's required field is unset.
+        """
         rule = INTERRUPT_FIELD_RULES.get(self.type)
         if rule is not None and getattr(self, rule.interrupt_field) is None:
             msg = f"{rule.interrupt_field} is required for {self.type.name} interrupts"
@@ -160,7 +167,11 @@ class Interrupt(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_tool_args(self) -> Self:
-        """Deep-copy tool_args to prevent external mutation."""
+        """Deep-copy tool_args to prevent external mutation.
+
+        Returns:
+            The interrupt with ``tool_args`` deep-copied.
+        """
         if self.tool_args is not None:
             object.__setattr__(
                 self,
@@ -204,7 +215,14 @@ class InterruptResolution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_payload(self) -> Self:
-        """Ensure at least one semantic field is provided."""
+        """Ensure at least one semantic field is provided.
+
+        Returns:
+            The validated resolution.
+
+        Raises:
+            ValueError: If neither ``decision`` nor ``response`` is set.
+        """
         if self.decision is None and self.response is None:
             msg = "decision or response is required"
             raise ValueError(msg)

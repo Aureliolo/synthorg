@@ -81,6 +81,9 @@ def redact_url(url: str) -> str:
 
     ``nats://user:pass@host:port`` -> ``nats://***@host:port``.
     Non-URL strings pass through unchanged (best effort).
+
+    Returns:
+        The URL with any userinfo credentials masked.
     """
     try:
         parsed = urlparse(url)
@@ -100,7 +103,11 @@ def redact_url(url: str) -> str:
 
 
 def raise_channel_not_found(channel_name: str) -> NoReturn:
-    """Log and raise :class:`ChannelNotFoundError`."""
+    """Log and raise :class:`ChannelNotFoundError`.
+
+    Raises:
+        ChannelNotFoundError: Always.
+    """
     logger.warning(COMM_CHANNEL_NOT_FOUND, channel=channel_name)
     msg = f"Channel not found: {channel_name}"
     raise ChannelNotFoundError(msg, context={"channel": channel_name})
@@ -110,7 +117,11 @@ def raise_not_subscribed(
     channel_name: str,
     subscriber_id: str,
 ) -> NoReturn:
-    """Log and raise :class:`NotSubscribedError`."""
+    """Log and raise :class:`NotSubscribedError`.
+
+    Raises:
+        NotSubscribedError: Always.
+    """
     logger.warning(
         COMM_SUBSCRIPTION_NOT_FOUND,
         channel=channel_name,
@@ -158,20 +169,31 @@ def encode_token(name: str) -> str:
     in SynthOrg channel names. Base32 (lowercase, no padding) gives a
     deterministic, collision-free, case-insensitive encoding using
     only safe characters.
+
+    Returns:
+        The lowercase, unpadded base32 token.
     """
     raw = name.encode("utf-8")
     return base64.b32encode(raw).decode("ascii").rstrip("=").lower()
 
 
 def decode_token(token: str) -> str:
-    """Reverse of :func:`encode_token`."""
+    """Reverse of :func:`encode_token`.
+
+    Returns:
+        The original string decoded from the base32 token.
+    """
     padding = "=" * ((-len(token)) % 8)
     raw = base64.b32decode((token.upper() + padding).encode("ascii"))
     return raw.decode("utf-8")
 
 
 def require_running(state: _NatsState) -> None:
-    """Raise if the bus is not running."""
+    """Raise if the bus is not running.
+
+    Raises:
+        MessageBusNotRunningError: If the bus is not running.
+    """
     if not state.running:
         logger.warning(COMM_BUS_NOT_RUNNING)
         msg = "Message bus is not running"

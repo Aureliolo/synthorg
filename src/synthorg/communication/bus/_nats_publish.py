@@ -40,12 +40,20 @@ logger = get_logger(__name__)
 
 
 def serialize_message(message: Message) -> bytes:
-    """Serialize a Message to JSON bytes for the wire."""
+    """Serialize a Message to JSON bytes for the wire.
+
+    Returns:
+        The message as alias-keyed JSON, UTF-8 encoded.
+    """
     return message.model_dump_json(by_alias=True).encode("utf-8")
 
 
 def deserialize_message(data: bytes) -> Message:
-    """Reconstruct a Message from wire JSON bytes."""
+    """Reconstruct a Message from wire JSON bytes.
+
+    Returns:
+        The deserialised ``Message``.
+    """
     return Message.model_validate_json(data.decode("utf-8"))
 
 

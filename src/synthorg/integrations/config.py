@@ -151,6 +151,12 @@ class OAuthConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
@@ -185,6 +191,12 @@ class WebhooksConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Populate unset mirror fields from the settings registry.
+
+        Returns:
+            The raw model input with any unset mirror fields filled in
+            from their registered settings (caller-supplied keys win).
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
@@ -205,7 +217,15 @@ class IntegrationHealthConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_thresholds(self) -> Self:
-        """Ensure ``degraded_threshold`` is not above ``unhealthy_threshold``."""
+        """Ensure ``degraded_threshold`` is not above ``unhealthy_threshold``.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``degraded_threshold`` exceeds
+                ``unhealthy_threshold``.
+        """
         if self.degraded_threshold > self.unhealthy_threshold:
             msg = (
                 "IntegrationHealthConfig.degraded_threshold "

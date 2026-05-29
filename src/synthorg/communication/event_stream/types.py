@@ -102,6 +102,10 @@ class StreamEvent(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
-        """Deep-copy payload to prevent external mutation."""
+        """Deep-copy payload to prevent external mutation.
+
+        Returns:
+            The event with its ``payload`` deep-copied.
+        """
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
         return self

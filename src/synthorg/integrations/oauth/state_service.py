@@ -69,6 +69,10 @@ class OAuthStateService:
         Returns the bound state (with ``connection_name`` set) so the
         caller can return its ``state_token`` to the client without
         re-fetching.
+
+        Returns:
+            The bound ``OAuthState`` (with ``connection_name`` set) after
+            it has been persisted.
         """
         bound = state.model_copy(update={"connection_name": connection_name})
         try:
@@ -94,6 +98,10 @@ class OAuthStateService:
         """Fetch the OAuth state for *state_token* on the callback path.
 
         Returns ``None`` when no row matches (invalid/unknown token).
+
+        Returns:
+            The ``OAuthState`` for the token, or ``None`` when no row
+            matches (invalid or unknown token).
         """
         return await self._repo.get(state_token)
 
@@ -103,6 +111,10 @@ class OAuthStateService:
         The callback handler logs the ``OAUTH_STATE_INVALID`` event for
         the expiry decision; this method is the persistence-boundary
         delegate so the handler never touches the repo directly.
+
+        Returns:
+            ``True`` when the state row was found and deleted; ``False``
+            when no row matched the token.
         """
         return await self._repo.delete(state_token)
 
@@ -118,6 +130,11 @@ class OAuthStateService:
         Returns ``True`` for the winning write, ``False`` when a
         concurrent callback already stamped the row (the handler
         routes that case through its replay branch).
+
+        Returns:
+            ``True`` when this call won the compare-and-set and stamped
+            the consumed marker; ``False`` when a concurrent callback
+            already stamped the row.
         """
         return await self._repo.mark_consumed(
             state_token,

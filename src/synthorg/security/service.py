@@ -73,7 +73,11 @@ logger = get_logger(__name__)
 
 
 def _hash_arguments(arguments: dict[str, object]) -> str:
-    """SHA-256 hex digest of serialized arguments (``default=str``)."""
+    """SHA-256 hex digest of serialized arguments (``default=str``).
+
+    Returns:
+        The 64-character hex digest of the sorted-key JSON serialisation.
+    """
     serialized = json.dumps(arguments, sort_keys=True, default=str)
     return hashlib.sha256(serialized.encode()).hexdigest()
 
@@ -164,6 +168,10 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             6. Record audit entry.
             7. Apply shadow mode conversion if applicable.
             8. Return verdict.
+
+        Returns:
+            The final ``SecurityVerdict`` (ALLOW, DENY, or ESCALATE)
+            after rules, LLM fallback, autonomy, and shadow mode.
         """
         if (
             not self._config.enabled
@@ -277,6 +285,10 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             2. Record an audit entry if sensitive data is found.
             3. Apply the output scan response policy to transform
                the result before returning.
+
+        Returns:
+            The (possibly policy-transformed) ``OutputScanResult``; an
+            empty result when post-tool scanning is disabled.
         """
         if not self._config.post_tool_scanning_enabled:
             logger.debug(
@@ -351,7 +363,9 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         evaluator is injected, and autonomy is not FULL.  Full-autonomy
         mode skips LLM evaluation (rules + audit only, per spec D4).
 
-        Returns the (possibly re-evaluated) verdict.
+        Returns:
+            The (possibly LLM-re-evaluated) verdict; the input verdict
+            unchanged when LLM fallback does not trigger.
         """
         if verdict.confidence != EvaluationConfidence.LOW:
             return verdict
@@ -426,7 +440,9 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         weaken one.  DENY and ESCALATE from the rule engine are always
         preserved -- security detectors take precedence over autonomy.
 
-        Returns the (possibly upgraded) verdict.
+        Returns:
+            The (possibly tightened) verdict; ALLOW may become ESCALATE,
+            but DENY/ESCALATE are preserved.
         """
         if self._effective_autonomy is None:
             return verdict
@@ -530,6 +546,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
 
         Falls back to DENY if no approval store is configured or if
         the store raises an exception.
+
+        Returns:
+            An ESCALATE verdict carrying the new approval id, or a DENY
+            verdict when escalation is unavailable or the action was
+            classified as blocked.
         """
         if self._approval_store is None:
             logger.warning(

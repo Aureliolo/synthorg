@@ -36,6 +36,11 @@ def _validate_csp_docs_external_origins(value: Any) -> None:
     field validator so write-time and runtime contracts cannot drift.
     The bridge field expects ``tuple[str, ...]``; we coerce a JSON
     list and let the validator surface its own ValueError.
+
+    Raises:
+        ValueError: If *value* is not a JSON array of strings, or if the
+            reused ``ApiBridgeConfig`` field validator rejects an origin
+            (non-canonical scheme/host, bad port, userinfo, path, etc.).
     """
     from synthorg.settings.bridge_configs import (  # noqa: PLC0415
         ApiBridgeConfig,

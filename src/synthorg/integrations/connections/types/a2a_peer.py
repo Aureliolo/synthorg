@@ -38,7 +38,13 @@ class A2APeerAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credentials based on the declared auth scheme."""
+        """Validate credentials based on the declared auth scheme.
+
+        Raises:
+            InvalidConnectionAuthError: If ``auth_scheme`` is not a valid
+                scheme, or a required credential field for the declared
+                scheme is missing, non-string, or blank.
+        """
         scheme = credentials.get("auth_scheme", "api_key")
         if scheme not in _VALID_SCHEMES:
             msg = (

@@ -38,12 +38,22 @@ def _build_default(
     config: RiskClassifierConfig,
     _deps: RiskClassifierDeps,
 ) -> RiskTierClassifier:
+    """Build the DEFAULT classifier (byte-identical with the static one).
+
+    Returns:
+        A ``DefaultRiskTierClassifier`` over the configured custom map.
+    """
     return DefaultRiskTierClassifier(
         custom_map=dict(config.custom_map) or None,
     )
 
 
 def _base_or_default(deps: RiskClassifierDeps) -> RiskTierClassifier:
+    """Return the wrappers' base classifier, or a fresh default.
+
+    Returns:
+        ``deps.base`` when set, otherwise a new ``DefaultRiskTierClassifier``.
+    """
     return deps.base if deps.base is not None else DefaultRiskTierClassifier()
 
 
@@ -51,6 +61,14 @@ def _build_workload_adaptive(
     config: RiskClassifierConfig,
     deps: RiskClassifierDeps,
 ) -> RiskTierClassifier:
+    """Build the WORKLOAD_ADAPTIVE classifier wrapping the base.
+
+    Returns:
+        A ``WorkloadAdaptiveRiskClassifier``.
+
+    Raises:
+        RiskClassifierConfigError: If no ``inflight_probe`` was provided.
+    """
     if deps.inflight_probe is None:
         msg = (
             "WORKLOAD_ADAPTIVE risk classifier requires an "
@@ -68,6 +86,11 @@ def _build_operator_configurable(
     config: RiskClassifierConfig,
     _deps: RiskClassifierDeps,
 ) -> RiskTierClassifier:
+    """Build the OPERATOR_CONFIGURABLE classifier from the operator map.
+
+    Returns:
+        An ``OperatorConfigurableRiskClassifier``.
+    """
     return OperatorConfigurableRiskClassifier(
         operator_map=config.operator_map,
     )
@@ -77,6 +100,12 @@ def _build_time_based(
     config: RiskClassifierConfig,
     deps: RiskClassifierDeps,
 ) -> RiskTierClassifier:
+    """Build the TIME_BASED elevation classifier wrapping the base.
+
+    Returns:
+        A ``TimeBasedRiskElevationClassifier`` over the configured
+        off-hours window.
+    """
     return TimeBasedRiskElevationClassifier(
         base=_base_or_default(deps),
         off_hours_start_hour=config.off_hours_start_hour,

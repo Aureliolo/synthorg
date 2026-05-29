@@ -458,7 +458,12 @@ class SafetyClassifier:
         risk_level: ApprovalRiskLevel,
         start: float,
     ) -> SafetyClassifierResult:
-        """Send stripped description to LLM for classification."""
+        """Send stripped description to LLM for classification.
+
+        Returns:
+            The classifier result; a SUSPICIOUS fallback result when no
+            provider is available.
+        """
         provider_name, driver = self._select_provider()
         if provider_name is None or driver is None:
             duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
@@ -519,6 +524,10 @@ class SafetyClassifier:
 
         Prefers a cross-family provider.  Falls back to the first
         available provider if no cross-family option exists.
+
+        Returns:
+            A ``(name, driver)`` pair, or ``(None, None)`` when no
+            provider is registered.
         """
         available = self._registry.list_providers()
         if not available:
@@ -540,7 +549,12 @@ class SafetyClassifier:
         return name, self._registry.get(name)
 
     def _select_model(self, provider_name: str) -> str:
-        """Select the model for classification."""
+        """Select the model for classification.
+
+        Returns:
+            The configured model alias or id; falls back to the provider
+            name when no model is configured.
+        """
         if self._config.model is not None:
             return self._config.model
 
@@ -575,6 +589,9 @@ class SafetyClassifier:
         wrapped via :func:`wrap_untrusted` under :data:`TAG_TASK_DATA`;
         the system prompt's ``untrusted_content_directive`` instructs
         the classifier LLM to ignore directives embedded in the body.
+
+        Returns:
+            The system + user ``ChatMessage`` list.
         """
         from synthorg.engine.prompt_safety import (  # noqa: PLC0415
             TAG_TASK_DATA,
@@ -612,7 +629,12 @@ class SafetyClassifier:
         stripped_description: str,
         start: float,
     ) -> SafetyClassifierResult:
-        """Parse LLM response into a SafetyClassifierResult."""
+        """Parse LLM response into a SafetyClassifierResult.
+
+        Returns:
+            The parsed result, or a SUSPICIOUS fallback when the LLM did
+            not call the classification tool.
+        """
         duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
 
         for tc in response.tool_calls:
@@ -640,7 +662,12 @@ class SafetyClassifier:
         stripped_description: str,
         duration_ms: float,
     ) -> SafetyClassifierResult:
-        """Parse tool call arguments into a result."""
+        """Parse tool call arguments into a result.
+
+        Returns:
+            The result from the tool args, or a SUSPICIOUS fallback when
+            the classification value is invalid.
+        """
         raw_classification = str(args.get("classification", ""))
         raw_reason = args.get("reason", "")
 

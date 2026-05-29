@@ -33,17 +33,25 @@ logger = get_logger(__name__)
 
 
 async def connect(state: _NatsState) -> None:
-    """Establish the NATS connection, setting ``state.client`` and ``state.js``."""
+    """Establish the NATS connection, setting ``state.client`` and ``state.js``.
+
+    Raises:
+        BusConnectionError: If the connection fails (timeout, no servers,
+            or OS-level network error).
+    """
     import nats  # noqa: PLC0415
     from nats.errors import NoServersError  # noqa: PLC0415
 
     async def on_disconnected() -> None:
+        """Log a warning when the NATS connection drops."""
         logger.warning(COMM_BUS_DISCONNECTED)
 
     async def on_reconnected() -> None:
+        """Log when the NATS connection is re-established."""
         logger.info(COMM_BUS_CONNECTED, reconnect=True)
 
     async def on_error(exc: Exception) -> None:
+        """Log NATS client errors during reconnection."""
         logger.warning(
             COMM_BUS_RECONNECTING,
             error_type=type(exc).__name__,
@@ -106,7 +114,12 @@ async def drain_partial_client(state: _NatsState) -> None:
 
 
 async def ensure_stream(state: _NatsState) -> None:
-    """Create the bus stream if it does not already exist."""
+    """Create the bus stream if it does not already exist.
+
+    Raises:
+        BusStreamError: If the JetStream context is uninitialised or
+            stream creation fails.
+    """
     from nats.errors import Error as NatsError  # noqa: PLC0415
     from nats.js.api import (  # noqa: PLC0415
         RetentionPolicy,
@@ -155,7 +168,12 @@ async def ensure_stream(state: _NatsState) -> None:
 
 
 async def ensure_kv_bucket(state: _NatsState) -> None:
-    """Create the KV bucket for dynamic channel registration."""
+    """Create the KV bucket for dynamic channel registration.
+
+    Raises:
+        BusStreamError: If the JetStream context is uninitialised or
+            bucket creation fails.
+    """
     from nats.errors import Error as NatsError  # noqa: PLC0415
     from nats.js.errors import BucketNotFoundError  # noqa: PLC0415
 
@@ -195,6 +213,10 @@ async def stop(state: _NatsState) -> None:
     ``state.stop_drain_timeout_seconds`` marks the state unrestartable
     and raises :class:`BusStopTimeoutError`; the operator must construct
     a fresh state to recover.
+
+    Raises:
+        BusStopTimeoutError: If the client drain exceeds
+            ``state.stop_drain_timeout_seconds``.
     """
     async with state.lock:
         if not state.running:

@@ -193,6 +193,9 @@ class EventStreamHub:
         creation + per-loop rebind keeps the hub usable across
         pytest-asyncio's per-test loops without false-sharing locks
         between unrelated tests.
+
+        Returns:
+            The operational lock bound to the current event loop.
         """
         try:
             current = asyncio.get_running_loop()
@@ -206,7 +209,11 @@ class EventStreamHub:
         return self._lock
 
     def _lifecycle_lock_for_current_loop(self) -> asyncio.Lock:
-        """Lifecycle lock bound to the running loop, rebinding if needed."""
+        """Lifecycle lock bound to the running loop, rebinding if needed.
+
+        Returns:
+            The lifecycle lock bound to the current event loop.
+        """
         try:
             current = asyncio.get_running_loop()
         except RuntimeError:
@@ -345,6 +352,10 @@ class EventStreamHub:
         janitor was added to fix returns. Re-raise only the system-
         level errors (``CancelledError``, ``MemoryError``,
         ``RecursionError``); log every other exception and continue.
+
+        Raises:
+            asyncio.CancelledError: Propagated on shutdown so the janitor
+                task stops cleanly.
         """
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:

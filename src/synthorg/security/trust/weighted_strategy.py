@@ -126,6 +126,9 @@ class WeightedTrustStrategy:
           success_rate because data_point_count includes non-task events
         - feedback: task volume ratio (tasks/100, capped at 1.0);
           placeholder for human feedback signals
+
+        Returns:
+            The weighted trust score in ``[0.0, 1.0]``.
         """
         # Quality score normalized to [0, 1]
         difficulty_factor = (
@@ -176,6 +179,10 @@ class WeightedTrustStrategy:
 
         Only considers the immediate next transition from the current
         level -- trust changes are restricted to one level per evaluation.
+
+        Returns:
+            The next adjacent level when its threshold is met, otherwise
+            the current level unchanged.
         """
         for key, from_level, to_level in TRANSITION_KEYS:
             if from_level != current_level:
@@ -195,7 +202,12 @@ class WeightedTrustStrategy:
         current: ToolAccessLevel,
         recommended: ToolAccessLevel,
     ) -> bool:
-        """Check if the transition requires human approval."""
+        """Check if the transition requires human approval.
+
+        Returns:
+            ``True`` when the matching transition's threshold requires
+            human approval; ``False`` for no-op or unknown transitions.
+        """
         if current == recommended:
             return False
 

@@ -64,6 +64,9 @@ async def resolve_consumer(
     """Validate preconditions and return the durable pull consumer.
 
     Creates the consumer lazily for BROADCAST subscribers.
+
+    Returns:
+        The durable pull consumer for the (channel, subscriber).
     """
     async with state.lock:
         require_running(state)
@@ -225,8 +228,10 @@ async def fetch_with_shutdown(
 ) -> list[Any] | None:
     """Fetch at most one message, racing against the shutdown event.
 
-    Returns ``None`` on shutdown, cancellation, or internal errors;
-    an empty list on clean timeout.
+    Returns:
+        The fetched messages (at most one), an empty list on clean
+        timeout, or ``None`` on shutdown, cancellation, or internal
+        error.
     """
     from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
@@ -290,7 +295,8 @@ async def try_ack(
 ) -> bool:
     """Attempt to ack a fetched JetStream message.
 
-    Returns ``True`` on success, ``False`` on failure.
+    Returns:
+        ``True`` on successful ack, ``False`` on failure.
     """
     try:
         await msg.ack()
@@ -322,6 +328,10 @@ async def build_envelope(
     failure cannot drop the message. Pre-parse rejection paths
     (oversized payload, deserialise error) still ack immediately
     because there is nothing downstream to deliver.
+
+    Returns:
+        A deferred-ack ``DeliveryEnvelope``, or ``None`` when there is
+        no message or it was rejected pre-parse.
     """
     if not msgs:
         return None
@@ -369,6 +379,10 @@ async def build_envelope(
         visible to the consumer-side ``await envelope.ack()`` call so
         a silent ack-drop cannot leave JetStream redelivering the same
         message into an oblivious downstream loop.
+
+        Raises:
+            CommunicationError: When the underlying ``try_ack`` reports
+                failure.
         """
         acked = await try_ack(
             msg,
@@ -401,7 +415,11 @@ async def receive_blocking(
     subscriber_id: str,
     sub: Any,
 ) -> DeliveryEnvelope | None:
-    """Block on a fetch loop until a message arrives or the bus stops."""
+    """Block on a fetch loop until a message arrives or the bus stops.
+
+    Returns:
+        The next delivery envelope, or ``None`` when the bus stops.
+    """
     # lint-allow: long-running-loop-kill-switch -- per-call subscribe pump.
     while True:
         if state.shutdown_event.is_set():
@@ -441,7 +459,11 @@ async def receive_with_timeout(
     sub: Any,
     timeout: float,  # noqa: ASYNC109
 ) -> DeliveryEnvelope | None:
-    """Wait up to ``timeout`` seconds across one or more fetch polls."""
+    """Wait up to ``timeout`` seconds across one or more fetch polls.
+
+    Returns:
+        The next delivery envelope, or ``None`` on timeout or shutdown.
+    """
     deadline = state.clock.monotonic() + timeout
     # lint-allow: long-running-loop-kill-switch -- per-call timed pump.
     while True:
@@ -490,7 +512,11 @@ async def receive(
     *,
     timeout: float | None = None,  # noqa: ASYNC109
 ) -> DeliveryEnvelope | None:
-    """Receive the next message from the durable consumer."""
+    """Receive the next message from the durable consumer.
+
+    Returns:
+        The next delivery envelope, or ``None`` on timeout/shutdown.
+    """
     sub = await resolve_consumer(state, channel_name, subscriber_id)
     if timeout is None:
         return await receive_blocking(state, channel_name, subscriber_id, sub)

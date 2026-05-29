@@ -98,7 +98,12 @@ _IMAGE_DATA_URI: Final[re.Pattern[str]] = re.compile(
 
 
 def _redact_str(value: str) -> str:
-    """Apply every substitution pattern to a single string."""
+    """Apply every substitution pattern to a single string.
+
+    Returns:
+        A new string with matched secrets and image data replaced by
+        their placeholders.
+    """
     if _IMAGE_DATA_URI.fullmatch(value):
         return IMAGE_DATA_PLACEHOLDER
     for pattern, replacement in _SUBSTITUTIONS:
@@ -107,7 +112,12 @@ def _redact_str(value: str) -> str:
 
 
 def _redact_value(value: object) -> object:
-    """Recursively redact a JSON-serialisable value into a new structure."""
+    """Recursively redact a JSON-serialisable value into a new structure.
+
+    Returns:
+        A new structure (str, dict, or list) with secrets and image data
+        replaced; non-string scalars are returned unchanged.
+    """
     if isinstance(value, str):
         return _redact_str(value)
     if isinstance(value, dict):

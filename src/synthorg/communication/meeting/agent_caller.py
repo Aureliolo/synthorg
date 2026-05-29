@@ -103,6 +103,14 @@ def build_meeting_agent_caller(
         max_tokens: int,
         meeting_id: str,
     ) -> AgentResponse:
+        """Invoke the agent's provider for one meeting turn.
+
+        Returns:
+            The agent's response with token usage and cost.
+
+        Raises:
+            UnknownMeetingAgentError: If the agent id is not registered.
+        """
         typed_agent_id = NotBlankStr(agent_id)
         # Validate meeting_id at the call boundary so a blank /
         # whitespace-only id surfaces as a clean ``ValueError`` here
@@ -186,6 +194,9 @@ def _build_messages(
     meeting.  Protocols inject the full turn context into ``prompt``
     (agenda, prior contributions, lens), so the system prompt only
     carries agent-stable identity.
+
+    Returns:
+        The ``system`` + ``user`` message pair for the turn.
     """
     system_content = _render_system_prompt(identity)
     return [
@@ -204,6 +215,10 @@ def _render_system_prompt(identity: AgentIdentity) -> str:
     meeting agent's system prompt, so every protocol gets the
     directive for free regardless of which one builds the user
     message.
+
+    Returns:
+        The rendered system prompt string, including the untrusted-
+        content directive.
     """
     lines: list[str] = [
         f"You are {identity.name}, a {identity.role} "
@@ -306,6 +321,12 @@ def build_unconfigured_meeting_agent_caller(
         _max_tokens: int,
         meeting_id: str,
     ) -> AgentResponse:
+        """Reject every call: the meeting caller is unconfigured.
+
+        Raises:
+            MeetingAgentCallerNotConfiguredError: Always; the required
+                dependencies are missing.
+        """
         logger.warning(
             MEETING_AGENT_CALL_FAILED,
             agent_id=agent_id,

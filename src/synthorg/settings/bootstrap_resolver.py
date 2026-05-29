@@ -29,7 +29,11 @@ logger = get_logger(__name__)
 
 
 def _env_var_name(namespace: str, key: str) -> str:
-    """Auto-derived env-var name for a (namespace, key) pair."""
+    """Auto-derived env-var name for a (namespace, key) pair.
+
+    Returns:
+        The ``SYNTHORG_<NAMESPACE>_<KEY>`` environment-variable name.
+    """
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
 
 
@@ -84,6 +88,10 @@ def resolve_init_value(  # noqa: UP047
 
     Raises:
         SettingNotFoundError: If ``(namespace, key)`` is not registered.
+        ValueError: If ``parse`` rejects the registered default (returns
+            ``None``); the default registration or the parser is then
+            inconsistent with the setting's declared type, so callers
+            expecting ``T`` must not receive the raw string default.
     """
     registry = get_registry()
     definition = registry.get(str(namespace), key)

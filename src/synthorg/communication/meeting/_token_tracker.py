@@ -36,7 +36,11 @@ class TokenTracker:
     output_tokens: int = 0
 
     def __post_init__(self) -> None:
-        """Validate budget is positive."""
+        """Validate budget is positive.
+
+        Raises:
+            ValueError: If ``budget`` is not positive.
+        """
         if self.budget <= 0:
             msg = f"budget must be positive, got {self.budget}"
             raise ValueError(msg)

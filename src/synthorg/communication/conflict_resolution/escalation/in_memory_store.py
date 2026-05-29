@@ -105,7 +105,11 @@ class InMemoryEscalationStore(EscalationQueueStore):
 
     @override
     async def get(self, escalation_id: str) -> Escalation | None:
-        """Fetch by ID or return ``None``."""
+        """Fetch by ID or return ``None``.
+
+        Returns:
+            The stored escalation, or ``None`` if absent.
+        """
         async with self._lock:
             return self._rows.get(escalation_id)
 
@@ -117,7 +121,16 @@ class InMemoryEscalationStore(EscalationQueueStore):
         limit: int = _DEFAULT_LIMIT,
         offset: int = _DEFAULT_OFFSET,
     ) -> tuple[tuple[Escalation, ...], int]:
-        """Return a page of rows ordered by ``created_at`` ascending."""
+        """Return a page of rows ordered by ``created_at`` ascending.
+
+        Returns:
+            A ``(page, total)`` pair: the page of escalations and the
+            total match count.
+
+        Raises:
+            ValueError: If ``limit`` is not positive or ``offset`` is
+                negative.
+        """
         if limit <= 0:
             msg = "limit must be positive"
             raise ValueError(msg)
@@ -142,7 +155,15 @@ class InMemoryEscalationStore(EscalationQueueStore):
         decision: EscalationDecision,
         decided_by: str,
     ) -> Escalation:
-        """Transition PENDING -> DECIDED with ``decision``."""
+        """Transition PENDING -> DECIDED with ``decision``.
+
+        Returns:
+            The updated, decided escalation.
+
+        Raises:
+            KeyError: If no escalation has ``escalation_id``.
+            ValueError: If the escalation is not PENDING.
+        """
         async with self._lock:
             row = self._rows.get(escalation_id)
             if row is None:
@@ -190,7 +211,15 @@ class InMemoryEscalationStore(EscalationQueueStore):
 
     @override
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
-        """Transition PENDING -> CANCELLED."""
+        """Transition PENDING -> CANCELLED.
+
+        Returns:
+            The updated, cancelled escalation.
+
+        Raises:
+            KeyError: If no escalation has ``escalation_id``.
+            ValueError: If the escalation is not PENDING.
+        """
         async with self._lock:
             row = self._rows.get(escalation_id)
             if row is None:
@@ -239,6 +268,9 @@ class InMemoryEscalationStore(EscalationQueueStore):
         Tags ``decided_by`` with ``"system:expiry"`` so audit consumers
         can distinguish sweeper-driven expiry from operator actions
         (mirrors the SQLite/Postgres backends).
+
+        Returns:
+            The ids of the escalations that were expired.
         """
         # ``parse_iso_utc`` rejects naive datetimes -- ``EscalationRow.expires_at``
         # is UTC-aware, so a naive ``fromisoformat`` parse would raise
@@ -310,6 +342,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         stop = asyncio.Event()
 
         async def _never() -> AsyncIterator[str]:
+            """Yield nothing until stopped (the in-memory no-notify stream)."""
             # lint-allow: long-running-loop-kill-switch -- sentinel coroutine.
             while not stop.is_set():
                 await stop.wait()

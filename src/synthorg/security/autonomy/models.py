@@ -59,7 +59,14 @@ class AutonomyPreset(BaseModel):
 
     @model_validator(mode="after")
     def _validate_disjoint(self) -> Self:
-        """Ensure auto_approve and human_approval are disjoint."""
+        """Ensure auto_approve and human_approval are disjoint.
+
+        Returns:
+            The validated preset.
+
+        Raises:
+            ValueError: If an action appears in both sets.
+        """
         overlap = set(self.auto_approve) & set(self.human_approval)
         if overlap:
             msg = (
@@ -175,11 +182,23 @@ class AutonomyConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Overlay company-namespace setting mirrors onto the raw input.
+
+        Returns:
+            The input data with mirrored settings applied.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_level_in_presets(self) -> Self:
-        """Ensure the configured level has a matching preset."""
+        """Ensure the configured level has a matching preset.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If ``level`` has no entry in ``presets``.
+        """
         if self.level not in self.presets:
             msg = (
                 f"Autonomy level {self.level!r} not found in presets "
@@ -218,7 +237,14 @@ class EffectiveAutonomy(BaseModel):
 
     @model_validator(mode="after")
     def _validate_disjoint(self) -> Self:
-        """Ensure expanded action sets are disjoint."""
+        """Ensure expanded action sets are disjoint.
+
+        Returns:
+            The validated resolved autonomy.
+
+        Raises:
+            ValueError: If an action appears in both expanded sets.
+        """
         overlap = self.auto_approve_actions & self.human_approval_actions
         if overlap:
             msg = (
@@ -274,7 +300,15 @@ class AutonomyUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_reason_length(self) -> Self:
-        """Reject reasons that are shorter than the minimum non-blank length."""
+        """Reject reasons that are shorter than the minimum non-blank length.
+
+        Returns:
+            The validated update request.
+
+        Raises:
+            ValueError: If the stripped reason is shorter than
+                ``_MIN_REASON_LENGTH``.
+        """
         if len(self.reason.strip()) < _MIN_REASON_LENGTH:
             msg = (
                 f"reason must contain at least {_MIN_REASON_LENGTH} "
@@ -365,7 +399,15 @@ class AutonomyOverride(BaseModel):
 
     @model_validator(mode="after")
     def _validate_downgrade(self) -> Self:
-        """Ensure current_level is not higher than original_level."""
+        """Ensure current_level is not higher than original_level.
+
+        Returns:
+            The validated override record.
+
+        Raises:
+            ValueError: If ``current_level`` is higher than
+                ``original_level`` (a downgrade must not raise autonomy).
+        """
         if compare_autonomy(self.current_level, self.original_level) > 0:
             msg = (
                 f"current_level {self.current_level.value!r} is higher than "

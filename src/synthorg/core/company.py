@@ -107,7 +107,15 @@ class ReportingLine(BaseModel):
 
     @model_validator(mode="after")
     def _validate_not_self_report(self) -> Self:
-        """Reject self-reporting relationships."""
+        """Reject self-reporting relationships.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the subordinate and supervisor resolve to the
+                same identity (an agent reporting to itself).
+        """
         sub_ns, sub_key = _identity_key(
             self.subordinate,
             self.subordinate_id,
@@ -188,7 +196,16 @@ class ApprovalChain(BaseModel):
 
     @model_validator(mode="after")
     def _validate_approvers(self) -> Self:
-        """Ensure approvers is non-empty, unique, and min_approvals is within bounds."""
+        """Ensure approvers is non-empty, unique, and min_approvals is within bounds.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the approver list is empty, contains
+                duplicates, or ``min_approvals`` exceeds the number of
+                approvers.
+        """
         if not self.approvers:
             msg = "Approval chain must have at least one approver"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
@@ -230,7 +247,15 @@ class DepartmentPolicies(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_action_types(self) -> Self:
-        """Ensure action_types are unique across approval chains."""
+        """Ensure action_types are unique across approval chains.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two approval chains target the same action
+                type.
+        """
         action_types = [c.action_type for c in self.approval_chains]
         if len(action_types) != len(set(action_types)):
             dupes = sorted(a for a, c in Counter(action_types).items() if c > 1)
@@ -244,7 +269,12 @@ class DepartmentPolicies(BaseModel):
 
 
 def _reject_same_department(from_dept: str, to_dept: str, label: str) -> None:
-    """Reject cross-department models where from and to are the same."""
+    """Reject cross-department models where from and to are the same.
+
+    Raises:
+        ValueError: If *from_dept* and *to_dept* resolve to the same
+            department (case-insensitive).
+    """
     if normalize_identifier(from_dept) == normalize_identifier(to_dept):
         msg = (
             f"{label} must be between different departments: "
@@ -276,7 +306,14 @@ class WorkflowHandoff(BaseModel):
 
     @model_validator(mode="after")
     def _validate_different_departments(self) -> Self:
-        """Reject handoffs within the same department."""
+        """Reject handoffs within the same department.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the source and target departments are the same.
+        """
         _reject_same_department(
             self.from_department,
             self.to_department,
@@ -309,7 +346,14 @@ class EscalationPath(BaseModel):
 
     @model_validator(mode="after")
     def _validate_different_departments(self) -> Self:
-        """Reject escalations within the same department."""
+        """Reject escalations within the same department.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the source and target departments are the same.
+        """
         _reject_same_department(
             self.from_department,
             self.to_department,
@@ -341,7 +385,15 @@ class Team(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_members(self) -> Self:
-        """Ensure no duplicate members (case-insensitive)."""
+        """Ensure no duplicate members (case-insensitive).
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any member name appears more than once
+                (case-insensitive).
+        """
         normalized = [normalize_identifier(m) for m in self.members]
         if len(normalized) != len(set(normalized)):
             dup_keys = {m for m, c in Counter(normalized).items() if c > 1}
@@ -427,7 +479,12 @@ class Department(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_ceremony_policy(self) -> Self:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            The instance with ``ceremony_policy`` deep-copied so the
+            caller's original dict cannot mutate the frozen model.
+        """
         if self.ceremony_policy is not None:
             object.__setattr__(
                 self,
@@ -438,7 +495,14 @@ class Department(BaseModel):
 
     @model_validator(mode="after")
     def _validate_head_id_requires_head(self) -> Self:
-        """Reject head_id without a corresponding head."""
+        """Reject head_id without a corresponding head.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``head_id`` is set while ``head`` is ``None``.
+        """
         if self.head_id is not None and self.head is None:
             msg = (
                 f"head_id {self.head_id!r} is set but head is None "
@@ -450,7 +514,15 @@ class Department(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:
-        """Ensure no duplicate team names within a department (case-insensitive)."""
+        """Ensure no duplicate team names within a department (case-insensitive).
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two teams share a name (case-insensitive)
+                within the department.
+        """
         names = [normalize_identifier(t.name) for t in self.teams]
         if len(names) != len(set(names)):
             dup_keys = {n for n, c in Counter(names).items() if c > 1}
@@ -469,6 +541,13 @@ class Department(BaseModel):
         Uses ``subordinate_id`` when present, falling back to
         ``subordinate`` name.  Keys are namespace-tagged to prevent
         false collisions between IDs and names.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If the same subordinate appears in more than one
+                reporting line.
         """
         subs = [
             _identity_key(r.subordinate, r.subordinate_id) for r in self.reporting_lines
@@ -564,7 +643,15 @@ class HRRegistry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_active_agents(self) -> Self:
-        """Ensure no duplicate entries in active_agents (case-insensitive)."""
+        """Ensure no duplicate entries in active_agents (case-insensitive).
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any agent appears more than once in
+                ``active_agents`` (case-insensitive).
+        """
         normalized = [normalize_identifier(a) for a in self.active_agents]
         if len(normalized) != len(set(normalized)):
             dup_keys = {a for a, c in Counter(normalized).items() if c > 1}
@@ -626,7 +713,15 @@ class Company(BaseModel):
 
     @model_validator(mode="after")
     def _validate_departments(self) -> Self:
-        """Validate department names are unique and budgets do not exceed 100%."""
+        """Validate department names are unique and budgets do not exceed 100%.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If two departments share a name (case-insensitive)
+                or the summed budget allocations exceed 100%.
+        """
         # Unique department names (normalized for case-insensitive comparison)
         names = [normalize_identifier(d.name) for d in self.departments]
         if len(names) != len(set(names)):

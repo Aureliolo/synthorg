@@ -26,6 +26,9 @@ _MAX_RGB_DISTANCE: Final[float] = math.sqrt(_RGB_CHANNELS * (_MAX_CHANNEL_VALUE*
 def resolve_screenshot(workspace: Path, workspace_path: str) -> Path:
     """Resolve ``workspace_path`` under ``workspace``, rejecting traversal.
 
+    Returns:
+        The resolved absolute path under the workspace root.
+
     Raises:
         VisionScreenshotError: If the path escapes the workspace or does
             not exist.

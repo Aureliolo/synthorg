@@ -141,6 +141,7 @@ class ConnectionCatalog(OAuthRotationMixin):
 
     @override
     def _invalidate_cache(self) -> None:
+        """Mark the cached connection snapshot stale (forces a reload)."""
         self._cache_valid = False
 
     def get_cached(self, name: str) -> Connection | None:
@@ -171,7 +172,12 @@ class ConnectionCatalog(OAuthRotationMixin):
         connection_type: ConnectionType,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credentials via the type's authenticator before persist."""
+        """Validate credentials via the type's authenticator before persist.
+
+        Raises:
+            InvalidConnectionAuthError: If the type's authenticator
+                rejects the supplied credentials.
+        """
         authenticator = get_authenticator(connection_type)
         try:
             authenticator.validate_credentials(credentials)
@@ -202,6 +208,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         Pydantic ``@model_validator`` failures are caught here so we
         never leave an orphaned secret behind with no row to clean it
         up from.
+
+        Returns:
+            The fully constructed and validated ``Connection`` model,
+            ready for secret write and persistence.
         """
         secret_ref = SecretRef(
             secret_id=NotBlankStr(secret_id),
@@ -386,13 +396,21 @@ class ConnectionCatalog(OAuthRotationMixin):
             return connection
 
     async def get(self, name: str) -> Connection | None:
-        """Retrieve a connection by name."""
+        """Retrieve a connection by name.
+
+        Returns:
+            The matching ``Connection``, or ``None`` when no connection
+            with that name exists.
+        """
         await self._ensure_cache()
         return self._cache.get(name)
 
     @override
     async def get_or_raise(self, name: str) -> Connection:
         """Retrieve a connection by name, or raise.
+
+        Returns:
+            The matching ``Connection``.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -416,6 +434,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         existing callers rely on; when ``limit`` is set, ``offset`` is
         honoured and the cache snapshot is sliced consistently with
         the connection's natural insertion order in the cache.
+
+        Returns:
+            A tuple of all cached connections, sliced to the requested
+            page window when ``limit`` is set.
         """
         await self._ensure_cache()
         snapshot = tuple(self._cache.values())
@@ -435,6 +457,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         """List connections of a specific type, optionally paginated.
 
         See :meth:`list_all` for the limit/offset contract.
+
+        Returns:
+            A tuple of connections matching ``connection_type``, sliced
+            to the requested page window when ``limit`` is set.
         """
         await self._ensure_cache()
         filtered = tuple(
@@ -447,12 +473,21 @@ class ConnectionCatalog(OAuthRotationMixin):
         return filtered[offset:end]
 
     async def count_all(self) -> int:
-        """Return the unfiltered count of cached connections."""
+        """Return the unfiltered count of cached connections.
+
+        Returns:
+            The number of connections currently held in the cache.
+        """
         await self._ensure_cache()
         return len(self._cache)
 
     async def count_by_type(self, connection_type: ConnectionType) -> int:
-        """Return the count of cached connections of ``connection_type``."""
+        """Return the count of cached connections of ``connection_type``.
+
+        Returns:
+            The number of cached connections whose ``connection_type``
+            matches the given value.
+        """
         await self._ensure_cache()
         return sum(
             1 for c in self._cache.values() if c.connection_type == connection_type
@@ -474,6 +509,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         cyclomatic-complexity budget.  The returned mapping is the
         proposed update *before* the idempotent-no-op filter
         compares it against the existing row.
+
+        Returns:
+            A dict of only the fields whose new values were explicitly
+            supplied (omitting ``_UNSET`` sentinels).
         """
         candidate: dict[str, object] = {}
         if base_url is not _UNSET:
@@ -522,6 +561,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         follows the same semantic: ``None`` clears the per-connection
         override (falls back to the global default), an int sets the
         override, leaving unset keeps the existing stored value.
+
+        Returns:
+            The updated ``Connection`` row after persistence; the same
+            unchanged row when no fields actually changed.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -605,6 +648,10 @@ class ConnectionCatalog(OAuthRotationMixin):
     ) -> Connection:
         """Update a connection's health status.
 
+        Returns:
+            The updated ``Connection`` row with the new ``health_status``
+            and ``last_health_check_at`` persisted.
+
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
         """
@@ -683,6 +730,10 @@ class ConnectionCatalog(OAuthRotationMixin):
         Resolves all ``SecretRef`` entries and returns the merged
         credential dict.
 
+        Returns:
+            A merged dict of plaintext credential key-value pairs from
+            all of the connection's ``SecretRef`` entries.
+
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
             SecretRetrievalError: If a referenced secret is missing
@@ -701,6 +752,14 @@ class ConnectionCatalog(OAuthRotationMixin):
         Extracted from :meth:`get_credentials` so callers that have
         already loaded the connection under a lock can reuse the
         merge logic without hitting the cache a second time.
+
+        Returns:
+            A deep-copied dict of merged plaintext credential key-value
+            pairs from all of the connection's ``SecretRef`` entries.
+
+        Raises:
+            SecretRetrievalError: If a referenced secret is missing or
+                cannot be decoded by the backend.
         """
         name = conn.name
         merged: dict[str, str] = {}

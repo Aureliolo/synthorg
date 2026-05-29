@@ -129,6 +129,10 @@ def _big_five_score(a: PersonalityConfig, b: PersonalityConfig) -> float:
     Openness, conscientiousness, agreeableness, stress_response benefit
     from similarity. Extraversion benefits from moderate difference
     (optimal difference: 0.3, scored via tent function).
+
+    Returns:
+        The weighted Big Five similarity score (higher means a closer
+        personality match).
     """
     # Similarity: 1.0 - |diff|
     openness_sim = 1.0 - abs(a.openness - b.openness)
@@ -157,7 +161,12 @@ def _collaboration_score(
     a: CollaborationPreference,
     b: CollaborationPreference,
 ) -> float:
-    """Score collaboration alignment."""
+    """Score collaboration alignment.
+
+    Returns:
+        A score in ``[0.2, 1.0]``: ``1.0`` for identical preferences,
+        ``0.5`` for adjacent, ``0.2`` otherwise.
+    """
     diff = abs(_COLLAB_ORDER[a] - _COLLAB_ORDER[b])
     if diff == 0:
         return 1.0
@@ -167,7 +176,14 @@ def _collaboration_score(
 
 
 def _conflict_score(a: ConflictApproach, b: ConflictApproach) -> float:
-    """Score conflict approach complementarity."""
+    """Score conflict approach complementarity.
+
+    Returns:
+        A score in ``[0.2, 1.0]``: ``1.0`` when both approaches are
+        constructive, ``0.2`` for a known destructive pairing, ``0.6``
+        when exactly one approach is constructive, and ``0.4`` for other
+        mixed combinations.
+    """
     if a in _CONSTRUCTIVE and b in _CONSTRUCTIVE:
         return 1.0
     if (a, b) in _DESTRUCTIVE_PAIRS or (b, a) in _DESTRUCTIVE_PAIRS:

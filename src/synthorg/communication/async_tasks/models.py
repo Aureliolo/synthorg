@@ -48,7 +48,14 @@ class AsyncTaskRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timestamp_order(self) -> Self:
-        """Ensure updated_at >= created_at."""
+        """Ensure updated_at >= created_at.
+
+        Returns:
+            The validated record.
+
+        Raises:
+            ValueError: If ``updated_at`` precedes ``created_at``.
+        """
         if self.updated_at < self.created_at:
             msg = (
                 f"updated_at ({self.updated_at}) must be >= "
@@ -108,7 +115,14 @@ class AsyncTaskStateChannel(BaseModel):
 
     @model_validator(mode="after")
     def _validate_task_id_uniqueness(self) -> Self:
-        """Ensure task_ids are unique within the channel."""
+        """Ensure task_ids are unique within the channel.
+
+        Returns:
+            The validated channel.
+
+        Raises:
+            ValueError: If two records share a ``task_id``.
+        """
         task_ids = [r.task_id for r in self.records]
         if len(task_ids) != len(set(task_ids)):
             seen: set[str] = set()
@@ -158,6 +172,10 @@ class AsyncTaskStateChannel(BaseModel):
         Returns:
             New state channel with the updated record, or unchanged
             if the task_id is not found.
+
+        Raises:
+            ValueError: If ``updated_at`` precedes the record's
+                ``created_at``.
         """
         new_records: list[AsyncTaskRecord] = []
         for r in self.records:

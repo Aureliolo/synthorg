@@ -80,6 +80,11 @@ class InMemoryWebhookDefinitionStore:
         Enforces the same name-uniqueness invariant as :meth:`add`:
         another definition with the same name under a different ID is
         rejected so :meth:`get_by_name` stays deterministic.
+
+        Raises:
+            KeyError: If no definition with the given ID exists.
+            ValueError: If another definition with the same name exists
+                under a different ID.
         """
         async with self._lock:
             if definition.id not in self._by_id:
@@ -92,7 +97,13 @@ class InMemoryWebhookDefinitionStore:
             self._by_id[definition.id] = definition
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
-        """Remove a definition; returns ``True`` when one was removed."""
+        """Remove a definition; returns ``True`` when one was removed.
+
+        Returns:
+            ``True`` when a definition was found and removed; ``False``
+            when the ID is not a valid UUID or no matching definition
+            exists.
+        """
         try:
             key = UUID(definition_id)
         except ValueError:

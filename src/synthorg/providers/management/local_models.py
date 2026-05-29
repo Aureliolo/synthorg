@@ -73,6 +73,10 @@ def _sanitize_ollama_error(raw: object) -> str:
     is intentionally side-effect free; callers attach the contextual
     ``PROVIDER_MODEL_PULL_FAILED`` log so the same upstream failure
     does not produce duplicate log lines.
+
+    Returns:
+        A redacted error string safe to forward to clients, or
+        ``"Pull failed"`` for non-string input.
     """
     if not isinstance(raw, str):
         return "Pull failed"
@@ -110,7 +114,15 @@ class PullProgressEvent(BaseModel):
 
     @model_validator(mode="after")
     def _check_cross_field_invariants(self) -> PullProgressEvent:
-        """Enforce cross-field consistency."""
+        """Enforce cross-field consistency.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If an error event is not terminal (``done`` is
+                ``False`` while ``error`` is set).
+        """
         if self.error is not None and not self.done:
             msg = "error events must be terminal (done=True)"
             raise ValueError(msg)

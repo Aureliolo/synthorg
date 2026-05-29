@@ -52,6 +52,12 @@ def _require_utc(value: datetime) -> datetime:
     is documented and stored as UTC.  Enforcing the invariant at the
     DTO boundary keeps round-trips deterministic and pushes the
     burden of normalisation off downstream layers.
+
+    Returns:
+        The unchanged *value* when its UTC offset is exactly zero.
+
+    Raises:
+        ValueError: If the datetime's offset is not exactly UTC.
     """
     if value.utcoffset() != UTC.utcoffset(None):
         msg = f"datetime must be in UTC; got offset {value.utcoffset()!r}"
@@ -75,6 +81,14 @@ def _recursively_freeze(value: Any) -> Any:
     and Python's set iteration order is not stable across runs.  Senders
     that need set semantics in the payload should pass a sorted tuple
     instead.
+
+    Returns:
+        An immutable equivalent of *value* (``MappingProxyType`` for
+        dicts, ``tuple`` for lists/tuples; scalars unchanged).
+
+    Raises:
+        TypeError: If *value* is a ``set`` or ``frozenset`` (forbidden
+            for determinism).
     """
     if isinstance(value, (set, frozenset)):
         msg = (
@@ -109,6 +123,14 @@ def _recursively_thaw(value: Any) -> Any:
     ``_freeze_payload`` (e.g. by mutating the model after construction)
     fails fast at serialise time rather than emitting a non-deterministic
     audit row.
+
+    Returns:
+        A JSON-serialisable copy of *value* with ``MappingProxyType``
+        replaced by ``dict`` and tuples replaced by ``list``.
+
+    Raises:
+        TypeError: If *value* is a ``set`` or ``frozenset`` (forbidden
+            for determinism).
     """
     if isinstance(value, (set, frozenset)):
         msg = (
@@ -244,6 +266,10 @@ class ProviderAuditEvent(BaseModel):
         ``_serialize_payload`` field-serializer thaws back to plain
         builtins at JSON-encode time so msgspec / pydantic-core
         serialization still succeeds.
+
+        Returns:
+            The validated instance with ``payload`` replaced by a
+            recursively frozen ``MappingProxyType`` tree.
         """
         frozen = _recursively_freeze(self.payload)
         # ``MappingProxyType`` is not its own type; identity check
@@ -260,6 +286,10 @@ class ProviderAuditEvent(BaseModel):
         ``tuple`` (when typed as ``Mapping`` value), or ``frozenset``
         directly; ``_recursively_thaw`` produces a JSON-encodable copy
         that's independent of the in-memory immutable structure.
+
+        Returns:
+            A plain ``dict`` copy of the payload with all immutable
+            containers converted to ``dict``/``list`` for JSON encoding.
         """
         thawed = _recursively_thaw(payload)
         # Outer container is always a Mapping after thaw because
@@ -338,6 +368,13 @@ class RateLimitsUpdateRequest(BaseModel):
         endpoint is to set a cap (``0`` or positive int) or leave a
         cap unchanged (omit the field); explicit ``null`` is neither
         and must surface as an explicit validation failure.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If no fields were set, or any explicitly-provided
+                field has a ``null`` value.
         """
         explicit = self.model_dump(exclude_unset=True)
         if not explicit:
@@ -446,7 +483,14 @@ class PresetOverrideUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> Self:
-        """Reject empty patches; an empty patch has no effect."""
+        """Reject empty patches; an empty patch has no effect.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If no fields were explicitly set (empty patch).
+        """
         explicit = self.model_dump(exclude_unset=True)
         if not explicit:
             msg = (
@@ -519,6 +563,15 @@ class _OAuthRotation(BaseModel):
     @field_validator("oauth_token_url")
     @classmethod
     def _check_oauth_token_url(cls, v: str) -> str:
+        """Reject OAuth token URLs without an http(s) scheme, host, or port.
+
+        Returns:
+            The validated ``oauth_token_url`` unchanged.
+
+        Raises:
+            ValueError: If the URL lacks an http/https scheme or a host,
+                or carries a malformed port.
+        """
         # Inline check (no import from .dtos to avoid the
         # providers / security / providers.cost_recording circular import
         # path).  Mirrors ``_validate_oauth_token_url`` in .dtos.

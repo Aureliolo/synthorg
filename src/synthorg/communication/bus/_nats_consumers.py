@@ -41,8 +41,14 @@ async def create_pull_consumer(
 ) -> Any:
     """Create a durable pull consumer for (channel, subscriber).
 
-    Returns the subscription object. Does NOT acquire ``state.lock``
-    so callers can perform the network I/O outside the lock.
+    Does NOT acquire ``state.lock`` so callers can perform the network
+    I/O outside the lock.
+
+    Returns:
+        The JetStream pull-subscription object.
+
+    Raises:
+        BusStreamError: If the JetStream context is uninitialised.
     """
     from nats.js.api import ConsumerConfig  # noqa: PLC0415
 
@@ -79,7 +85,11 @@ async def subscribe(
     channel_name: str,
     subscriber_id: str,
 ) -> Subscription:
-    """Subscribe an agent to a channel via a durable pull consumer."""
+    """Subscribe an agent to a channel via a durable pull consumer.
+
+    Returns:
+        The ``Subscription`` handle for the new consumer.
+    """
     async with state.lock:
         require_running(state)
     await resolve_channel_or_raise(state, channel_name)

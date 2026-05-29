@@ -113,6 +113,8 @@ class ModelRouter:
         Raises:
             ModelResolutionError: If a required model cannot be found.
             NoAvailableModelError: If all candidates are exhausted.
+            RoutingError: Any other routing failure raised by the
+                selected strategy (re-raised after logging).
         """
         try:
             decision = self._strategy.select(

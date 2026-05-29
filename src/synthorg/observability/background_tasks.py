@@ -103,7 +103,12 @@ class BackgroundTaskRegistry:
         event: str,
         context: Mapping[str, Any],
     ) -> Callable[[asyncio.Task[Any]], None]:
-        """Build a done-callback that discards the task and logs failures."""
+        """Build a done-callback that discards the task and logs failures.
+
+        Returns:
+            A callback that removes the finished task from the tracking
+            set and logs a redacted failure record if it raised.
+        """
         owner = self._owner
         tasks = self._tasks
 

@@ -69,6 +69,12 @@ def clear_active_collector() -> None:
 
 
 def _active() -> PrometheusCollector | None:
+    """Return the live collector behind the module weakref, if any.
+
+    Returns:
+        The registered ``PrometheusCollector``, or ``None`` when none is
+        wired or the weakref target has been collected.
+    """
     if _collector_ref is None:
         return None
     return _collector_ref()
@@ -83,6 +89,11 @@ def _safe_record(
     Uses :data:`ParamSpec` so the decorated call signatures are
     preserved under strict mypy -- each wrapper keeps its original
     keyword-only arguments visible to callers and checkers.
+
+    Returns:
+        A decorator that wraps the target function to catch and log
+        non-``TypeError`` collector exceptions, returning ``None`` on
+        such a failure.
     """
 
     def _wrap(fn: Callable[_P, _R]) -> Callable[_P, _R | None]:

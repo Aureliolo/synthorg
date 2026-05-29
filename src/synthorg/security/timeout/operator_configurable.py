@@ -37,7 +37,12 @@ class OperatorConfigurableRiskClassifier:
         )
 
     def classify(self, action_type: str) -> ApprovalRiskLevel:
-        """Classify via the operator map; unknown -> HIGH (D19)."""
+        """Classify via the operator map; unknown -> HIGH (D19).
+
+        Returns:
+            The mapped risk level, or HIGH when the action type is
+            absent from the operator map.
+        """
         result = self._risk_map.get(action_type)
         if result is None:
             logger.warning(

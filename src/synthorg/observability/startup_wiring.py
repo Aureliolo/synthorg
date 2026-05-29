@@ -69,6 +69,11 @@ def _load_trace_config() -> TraceConfig:
     present, optional env vars control service name and sampling
     ratio; everything else uses :class:`OtlpHttpTraceConfig`
     defaults.
+
+    Returns:
+        A ``DisabledTraceConfig`` when no endpoint env var is set,
+        otherwise an ``OtlpHttpTraceConfig`` populated from the
+        environment.
     """
     endpoint = os.environ.get(_TRACE_ENDPOINT_ENV, "").strip()
     if not endpoint:

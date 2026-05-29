@@ -58,7 +58,13 @@ class SlackHealthCheck:
         self._catalog = catalog
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Verify the Slack token is valid via auth.test."""
+        """Verify the Slack token is valid via auth.test.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` on ``ok=true``, ``UNHEALTHY``
+            on HTTP error / invalid JSON / ``ok=false``, or ``UNKNOWN``
+            when the catalog is not bound.
+        """
         now = datetime.now(UTC)
         if self._catalog is None:
             logger.warning(
@@ -145,7 +151,13 @@ class SlackHealthCheck:
         token: str,
         base_url: str,
     ) -> HealthReport:
-        """Execute the ``auth.test`` call and interpret the response."""
+        """Execute the ``auth.test`` call and interpret the response.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` when ``auth.test`` returns
+            ``{"ok": true}``, otherwise ``UNHEALTHY`` (HTTP transport
+            failure, non-2xx status, invalid JSON, or ``ok=false``).
+        """
         start = self._clock.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

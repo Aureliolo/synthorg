@@ -74,7 +74,12 @@ class ProviderAuditService:
         after_id: int | None = None,
         limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
-        """Read one provider's audit log, newest first, with ``has_more``."""
+        """Read one provider's audit log, newest first, with ``has_more``.
+
+        Returns:
+            A ``(events, has_more)`` tuple: the page of audit events
+            (newest first) and whether more rows remain.
+        """
         return await self._repo.list(
             provider_name=provider_name,
             after_id=after_id,
@@ -82,5 +87,9 @@ class ProviderAuditService:
         )
 
     async def purge_before_id(self, *, before_id: int) -> int:
-        """Retention sweeper: drop rows older than ``before_id``."""
+        """Retention sweeper: drop rows older than ``before_id``.
+
+        Returns:
+            The number of audit rows deleted.
+        """
         return await self._repo.purge_before_id(before_id=before_id)

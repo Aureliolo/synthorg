@@ -62,7 +62,14 @@ class GenericHttpHealthCheck:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Execute a HEAD (or GET fallback) against ``base_url``."""
+        """Execute a HEAD (or GET fallback) against ``base_url``.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` for an HTTP status < 400,
+            ``UNHEALTHY`` for status >= 400, a network error, or an
+            SSRF policy rejection, and ``UNKNOWN`` when no ``base_url``
+            is configured.
+        """
         if not connection.base_url:
             return HealthReport(
                 connection_name=connection.name,

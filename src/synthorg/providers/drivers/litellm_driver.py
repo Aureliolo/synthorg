@@ -219,7 +219,17 @@ class LiteLLMDriver(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        """Call ``litellm.acompletion`` and map the response."""
+        """Call ``litellm.acompletion`` and map the response.
+
+        Returns:
+            A ``CompletionResponse`` mapped from LiteLLM's
+            ``ModelResponse``.
+
+        Raises:
+            ProviderError: A provider error (re-raised directly, or
+                mapped from a non-provider exception via
+                ``_map_exception``).
+        """
         try:
             await self._ensure_credentials_resolved()
             model_config = self._resolve_model(model)
@@ -252,6 +262,14 @@ class LiteLLMDriver(BaseCompletionProvider):
         Returns an ``AsyncIterator[StreamChunk]`` (rather than yielding
         directly) because the base class ``await``s this coroutine to
         obtain the iterator.
+
+        Returns:
+            An ``AsyncIterator[StreamChunk]`` that lazily maps LiteLLM
+            streaming chunks.
+
+        Raises:
+            ProviderError: A provider error raised at stream-open time
+                (re-raised directly, or mapped via ``_map_exception``).
         """
         try:
             await self._ensure_credentials_resolved()
@@ -284,6 +302,10 @@ class LiteLLMDriver(BaseCompletionProvider):
         :class:`ProviderModelDefaults.fallback_max_output_tokens` when
         LiteLLM has no data.  The final ``max_output_tokens`` is
         capped at the model's configured ``max_context``.
+
+        Returns:
+            A ``ModelCapabilities`` built from the static preset config
+            and LiteLLM model info.
         """
         model_config = self._resolve_model(model)
         return self._build_capabilities(model_config)
@@ -300,6 +322,10 @@ class LiteLLMDriver(BaseCompletionProvider):
         lookup, all of which is synchronous and in-process. Per-model
         failures (unknown ids, validation errors) collapse to ``None``
         entries; ``MemoryError`` and ``RecursionError`` propagate.
+
+        Returns:
+            A read-only ``MappingProxyType`` mapping each model to its
+            ``ModelCapabilities`` or ``None`` on per-model failure.
         """
         results: dict[str, ModelCapabilities | None] = {}
         for model in models:
@@ -339,6 +365,10 @@ class LiteLLMDriver(BaseCompletionProvider):
         Shared between single ``_do_get_model_capabilities`` and the
         batched ``batch_get_capabilities`` so both paths produce
         identical results.
+
+        Returns:
+            A ``ModelCapabilities`` constructed from the resolved model
+            config and LiteLLM info.
         """
         litellm_model = f"{self._routing_key}/{model_config.id}"
         info = self._get_litellm_model_info(litellm_model)
@@ -379,6 +409,10 @@ class LiteLLMDriver(BaseCompletionProvider):
     ) -> dict[str, ProviderModelConfig]:
         """Build alias/id -> model config lookup.
 
+        Returns:
+            A dict mapping each model's canonical ID and any alias to its
+            ``ProviderModelConfig``.
+
         Raises:
             ValueError: If two models share the same ID, or an alias
                 collides with another model's ID or alias.
@@ -413,6 +447,10 @@ class LiteLLMDriver(BaseCompletionProvider):
     def _resolve_model(self, model: str) -> ProviderModelConfig:
         """Resolve a model alias or ID to its config.
 
+        Returns:
+            The ``ProviderModelConfig`` for the requested model alias or
+            ID.
+
         Raises:
             ModelNotFoundError: If not found in this provider.
         """
@@ -445,7 +483,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         config: CompletionConfig | None = None,
         stream: bool = False,
     ) -> dict[str, Any]:
-        """Build keyword arguments for ``litellm.acompletion``."""
+        """Build keyword arguments for ``litellm.acompletion``.
+
+        Returns:
+            A kwargs dict for ``litellm.acompletion`` with credentials,
+            base URL, and completion config merged in.
+        """
         kwargs: dict[str, Any] = {
             "model": litellm_model,
             "messages": messages_to_dicts(messages),
@@ -517,7 +560,15 @@ class LiteLLMDriver(BaseCompletionProvider):
         response: Any,
         model_config: ProviderModelConfig,
     ) -> CompletionResponse:
-        """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``."""
+        """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``.
+
+        Returns:
+            A ``CompletionResponse`` populated from the first choice's
+            content, tool calls, finish reason, token usage, and cost.
+
+        Raises:
+            ProviderInternalError: If the LiteLLM response has no choices.
+        """
         choices = getattr(response, "choices", [])
         if not choices:
             logger.error(
@@ -572,12 +623,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         model: str,
         model_config: ProviderModelConfig,
     ) -> AsyncGenerator[StreamChunk]:
-        """Return an async generator that maps raw chunks."""
+        """Return an async generator that maps raw chunks.
+
+        Returns:
+            An ``AsyncGenerator[StreamChunk]`` mapping raw LiteLLM stream
+            chunks and appending ``DONE`` plus pending tool-call chunks.
+        """
         process = self._process_chunk
         handle_exc = self._map_exception
         provider = self._provider_name
 
         async def _generate() -> AsyncGenerator[StreamChunk]:
+            """Map raw LiteLLM chunks, appending DONE + pending tool calls."""
             pending: dict[int, _ToolCallAccumulator] = {}
             try:
                 async for chunk in raw_stream:
@@ -613,7 +670,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         pending: dict[int, _ToolCallAccumulator],
         model_config: ProviderModelConfig,
     ) -> list[StreamChunk]:
-        """Extract ``StreamChunk`` events from one raw chunk."""
+        """Extract ``StreamChunk`` events from one raw chunk.
+
+        Returns:
+            A list of ``StreamChunk`` events extracted from the raw
+            LiteLLM chunk (may be empty).
+        """
         result: list[StreamChunk] = []
         choices = getattr(chunk, "choices", [])
 
@@ -656,7 +718,11 @@ class LiteLLMDriver(BaseCompletionProvider):
         usage_obj: Any,
         model_config: ProviderModelConfig,
     ) -> StreamChunk:
-        """Build a ``USAGE`` stream chunk."""
+        """Build a ``USAGE`` stream chunk.
+
+        Returns:
+            A ``StreamChunk`` carrying the token-usage event.
+        """
         input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
         output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
         usage = self.compute_cost(
@@ -677,7 +743,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         exc: Exception,
         model: str,
     ) -> errors.ProviderError:
-        """Map a LiteLLM exception to the provider error hierarchy."""
+        """Map a LiteLLM exception to the provider error hierarchy.
+
+        Returns:
+            The matching ``ProviderError`` subclass for the exception, or
+            a generic ``ProviderInternalError`` for unmapped types.
+        """
         ctx: dict[str, Any] = {
             "provider": self._provider_name,
             "model": model,
@@ -723,7 +794,12 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     @staticmethod
     def _extract_retry_after(exc: Exception) -> float | None:
-        """Extract ``retry-after`` seconds from exception headers."""
+        """Extract ``retry-after`` seconds from exception headers.
+
+        Returns:
+            The ``retry-after`` seconds as a ``float``, or ``None`` when
+            the header is absent, not a dict, or unparseable.
+        """
         headers = getattr(exc, "headers", None)
         if not isinstance(headers, dict):
             return None
@@ -754,6 +830,10 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         Returns empty dict if the model is unknown to LiteLLM.
         Uses config defaults when metadata is unavailable.
+
+        Returns:
+            A dict of LiteLLM model metadata fields, or an empty dict
+            when the model is unknown or the lookup raises.
         """
         try:
             raw = _litellm.get_model_info(model=litellm_model)

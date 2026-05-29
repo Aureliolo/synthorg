@@ -127,7 +127,11 @@ class DelegationGuard:
         delegator_id: str,
         delegatee_id: str,
     ) -> GuardCheckOutcome:
-        """Log a blocked delegation and return the outcome."""
+        """Log a blocked delegation and return the outcome.
+
+        Returns:
+            The outcome unchanged (passed through after logging).
+        """
         logger.info(
             DELEGATION_LOOP_BLOCKED,
             mechanism=outcome.mechanism,

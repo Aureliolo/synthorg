@@ -42,7 +42,12 @@ class ActionTypeCategory(StrEnum):
 
 
 def _build_category_map() -> dict[str, frozenset[str]]:
-    """Group all built-in ActionType members by category prefix."""
+    """Group all built-in ActionType members by category prefix.
+
+    Returns:
+        A mapping of category prefix to the frozenset of action-type
+        values sharing it.
+    """
     groups: dict[str, set[str]] = {}
     for member in ActionType:
         category = member.value.split(":")[0]
@@ -109,7 +114,11 @@ class ActionTypeRegistry:
         )
 
     def is_registered(self, action_type: str) -> bool:
-        """Check if an action type is known (built-in or custom)."""
+        """Check if an action type is known (built-in or custom).
+
+        Returns:
+            ``True`` if the action type is registered, ``False`` otherwise.
+        """
         return action_type in self._all_types
 
     def validate(self, action_type: str) -> None:

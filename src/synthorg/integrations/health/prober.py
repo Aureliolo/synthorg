@@ -159,7 +159,12 @@ class HealthProberService:
             logger.info(HEALTH_PROBER_STOPPED)
 
     async def _probe_loop(self) -> None:
-        """Run probes indefinitely at the configured interval."""
+        """Run probes indefinitely at the configured interval.
+
+        Raises:
+            asyncio.CancelledError: If the probe task is cancelled via
+                ``stop()`` or direct task cancellation.
+        """
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
@@ -303,6 +308,10 @@ class HealthProberService:
         once ``unhealthy_threshold`` is hit. Previously a single
         failure forced ``DEGRADED`` regardless of configuration, so
         raising ``degraded_threshold`` had no effect.
+
+        Returns:
+            The new ``ConnectionStatus`` (``HEALTHY``, ``DEGRADED``, or
+            ``UNHEALTHY``) after applying the failure-count thresholds.
         """
         async with self._failure_lock:
             if report_status == ConnectionStatus.HEALTHY:

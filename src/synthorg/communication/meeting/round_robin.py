@@ -61,6 +61,10 @@ def _format_transcript_entry(agent_id: str, content: str) -> str:
     transcript rebuild so the two paths cannot drift out of sync. The
     ``[agent_id]:`` prefix sits outside the fence as model-trusted
     attribution; the agent's free-form output goes inside the fence.
+
+    Returns:
+        The transcript entry with the agent's output fenced as
+        untrusted peer content.
     """
     return f"[{agent_id}]:\n" + wrap_untrusted(
         TAG_PEER_CONTRIBUTION,
@@ -73,7 +77,11 @@ def _build_turn_prompt(
     transcript: list[str],
     agent_id: str,
 ) -> str:
-    """Build a turn prompt with agenda, transcript, and instruction."""
+    """Build a turn prompt with agenda, transcript, and instruction.
+
+    Returns:
+        The turn prompt for the named agent.
+    """
     parts = [agenda_text, ""]
     if transcript:
         parts.append("Transcript so far:")
@@ -89,7 +97,11 @@ def _build_summary_prompt(
     agenda_text: str,
     transcript: list[str],
 ) -> str:
-    """Build a summary prompt for the leader."""
+    """Build a summary prompt for the leader.
+
+    Returns:
+        The leader summary prompt embedding the full transcript.
+    """
     parts = [agenda_text, "", "Full transcript:"]
     parts.extend(transcript)
     parts.append("")
@@ -147,6 +159,10 @@ class RoundRobinProtocol:
 
         Returns:
             Complete meeting minutes.
+
+        Raises:
+            MeetingBudgetExhaustedError: If the token budget is exhausted
+                before the protocol completes.
         """
         started_at = datetime.now(UTC)
         tracker = TokenTracker(budget=token_budget)

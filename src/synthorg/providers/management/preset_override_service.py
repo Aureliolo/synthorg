@@ -156,6 +156,10 @@ class PresetOverrideService:
         ``None``, str) so the local type is ``dict[str, Any]``;
         ``PresetOverride.model_validate`` enforces the per-field
         contract.
+
+        Returns:
+            The validated ``PresetOverride`` built from the merged base
+            and updates.
         """
         from typing import Any  # noqa: PLC0415
 
@@ -183,7 +187,13 @@ class PresetOverrideService:
         preset: CloudPreset | LocalPreset,
         override: PresetOverride,
     ) -> None:
-        """Reject overrides that clash with the preset's kind."""
+        """Reject overrides that clash with the preset's kind.
+
+        Raises:
+            ProviderValidationError: If ``candidate_urls`` is set on a
+                cloud-preset override, or ``base_url`` is set on a
+                local-preset override.
+        """
         is_cloud = isinstance(preset, CloudPreset)
         if is_cloud and override.candidate_urls is not None:
             msg = (

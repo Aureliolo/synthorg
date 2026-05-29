@@ -40,7 +40,14 @@ class OAuthAppAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields (presence + URL format)."""
+        """Validate credential fields (presence + URL format).
+
+        Raises:
+            InvalidConnectionAuthError: If ``client_id``,
+                ``client_secret``, ``auth_url``, or ``token_url`` is
+                missing/blank, or ``auth_url``/``token_url`` has no host
+                or uses a non-HTTPS scheme on a non-loopback host.
+        """
         for field in ("client_id", "client_secret", "auth_url", "token_url"):
             value = credentials.get(field)
             if not isinstance(value, str) or not value.strip():

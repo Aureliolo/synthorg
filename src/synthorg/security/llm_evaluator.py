@@ -251,8 +251,9 @@ class LlmSecurityEvaluator:
     ) -> CompletionResponse | SecurityVerdict:
         """Call the LLM with the security context.
 
-        Returns the ``CompletionResponse`` on success, or a
-        ``SecurityVerdict`` (from error policy) on failure.
+        Returns:
+            The ``CompletionResponse`` on success, or a
+            ``SecurityVerdict`` (from error policy) on timeout/failure.
         """
         messages = self._build_messages(context)
         # Per-task task_id when the calling context carries one so
@@ -305,7 +306,11 @@ class LlmSecurityEvaluator:
         rule_verdict: SecurityVerdict,
         start: float,
     ) -> SecurityVerdict:
-        """Handle LLM call timeout."""
+        """Handle LLM call timeout.
+
+        Returns:
+            The error-policy ``SecurityVerdict`` for the timeout.
+        """
         duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         logger.warning(
             SECURITY_LLM_EVAL_TIMEOUT,
@@ -325,7 +330,11 @@ class LlmSecurityEvaluator:
         start: float,
         exc: Exception,
     ) -> SecurityVerdict:
-        """Handle unexpected LLM call errors."""
+        """Handle unexpected LLM call errors.
+
+        Returns:
+            The error-policy ``SecurityVerdict`` for the failure.
+        """
         duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
         # Use ``logger.warning`` + ``safe_error_description``
         # instead of ``logger.exception`` so we don't emit a
@@ -413,8 +422,10 @@ class LlmSecurityEvaluator:
     ) -> tuple[str, BaseCompletionProvider] | None:
         """Try to select a cross-family provider.
 
-        Returns ``(name, driver)`` on success, or ``None`` to fall
-        back to the first available provider.
+        Returns:
+            A ``(name, driver)`` pair for a provider in a different
+            family, or ``None`` to fall back to the first available
+            provider.
         """
         agent_family = get_family(agent_provider_name, self._configs)
         cross_family = providers_excluding_family(
@@ -445,6 +456,10 @@ class LlmSecurityEvaluator:
 
         Uses explicit config model if set, otherwise picks the first
         model from the selected provider's config.
+
+        Returns:
+            The model alias or id to evaluate with; falls back to the
+            provider name when no model is configured.
         """
         if self._config.model is not None:
             return self._config.model
@@ -474,7 +489,12 @@ class LlmSecurityEvaluator:
         self,
         context: SecurityContext,
     ) -> list[ChatMessage]:
-        """Build the LLM prompt messages from the security context."""
+        """Build the LLM prompt messages from the security context.
+
+        Returns:
+            The system + user ``ChatMessage`` list, with attacker-
+            controlled arguments wrapped in an untrusted fence.
+        """
         args_str = self._serialize_arguments(context.arguments)
         # The serialised tool arguments are the only
         # attacker-controllable field in this prompt -- wrap them in
@@ -512,7 +532,11 @@ class LlmSecurityEvaluator:
         self,
         arguments: dict[str, object],
     ) -> str:
-        """Serialize tool arguments using the configured strategy."""
+        """Serialize tool arguments using the configured strategy.
+
+        Returns:
+            The serialised (and truncated) argument string.
+        """
         strategy = self._config.argument_truncation
 
         if strategy in (
@@ -528,7 +552,11 @@ class LlmSecurityEvaluator:
         self,
         arguments: dict[str, object],
     ) -> str:
-        """Serialize and truncate the full JSON string."""
+        """Serialize and truncate the full JSON string.
+
+        Returns:
+            The JSON string, truncated to ``_MAX_ARGS_DISPLAY``.
+        """
         raw = self._safe_json_dumps(arguments)
         if len(raw) > _MAX_ARGS_DISPLAY:
             return raw[:_MAX_ARGS_DISPLAY] + "... [truncated]"
@@ -538,7 +566,11 @@ class LlmSecurityEvaluator:
         self,
         arguments: dict[str, object],
     ) -> str:
-        """Truncate each value individually, preserving all keys."""
+        """Truncate each value individually, preserving all keys.
+
+        Returns:
+            The JSON string with per-value truncation applied.
+        """
         truncated: dict[str, object] = {}
         for key, value in arguments.items():
             str_val = self._safe_json_dumps(value)
@@ -549,7 +581,11 @@ class LlmSecurityEvaluator:
         return self._safe_json_dumps(truncated)
 
     def _safe_json_dumps(self, obj: object) -> str:
-        """JSON-serialize with fallback to str() on failure."""
+        """JSON-serialize with fallback to str() on failure.
+
+        Returns:
+            The JSON string, or ``str(obj)`` if serialisation fails.
+        """
         try:
             return json.dumps(
                 obj,
@@ -576,7 +612,9 @@ class LlmSecurityEvaluator:
     ) -> SecurityVerdict:
         """Parse the LLM response into a SecurityVerdict.
 
-        Falls back to error policy on parse failure.
+        Returns:
+            The parsed ``SecurityVerdict``, or the error-policy verdict
+            when the LLM did not call the ``security_verdict`` tool.
         """
         for tc in response.tool_calls:
             if tc.name == "security_verdict":
@@ -602,7 +640,12 @@ class LlmSecurityEvaluator:
         rule_verdict: SecurityVerdict,
         start: float,
     ) -> SecurityVerdict:
-        """Parse tool call arguments into a SecurityVerdict."""
+        """Parse tool call arguments into a SecurityVerdict.
+
+        Returns:
+            The ``SecurityVerdict`` built from the tool args, or the
+            error-policy verdict when verdict/risk values are invalid.
+        """
         raw_verdict = args.get("verdict", "")
         raw_risk = args.get("risk_level", "")
         raw_reason = args.get("reason", "")
@@ -647,7 +690,12 @@ class LlmSecurityEvaluator:
         )
 
     def _sanitize_reason(self, raw_reason: object) -> str:
-        """Sanitize and truncate the LLM-returned reason string."""
+        """Sanitize and truncate the LLM-returned reason string.
+
+        Returns:
+            The control-char-stripped reason, truncated to
+            ``_MAX_REASON_LENGTH``.
+        """
         reason_raw = (
             str(raw_reason).strip() if raw_reason else "LLM security evaluation"
         )
@@ -661,7 +709,12 @@ class LlmSecurityEvaluator:
         risk_level: ApprovalRiskLevel,
         full_reason: str,
     ) -> str:
-        """Compute the reason string visible to the evaluated agent."""
+        """Compute the reason string visible to the evaluated agent.
+
+        Returns:
+            The reason string at the configured visibility level (full,
+            category-only, or generic).
+        """
         visibility = self._config.reason_visibility
 
         if visibility == VerdictReasonVisibility.FULL:

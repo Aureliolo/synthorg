@@ -47,7 +47,14 @@ class RiskScorerWeights(BaseModel):
 
     @model_validator(mode="after")
     def _validate_sum(self) -> Self:
-        """Ensure weights sum to 1.0 (within floating-point tolerance)."""
+        """Ensure weights sum to 1.0 (within floating-point tolerance).
+
+        Returns:
+            The validated weights.
+
+        Raises:
+            ValueError: If the four weights do not sum to 1.0.
+        """
         total = (
             self.reversibility
             + self.blast_radius

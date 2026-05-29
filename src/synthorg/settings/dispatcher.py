@@ -143,6 +143,12 @@ class SettingsChangeDispatcher:
           :meth:`_collapse_finished_task_under_lock` instead.
         * The task or running loop cannot be introspected --
           typically a ``MagicMock(spec=asyncio.Task)`` in tests.
+
+        Returns:
+            ``True`` when no cross-loop drop of lifecycle primitives is
+            warranted (no task, finished task, or non-introspectable
+            task); ``False`` when a live task is bound to a different
+            event loop.
         """
         if self._task is None or self._task.done():
             return True
@@ -176,6 +182,10 @@ class SettingsChangeDispatcher:
         the subscribe() further down would then double-register on
         bus implementations whose subscribe is not idempotent
         (NATS in particular).
+
+        Raises:
+            RuntimeError: If the bus unsubscribe of the crashed task's
+                stale ``#settings`` registration fails during recovery.
         """
         if self._task is None or not self._task.done():
             return
@@ -328,6 +338,13 @@ class SettingsChangeDispatcher:
         ``_task`` not yet assigned).  No-op if ``start()`` was never
         called -- the lifecycle lock is constructed lazily on first
         ``start()``, so a missing lock means there is nothing to drain.
+
+        Raises:
+            TimeoutError: If the poll-task drain exceeds the configured
+                hard deadline; the dispatcher is marked unrestartable.
+            asyncio.CancelledError: If the caller cancels ``stop()``
+                while the poll task is still alive (cancellation
+                originated externally, not from task completion).
         """
         if self._lifecycle_lock is None:
             return
@@ -521,6 +538,16 @@ class SettingsChangeDispatcher:
         per run logs a WARNING; the surface re-arms on the next
         successful resolve so a transient outage does not fill the
         log with duplicates.
+
+        Returns:
+            ``True`` when the dispatcher should process messages
+            (including every resolver-failure case, fail-safe), ``False``
+            only when an operator has explicitly set
+            ``settings.dispatcher.enabled=false``.
+
+        Raises:
+            asyncio.CancelledError: If the coroutine is cancelled while
+                awaiting the resolver.
         """
         if self._config_resolver is None:
             return True
@@ -559,6 +586,15 @@ class SettingsChangeDispatcher:
         settings models depend on enums; the dispatcher module is on
         the resolution path back). Keep both in lockstep when
         adjusting the registered default.
+
+        Returns:
+            The configured maximum number of consecutive poll errors
+            before the loop exits, or the bootstrap default of 30 when
+            the resolver is unavailable.
+
+        Raises:
+            asyncio.CancelledError: If the coroutine is cancelled while
+                awaiting the resolver.
         """
         bootstrap_default = 30
         if self._config_resolver is None:
@@ -587,6 +623,14 @@ class SettingsChangeDispatcher:
         for the same circular-import reason described on
         ``_resolve_max_consecutive_errors``. Keep both in lockstep
         when adjusting the registered default.
+
+        Returns:
+            The configured ``stop()`` drain timeout in seconds, or the
+            bootstrap default of 10.0 when the resolver is unavailable.
+
+        Raises:
+            asyncio.CancelledError: If the coroutine is cancelled while
+                awaiting the resolver.
         """
         bootstrap_default = 10.0
         if self._config_resolver is None:
@@ -613,7 +657,12 @@ class SettingsChangeDispatcher:
             pass
 
     async def _poll_loop(self) -> None:
-        """Continuously poll ``#settings`` and dispatch to subscribers."""
+        """Continuously poll ``#settings`` and dispatch to subscribers.
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled externally
+                (e.g. via ``stop()``); propagated so the loop unwinds.
+        """
         consecutive_errors = 0
 
         while True:

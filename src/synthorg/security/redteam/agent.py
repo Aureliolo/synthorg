@@ -33,6 +33,9 @@ def _build_primary_skills() -> tuple[Skill, ...]:
 
     Skill IDs are stable for downstream routing dedup; descriptions
     are kept short so the agent identity stays compact in the prompt.
+
+    Returns:
+        The red-team agent's primary skills.
     """
     return (
         Skill(

@@ -95,6 +95,12 @@ def create_state(
 
     The caller (``JetStreamMessageBus.__init__``) must ensure
     ``config.nats`` is not ``None`` before calling this function.
+
+    Returns:
+        A ``_NatsState`` built from the validated configuration.
+
+    Raises:
+        ValueError: If ``config.nats`` is ``None``.
     """
     nats_config = config.nats
     if nats_config is None:  # pragma: no cover -- caller validates

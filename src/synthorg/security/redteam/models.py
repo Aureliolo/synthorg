@@ -132,6 +132,12 @@ class RedTeamFinding(BaseModel):
         Without evidence the assignee cannot act on the rework. Lower
         severities (INFO / LOW / MEDIUM) are advisory and may lack
         direct quotes (e.g. structural observations).
+
+        Returns:
+            The validated finding.
+
+        Raises:
+            ValueError: If a high-severity finding carries no evidence.
         """
         if (
             severity_rank(self.severity)
@@ -173,6 +179,15 @@ class RedTeamReport(BaseModel):
 
     @model_validator(mode="after")
     def _check_findings_bounded(self) -> Self:
+        """Reject reports carrying more than the per-report findings cap.
+
+        Returns:
+            The validated report.
+
+        Raises:
+            ValueError: If the report carries more than
+                ``MAX_FINDINGS_PER_REPORT`` findings.
+        """
         if len(self.findings) > MAX_FINDINGS_PER_REPORT:
             msg = (
                 f"RedTeamReport carries {len(self.findings)} findings; "

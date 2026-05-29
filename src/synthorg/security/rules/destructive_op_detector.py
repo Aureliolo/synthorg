@@ -73,7 +73,9 @@ def _scan_value(
 ) -> list[tuple[str, SecurityVerdictType]]:
     """Scan a single string for all destructive patterns.
 
-    Returns list of (pattern_name, verdict) for every match.
+    Returns:
+        A ``(pattern_name, verdict)`` pair for every pattern that
+        matched.
     """
     matches: list[tuple[str, SecurityVerdictType]] = []
     for pattern_name, pattern, verdict in _DESTRUCTIVE_PATTERNS:
@@ -101,7 +103,9 @@ class DestructiveOpDetector:
     ) -> SecurityVerdict | None:
         """Scan arguments for destructive operations.
 
-        Returns the most severe verdict found (DENY > ESCALATE).
+        Returns:
+            The most severe verdict found (DENY over ESCALATE), or
+            ``None`` when no destructive pattern matched.
         """
         findings: list[tuple[str, SecurityVerdictType]] = []
         for value in walk_string_values(context.arguments):

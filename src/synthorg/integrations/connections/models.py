@@ -142,7 +142,11 @@ class Connection(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_metadata(self) -> Self:
-        """Deep-copy mutable metadata dict at construction."""
+        """Deep-copy mutable metadata dict at construction.
+
+        Returns:
+            The instance with ``metadata`` replaced by a deep copy.
+        """
         object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
         return self
 
@@ -205,7 +209,15 @@ class OAuthState(BaseModel):
 
     @model_validator(mode="after")
     def _validate_expiry(self) -> Self:
-        """Ensure ``expires_at`` is strictly after ``created_at``."""
+        """Ensure ``expires_at`` is strictly after ``created_at``.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``expires_at`` is not strictly after
+                ``created_at``.
+        """
         if self.expires_at <= self.created_at:
             msg = "OAuthState.expires_at must be after created_at"
             raise ValueError(msg)
@@ -219,6 +231,14 @@ class OAuthState(BaseModel):
         versa) cannot satisfy the idempotent-replay contract; the
         callback handler stamps both atomically via
         :meth:`OAuthStateRepository.mark_consumed`.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If exactly one of ``consumed_at`` /
+                ``connection_name_returned`` is ``None`` while the other
+                is set.
         """
         if (self.consumed_at is None) != (self.connection_name_returned is None):
             msg = (

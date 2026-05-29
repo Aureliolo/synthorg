@@ -27,7 +27,11 @@ class SlackAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields."""
+        """Validate credential fields.
+
+        Raises:
+            InvalidConnectionAuthError: If ``token`` is absent or blank.
+        """
         if "token" not in credentials or not credentials["token"].strip():
             logger.warning(
                 CONNECTION_VALIDATION_FAILED,

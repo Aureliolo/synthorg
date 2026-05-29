@@ -26,7 +26,12 @@ class GitLabAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields."""
+        """Validate credential fields.
+
+        Raises:
+            InvalidConnectionAuthError: If ``token`` is missing,
+                non-string, or blank.
+        """
         token = credentials.get("token")
         if not isinstance(token, str) or not token.strip():
             logger.warning(

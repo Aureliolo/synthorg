@@ -129,6 +129,10 @@ class JetStreamMessageBus:
         credentials from the connection URL: the NATS url can
         include user:pass and serialized traceback frame-locals are
         a known leak vector.
+
+        Returns:
+            ``True`` when the bus is running, connected, and the flush
+            round-trip succeeds; ``False`` otherwise.
         """
         state = self._state
         if not state.running:
@@ -253,7 +257,11 @@ class JetStreamMessageBus:
         channel_name: str,
         subscriber_id: str,
     ) -> Subscription:
-        """Subscribe an agent to a channel via a durable pull consumer."""
+        """Subscribe an agent to a channel via a durable pull consumer.
+
+        Returns:
+            The ``Subscription`` handle for the new consumer.
+        """
         return await _cons.subscribe(self._state, channel_name, subscriber_id)
 
     async def unsubscribe(
@@ -271,7 +279,11 @@ class JetStreamMessageBus:
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
-        """Receive the next message from the durable consumer."""
+        """Receive the next message from the durable consumer.
+
+        Returns:
+            The next delivery envelope, or ``None`` on timeout/shutdown.
+        """
         return await _recv.receive(
             self._state,
             channel_name,
@@ -280,17 +292,29 @@ class JetStreamMessageBus:
         )
 
     async def create_channel(self, channel: Channel) -> Channel:
-        """Create a new channel."""
+        """Create a new channel.
+
+        Returns:
+            The created channel.
+        """
         async with self._state.lock:
             require_running(self._state)
         return await _ch.create_channel(self._state, channel)
 
     async def get_channel(self, channel_name: str) -> Channel:
-        """Get a channel by name."""
+        """Get a channel by name.
+
+        Returns:
+            The resolved channel.
+        """
         return await _ch.resolve_channel_or_raise(self._state, channel_name)
 
     async def list_channels(self) -> tuple[Channel, ...]:
-        """List all channels, including those from peer processes."""
+        """List all channels, including those from peer processes.
+
+        Returns:
+            All channels known locally or discovered in the KV bucket.
+        """
         return await _ch.list_channels(self._state)
 
     async def get_channel_history(
@@ -304,6 +328,10 @@ class JetStreamMessageBus:
         Reads the operator-tuned history batch size and per-batch fetch
         timeout from ``CommunicationBridgeConfig`` when a resolver is
         wired; falls back to the module defaults on settings outage.
+
+        Returns:
+            The channel's message history (oldest-first), bounded by
+            ``limit`` or the retention default.
         """
         batch_size, fetch_timeout_seconds = await self._resolve_history_params()
         return await _hist.get_channel_history(
@@ -323,6 +351,9 @@ class JetStreamMessageBus:
         on every history query). Returns the module defaults
         (100, 0.5) when no resolver is wired or the lookup fails;
         a settings outage must not break history queries.
+
+        Returns:
+            A ``(batch_size, fetch_timeout_seconds)`` pair.
         """
         if self._config_resolver is None:
             return 100, 0.5

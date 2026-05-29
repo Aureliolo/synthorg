@@ -63,7 +63,11 @@ _IDLE_SUMMARY_INTERVAL_SECONDS: Final[float] = 60.0
 
 
 def _raise_channel_not_found(channel_name: str) -> NoReturn:
-    """Log and raise :class:`ChannelNotFoundError`."""
+    """Log and raise :class:`ChannelNotFoundError`.
+
+    Raises:
+        ChannelNotFoundError: Always.
+    """
     logger.warning(COMM_CHANNEL_NOT_FOUND, channel=channel_name)
     msg = f"Channel not found: {channel_name}"
     raise ChannelNotFoundError(msg, context={"channel": channel_name})
@@ -73,7 +77,11 @@ def _raise_not_subscribed(
     channel_name: str,
     subscriber_id: str,
 ) -> NoReturn:
-    """Log and raise :class:`NotSubscribedError`."""
+    """Log and raise :class:`NotSubscribedError`.
+
+    Raises:
+        NotSubscribedError: Always.
+    """
     logger.warning(
         COMM_SUBSCRIPTION_NOT_FOUND,
         channel=channel_name,
@@ -154,6 +162,9 @@ class InMemoryMessageBus:
         No external transport to round-trip; the bus is healthy
         when it reports itself running. Async matches the
         :class:`MessageBus` protocol.
+
+        Returns:
+            ``True`` while the bus is running.
         """
         return self._running
 
@@ -221,7 +232,11 @@ class InMemoryMessageBus:
         )
 
     def _require_running(self) -> None:
-        """Raise if the bus is not running."""
+        """Raise if the bus is not running.
+
+        Raises:
+            MessageBusNotRunningError: If the bus is not running.
+        """
         if not self._running:
             logger.warning(COMM_BUS_NOT_RUNNING)
             msg = "Message bus is not running"
@@ -237,6 +252,9 @@ class InMemoryMessageBus:
         Bounded by ``retention.max_subscriber_queue_size`` so a slow
         subscriber cannot leak unbounded memory. Overflow is handled
         by :meth:`_enqueue_or_drop` with a drop-newest policy.
+
+        Returns:
+            The existing or newly created per-subscriber queue.
         """
         key = (channel_name, subscriber_id)
         queue = self._queues.get(key)
@@ -262,10 +280,12 @@ class InMemoryMessageBus:
         between ``receive`` returning ``None`` on shutdown vs. messages
         being silently dropped upstream.
 
-        Returns ``True`` on successful enqueue, ``False`` when the
-        envelope was dropped. Callers gate ``COMM_MESSAGE_DELIVERED``
-        emission on the return value so a dropped envelope is never
-        logged as delivered.
+        Callers gate ``COMM_MESSAGE_DELIVERED`` emission on the return
+        value so a dropped envelope is never logged as delivered.
+
+        Returns:
+            ``True`` on successful enqueue, ``False`` when the envelope
+            was dropped on overflow.
         """
         try:
             queue.put_nowait(envelope)

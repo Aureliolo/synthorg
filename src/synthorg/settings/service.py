@@ -108,7 +108,12 @@ def _now_iso() -> str:
 
 
 def _env_var_name(namespace: str, key: str) -> str:
-    """Build env var name: ``SYNTHORG_{NAMESPACE}_{KEY}`` (uppercased)."""
+    """Build env var name: ``SYNTHORG_{NAMESPACE}_{KEY}`` (uppercased).
+
+    Returns:
+        The environment-variable name with both namespace and key
+        uppercased.
+    """
     return f"SYNTHORG_{namespace.upper()}_{key.upper()}"
 
 
@@ -130,6 +135,11 @@ def _reject_if_read_only(
     ``import_source`` is included in the validation log when supplied
     so the every ``set()`` rejection path carries the same tag the
     happy path emits, keeping the log tagging contract consistent.
+
+    Raises:
+        SettingReadOnlyError: If the setting's ``read_only_post_init``
+            flag is set, meaning the value was sourced from env/YAML at
+            startup and cannot be mutated at runtime.
     """
     if not definition.read_only_post_init:
         return
@@ -265,6 +275,16 @@ class SettingsService:
         decoded.  Returns ``None`` when the DB has no row for the
         key; raises ``SettingsEncryptionError`` when a sensitive
         setting cannot be decrypted.
+
+        Returns:
+            A ``SettingValue`` sourced from the DB (sensitive values
+            already decrypted), or ``None`` when no DB row exists for
+            the key.
+
+        Raises:
+            SettingsEncryptionError: If a DB row exists but its
+                sensitive value cannot be decrypted (no encryptor
+                configured, or decryption failed).
         """
         result = await self._repository.get(
             (NotBlankStr(definition.namespace), NotBlankStr(definition.key)),
@@ -285,7 +305,17 @@ class SettingsService:
         definition: SettingDefinition,
         raw_value: str,
     ) -> str:
-        """Decrypt ``raw_value`` for sensitive settings, else return as-is."""
+        """Decrypt ``raw_value`` for sensitive settings, else return as-is.
+
+        Returns:
+            The decrypted plaintext for sensitive settings, or
+            ``raw_value`` unchanged for non-sensitive settings.
+
+        Raises:
+            SettingsEncryptionError: If the setting is sensitive but no
+                encryptor is configured, or the encryptor's
+                ``decrypt()`` call fails.
+        """
         if not definition.sensitive:
             return raw_value
         if self._encryptor is None:
@@ -520,7 +550,13 @@ class SettingsService:
         self,
         definition: SettingDefinition,
     ) -> SettingValue:
-        """Resolve via env > code default (no DB lookup)."""
+        """Resolve via env > code default (no DB lookup).
+
+        Returns:
+            A ``SettingValue`` resolved from the environment variable or
+            code default (never the DB), with ``source`` set to
+            ``ENVIRONMENT`` or ``DEFAULT``.
+        """
         ns = definition.namespace
         key = definition.key
 
@@ -561,6 +597,11 @@ class SettingsService:
 
         This is a synchronous helper for batch operations.  It does
         not check the cache (batch callers skip the cache).
+
+        Returns:
+            A ``SettingEntry`` combining the definition with the
+            resolved value (from the pre-fetched DB row, env, or
+            default), with sensitive values masked.
         """
         ns = definition.namespace
         key = definition.key
@@ -645,6 +686,12 @@ class SettingsService:
         fallback chain -- CAS callers only care about DB state.
         Returns ``("", "")`` when the setting has no DB override
         (first-write sentinel) or the key is not in the registry.
+
+        Returns:
+            A ``(value, updated_at)`` string pair from the DB row for
+            CAS preflight; ``("", "")`` when no DB override exists, the
+            key is unregistered, or the setting is
+            ``read_only_post_init``.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -682,6 +729,21 @@ class SettingsService:
         whether a malformed value came from an API body, file
         upload, config merge, or direct set.  Defaults to
         ``DIRECT_SET`` for in-process callers.
+
+        Returns:
+            A ``SettingEntry`` reflecting the newly persisted value
+            (sensitive values masked) with ``source=DATABASE``.
+
+        Raises:
+            VersionConflictError: If ``expected_updated_at`` was
+                supplied but the DB row's current ``updated_at`` does
+                not match (concurrent modification).
+            SettingNotFoundError: If the namespace/key pair is not in
+                the registry.
+            SettingValidationError: If the value fails type or pattern
+                validation.
+            SettingsEncryptionError: If a sensitive value cannot be
+                encrypted.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -775,6 +837,22 @@ class SettingsService:
         ``import_source`` is forwarded to validation-failure logs so
         bulk-import audit trails carry the same attribution as the
         per-key ``set`` path.
+
+        Returns:
+            The shared ISO 8601 ``updated_at`` timestamp applied to all
+            persisted rows in the batch.
+
+        Raises:
+            ValueError: If the ``items`` sequence is empty.
+            VersionConflictError: If any per-key CAS version in
+                ``expected_updated_at_map`` does not match the current
+                DB row (whole transaction rolled back).
+            SettingNotFoundError: If a namespace/key pair is not in the
+                registry.
+            SettingValidationError: If a value fails type or pattern
+                validation.
+            SettingsEncryptionError: If a sensitive value cannot be
+                encrypted.
         """
         if not items:
             msg = "set_many requires at least one item"
@@ -840,6 +918,19 @@ class SettingsService:
         protocol expects, and the per-item definitions so the caller
         can invalidate cache + publish change events after the
         transactional write succeeds.
+
+        Returns:
+            Two parallel lists: the ``list[SettingRow]`` the repository
+            protocol expects, and a ``list`` of ``(namespace, key,
+            SettingDefinition)`` for post-write cache-invalidation and
+            publish calls.
+
+        Raises:
+            SettingNotFoundError: If a namespace/key pair in the batch
+                is not in the registry.
+            SettingValidationError: If a value fails type or pattern
+                validation, or a duplicate namespace/key pair appears
+                in the batch.
         """
         prepared: list[SettingRow] = []
         definitions: list[tuple[str, str, SettingDefinition]] = []
@@ -904,6 +995,15 @@ class SettingsService:
         Returns the plaintext unchanged for non-sensitive settings.
         Raises ``SettingsEncryptionError`` when a sensitive setting
         is configured without an encryptor.
+
+        Returns:
+            The encrypted ciphertext for sensitive settings, or the
+            original plaintext unchanged for non-sensitive settings.
+
+        Raises:
+            SettingsEncryptionError: If the setting is sensitive but no
+                encryptor is configured, or the encryptor's
+                ``encrypt()`` call fails.
         """
         if not definition.sensitive:
             return value

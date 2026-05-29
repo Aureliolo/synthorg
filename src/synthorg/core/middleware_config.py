@@ -56,7 +56,15 @@ class AuthorityDeferenceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_patterns_compile(self) -> Self:
-        """Ensure all regex patterns are valid."""
+        """Ensure all regex patterns are valid.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any entry in ``patterns`` is not a compilable
+                regular expression.
+        """
         for pattern_index, pattern in enumerate(self.patterns):
             try:
                 re.compile(pattern)
@@ -110,7 +118,15 @@ class ClarificationGateConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_generic_patterns_compile(self) -> Self:
-        """Ensure all generic patterns are valid regexes."""
+        """Ensure all generic patterns are valid regexes.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If any entry in ``generic_patterns`` is not a
+                compilable regular expression.
+        """
         for pattern_index, pattern in enumerate(self.generic_patterns):
             try:
                 re.compile(pattern)

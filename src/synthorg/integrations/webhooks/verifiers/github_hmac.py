@@ -48,7 +48,13 @@ class GitHubHmacVerifier:
         headers: dict[str, str],
         secret: str,
     ) -> bool:
-        """Verify a GitHub webhook signature."""
+        """Verify a GitHub webhook signature.
+
+        Returns:
+            ``True`` when ``X-Hub-Signature-256`` contains a valid
+            ``sha256=<digest>`` matching the expected HMAC-SHA256;
+            ``False`` when the prefix is missing or the digest mismatches.
+        """
         signature = _lookup_header_case_insensitive(
             headers,
             self.signature_header,

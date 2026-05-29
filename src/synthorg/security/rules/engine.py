@@ -167,7 +167,12 @@ class RuleEngine:
         rule: SecurityRule,
         context: SecurityContext,
     ) -> SecurityVerdict | None:
-        """Evaluate a single rule, catching exceptions (fail-closed)."""
+        """Evaluate a single rule, catching exceptions (fail-closed).
+
+        Returns:
+            The rule's verdict, or a fail-closed verdict when the rule
+            raised.
+        """
         try:
             return rule.evaluate(context)
         except Exception as exc:

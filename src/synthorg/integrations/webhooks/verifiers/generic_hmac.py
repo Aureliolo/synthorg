@@ -45,7 +45,13 @@ class GenericHmacVerifier:
         headers: dict[str, str],
         secret: str,
     ) -> bool:
-        """Verify a generic HMAC-SHA256 webhook signature."""
+        """Verify a generic HMAC-SHA256 webhook signature.
+
+        Returns:
+            ``True`` when the HMAC-SHA256 digest in the configured header
+            matches the expected digest; ``False`` when the header is
+            absent/empty or the digest does not match.
+        """
         raw_signature = next(
             (
                 value

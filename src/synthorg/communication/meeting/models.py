@@ -220,7 +220,14 @@ class MeetingMinutes(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timing(self) -> Self:
-        """Ensure ended_at is not before started_at."""
+        """Ensure ended_at is not before started_at.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If ``ended_at`` precedes ``started_at``.
+        """
         if self.ended_at < self.started_at:
             msg = "ended_at must not be before started_at"
             raise ValueError(msg)
@@ -228,7 +235,15 @@ class MeetingMinutes(BaseModel):
 
     @model_validator(mode="after")
     def _validate_participants(self) -> Self:
-        """Ensure participant IDs are unique and leader is not among them."""
+        """Ensure participant IDs are unique and leader is not among them.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If participant IDs are not unique or the leader
+                is also a participant.
+        """
         validate_unique_strings(self.participant_ids, "participant_ids")
         if self.leader_id in self.participant_ids:
             msg = "leader_id must not be in participant_ids"
@@ -241,6 +256,13 @@ class MeetingMinutes(BaseModel):
 
         Skipped when no contributions are present (allows default
         zero totals).
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If the aggregate token counts do not match the
+                sum of contributions.
         """
         if not self.contributions:
             if self.total_input_tokens != 0 or self.total_output_tokens != 0:
@@ -308,7 +330,15 @@ class MeetingRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_consistency(self) -> Self:
-        """Enforce minutes/error field correlation with status."""
+        """Enforce minutes/error field correlation with status.
+
+        Returns:
+            The validated meeting.
+
+        Raises:
+            ValueError: If the minutes/error fields are inconsistent with
+                the meeting status.
+        """
         if self.status == MeetingStatus.COMPLETED:
             if self.minutes is None:
                 msg = "minutes are required when status is completed"

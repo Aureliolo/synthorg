@@ -176,6 +176,10 @@ def _humanise_namespace(namespace: str) -> str:
         ``"ai21"`` -> ``"AI21"``
         ``"lambda_ai"`` -> ``"Lambda AI"``
         ``"v0"`` -> ``"v0"``
+
+    Returns:
+        A human-readable display name with separators spaced, title-cased,
+        known acronyms restored, and product names normalised.
     """
     titled = namespace.replace("_", " ").replace("-", " ").title()
     parts: list[str] = []
@@ -198,6 +202,10 @@ def _make_soft_preset(namespace: str) -> CloudPreset:
     text path (no ``dangerouslySetInnerHTML``); a future LiteLLM
     upgrade introducing an unusual namespace string cannot inject
     HTML or script content into the picker.
+
+    Returns:
+        A soft ``CloudPreset`` (``is_featured=False``, API-key-only) for
+        the given LiteLLM namespace.
     """
     # Local import to break a circular dependency: the presets module
     # imports this module to build _SOFT_PRESETS at load time.
@@ -230,6 +238,10 @@ def _iter_litellm_chat_namespaces() -> tuple[str, ...]:
     ``litellm_provider`` strings, and missing ``mode`` fields are all
     silently skipped.  A future LiteLLM upgrade with malformed entries
     cannot crash module load.
+
+    Returns:
+        A sorted, deduplicated tuple of LiteLLM provider namespace
+        strings with at least one chat/completion-mode model.
     """
     seen: set[str] = set()
     cost_table = getattr(litellm, "model_cost", {}) or {}
@@ -268,6 +280,10 @@ def build_soft_presets(
     prefix matches an entry in
     :data:`_LITELLM_NAMESPACE_DENY_PREFIXES`.  Returned in
     alphabetical order by namespace.
+
+    Returns:
+        A tuple of ``CloudPreset`` instances, one per non-denied,
+        non-featured LiteLLM chat namespace, sorted alphabetically.
     """
     # Local import to break the circular dependency described in
     # _make_soft_preset.

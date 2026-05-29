@@ -63,7 +63,12 @@ class ProviderDiscoveryPolicy(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_allowlist(self) -> Self:
-        """Lowercase and deduplicate allowlist entries."""
+        """Lowercase and deduplicate allowlist entries.
+
+        Returns:
+            The validated instance with ``host_port_allowlist``
+            lowercased and deduplicated.
+        """
         normalized = tuple(dict.fromkeys(h.lower() for h in self.host_port_allowlist))
         if normalized != self.host_port_allowlist:
             object.__setattr__(self, "host_port_allowlist", normalized)

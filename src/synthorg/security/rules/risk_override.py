@@ -63,7 +63,14 @@ class RiskTierOverride(BaseModel):
 
     @model_validator(mode="after")
     def _validate_expiry(self) -> Self:
-        """Ensure expires_at is after created_at."""
+        """Ensure expires_at is after created_at.
+
+        Returns:
+            The validated override.
+
+        Raises:
+            ValueError: If ``expires_at`` is not after ``created_at``.
+        """
         if self.expires_at <= self.created_at:
             msg = "expires_at must be after created_at"
             raise ValueError(msg)
@@ -71,7 +78,14 @@ class RiskTierOverride(BaseModel):
 
     @model_validator(mode="after")
     def _validate_different_tiers(self) -> Self:
-        """Reject overrides that don't change the tier."""
+        """Reject overrides that don't change the tier.
+
+        Returns:
+            The validated override.
+
+        Raises:
+            ValueError: If ``override_tier`` equals ``original_tier``.
+        """
         if self.original_tier == self.override_tier:
             msg = "override_tier must differ from original_tier"
             raise ValueError(msg)
@@ -79,7 +93,15 @@ class RiskTierOverride(BaseModel):
 
     @model_validator(mode="after")
     def _validate_revocation_pair(self) -> Self:
-        """Enforce that revoked_at and revoked_by are both or neither set."""
+        """Enforce that revoked_at and revoked_by are both or neither set.
+
+        Returns:
+            The validated override.
+
+        Raises:
+            ValueError: If only one of ``revoked_at`` / ``revoked_by``
+                is set.
+        """
         has_at = self.revoked_at is not None
         has_by = self.revoked_by is not None
         if has_at != has_by:

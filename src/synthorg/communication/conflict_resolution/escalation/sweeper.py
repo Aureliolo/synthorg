@@ -56,6 +56,9 @@ class EscalationExpirationSweeper:
                 can pause the sweeper at runtime without restart;
                 without a resolver the loop runs unconditionally
                 (matching the registered default of ``False``).
+
+        Raises:
+            ValueError: If ``interval_seconds`` is below 1.0.
         """
         if interval_seconds < 1.0:
             msg = f"interval_seconds must be >= 1.0 (got {interval_seconds})"
@@ -100,6 +103,10 @@ class EscalationExpirationSweeper:
         ``get_loop()`` returns a mock instead of a real loop) so that
         unit tests that mock ``asyncio.create_task`` are not penalised
         by spurious task drops.
+
+        Returns:
+            ``True`` when the existing task is alive on the current loop
+            (or cannot be introspected); ``False`` otherwise.
         """
         if self._task is None or self._task.done():
             return False
@@ -139,6 +146,10 @@ class EscalationExpirationSweeper:
         loop -- e.g. across pytest-asyncio's per-test loops -- the
         stale task and its loop-bound primitives are discarded and
         fresh ones are spawned on the current loop.
+
+        Raises:
+            RuntimeError: If the sweeper is unrestartable after a
+                previously timed-out ``stop()``.
         """
         # Detect cross-loop reuse before touching any lifecycle primitive.
         # Otherwise ``async with self._lifecycle_lock`` would itself raise
@@ -187,6 +198,10 @@ class EscalationExpirationSweeper:
         and ``_stop_event`` was never set) ``stop()`` still acquires
         the lock and returns cleanly; this keeps the lifecycle
         contract uniform regardless of whether ``start()`` ever ran.
+
+        Raises:
+            TimeoutError: If the drain exceeds the stop deadline; the
+                sweeper is marked unrestartable.
         """
         if self._lifecycle_lock is None or self._stop_event is None:
             # Sweeper was never started; nothing to stop.
@@ -210,6 +225,7 @@ class EscalationExpirationSweeper:
             # ``self._lifecycle_lock``. Same pattern as
             # ``MessageBusBridge.stop()``.
             async def _drain() -> None:
+                """Await the cancelled task, swallowing its cancellation."""
                 try:
                     await task
                 except asyncio.CancelledError:
@@ -291,6 +307,12 @@ class EscalationExpirationSweeper:
         per-tick, inverted): when the sweeper is paused every tick
         short-circuits the work but the loop stays resident so
         operators can resume without restarting the lifecycle plumbing.
+
+        Raises:
+            RuntimeError: If invoked before ``start()`` initialised the
+                stop event (defensive; should not happen in practice).
+            asyncio.CancelledError: Propagated on shutdown so the loop
+                task stops cleanly.
         """
         stop_event = self._stop_event
         if stop_event is None:  # defensive; start() guarantees non-None

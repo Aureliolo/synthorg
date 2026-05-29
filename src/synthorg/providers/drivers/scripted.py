@@ -88,6 +88,11 @@ def _last_user_text(messages: list[ChatMessage]) -> str:
 
 
 def _scripted_usage() -> TokenUsage:
+    """Build the fixed token-usage record stamped on scripted responses.
+
+    Returns:
+        A ``TokenUsage`` with the deterministic scripted token counts.
+    """
     return TokenUsage(
         input_tokens=_SCRIPTED_INPUT_TOKENS,
         output_tokens=_SCRIPTED_OUTPUT_TOKENS,
@@ -142,6 +147,13 @@ class SequencedResponseStrategy:
 
         The check-and-advance is guarded so concurrent agent runs
         sharing one scripted provider cannot skip or replay a response.
+
+        Returns:
+            The next ``CompletionResponse`` from the scripted sequence.
+
+        Raises:
+            ScriptedProviderExhaustedError: If the call count exceeds the
+                number of scripted responses.
         """
         del messages, model, tools, config
         with self._lock:
@@ -250,10 +262,16 @@ class ScriptedDriver(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Decompose the scripted completion into stream chunks."""
+        """Decompose the scripted completion into stream chunks.
+
+        Returns:
+            An async iterator of ``StreamChunk`` objects derived from the
+            next scripted ``CompletionResponse``.
+        """
         response = self._strategy.next_response(messages, model, tools, config)
 
         async def _chunks() -> AsyncIterator[StreamChunk]:
+            """Yield the scripted response decomposed into stream chunks."""
             if response.content is not None:
                 yield StreamChunk(
                     event_type=StreamEventType.CONTENT_DELTA,

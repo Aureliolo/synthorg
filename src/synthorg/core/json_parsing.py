@@ -74,6 +74,10 @@ def _scan_for_json(stripped: str, opener: str) -> dict[str, Any] | list[Any] | N
     isinstance-filters to its expected shape. Robust against stray
     ``{x}`` placeholders or bracketed examples that would defeat a
     naive ``find``/``rfind`` slice.
+
+    Returns:
+        The first JSON object or array successfully decoded at an
+        ``opener`` position, or ``None`` when none parses.
     """
     decoder = json.JSONDecoder()
     for idx, char in enumerate(stripped):

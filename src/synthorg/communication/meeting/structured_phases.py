@@ -62,7 +62,11 @@ logger = get_logger(__name__)
 
 
 def _build_input_prompt(agenda_text: str, agent_id: str) -> str:
-    """Build an input-gathering prompt for an agent."""
+    """Build an input-gathering prompt for an agent.
+
+    Returns:
+        The prompt asking the agent for input on each agenda item.
+    """
     return (
         f"{agenda_text}\n\n"
         f"{agent_id}, please provide your input on each agenda item. "
@@ -79,6 +83,9 @@ def _build_conflict_check_prompt(
     Each participant input is wrapped in its own ``<peer-contribution>``
     fence so a literal closing tag in any input cannot inject
     instructions into the leader's reasoning.
+
+    Returns:
+        The conflict-check prompt embedding every fenced input.
     """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:
@@ -107,6 +114,9 @@ def _build_discussion_prompt(
     inputs) are wrapped in ``<peer-contribution>`` fences so a
     compromised upstream turn cannot escape and inject into this
     participant's reasoning.
+
+    Returns:
+        The discussion prompt for the named participant.
     """
     parts = [agenda_text, "", "Previous inputs:"]
     for aid, content in inputs:
@@ -134,6 +144,10 @@ def _build_synthesis_prompt(
     Each input and discussion contribution is wrapped in its own
     ``<peer-contribution>`` fence so a compromised participant cannot
     inject into the synthesis decision.
+
+    Returns:
+        The synthesis prompt embedding every fenced input and
+        discussion contribution.
     """
     parts = [agenda_text, "", "Participant inputs:"]
     for agent_id, content in inputs:
@@ -362,6 +376,10 @@ class StructuredPhasesProtocol:
 
         Returns:
             Tuple of (inputs, contributions) in participant order.
+
+        Raises:
+            RuntimeError: If any parallel input slot is left unfilled
+                (an internal invariant violation).
         """
         logger.info(
             MEETING_PHASE_STARTED,
@@ -388,6 +406,7 @@ class StructuredPhasesProtocol:
             turn: int,
             budget: int,
         ) -> None:
+            """Collect one participant's input into the result slots."""
             prompt = _build_input_prompt(agenda_text, participant_id)
             prompt = inject_lens_perspective(
                 prompt,

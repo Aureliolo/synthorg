@@ -41,7 +41,15 @@ class RefreshConsumeOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_discriminator(self) -> Self:
-        """Enforce: exactly one of ``record`` and ``reject_reason`` is set."""
+        """Enforce: exactly one of ``record`` and ``reject_reason`` is set.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If neither or both of ``record`` and
+                ``reject_reason`` are populated.
+        """
         if (self.record is None) == (self.reject_reason is None):
             msg = (
                 "RefreshConsumeOutcome must populate exactly one of "
@@ -76,7 +84,14 @@ class RefreshRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
-        """Ensure created_at does not exceed expires_at."""
+        """Ensure created_at does not exceed expires_at.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``created_at`` is after ``expires_at``.
+        """
         if self.created_at > self.expires_at:
             msg = "created_at must not be after expires_at"
             raise ValueError(msg)

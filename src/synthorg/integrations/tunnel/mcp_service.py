@@ -38,7 +38,11 @@ class TunnelStatus:
         self.url = url
 
     def to_dict(self) -> dict[str, object]:
-        """Serialise to a JSON-safe dict."""
+        """Serialise to a JSON-safe dict.
+
+        Returns:
+            A dict with ``running`` and ``url`` keys.
+        """
         return {"running": self.running, "url": self.url}
 
 
@@ -74,6 +78,10 @@ class TunnelService:
         Calling ``start()`` on an already-running provider should be
         idempotent per the protocol contract; this facade surfaces a
         uniform :class:`TunnelStatus` either way.
+
+        Returns:
+            A ``TunnelStatus`` with ``running=True`` and the public URL
+            returned by the provider's ``start()`` call.
         """
         try:
             url = await self._provider.start()

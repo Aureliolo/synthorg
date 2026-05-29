@@ -29,7 +29,13 @@ class SmtpHealthCheck:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Verify SMTP connectivity via EHLO."""
+        """Verify SMTP connectivity via EHLO.
+
+        Returns:
+            A ``HealthReport`` from the EHLO handshake: ``HEALTHY`` or
+            ``UNHEALTHY`` based on whether the synchronous check
+            succeeds.
+        """
         start = self._clock.monotonic()
         try:
             result = await asyncio.to_thread(
@@ -60,7 +66,16 @@ class SmtpHealthCheck:
             return result
 
     def _sync_check(self, connection: Connection) -> HealthReport:
-        """Synchronous SMTP EHLO check (run in thread)."""
+        """Synchronous SMTP EHLO check (run in thread).
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` on a successful (2xx) EHLO,
+            or ``UNHEALTHY`` on connection failure or a non-2xx code.
+
+        Raises:
+            ValueError: If ``host`` metadata is missing/blank/non-string,
+                or ``port`` is non-integer or outside 1-65535.
+        """
         start = self._clock.monotonic()
         # Explicitly validate the host/port metadata so malformed
         # config (``port=None``, ``port=[]``, etc.) raises a

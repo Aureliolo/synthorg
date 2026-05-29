@@ -31,26 +31,43 @@ logger = get_logger(__name__)
 
 
 def channel_subject(prefix: str, channel_name: str) -> str:
-    """Compute the stream subject for a TOPIC/BROADCAST channel."""
+    """Compute the stream subject for a TOPIC/BROADCAST channel.
+
+    Returns:
+        The encoded NATS subject for the channel.
+    """
     pfx = prefix.lower()
     return f"{pfx}.bus.{SUBJECT_CHANNEL_TOKEN}.{encode_token(channel_name)}"
 
 
 def direct_subject(prefix: str, channel_name: str) -> str:
-    """Compute the stream subject for a DIRECT channel."""
+    """Compute the stream subject for a DIRECT channel.
+
+    Returns:
+        The encoded NATS subject for the direct channel.
+    """
     pfx = prefix.lower()
     return f"{pfx}.bus.{SUBJECT_DIRECT_TOKEN}.{encode_token(channel_name)}"
 
 
 def subject_for_channel(prefix: str, ch: Channel) -> str:
-    """Pick the correct subject based on channel type."""
+    """Pick the correct subject based on channel type.
+
+    Returns:
+        The direct subject for DIRECT channels, otherwise the topic
+        subject.
+    """
     if ch.type == ChannelType.DIRECT:
         return direct_subject(prefix, ch.name)
     return channel_subject(prefix, ch.name)
 
 
 def durable_name(channel_name: str, subscriber_id: str) -> str:
-    """Compute a safe durable consumer name."""
+    """Compute a safe durable consumer name.
+
+    Returns:
+        The encoded ``<channel>__<subscriber>`` durable name.
+    """
     return f"{encode_token(channel_name)}__{encode_token(subscriber_id)}"
 
 
@@ -71,6 +88,10 @@ def prepare_direct_channel(
         pair: Sorted tuple of the two participant agent IDs.
 
     Must be called under ``state.lock``.
+
+    Returns:
+        The channel to persist to KV, or ``None`` when no KV write is
+        needed (the pair is already covered).
     """
     if channel_name in state.channels:
         current = state.channels[channel_name]
@@ -106,6 +127,9 @@ async def create_channel(state: _NatsState, ch: Channel) -> Channel:
     ``kv.create()`` fails with ``KeyWrongLastSequenceError`` if the
     key already exists, which is translated to
     ``ChannelAlreadyExistsError``.
+
+    Returns:
+        The created channel.
 
     Raises:
         MessageBusNotRunningError: If not running.
@@ -167,7 +191,11 @@ async def resolve_channel_or_raise(
 
 
 async def list_channels(state: _NatsState) -> tuple[Channel, ...]:
-    """List all channels, including those created by peer processes."""
+    """List all channels, including those created by peer processes.
+
+    Returns:
+        All channels, merging local cache with KV-discovered peers.
+    """
     kv_channels = await scan_kv_channels(state)
     async with state.lock:
         for ch in kv_channels:

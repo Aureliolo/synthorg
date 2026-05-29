@@ -69,7 +69,8 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 def _scan_value(value: str) -> str | None:
     """Scan a single string for credential patterns.
 
-    Returns the pattern name if found, else None.
+    Returns:
+        The matching pattern name, or ``None`` if no pattern matched.
     """
     for pattern_name, pattern in CREDENTIAL_PATTERNS:
         if pattern.search(value):
@@ -95,7 +96,9 @@ class CredentialDetector:
     ) -> SecurityVerdict | None:
         """Scan arguments for credential patterns.
 
-        Returns DENY with CRITICAL risk if any credential is found.
+        Returns:
+            A DENY verdict with CRITICAL risk when a credential is
+            found, or ``None`` when the arguments are clean.
         """
         findings = [
             match

@@ -68,6 +68,11 @@ def _reject_destructive_empty_discovery(
     persisted model. ``replace_existing=False`` (append-only) is the
     safe path for operators to retry while debugging the discovery
     endpoint, since it adds nothing when discovery is empty.
+
+    Raises:
+        ProviderValidationError: If ``replace_existing=True``, discovery
+            returned zero models, and at least one persisted model
+            exists (destructive-wipe guard).
     """
     if not request.replace_existing or discovered:
         return
@@ -107,18 +112,22 @@ class _ServiceProtocol(Protocol):
     _config_resolver: ConfigResolver
     _audit_service: ProviderAuditService | None
 
-    async def get_provider(self, name: str) -> ProviderConfig: ...
+    async def get_provider(self, name: str) -> ProviderConfig:
+        """Load a provider by name (provided by the host service)."""
+        ...
 
     async def discover_models_for_provider(
         self,
         name: str,
         *,
         preset_hint: str | None = None,
-    ) -> tuple[ProviderModelConfig, ...]: ...
+    ) -> tuple[ProviderModelConfig, ...]:
+        """Discover models for a provider (provided by the host service)."""
+        ...
 
-    async def _validate_and_persist(
-        self, providers: dict[str, ProviderConfig]
-    ) -> None: ...
+    async def _validate_and_persist(self, providers: dict[str, ProviderConfig]) -> None:
+        """Validate + persist + hot-reload providers (provided by host)."""
+        ...
 
 
 class ProviderCapabilitiesMixin:
@@ -180,6 +189,14 @@ class ProviderCapabilitiesMixin:
         Conflict (model with the same id already exists) raises
         ``ProviderAlreadyExistsError`` so the controller can surface
         HTTP 409.
+
+        Returns:
+            The updated ``ProviderConfig`` with the new model appended.
+
+        Raises:
+            ProviderNotFoundError: If the named provider does not exist.
+            ProviderAlreadyExistsError: If a model with the same id
+                already exists on the provider.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
@@ -237,6 +254,18 @@ class ProviderCapabilitiesMixin:
         list entirely with the merged discovered+enriched set.
         ``replace_existing=False`` keeps existing models verbatim and
         only appends models the discovery surfaced as new.
+
+        Returns:
+            A ``SyncModelsResponse`` describing the added, removed, and
+            updated model ids plus the full new persisted model list.
+
+        Raises:
+            ProviderNotFoundError: If the named provider does not exist
+                (or was deleted during discovery).
+            ProviderValidationError: If discovery returned empty for a
+                replace-mode sync that would wipe all persisted models,
+                or the provider config changed between discovery and
+                persistence.
         """
         # Snapshot the provider config that drove discovery (base_url
         # / auth_type / preset_name) so we can detect a concurrent
@@ -378,6 +407,16 @@ class ProviderCapabilitiesMixin:
         ``auth_type``, applies the new secret, and hot-reloads the
         registry. The audit row carries ONLY the masked credential
         prefix; plaintext is never persisted to the audit log.
+
+        Returns:
+            The updated ``ProviderConfig`` with the new credentials
+            applied.
+
+        Raises:
+            ProviderNotFoundError: If the named provider does not exist.
+            ProviderValidationError: If the request's ``auth_type`` does
+                not match the persisted one, or a subscription rotation
+                lacks ``tos_accepted=true``.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
@@ -427,6 +466,10 @@ class ProviderCapabilitiesMixin:
 
         Returns an envelope where ``0`` means unlimited per the
         existing ``RateLimiterConfig`` semantics.
+
+        Returns:
+            A ``RateLimitsResponse`` with the provider's persisted RPM
+            and concurrency caps (``0`` means unlimited).
         """
         config = await self.get_provider(name)
         rl = config.rate_limiter
@@ -447,6 +490,13 @@ class ProviderCapabilitiesMixin:
         Reads the current ``RateLimiterConfig``, merges the explicit
         fields from ``request`` (``model_dump(exclude_unset=True)``),
         validates, persists, hot-reloads the ProviderRegistry, audits.
+
+        Returns:
+            A ``RateLimitsResponse`` reflecting the new effective RPM and
+            concurrency caps after the partial update.
+
+        Raises:
+            ProviderNotFoundError: If the named provider does not exist.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()

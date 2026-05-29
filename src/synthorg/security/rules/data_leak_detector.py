@@ -52,7 +52,11 @@ PII_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 
 def _check_sensitive_paths(arguments: dict[str, object]) -> list[str]:
-    """Find sensitive file paths in argument values (recursive)."""
+    """Find sensitive file paths in argument values (recursive).
+
+    Returns:
+        One description per sensitive-path match found.
+    """
     findings: list[str] = []
     for value in walk_string_values(arguments):
         for label, pattern in _SENSITIVE_PATHS:
@@ -63,7 +67,11 @@ def _check_sensitive_paths(arguments: dict[str, object]) -> list[str]:
 
 
 def _check_pii(arguments: dict[str, object]) -> list[str]:
-    """Find PII patterns in string argument values (recursive)."""
+    """Find PII patterns in string argument values (recursive).
+
+    Returns:
+        The names of PII patterns that matched.
+    """
     findings: list[str] = []
     for value in walk_string_values(arguments):
         for name, pattern in PII_PATTERNS:
@@ -86,7 +94,9 @@ class DataLeakDetector:
     ) -> SecurityVerdict | None:
         """Scan arguments for sensitive paths and PII.
 
-        Returns DENY with HIGH risk if any sensitive data is found.
+        Returns:
+            A DENY verdict with HIGH risk when sensitive data is found,
+            or ``None`` when the arguments are clean.
         """
         findings = _check_sensitive_paths(context.arguments)
         findings.extend(_check_pii(context.arguments))

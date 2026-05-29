@@ -347,6 +347,11 @@ class ConfigResolver:
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
         shape, or schema validation failure.
+
+        Returns:
+            A tuple of validated model instances parsed from the JSON
+            list, or *fallback* on any parse or schema-validation
+            failure.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -393,6 +398,11 @@ class ConfigResolver:
 
         Falls back to *fallback* on ``None``, invalid JSON, wrong
         shape, or schema validation failure.
+
+        Returns:
+            A dict mapping names to validated model instances parsed
+            from the JSON dict, or *fallback* on any parse or
+            schema-validation failure.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -435,6 +445,10 @@ class ConfigResolver:
         ``None``, contains invalid JSON, or fails schema validation.
         An explicit empty list ``[]`` is a valid override.
 
+        Returns:
+            A tuple of ``AgentConfig`` instances, falling back to
+            ``RootConfig.agents`` on parse or validation failure.
+
         Raises:
             SettingNotFoundError: If the agents key is not
                 in the registry.
@@ -455,6 +469,10 @@ class ConfigResolver:
         Falls back to ``RootConfig.departments`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
         An explicit empty list ``[]`` is a valid override.
+
+        Returns:
+            A tuple of ``Department`` instances, falling back to
+            ``RootConfig.departments`` on parse or validation failure.
 
         Raises:
             SettingNotFoundError: If the departments key is not
@@ -486,6 +504,11 @@ class ConfigResolver:
         through the returned mapping.  Build a fresh ``dict`` via
         comprehension or unpacking (e.g.  ``{**providers, name:
         config}``) if a mutable copy is needed.
+
+        Returns:
+            An immutable ``MappingProxyType`` mapping provider names to
+            ``ProviderConfig`` instances, falling back to
+            ``RootConfig.providers`` on parse or validation failure.
 
         Raises:
             SettingNotFoundError: If the ``configs`` key is not
@@ -806,7 +829,12 @@ class ConfigResolver:
         raise ValueError(msg)
 
     async def get_api_bridge_config(self) -> ApiBridgeConfig:
-        """Assemble ``ApiBridgeConfig`` from bridged API settings."""
+        """Assemble ``ApiBridgeConfig`` from bridged API settings.
+
+        Returns:
+            An ``ApiBridgeConfig`` populated with the bridged API
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import ApiBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -850,7 +878,12 @@ class ConfigResolver:
         return ApiBridgeConfig(**values)
 
     async def get_coordination_bridge_config(self) -> CoordinationBridgeConfig:
-        """Assemble ``CoordinationBridgeConfig`` from bridged coordination settings."""
+        """Assemble ``CoordinationBridgeConfig`` from bridged coordination settings.
+
+        Returns:
+            A ``CoordinationBridgeConfig`` populated with the bridged
+            coordination settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             CoordinationBridgeConfig,
         )
@@ -862,7 +895,12 @@ class ConfigResolver:
         return CoordinationBridgeConfig(**values)
 
     async def get_workers_bridge_config(self) -> WorkersBridgeConfig:
-        """Assemble ``WorkersBridgeConfig`` from bridged workers settings."""
+        """Assemble ``WorkersBridgeConfig`` from bridged workers settings.
+
+        Returns:
+            A ``WorkersBridgeConfig`` populated with the bridged workers
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             WorkersBridgeConfig,
         )
@@ -878,7 +916,12 @@ class ConfigResolver:
         return WorkersBridgeConfig(**values)
 
     async def get_communication_bridge_config(self) -> CommunicationBridgeConfig:
-        """Assemble ``CommunicationBridgeConfig`` from bridged settings."""
+        """Assemble ``CommunicationBridgeConfig`` from bridged settings.
+
+        Returns:
+            A ``CommunicationBridgeConfig`` populated with the bridged
+            communication settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             CommunicationBridgeConfig,
         )
@@ -900,7 +943,12 @@ class ConfigResolver:
         return CommunicationBridgeConfig(**values)
 
     async def get_a2a_bridge_config(self) -> A2ABridgeConfig:
-        """Assemble ``A2ABridgeConfig`` from bridged A2A settings."""
+        """Assemble ``A2ABridgeConfig`` from bridged A2A settings.
+
+        Returns:
+            An ``A2ABridgeConfig`` populated with the bridged A2A
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import A2ABridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -914,7 +962,12 @@ class ConfigResolver:
         return A2ABridgeConfig(**values)
 
     async def get_engine_bridge_config(self) -> EngineBridgeConfig:
-        """Assemble ``EngineBridgeConfig`` from bridged engine settings."""
+        """Assemble ``EngineBridgeConfig`` from bridged engine settings.
+
+        Returns:
+            An ``EngineBridgeConfig`` populated with the bridged engine
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -944,7 +997,12 @@ class ConfigResolver:
         return EngineBridgeConfig(**values)
 
     async def get_client_bridge_config(self) -> ClientBridgeConfig:
-        """Assemble ``ClientBridgeConfig`` from bridged client settings."""
+        """Assemble ``ClientBridgeConfig`` from bridged client settings.
+
+        Returns:
+            A ``ClientBridgeConfig`` populated with the bridged client
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import ClientBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -958,7 +1016,19 @@ class ConfigResolver:
         return ClientBridgeConfig(**values)
 
     async def get_memory_bridge_config(self) -> MemoryBridgeConfig:
-        """Assemble ``MemoryBridgeConfig`` from bridged memory settings."""
+        """Assemble ``MemoryBridgeConfig`` from bridged memory settings.
+
+        Returns:
+            A ``MemoryBridgeConfig`` populated with the bridged memory
+            settings and the validated VRAM-to-batch-size lookup table.
+
+        Raises:
+            ValueError: If ``fine_tune_vram_batch_table`` is not a list
+                of two-element ``[vram_gb, batch_size]`` pairs, any pair
+                has ``vram_gb <= 0`` or ``batch_size < 1``, the table is
+                not strictly descending by ``vram_gb``, or a batch-size
+                entry is a fractional float.
+        """
         from synthorg.settings.bridge_configs import MemoryBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -1009,7 +1079,12 @@ class ConfigResolver:
         return MemoryBridgeConfig(**values)
 
     async def get_integrations_bridge_config(self) -> IntegrationsBridgeConfig:
-        """Assemble ``IntegrationsBridgeConfig`` from bridged settings."""
+        """Assemble ``IntegrationsBridgeConfig`` from bridged settings.
+
+        Returns:
+            An ``IntegrationsBridgeConfig`` populated with the bridged
+            integrations settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             IntegrationsBridgeConfig,
         )
@@ -1026,7 +1101,12 @@ class ConfigResolver:
         return IntegrationsBridgeConfig(**values)
 
     async def get_meta_bridge_config(self) -> MetaBridgeConfig:
-        """Assemble ``MetaBridgeConfig`` from bridged meta settings."""
+        """Assemble ``MetaBridgeConfig`` from bridged meta settings.
+
+        Returns:
+            A ``MetaBridgeConfig`` populated with the bridged meta
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import MetaBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -1040,7 +1120,12 @@ class ConfigResolver:
         return MetaBridgeConfig(**values)
 
     async def get_notifications_bridge_config(self) -> NotificationsBridgeConfig:
-        """Assemble ``NotificationsBridgeConfig`` from bridged settings."""
+        """Assemble ``NotificationsBridgeConfig`` from bridged settings.
+
+        Returns:
+            A ``NotificationsBridgeConfig`` populated with the bridged
+            notifications settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             NotificationsBridgeConfig,
         )
@@ -1058,7 +1143,12 @@ class ConfigResolver:
         return NotificationsBridgeConfig(**values)
 
     async def get_tools_bridge_config(self) -> ToolsBridgeConfig:
-        """Assemble ``ToolsBridgeConfig`` from bridged tool settings."""
+        """Assemble ``ToolsBridgeConfig`` from bridged tool settings.
+
+        Returns:
+            A ``ToolsBridgeConfig`` populated with the bridged tool
+            settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import ToolsBridgeConfig  # noqa: PLC0415
 
         values = await self._resolve_bridge_fields(
@@ -1077,7 +1167,12 @@ class ConfigResolver:
         return ToolsBridgeConfig(**values)
 
     async def get_observability_bridge_config(self) -> ObservabilityBridgeConfig:
-        """Assemble ``ObservabilityBridgeConfig`` from bridged settings."""
+        """Assemble ``ObservabilityBridgeConfig`` from bridged settings.
+
+        Returns:
+            An ``ObservabilityBridgeConfig`` populated with the bridged
+            observability settings resolved from the settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             ObservabilityBridgeConfig,
         )
@@ -1100,7 +1195,13 @@ class ConfigResolver:
     async def get_settings_dispatcher_bridge_config(
         self,
     ) -> SettingsDispatcherBridgeConfig:
-        """Assemble ``SettingsDispatcherBridgeConfig`` from bridged settings."""
+        """Assemble ``SettingsDispatcherBridgeConfig`` from bridged settings.
+
+        Returns:
+            A ``SettingsDispatcherBridgeConfig`` populated with the
+            bridged settings-dispatcher settings resolved from the
+            settings service.
+        """
         from synthorg.settings.bridge_configs import (  # noqa: PLC0415
             SettingsDispatcherBridgeConfig,
         )
@@ -1131,6 +1232,13 @@ def _coerce_vram_gb(value: object) -> float:
     and pass the remaining shape checks. Reject booleans and
     non-numeric types at the boundary so invalid stored settings fail
     deterministically.
+
+    Returns:
+        The value coerced to ``float``, guaranteed to be a non-boolean
+        numeric type.
+
+    Raises:
+        TypeError: If *value* is a ``bool`` or any non-numeric type.
     """
     if isinstance(value, bool):
         msg = f"vram_gb must be numeric, got bool {value!r}"
@@ -1149,6 +1257,14 @@ def _coerce_batch_size(value: object) -> int:
     typo in ``memory.fine_tune_vram_batch_table`` would apply with a
     different value than the operator configured. Reject those at the
     boundary so invalid stored settings fail deterministically.
+
+    Returns:
+        The value coerced to ``int``, guaranteed to be a whole-number
+        non-boolean numeric type.
+
+    Raises:
+        TypeError: If *value* is a ``bool`` or any non-numeric type.
+        ValueError: If *value* is a fractional (non-integer) float.
     """
     if isinstance(value, bool):
         msg = f"batch_size must be an integer, got bool {value!r}"

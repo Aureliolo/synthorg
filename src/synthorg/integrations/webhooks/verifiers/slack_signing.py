@@ -46,7 +46,14 @@ class SlackSigningVerifier:
         headers: dict[str, str],
         secret: str,
     ) -> bool:
-        """Verify a Slack webhook signature."""
+        """Verify a Slack webhook signature.
+
+        Returns:
+            ``True`` when ``X-Slack-Signature`` contains a valid
+            ``v0=<digest>`` matching the expected HMAC-SHA256 of
+            ``v0:{timestamp}:{body}`` within the 5-minute skew window;
+            ``False`` otherwise.
+        """
         timestamp_str = headers.get("x-slack-request-timestamp", "")
         signature = headers.get(self.signature_header, "")
 

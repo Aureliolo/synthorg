@@ -111,7 +111,15 @@ class ToolL3Resource(BaseModel):
 
     @model_validator(mode="after")
     def _validate_size_bytes(self) -> ToolL3Resource:
-        """Ensure size_bytes matches actual content byte length."""
+        """Ensure size_bytes matches actual content byte length.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If ``size_bytes`` does not equal the UTF-8 byte
+                length of ``content``.
+        """
         expected = len(self.content.encode())
         if self.size_bytes != expected:
             msg = (

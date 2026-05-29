@@ -107,7 +107,15 @@ class Conflict(BaseModel):
 
     @model_validator(mode="after")
     def _validate_positions(self) -> Self:
-        """Require at least 2 positions with unique agent IDs."""
+        """Require at least 2 positions with unique agent IDs.
+
+        Returns:
+            The validated conflict.
+
+        Raises:
+            ValueError: If there are fewer than two positions or agent
+                IDs are not unique.
+        """
         if len(self.positions) < _MIN_POSITIONS:
             msg = "A conflict requires at least 2 positions"
             raise ValueError(msg)
@@ -154,6 +162,13 @@ class ConflictResolution(BaseModel):
         ``ESCALATED_TO_HUMAN`` and ``REJECTED_BY_HUMAN`` are no-winner
         outcomes: both winning fields must be ``None``.  Every other
         outcome must carry both a winning agent and a winning position.
+
+        Returns:
+            The validated resolution.
+
+        Raises:
+            ValueError: If the winner fields are inconsistent with the
+                outcome.
         """
         no_winner_outcomes = {
             ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
@@ -220,6 +235,13 @@ class DissentRecord(BaseModel):
         and must not be the winning agent (unless escalated to human,
         where all positions are recorded as pending human review -- no
         agent is considered the winner).
+
+        Returns:
+            The validated dissent record.
+
+        Raises:
+            ValueError: If the dissenting agent is absent from the
+                conflict or is the winning agent.
         """
         agent_ids = {p.agent_id for p in self.conflict.positions}
         if self.dissenting_agent_id not in agent_ids:

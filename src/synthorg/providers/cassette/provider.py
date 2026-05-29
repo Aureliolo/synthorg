@@ -96,7 +96,15 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         return self._provider_name
 
     def _require_inner(self) -> BaseCompletionProvider:
-        """Return the inner driver or fail loudly (record-mode only)."""
+        """Return the inner driver or fail loudly (record-mode only).
+
+        Returns:
+            The wrapped inner ``BaseCompletionProvider`` driver.
+
+        Raises:
+            CassetteInternalError: If ``self._inner`` is ``None`` (called
+                in record mode without a wrapped provider).
+        """
         if self._inner is None:
             msg = "record mode requires a wrapped inner provider"
             raise CassetteInternalError(
@@ -114,7 +122,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         tools: tuple[ToolDefinition, ...],
         config: CompletionConfig | None,
     ) -> dict[str, Any]:
-        """Build the human-readable (later redacted) request copy."""
+        """Build the human-readable (later redacted) request copy.
+
+        Returns:
+            A JSON-serialisable dict of the provider label, method,
+            model, serialised messages, tools, and config.
+        """
         return {
             "provider": self._provider_name,
             "method": method.value,
@@ -135,7 +148,16 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        """Record or replay a non-streaming completion."""
+        """Record or replay a non-streaming completion.
+
+        Returns:
+            The ``CompletionResponse`` from the inner driver (record
+            mode) or reconstructed from the cassette (replay mode).
+
+        Raises:
+            ProviderError: If the inner driver raises in record mode
+                (the error is recorded, then re-raised).
+        """
         self._validate_messages(messages)
         self._validate_model(model)
         msgs = tuple(messages)
@@ -199,7 +221,18 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         return response
 
     def _replay_response(self, outcome: CassetteOutcome) -> CompletionResponse:
-        """Return the recorded response or re-raise the recorded error."""
+        """Return the recorded response or re-raise the recorded error.
+
+        Returns:
+            The recorded ``CompletionResponse`` when the outcome kind is
+            ``RESPONSE``.
+
+        Raises:
+            ProviderError: Reconstructed and raised when the recorded
+                outcome kind is ``ERROR``.
+            CassetteFormatError: If the outcome kind is neither ``ERROR``
+                nor ``RESPONSE``.
+        """
         if outcome.kind is CassetteOutcomeKind.ERROR and outcome.error is not None:
             recorded_error = provider_error_for(
                 outcome.error.error_class,
@@ -235,6 +268,10 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         re-emits the recorded chunks with identical content and order
         (inter-chunk timing is not preserved and is irrelevant to
         replay determinism), then re-raises any recorded terminal error.
+
+        Returns:
+            An async iterator of ``StreamChunk`` objects, from the inner
+            driver (record mode) or from recorded chunks (replay mode).
         """
         self._validate_messages(messages)
         self._validate_model(model)
@@ -268,6 +305,11 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         )
 
         async def _open_inner_stream() -> AsyncIterator[StreamChunk]:
+            """Open the inner driver's stream for recording.
+
+            Returns:
+                The inner driver's ``StreamChunk`` async iterator.
+            """
             return await self._require_inner().stream(
                 messages,
                 model,
@@ -299,6 +341,10 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         the chunk sequence is persisted; on a terminal
         :class:`ProviderError` the chunks emitted so far are persisted
         *with* the error so replay is faithful, then it is re-raised.
+
+        Raises:
+            ProviderError: Re-raised after recording the partial chunks
+                when the inner stream raises a provider error.
         """
         recorded: list[StreamChunk] = []
         try:
@@ -343,6 +389,16 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         The error (when present) is reconstructed but not raised here:
         the replay iterator re-emits every recorded chunk first, then
         raises it, mirroring the original partial-then-failed stream.
+
+        Returns:
+            A ``(recorded_chunks, terminal_error)`` tuple; the error is
+            reconstructed but not yet raised.
+
+        Raises:
+            ProviderError: Reconstructed and raised when the recorded
+                outcome kind is ``ERROR`` (open-time error, no chunks).
+            CassetteFormatError: If the outcome kind is neither
+                ``STREAM`` nor ``ERROR``.
         """
         if outcome.kind is CassetteOutcomeKind.STREAM and (
             outcome.stream_chunks is not None
@@ -369,7 +425,19 @@ class CassetteCompletionProvider(BaseCompletionProvider):
 
     @override
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
-        """Record or replay a single-model capability lookup."""
+        """Record or replay a single-model capability lookup.
+
+        Returns:
+            The ``ModelCapabilities`` from the inner driver (record
+            mode) or reconstructed from the cassette (replay mode).
+
+        Raises:
+            ProviderError: Reconstructed and raised for a recorded
+                ``ERROR`` outcome in replay, or re-raised after recording
+                when the inner driver raises in record mode.
+            CassetteFormatError: If the replay outcome kind is neither
+                ``ERROR`` nor ``CAPABILITIES``.
+        """
         self._validate_model(model)
         digest = request_hash(
             method=CassetteMethod.CAPABILITIES,
@@ -433,6 +501,10 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         instead of being swallowed to ``None`` by the base class's
         per-model degradation (which would silently hide a broken
         replay).
+
+        Returns:
+            A dict mapping each model identifier to its
+            ``ModelCapabilities``, resolved through the cassette.
         """
         return {m: await self.get_model_capabilities(m) for m in models}
 
@@ -447,7 +519,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        """Unreachable: ``complete`` is fully overridden."""
+        """Unreachable: ``complete`` is fully overridden.
+
+        Raises:
+            CassetteInternalError: Always, because ``complete`` is fully
+                overridden and this hook must never execute.
+        """
         del messages, model, tools, config
         raise CassetteInternalError(CassetteInternalError.default_message)
 
@@ -460,7 +537,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Unreachable: ``stream`` is fully overridden."""
+        """Unreachable: ``stream`` is fully overridden.
+
+        Raises:
+            CassetteInternalError: Always, because ``stream`` is fully
+                overridden and this hook must never execute.
+        """
         del messages, model, tools, config
         raise CassetteInternalError(CassetteInternalError.default_message)
 
@@ -469,7 +551,13 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         self,
         model: str,
     ) -> ModelCapabilities:
-        """Unreachable: ``get_model_capabilities`` is fully overridden."""
+        """Unreachable: ``get_model_capabilities`` is fully overridden.
+
+        Raises:
+            CassetteInternalError: Always, because
+                ``get_model_capabilities`` is fully overridden and this
+                hook must never execute.
+        """
         del model
         raise CassetteInternalError(CassetteInternalError.default_message)
 

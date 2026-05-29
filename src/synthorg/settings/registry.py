@@ -118,9 +118,15 @@ def get_registry() -> SettingsRegistry:
 def _registered_default_str(namespace: str, key: str) -> str:
     """Return the registered default for ``(namespace, key)`` as a string.
 
-    Raises :class:`SettingsRegistryError` if the setting is unregistered
-    or has no default.  Callers that need a typed value pass the result
-    through the matching ``registered_default_*`` helper.
+    Callers that need a typed value pass the result through the matching
+    ``registered_default_*`` helper.
+
+    Returns:
+        The registered default value as its raw registry string.
+
+    Raises:
+        SettingsRegistryError: If the setting is unregistered or has no
+            registered default.
     """
     definition = _registry.get(namespace, key)
     if definition is None:
@@ -139,9 +145,15 @@ def registered_default_int(namespace: str, key: str) -> int:
     duplicating the literal in caller code -- the registry is the
     single source of truth, so consumer-side fallbacks (e.g. resolver
     outage paths) read the same value the resolver would have served
-    on the happy path.  Raises :class:`SettingsRegistryError` if the
-    registered default is not a parseable integer string (chains the
-    underlying ``ValueError`` as the cause).
+    on the happy path.
+
+    Returns:
+        The registered default parsed as an ``int``.
+
+    Raises:
+        SettingsRegistryError: If the setting is unregistered, has no
+            default, or the default is not a parseable integer string
+            (chains the underlying ``ValueError`` as the cause).
     """
     raw = _registered_default_str(namespace, key)
     try:
@@ -154,9 +166,13 @@ def registered_default_int(namespace: str, key: str) -> int:
 def registered_default_float(namespace: str, key: str) -> float:
     """Return the registered default for ``(namespace, key)`` coerced to ``float``.
 
-    Raises :class:`SettingsRegistryError` if the registered default is
-    not a parseable float string (chains the underlying ``ValueError``
-    as the cause).
+    Returns:
+        The registered default parsed as a ``float``.
+
+    Raises:
+        SettingsRegistryError: If the setting is unregistered, has no
+            default, or the default is not a parseable float string
+            (chains the underlying ``ValueError`` as the cause).
     """
     raw = _registered_default_str(namespace, key)
     try:
@@ -170,9 +186,14 @@ def registered_default_bool(namespace: str, key: str) -> bool:
     """Return the registered default for ``(namespace, key)`` coerced to ``bool``.
 
     Accepts the canonical string representations recorded in the
-    registry: ``"true"`` / ``"false"`` (case-insensitive).  Raises
-    :class:`SettingsRegistryError` if the registered default is not
-    a recognised boolean string.
+    registry: ``"true"`` / ``"false"`` (case-insensitive).
+
+    Returns:
+        The registered default parsed as a ``bool``.
+
+    Raises:
+        SettingsRegistryError: If the setting is unregistered, has no
+            default, or the default is not a recognised boolean string.
     """
     raw = normalize_ascii_lowercase(_registered_default_str(namespace, key))
     if raw == "true":

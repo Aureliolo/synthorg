@@ -75,6 +75,8 @@ class RetryHandler:
         Raises:
             RetryExhaustedError: If all retries are exhausted.
             ProviderError: If the error is non-retryable.
+            RuntimeError: If the retry loop exits with no recorded error
+                (an internal invariant violation).
         """
         attempt_count = 0
         retry_reason: str | None = None
@@ -133,6 +135,9 @@ class RetryHandler:
 
         Returns the error if retryable (caller should continue retrying),
         or ``None`` if non-retryable (caller must re-raise immediately).
+
+        Returns:
+            The error when retryable, or ``None`` when non-retryable.
         """
         if not exc.is_retryable:
             logger.warning(

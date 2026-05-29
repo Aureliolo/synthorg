@@ -33,6 +33,11 @@ type ResolutionValidator = Callable[[InterruptResolution], ResolutionValidationR
 def _validate_tool_approval(
     resolution: InterruptResolution,
 ) -> ResolutionValidationResult:
+    """Validate a TOOL_APPROVAL resolution.
+
+    Returns:
+        A rejection note if ``decision`` is missing, else ``None``.
+    """
     if resolution.decision is None:
         return "TOOL_APPROVAL requires decision"
     return None
@@ -41,6 +46,11 @@ def _validate_tool_approval(
 def _validate_info_request(
     resolution: InterruptResolution,
 ) -> ResolutionValidationResult:
+    """Validate an INFO_REQUEST resolution.
+
+    Returns:
+        A rejection note if ``response`` is missing, else ``None``.
+    """
     if resolution.response is None:
         return "INFO_REQUEST requires response"
     return None

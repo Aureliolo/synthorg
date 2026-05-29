@@ -87,6 +87,19 @@ class CatalogService:
         regression, not a runtime degradation: log the failure
         with full traceback and re-raise so callers see an error
         instead of silently reading an empty catalog.
+
+        Raises:
+            FileNotFoundError: If the bundled catalog JSON file does not
+                exist at ``_path``.
+            json.JSONDecodeError: If the catalog file is not valid JSON.
+            TypeError: If the catalog root is not a dict, ``servers`` is
+                not a list, an entry is not a dict, or a
+                ``ConnectionType`` value is invalid.
+            KeyError: If a required entry field (``id``, ``name``,
+                ``npm_package``) is absent.
+            ValueError: If a ``CatalogEntry`` fails Pydantic validation.
+            AttributeError: If an unexpected payload shape triggers an
+                attribute-access failure during entry parsing.
         """
         if self._loaded:
             return
@@ -183,6 +196,9 @@ class CatalogService:
 
     async def get_entry(self, entry_id: str) -> CatalogEntry:
         """Look up a catalog entry by ID.
+
+        Returns:
+            The matching ``CatalogEntry``.
 
         Raises:
             CatalogEntryNotFoundError: If the entry does not exist.
@@ -326,5 +342,9 @@ class CatalogService:
         Returns ``True`` when a row was removed. Missing entries
         are a silent no-op so the endpoint can return 200 without
         probing first.
+
+        Returns:
+            ``True`` when an installation row was removed; ``False`` when
+            no row matched (silent no-op).
         """
         return await installations_repo.delete(NotBlankStr(entry_id))

@@ -117,7 +117,12 @@ def _build_auth_headers(
 
 
 def _truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:
-    """Truncate a string to *limit* characters."""
+    """Truncate a string to *limit* characters.
+
+    Returns:
+        *msg* unchanged when within *limit*, otherwise truncated to
+        *limit* characters.
+    """
     if len(msg) <= limit:
         return msg
     return msg[: limit - 3] + "..."
@@ -206,6 +211,10 @@ class ProviderHealthProber:
         spawned even when multiple callers race on the ``_task is
         None`` check. After a timed-out stop the prober is marked
         unrestartable; constructing a fresh instance is required.
+
+        Raises:
+            ProviderLifecycleConflictError: If the prober was previously
+                stopped with a timeout and is marked unrestartable.
         """
         async with self._lifecycle_lock:
             if self._stop_failed:
@@ -246,6 +255,11 @@ class ProviderHealthProber:
         the outer ``wait_for`` so a hung downstream cannot indefinitely
         hold the lifecycle lock; on timeout the prober is marked
         unrestartable.
+
+        Raises:
+            TimeoutError: If the drain does not complete within
+                ``_stop_drain_timeout_seconds``; the prober is marked
+                unrestartable.
         """
         async with self._lifecycle_lock:
             self._stop_event.set()
@@ -255,6 +269,7 @@ class ProviderHealthProber:
             task.cancel()
 
             async def _drain() -> None:
+                """Await the cancelled probe task, swallowing its cancellation."""
                 try:
                     await task
                 except asyncio.CancelledError:
@@ -317,6 +332,15 @@ class ProviderHealthProber:
         interval against a degraded settings backend would tile dashboards
         with cycle-failed events that are actually clean fallback
         cycles.
+
+        Returns:
+            ``True`` when the setting is ``True`` or the resolver fails
+            (fail-safe to enabled); ``False`` only when explicitly set
+            to ``False``.
+
+        Raises:
+            asyncio.CancelledError: Propagated from the resolver when the
+                task is cancelled.
         """
         try:
             value = await self._config_resolver.get_bool(
@@ -354,6 +378,10 @@ class ProviderHealthProber:
         contract). ``asyncio.wait_for(stop_event.wait(),
         timeout=self._interval)`` would bypass the seam by relying on
         the event-loop's wall-clock timer instead.
+
+        Raises:
+            asyncio.CancelledError: Propagated from ``_probe_all`` or the
+                sleep/stop wait when the task is cancelled.
         """
         while not self._stop_event.is_set():
             if await self._resolve_enabled():
@@ -533,6 +561,10 @@ class ProviderHealthProber:
 
         Returns:
             Tuple of (elapsed_ms, success, error_message).
+
+        Raises:
+            asyncio.CancelledError: Re-raised if the task is cancelled
+                during the probe.
         """
         start = self._clock.monotonic()
         success = False

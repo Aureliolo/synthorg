@@ -54,7 +54,14 @@ class SsrfViolation(BaseModel):
     @field_validator("url")
     @classmethod
     def _reject_unredacted_url(cls, v: str) -> str:
-        """Reject URLs that contain credentials in userinfo."""
+        """Reject URLs that contain credentials in userinfo.
+
+        Returns:
+            The validated URL unchanged.
+
+        Raises:
+            ValueError: If the URL embeds a username or password.
+        """
         parsed = urlparse(v)
         if parsed.username or parsed.password:
             msg = "url must be redacted -- credentials detected in userinfo"
@@ -72,7 +79,15 @@ class SsrfViolation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_resolution(self) -> Self:
-        """Enforce that resolved_by/resolved_at are set for non-pending."""
+        """Enforce that resolved_by/resolved_at are set for non-pending.
+
+        Returns:
+            The validated violation record.
+
+        Raises:
+            ValueError: If resolution fields are set on a pending
+                violation, or absent on a resolved one.
+        """
         if self.status == SsrfViolationStatus.PENDING:
             if self.resolved_by is not None or self.resolved_at is not None:
                 msg = "resolved_by and resolved_at must be None for pending violations"

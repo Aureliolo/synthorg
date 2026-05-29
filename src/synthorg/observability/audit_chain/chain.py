@@ -61,7 +61,12 @@ class HashChain:
         return self._tail_hash
 
     def snapshot(self) -> HashChain:
-        """Create a read-only copy of this chain."""
+        """Create a read-only copy of this chain.
+
+        Returns:
+            A new ``HashChain`` with a copy of all current entries and the
+            tail hash, safe for read-only inspection.
+        """
         chain = HashChain(initial_hash=self._initial_hash)
         chain._entries = list(self._entries)
         chain._tail_hash = self._tail_hash
@@ -112,7 +117,12 @@ class HashChain:
         signature: bytes,
         timestamp: datetime,
     ) -> str:
-        """Compute the chain link hash over all entry fields."""
+        """Compute the chain link hash over all entry fields.
+
+        Returns:
+            The SHA-256 hex digest over the four entry fields, used as
+            the new tail hash.
+        """
         chain_input = b"|".join(
             (
                 previous_hash.encode(),

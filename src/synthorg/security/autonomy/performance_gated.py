@@ -52,7 +52,12 @@ class PerformanceGatedPromotionStrategy(BaseDelegatingStrategy):
         agent_id: NotBlankStr,
         target: AutonomyLevel,
     ) -> bool:
-        """Grant when rolling success rate >= threshold; else defer."""
+        """Grant when rolling success rate >= threshold; else defer.
+
+        Returns:
+            ``True`` when the agent's rolling success rate meets the
+            threshold; otherwise ``False`` (deferred to human approval).
+        """
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,
