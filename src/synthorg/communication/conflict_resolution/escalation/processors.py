@@ -71,6 +71,9 @@ def _build_dissent_records_from_resolution(
 
     For outcomes without a winner (escalated / rejected), every
     position is recorded so auditors keep the full stance history.
+
+    Returns:
+        One dissent record per non-winning position.
     """
     effective_clock = clock or _SYSTEM_CLOCK
     if resolution.outcome in _NO_WINNER_OUTCOMES:
@@ -107,6 +110,9 @@ def _build_winner_resolution(
     The success path does not emit ``CONFLICT_ESCALATION_RESOLVED`` --
     callers persist the resolution first and log post-write so the
     audit trail only records committed transitions.
+
+    Returns:
+        The RESOLVED_BY_HUMAN ``ConflictResolution``.
 
     Raises:
         EscalationDecisionAgentError: ``decision.winning_agent_id`` does
@@ -158,6 +164,9 @@ def _build_reject_resolution(
     The success path does not emit ``CONFLICT_ESCALATION_RESOLVED`` --
     callers persist the resolution first and log post-write so the
     audit trail only records committed transitions.
+
+    Returns:
+        The REJECTED_BY_HUMAN ``ConflictResolution``.
     """
     effective_clock = clock or _SYSTEM_CLOCK
     return ConflictResolution(
@@ -190,6 +199,9 @@ class WinnerOnlyDecisionProcessor:
         clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a resolution matching the decision.
+
+        Returns:
+            The RESOLVED_BY_HUMAN ``ConflictResolution``.
 
         Raises:
             EscalationDecisionShapeError: ``decision`` is a
@@ -238,7 +250,11 @@ class WinnerOnlyDecisionProcessor:
         *,
         clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
-        """Build dissent records covering all non-winning positions."""
+        """Build dissent records covering all non-winning positions.
+
+        Returns:
+            One dissent record per non-winning position.
+        """
         return _build_dissent_records_from_resolution(
             conflict,
             resolution,
@@ -265,6 +281,9 @@ class HybridDecisionProcessor:
         clock: Clock | None = None,
     ) -> ConflictResolution:
         """Build a resolution matching the decision.
+
+        Returns:
+            The RESOLVED_BY_HUMAN ``ConflictResolution``.
 
         Raises:
             EscalationDecisionAgentError: ``decision`` is a
@@ -294,7 +313,11 @@ class HybridDecisionProcessor:
         *,
         clock: Clock | None = None,
     ) -> tuple[DissentRecord, ...]:
-        """Build dissent records covering all non-winning positions."""
+        """Build dissent records covering all non-winning positions.
+
+        Returns:
+            One dissent record per non-winning position.
+        """
         return _build_dissent_records_from_resolution(
             conflict,
             resolution,

@@ -215,7 +215,12 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given."""
+    """Raise ``ValueError`` if *start* >= *end* when both are given.
+
+    Raises:
+        ValueError: If both bounds are given and ``start`` is not before
+            ``end``.
+    """
     if start is not None and end is not None and start >= end:
         logger.warning(
             DELEGATION_TIME_RANGE_INVALID,
@@ -237,6 +242,9 @@ def _filter(
     """Filter records by role and/or time range.
 
     Time semantics: ``start <= timestamp < end``.
+
+    Returns:
+        The records matching the role and time-range filters.
     """
     return tuple(
         r

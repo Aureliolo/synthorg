@@ -69,6 +69,15 @@ class MessageService:
         reflected, and a concurrent delete can leave a one-row gap on
         the page. Callers must not assume the slice is transactionally
         consistent with later reads.
+
+        Returns:
+            A ``(items, total)`` pair: the requested page slice and the
+            unfiltered channel count (``((), 0)`` when ``channel`` is
+            ``None``).
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is less
+                than 1.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -140,8 +149,9 @@ class MessageService:
         unvalidated ``channel`` field would let stale or wrong values
         pollute the audit trail.
 
-        Returns ``True`` if a row was removed, ``False`` if the
-        ``message_id`` did not exist.
+        Returns:
+            ``True`` if a row was removed, ``False`` if the
+            ``message_id`` did not exist.
         """
         deleted = await self._persistence.messages.delete(message_id)
         if deleted:

@@ -44,7 +44,14 @@ class DelegationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_self_delegation(self) -> Self:
-        """Reject delegation to self."""
+        """Reject delegation to self.
+
+        Returns:
+            The validated request.
+
+        Raises:
+            ValueError: If ``delegator_id`` equals ``delegatee_id``.
+        """
         if self.delegator_id == self.delegatee_id:
             msg = "delegator_id and delegatee_id must differ"
             raise ValueError(msg)
@@ -79,7 +86,15 @@ class DelegationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
-        """Enforce success/failure field correlation."""
+        """Enforce success/failure field correlation.
+
+        Returns:
+            The validated result.
+
+        Raises:
+            ValueError: If success/failure fields are inconsistent (e.g.
+                no delegated task on success, or a reason set on success).
+        """
         if self.success:
             if self.delegated_task is None:
                 msg = "delegated_task is required when success is True"

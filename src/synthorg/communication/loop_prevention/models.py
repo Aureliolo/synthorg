@@ -29,7 +29,15 @@ class GuardCheckOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_passed_message(self) -> Self:
-        """Enforce passed/message correlation."""
+        """Enforce passed/message correlation.
+
+        Returns:
+            The validated outcome.
+
+        Raises:
+            ValueError: If ``message`` is set when passed, or absent when
+                not passed.
+        """
         if self.passed and self.message:
             msg = "message must be empty when passed is True"
             raise ValueError(msg)

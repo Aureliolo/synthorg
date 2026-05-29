@@ -69,6 +69,10 @@ def _format_exception(exc: BaseException) -> str:
     string.  Handles nested groups recursively.  Non-group exceptions
     are returned via ``safe_error_description()`` so callers never
     embed unredacted ``str(exc)`` into log/UI fields.
+
+    Returns:
+        A flattened, scrubbed, human-readable description of the
+        exception (recursing into ``ExceptionGroup``s).
     """
     if isinstance(exc, ExceptionGroup):
         parts: list[str] = []
@@ -307,10 +311,13 @@ class MeetingOrchestrator:
     def delete_record(self, meeting_id: str) -> bool:
         """Remove the meeting record matching ``meeting_id``.
 
-        Returns ``True`` when a record was removed, ``False`` when no
-        record had the supplied id. Synchronous because the in-memory
-        store has no I/O; the surrounding service-layer wrapper is
-        async to match the rest of the persistence contract.
+        Synchronous because the in-memory store has no I/O; the
+        surrounding service-layer wrapper is async to match the rest of
+        the persistence contract.
+
+        Returns:
+            ``True`` when a record was removed, ``False`` when no record
+            had the supplied id.
         """
         record = self._records_by_id.pop(meeting_id, None)
         if record is None:
@@ -421,6 +428,9 @@ class MeetingOrchestrator:
         not emit a separate ``*_STATUS_TRANSITIONED`` event today --
         the terminal events above are the canonical hop log for the
         meeting subsystem.
+
+        Returns:
+            The stored failure ``MeetingRecord``.
         """
         error_msg = _format_exception(exc)
         record = MeetingRecord(
@@ -466,6 +476,9 @@ class MeetingOrchestrator:
         emit a separate ``*_STATUS_TRANSITIONED`` event today --
         ``MEETING_COMPLETED`` is the canonical hop log for the
         meeting subsystem.
+
+        Returns:
+            The stored success ``MeetingRecord``.
         """
         record = MeetingRecord(
             meeting_id=meeting_id,
@@ -554,7 +567,9 @@ class MeetingOrchestrator:
     ) -> dict[str, str] | None:
         """Compute lens assignments for participants.
 
-        Returns ``None`` when no lens assigner is configured.
+        Returns:
+            A mapping of participant id to lens, or ``None`` when no lens
+            assigner is configured.
         """
         if self._lens_assigner is None or self._strategy_config is None:
             return None
@@ -667,6 +682,9 @@ class MeetingOrchestrator:
         protocol_type: MeetingProtocolType,
     ) -> MeetingProtocol:
         """Look up the protocol implementation.
+
+        Returns:
+            The registered ``MeetingProtocol`` for ``protocol_type``.
 
         Raises:
             MeetingProtocolNotFoundError: If not registered.

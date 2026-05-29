@@ -145,8 +145,9 @@ class HumanEscalationResolver:
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
         """Create an escalation, notify operators, and await a decision.
 
-        Returns a :class:`ConflictResolution` once the operator decides
-        or the timeout fires.
+        Returns:
+            The :class:`ConflictResolution` once the operator decides or
+            the timeout fires.
         """
         escalation = self._build_escalation(conflict)
         # Register the Future BEFORE making the row externally visible.
@@ -261,6 +262,10 @@ class HumanEscalationResolver:
         effect.  Cancellation must re-raise so shutdown can reap the
         task cleanly.  A hard timeout bounds pathological notifier
         sinks so tasks cannot accumulate in ``self._notify_tasks``.
+
+        Raises:
+            asyncio.CancelledError: Propagated so shutdown can reap the
+                background task cleanly.
         """
         if self._notifier is None:
             return
@@ -398,9 +403,11 @@ class HumanEscalationResolver:
         deployment rollover), the authoritative decision is already
         durable and must override the generic timeout fallback.
 
-        Returns ``None`` when the row is missing, still PENDING, or the
-        lookup fails -- the caller then follows the normal timeout
-        cleanup + ``ESCALATED_TO_HUMAN`` contract.
+        Returns:
+            The persisted :class:`ConflictResolution`, or ``None`` when
+            the row is missing, still PENDING, or the lookup fails -- the
+            caller then follows the normal timeout cleanup +
+            ``ESCALATED_TO_HUMAN`` contract.
         """
         try:
             row = await self._store.get(escalation.id)
@@ -456,6 +463,10 @@ class HumanEscalationResolver:
         already visible by the time we reach here.  We still fall back
         to the generic ``"human"`` label if the lookup races or the
         backend is in-memory and scoped to the resolver under test.
+
+        Returns:
+            The persisted ``decided_by`` identity, or ``"human"`` on a
+            miss or lookup failure.
         """
         try:
             row = await self._store.get(escalation_id)
@@ -478,11 +489,20 @@ class HumanEscalationResolver:
         conflict: Conflict,
         resolution: ConflictResolution,
     ) -> tuple[DissentRecord, ...]:
-        """Delegate dissent record construction to the processor."""
+        """Delegate dissent record construction to the processor.
+
+        Returns:
+            One dissent record per non-winning position.
+        """
         return self._processor.build_dissent_records(conflict, resolution)
 
     def _build_escalation(self, conflict: Conflict) -> Escalation:
-        """Construct the initial PENDING :class:`Escalation`."""
+        """Construct the initial PENDING :class:`Escalation`.
+
+        Returns:
+            A new PENDING escalation, with an expiry when a timeout is
+            configured.
+        """
         now = datetime.now(UTC)
         expires_at: datetime | None = None
         if self._timeout_seconds is not None:
@@ -502,7 +522,11 @@ class HumanEscalationResolver:
         escalation: Escalation,
         conflict: Conflict,
     ) -> Notification:
-        """Render an operator-facing notification for the new escalation."""
+        """Render an operator-facing notification for the new escalation.
+
+        Returns:
+            The escalation ``Notification`` for operator delivery.
+        """
         summary_lines = [f"Conflict subject: {conflict.subject}"]
         summary_lines.extend(
             f"- {position.agent_id} ({position.agent_department}, "
@@ -530,7 +554,11 @@ class HumanEscalationResolver:
         )
 
     def _timeout_resolution(self, conflict: Conflict) -> ConflictResolution:
-        """Resolution returned when no decision arrives in time."""
+        """Resolution returned when no decision arrives in time.
+
+        Returns:
+            An ESCALATED_TO_HUMAN resolution carrying the timeout reason.
+        """
         reason = (
             "No human decision was collected before the escalation timeout. "
             "Conflict remains ESCALATED_TO_HUMAN; operators may still decide "
@@ -548,7 +576,12 @@ class HumanEscalationResolver:
         )
 
     def _cancelled_resolution(self, conflict: Conflict) -> ConflictResolution:
-        """Resolution returned when the resolver coroutine is cancelled."""
+        """Resolution returned when the resolver coroutine is cancelled.
+
+        Returns:
+            An ESCALATED_TO_HUMAN resolution carrying the cancellation
+            reason.
+        """
         reason = (
             "Escalation resolver was cancelled before a human decision "
             "could be collected."

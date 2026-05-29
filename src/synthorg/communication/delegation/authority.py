@@ -33,7 +33,15 @@ class AuthorityCheckResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_allowed_reason(self) -> Self:
-        """Enforce allowed/reason correlation."""
+        """Enforce allowed/reason correlation.
+
+        Returns:
+            The validated result.
+
+        Raises:
+            ValueError: If ``reason`` is set when allowed, or absent when
+                not allowed.
+        """
         if self.allowed and self.reason:
             msg = "reason must be empty when allowed is True"
             raise ValueError(msg)
@@ -103,7 +111,12 @@ class AuthorityValidator:
         delegator: AgentIdentity,
         delegatee: AgentIdentity,
     ) -> AuthorityCheckResult:
-        """Check hierarchy constraints."""
+        """Check hierarchy constraints.
+
+        Returns:
+            An allowed result for a direct report (or subordinate when
+            skip-level is permitted); otherwise a denied result.
+        """
         is_direct = self._hierarchy.is_direct_report(delegator.name, delegatee.name)
         if is_direct:
             return AuthorityCheckResult(allowed=True)
@@ -134,7 +147,13 @@ class AuthorityValidator:
         delegator: AgentIdentity,
         delegatee: AgentIdentity,
     ) -> AuthorityCheckResult:
-        """Check role-based delegation permissions."""
+        """Check role-based delegation permissions.
+
+        Returns:
+            An allowed result when the delegator imposes no role
+            restriction or the delegatee's role is permitted; otherwise
+            a denied result.
+        """
         allowed_roles = delegator.authority.can_delegate_to
         if not allowed_roles:
             return AuthorityCheckResult(allowed=True)

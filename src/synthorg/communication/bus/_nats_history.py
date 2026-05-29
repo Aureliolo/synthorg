@@ -34,7 +34,16 @@ async def create_history_scan_consumer(
     subject: str,
     stream_name: str,
 ) -> Any | None:
-    """Create the ephemeral pull consumer used by history scans."""
+    """Create the ephemeral pull consumer used by history scans.
+
+    Returns:
+        The pull-subscription, or ``None`` if the stream/subject is not
+        found.
+
+    Raises:
+        BusStreamError: If consumer creation fails for a reason other
+            than not-found.
+    """
     from nats.js.api import (  # noqa: PLC0415
         AckPolicy,
         ConsumerConfig,
@@ -87,6 +96,13 @@ async def collect_history_batches(
         stream_name: Stream being scanned.
         batch_size: Messages fetched per JetStream pull.
         fetch_timeout_seconds: Per-batch fetch timeout.
+
+    Returns:
+        The parsed messages drained from the consumer (empty on idle
+        timeout with no data).
+
+    Raises:
+        BusStreamError: If a batch fetch fails (non-timeout error).
     """
     from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
 
@@ -140,7 +156,12 @@ async def unsubscribe_history_consumer(
 
 
 def try_parse_matching(raw: Any, subject: str) -> Message | None:
-    """Parse the raw message if it matches the target subject."""
+    """Parse the raw message if it matches the target subject.
+
+    Returns:
+        The deserialised ``Message``, or ``None`` when the subject does
+        not match or the payload fails to deserialise.
+    """
     if raw.subject != subject or raw.data is None:
         return None
     try:
@@ -178,6 +199,10 @@ async def scan_stream_for_subject(  # noqa: PLR0913
             pass it in.
         fetch_timeout_seconds: Per-batch fetch timeout. Mirrors the
             ``communication.nats_history_fetch_timeout_seconds`` setting.
+
+    Returns:
+        The most recent messages on the subject (oldest-first), capped
+        at ``max_to_return``.
     """
     if js is None:
         return []
@@ -221,6 +246,10 @@ async def get_channel_history(
         fetch_timeout_seconds: Forwarded to
             :func:`scan_stream_for_subject`; mirrors
             ``communication.nats_history_fetch_timeout_seconds``.
+
+    Returns:
+        The channel's message history (oldest-first), bounded by
+        ``limit`` or the retention default.
     """
     channel = await resolve_channel_or_raise(state, channel_name)
     async with state.lock:

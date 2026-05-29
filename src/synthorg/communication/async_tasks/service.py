@@ -405,7 +405,12 @@ class AsyncTaskService:
         return status
 
     def _map_status(self, task_status: TaskStatus) -> AsyncTaskStatus:
-        """Map TaskEngine status to AsyncTaskStatus with warning on unknown."""
+        """Map TaskEngine status to AsyncTaskStatus with warning on unknown.
+
+        Returns:
+            The mapped ``AsyncTaskStatus``; a safe fallback (logged) for
+            unknown engine statuses.
+        """
         result = _STATUS_MAP.get(task_status)
         if result is None:
             logger.warning(

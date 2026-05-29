@@ -105,11 +105,21 @@ class MeetingService:
         return self._orchestrator.get_record(meeting_id)
 
     async def create_meeting(self) -> None:
-        """Reject creation with a typed ``not_supported`` error."""
+        """Reject creation with a typed ``not_supported`` error.
+
+        Raises:
+            CapabilityNotSupportedError: Always; meeting creation is not
+                supported by this service.
+        """
         raise CapabilityNotSupportedError(_CREATE_CAP, _CREATE_DETAIL)
 
     async def update_meeting(self) -> None:
-        """Reject update with a typed ``not_supported`` error."""
+        """Reject update with a typed ``not_supported`` error.
+
+        Raises:
+            CapabilityNotSupportedError: Always; meeting update is not
+                supported by this service.
+        """
         raise CapabilityNotSupportedError(_UPDATE_CAP, _UPDATE_DETAIL)
 
     async def delete_meeting(
@@ -131,6 +141,10 @@ class MeetingService:
                 (drives the audit log).
             reason: Operator-supplied justification (drives the audit
                 log).
+
+        Returns:
+            ``True`` when a row was removed, ``False`` when the id did
+            not exist.
         """
         deleted = self._orchestrator.delete_record(meeting_id)
         if deleted:

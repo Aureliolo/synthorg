@@ -100,6 +100,9 @@ def _apply_limit(
 
     ``None`` returns all messages, ``<= 0`` returns empty, positive
     values return at most the last ``limit`` messages.
+
+    Returns:
+        The messages after applying the limit semantics.
     """
     if limit is None:
         return tuple(messages)

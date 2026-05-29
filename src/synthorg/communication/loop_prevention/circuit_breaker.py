@@ -103,6 +103,11 @@ class DelegationCircuitBreaker:
         delegator_id: str,
         delegatee_id: str,
     ) -> _PairState | None:
+        """Return the state for a delegator/delegatee pair, if tracked.
+
+        Returns:
+            The pair's ``_PairState``, or ``None`` if not yet tracked.
+        """
         key = pair_key(delegator_id, delegatee_id)
         return self._pairs.get(key)
 
@@ -111,6 +116,11 @@ class DelegationCircuitBreaker:
         delegator_id: str,
         delegatee_id: str,
     ) -> _PairState:
+        """Return the state for a pair, creating it if absent.
+
+        Returns:
+            The existing or newly created ``_PairState``.
+        """
         key = pair_key(delegator_id, delegatee_id)
         return self._pairs.setdefault(key, _PairState())
 

@@ -44,6 +44,7 @@ def build_message_bus(config: MessageBusConfig) -> MessageBus:
         ImportError: If the selected backend requires an optional
             dependency that is not installed (e.g. ``nats-py`` for
             the NATS backend).
+        ValueError: If ``config.backend`` is an unrecognised backend.
     """
     match config.backend:
         case MessageBusBackend.INTERNAL:

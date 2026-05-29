@@ -100,6 +100,10 @@ class MessageDispatcher:
 
         Returns:
             The unique handler registration ID.
+
+        Raises:
+            TypeError: If a ``MessageHandler`` instance has a synchronous
+                ``handle()`` method.
         """
         if not isinstance(handler, MessageHandler):
             handler = FunctionHandler(handler)
@@ -248,6 +252,12 @@ class MessageDispatcher:
             message: The message to pass to the handler.
             errors: Pre-allocated error list (indexed by handler).
             index: Position in the error list for this handler.
+
+        Raises:
+            MemoryError: Re-raised (never absorbed) so the wrapping
+                TaskGroup cancels siblings and surfaces the failure.
+            RecursionError: Re-raised for the same reason as
+                ``MemoryError``.
         """
         try:
             await registration.handler.handle(message)

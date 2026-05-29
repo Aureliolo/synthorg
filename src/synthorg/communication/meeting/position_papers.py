@@ -54,7 +54,11 @@ logger = get_logger(__name__)
 
 
 def _build_position_prompt(agenda_text: str, agent_id: str) -> str:
-    """Build a position paper prompt for an agent."""
+    """Build a position paper prompt for an agent.
+
+    Returns:
+        The prompt asking the agent to write its position paper.
+    """
     return (
         f"{agenda_text}\n\n"
         f"{agent_id}, please write your position paper on the agenda "
@@ -72,6 +76,9 @@ def _build_synthesis_prompt(
     Each paper is wrapped in its own ``<peer-contribution>`` fence
     so a compromised paper-writer cannot break out and inject
     instructions into the synthesizer's decision.
+
+    Returns:
+        The synthesis prompt embedding every fenced position paper.
     """
     parts = [agenda_text, "", "Position papers submitted:"]
     for agent_id, content in papers:
@@ -226,6 +233,10 @@ class PositionPapersProtocol:
 
         Returns:
             Tuple of (papers, contributions) in deterministic order.
+
+        Raises:
+            RuntimeError: If any parallel paper slot is left unfilled
+                (an internal invariant violation).
         """
         n = len(participant_ids)
         logger.info(
@@ -252,6 +263,7 @@ class PositionPapersProtocol:
             turn: int,
             budget_slice: int,
         ) -> None:
+            """Collect one participant's position paper into the slots."""
             prompt = _build_position_prompt(agenda_text, participant_id)
             prompt = inject_lens_perspective(
                 prompt,

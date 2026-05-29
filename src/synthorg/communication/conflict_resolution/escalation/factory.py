@@ -75,6 +75,13 @@ def _require_persistence(
     instance that does not match the configuration -- is surfaced at
     construction time rather than allowed to silently fall back to an
     in-memory state or to interact with the wrong driver.
+
+    Returns:
+        The validated persistence backend.
+
+    Raises:
+        ValueError: If the backend is absent or does not match the
+            configured backend.
     """
     if persistence is None:
         msg = f"{config_backend} backend requires a connected persistence backend"
@@ -106,6 +113,11 @@ def _build_memory_store(
     config: EscalationQueueConfig,
     persistence: PersistenceBackend | None,
 ) -> EscalationQueueStore:
+    """Build the in-memory escalation store.
+
+    Returns:
+        A fresh ``InMemoryEscalationStore``.
+    """
     del config, persistence
     return InMemoryEscalationStore()
 
@@ -114,6 +126,11 @@ def _build_sqlite_store(
     config: EscalationQueueConfig,
     persistence: PersistenceBackend | None,
 ) -> EscalationQueueStore:
+    """Build the SQLite-backed escalation store.
+
+    Returns:
+        The SQLite-backed ``EscalationQueueStore``.
+    """
     del config
     backend = _require_persistence("sqlite", persistence)
     return backend.build_escalations()
@@ -123,6 +140,12 @@ def _build_postgres_store(
     config: EscalationQueueConfig,
     persistence: PersistenceBackend | None,
 ) -> EscalationQueueStore:
+    """Build the Postgres-backed escalation store.
+
+    Returns:
+        The Postgres-backed ``EscalationQueueStore``, wired for
+        cross-instance NOTIFY only when enabled.
+    """
     backend = _require_persistence("postgres", persistence)
     # Pass the notify channel only when cross-instance notify is
     # enabled so the repo's NOTIFY publishing is a true no-op for

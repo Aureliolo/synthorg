@@ -151,6 +151,10 @@ class PostgresEscalationNotifySubscriber:
                 semantics; tests inject ``FakeClock`` to drive the
                 reconnect back-off and ``stop()`` drain deadline on
                 virtual time.
+
+        Raises:
+            ValueError: If ``reconnect_delay_seconds`` is not positive or
+                the channel name is unsafe.
         """
         if reconnect_delay_seconds <= 0:
             msg = "reconnect_delay_seconds must be > 0"
@@ -220,6 +224,10 @@ class PostgresEscalationNotifySubscriber:
         concurrent ``start()`` / ``stop()`` calls cannot interleave,
         and no lifecycle primitive is published outside the lock
         (those are constructed once in ``__init__``).
+
+        Raises:
+            RuntimeError: If the subscriber is unrestartable after a
+                previously timed-out ``stop()``.
         """
         async with self._lifecycle_lock:
             if self._stop_failed:
@@ -266,6 +274,10 @@ class PostgresEscalationNotifySubscriber:
         cannot recreate the task mid-stop. Per
         ``docs/reference/lifecycle-sync.md``, lifecycle locks must be
         held across the full body of both ``start`` and ``stop``.
+
+        Raises:
+            TimeoutError: If the drain exceeds the stop deadline; the
+                subscriber is marked unrestartable.
         """
         async with self._lifecycle_lock:
             self._stop_event.set()
@@ -283,6 +295,7 @@ class PostgresEscalationNotifySubscriber:
             # deadline would be soft. Same pattern as
             # ``MessageBusBridge.stop()``.
             async def _drain() -> None:
+                """Await the cancelled task, swallowing its cancellation."""
                 try:
                     await task
                 except asyncio.CancelledError:
@@ -379,6 +392,14 @@ class PostgresEscalationNotifySubscriber:
         because silently pausing the subscriber on a settings hiccup
         would let multi-instance escalations drift toward eventual
         consistency unnecessarily.
+
+        Returns:
+            ``True`` when the subscriber is enabled (or on resolver
+            outage), ``False`` when an operator has paused it.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the resolver call is
+                cancelled.
         """
         if self._config_resolver is None:
             return True
@@ -408,6 +429,10 @@ class PostgresEscalationNotifySubscriber:
         each iteration short-circuits before opening a LISTEN
         connection. The local sweeper + per-resolver timeouts cover
         eventual consistency while the subscriber is paused.
+
+        Raises:
+            asyncio.CancelledError: Propagated on shutdown so the loop
+                task stops cleanly.
         """
         while not self._stop_event.is_set():
             if await self._resolve_subscriber_enabled():

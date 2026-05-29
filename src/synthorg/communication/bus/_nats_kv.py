@@ -101,7 +101,11 @@ async def load_channel_from_kv(
     state: _NatsState,
     channel_name: str,
 ) -> Channel | None:
-    """Load a Channel definition from the KV bucket, if present."""
+    """Load a Channel definition from the KV bucket, if present.
+
+    Returns:
+        The decoded ``Channel``, or ``None`` if the key is absent.
+    """
     entry = await fetch_kv_entry(state, channel_name)
     if entry is None:
         return None
@@ -114,8 +118,12 @@ async def fetch_kv_entry(
 ) -> Any | None:
     """Fetch a raw KV entry.
 
-    Returns ``None`` for ``KeyNotFoundError`` (genuine miss).
-    Raises ``BusStreamError`` on transport/connection errors.
+    Returns:
+        The raw KV entry, or ``None`` for a genuine miss
+        (``KeyNotFoundError`` or absent value).
+
+    Raises:
+        BusStreamError: On transport/connection errors.
     """
     from nats.js.errors import KeyNotFoundError  # noqa: PLC0415
 
@@ -146,6 +154,9 @@ def decode_kv_channel(
     entry: Any,
 ) -> Channel:
     """Decode a KV entry into a Channel.
+
+    Returns:
+        The decoded ``Channel``.
 
     Raises:
         BusStreamError: If the entry contains invalid JSON, fails
@@ -187,6 +198,9 @@ def decode_kv_channel(
 
 async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     """Scan the KV bucket for all persisted channels.
+
+    Returns:
+        The decoded channels persisted in the KV bucket.
 
     Raises:
         BusStreamError: If the KV bucket cannot be listed.

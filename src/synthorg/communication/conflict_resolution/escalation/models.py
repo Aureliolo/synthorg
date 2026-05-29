@@ -112,6 +112,9 @@ class Escalation(BaseModel):
 
         Delegates per-status checks to narrow helpers so the validator
         stays readable and ruff's complexity budget is not exceeded.
+
+        Returns:
+            The validated escalation.
         """
         self._check_status_shape()
         self._check_winner_in_conflict()
@@ -119,6 +122,12 @@ class Escalation(BaseModel):
         return self
 
     def _check_status_shape(self) -> None:
+        """Enforce the decision-payload shape for each status.
+
+        Raises:
+            ValueError: If the decision/decided_at/decided_by fields do
+                not match the escalation's status.
+        """
         if self.status == EscalationStatus.PENDING:
             if (
                 self.decision is not None
@@ -149,6 +158,12 @@ class Escalation(BaseModel):
             raise ValueError(msg)
 
     def _check_winner_in_conflict(self) -> None:
+        """Ensure a winner decision names a participant in the conflict.
+
+        Raises:
+            ValueError: If ``winning_agent_id`` is not one of the
+                escalated conflict's positions.
+        """
         if self.status != EscalationStatus.DECIDED:
             return
         if not isinstance(self.decision, WinnerDecision):
@@ -162,6 +177,12 @@ class Escalation(BaseModel):
             raise ValueError(msg)
 
     def _check_decided_by_format(self) -> None:
+        """Require ``decided_by`` to carry a ``human:``/``system:`` prefix.
+
+        Raises:
+            ValueError: If ``decided_by`` is set without a recognised
+                actor prefix.
+        """
         if self.decided_by is None:
             return
         if not self.decided_by.startswith(("human:", "system:")):

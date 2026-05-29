@@ -85,6 +85,9 @@ class DataPart(BaseModel):
 
         Follows the same pattern as
         ``DecisionRecord._deep_copy_and_freeze_metadata``.
+
+        Returns:
+            A recursively frozen, deep-copied view of the data.
         """
         if isinstance(value, MappingProxyType):
             value = dict(value)
@@ -103,6 +106,9 @@ class DataPart(BaseModel):
         Recursively thaws nested ``MappingProxyType`` instances and
         converts ``tuple``/``frozenset`` back to ``list`` so the
         result is JSON-serializable.
+
+        Returns:
+            A plain, JSON-serializable ``dict`` view of the data.
         """
 
         def _thaw(current: object) -> object:
@@ -121,7 +127,12 @@ class DataPart(BaseModel):
         update: Mapping[str, Any] | None = None,
         deep: bool = False,
     ) -> Self:
-        """Override to re-freeze data when model_copy updates it."""
+        """Override to re-freeze data when model_copy updates it.
+
+        Returns:
+            The copied model, with ``data`` re-frozen when the update
+            replaced it.
+        """
         result = super().model_copy(update=update, deep=deep)
         if update and "data" in update:
             raw = update["data"]
@@ -226,7 +237,14 @@ class MessageMetadata(BaseModel):
 
     @model_validator(mode="after")
     def _validate_extra(self) -> Self:
-        """Ensure extra keys are non-blank and unique."""
+        """Ensure extra keys are non-blank and unique.
+
+        Returns:
+            The validated model.
+
+        Raises:
+            ValueError: If an ``extra`` key is blank or duplicated.
+        """
         keys: list[str] = []
         for key, _value in self.extra:
             if not key.strip():

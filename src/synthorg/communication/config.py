@@ -149,6 +149,13 @@ class NatsConfig(BaseModel):
         recognised scheme, a non-empty host, and (if a port is present)
         a numeric port inside the legal TCP range so misconfiguration
         surfaces immediately at config load.
+
+        Returns:
+            The validated NATS URL unchanged.
+
+        Raises:
+            ValueError: If the URL is unparseable, uses an unrecognised
+                scheme, lacks a host, or has an out-of-range port.
         """
         try:
             parsed = urlparse(value)
@@ -256,13 +263,25 @@ class MessageBusConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_channels(self) -> Self:
-        """Ensure channel names are unique."""
+        """Ensure channel names are unique.
+
+        Returns:
+            The validated config.
+        """
         validate_unique_strings(self.channels, "channels")
         return self
 
     @model_validator(mode="after")
     def _validate_backend_config(self) -> Self:
-        """Ensure backend-specific config is provided when required."""
+        """Ensure backend-specific config is provided when required.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If ``backend`` is NATS but no ``nats`` config is
+                set.
+        """
         if self.backend == MessageBusBackend.NATS and self.nats is None:
             msg = "message_bus.nats must be provided when message_bus.backend is 'nats'"
             raise ValueError(msg)
@@ -315,7 +334,16 @@ class MeetingTypeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_frequency_or_trigger(self) -> Self:
-        """Exactly one of frequency or trigger must be set."""
+        """Exactly one of frequency or trigger must be set.
+
+        Returns:
+            The validated meeting-type config.
+
+        Raises:
+            ValueError: If both or neither of ``frequency`` / ``trigger``
+                are set, or ``min_interval_seconds`` is set without a
+                trigger.
+        """
         if self.frequency is not None and self.trigger is not None:
             msg = "Only one of frequency or trigger may be set, not both"
             raise ValueError(msg)
@@ -329,7 +357,11 @@ class MeetingTypeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_participants(self) -> Self:
-        """Ensure participant entries are unique."""
+        """Ensure participant entries are unique.
+
+        Returns:
+            The validated meeting-type config.
+        """
         validate_unique_strings(self.participants, "participants")
         return self
 
@@ -364,11 +396,23 @@ class MeetingsConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Overlay setting-namespace mirrors onto the raw input.
+
+        Returns:
+            The input data with mirrored settings applied.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_unique_meeting_names(self) -> Self:
-        """Ensure meeting type names are unique."""
+        """Ensure meeting type names are unique.
+
+        Returns:
+            The validated meetings config.
+
+        Raises:
+            ValueError: If two meeting types share a name.
+        """
         names = [mt.name for mt in self.types]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -453,7 +497,15 @@ class CircuitBreakerConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_cooldown_bounds(self) -> Self:
-        """Ensure the exponential backoff cap is not below the base cooldown."""
+        """Ensure the exponential backoff cap is not below the base cooldown.
+
+        Returns:
+            The validated config.
+
+        Raises:
+            ValueError: If ``max_cooldown_seconds`` is below
+                ``cooldown_seconds``.
+        """
         if self.max_cooldown_seconds < self.cooldown_seconds:
             msg = "max_cooldown_seconds must be >= cooldown_seconds"
             raise ValueError(msg)

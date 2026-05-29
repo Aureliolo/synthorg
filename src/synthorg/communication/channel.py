@@ -34,6 +34,10 @@ class Channel(BaseModel):
 
     @model_validator(mode="after")
     def _validate_subscribers(self) -> Self:
-        """Ensure subscriber entries are unique."""
+        """Ensure subscriber entries are unique.
+
+        Returns:
+            The validated channel.
+        """
         validate_unique_strings(self.subscribers, "subscribers")
         return self
