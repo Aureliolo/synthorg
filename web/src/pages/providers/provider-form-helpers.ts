@@ -9,7 +9,7 @@ import type {
 } from '@/api/types/providers'
 import type { ProviderWithName } from '@/utils/providers'
 
-export const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
+const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },
   { value: 'subscription', label: 'Subscription (OAuth)' },
   { value: 'none', label: 'None' },
