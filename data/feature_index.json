@@ -670,7 +670,14 @@
     },
     {
       "controllers": [
-        "ProviderController"
+        "ProviderCrudController",
+        "ProviderConnectionController",
+        "ProviderModelsController",
+        "ProviderLocalModelsController",
+        "ProviderPresetsController",
+        "ProviderCapabilitiesController",
+        "ProviderAllowlistsController",
+        "ProviderAuditController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -887,6 +894,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-30T10:04:03.591561Z",
+  "generated_at": "2026-05-29T17:53:33.573043Z",
   "schema_version": 1
 }

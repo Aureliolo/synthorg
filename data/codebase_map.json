@@ -366,7 +366,7 @@
     },
     {
       "kind": "code",
-      "loc": 284,
+      "loc": 313,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -737,9 +737,65 @@
     },
     {
       "kind": "code",
-      "loc": 1390,
+      "loc": 5,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/providers.py",
+      "module": "src/synthorg/api/controllers/providers/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 103,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/allowlists.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 88,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/audit.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 166,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/capabilities.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 200,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/connection.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 334,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/crud.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 293,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/local_models.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 223,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/models.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 165,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/providers/presets.py",
       "owning_feature": "api_core"
     },
     {
@@ -13631,7 +13687,7 @@
     },
     {
       "kind": "feature",
-      "loc": 21,
+      "loc": 42,
       "loc_cap": 100,
       "module": "src/synthorg/providers/feature.py",
       "owning_feature": "providers"

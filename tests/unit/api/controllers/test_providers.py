@@ -2,11 +2,20 @@
 
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.api.controllers.providers.capabilities import (
+    ProviderCapabilitiesController,
+)
+from synthorg.api.controllers.providers.connection import ProviderConnectionController
+from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.local_models import (
+    ProviderLocalModelsController,
+)
+from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.state import ProvidersStateSlice
@@ -14,9 +23,6 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import LoopAsyncClient, make_app_state, mock_of
 from tests.unit.api.conftest import make_auth_headers
-
-if TYPE_CHECKING:
-    from synthorg.api.controllers.providers import ProviderController
 
 
 @pytest.mark.unit
@@ -191,11 +197,30 @@ def _make_provider_state_and_mgmt() -> tuple[Any, AsyncMock]:
     return state, mgmt
 
 
-def _provider_controller() -> ProviderController:
-    """Create a ProviderController instance for testing."""
-    from synthorg.api.controllers.providers import ProviderController
+class _AllProviderControllers(
+    ProviderCrudController,
+    ProviderConnectionController,
+    ProviderModelsController,
+    ProviderLocalModelsController,
+    ProviderCapabilitiesController,
+):
+    """Test-only composite exposing every exercised provider route handler.
 
-    return ProviderController(owner=ProviderController)  # type: ignore[arg-type]
+    The handlers tested directly via ``.fn`` do not use ``self``; this
+    composite gives one instance from which each sub-controller's handler
+    resolves, so the per-handler unit tests need not track which sub-domain
+    package each route landed in after the decomposition.
+    """
+
+
+def _provider_controller() -> _AllProviderControllers:
+    """Instantiate the composite provider controller for direct method testing.
+
+    Returns:
+        A composite controller instance exposing every provider route handler
+        under direct test.
+    """
+    return _AllProviderControllers(owner=_AllProviderControllers)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
@@ -410,7 +435,7 @@ class TestProbeLocalEndpoint:
             )
 
         with patch(
-            "synthorg.api.controllers.providers.probe_preset_urls",
+            "synthorg.api.controllers.providers.connection.probe_preset_urls",
             side_effect=fake_probe,
         ):
             response = await ctrl.probe_local.fn(ctrl, state=state)
@@ -444,7 +469,7 @@ class TestProbeLocalEndpoint:
             )
 
         with patch(
-            "synthorg.api.controllers.providers.probe_preset_urls",
+            "synthorg.api.controllers.providers.connection.probe_preset_urls",
             side_effect=fake_probe,
         ):
             response = await ctrl.probe_local.fn(ctrl, state=state)
@@ -468,7 +493,7 @@ class TestProbeLocalEndpoint:
             raise RuntimeError(msg)
 
         with patch(
-            "synthorg.api.controllers.providers.probe_preset_urls",
+            "synthorg.api.controllers.providers.connection.probe_preset_urls",
             side_effect=fake_probe,
         ):
             response = await ctrl.probe_local.fn(ctrl, state=state)
@@ -495,7 +520,7 @@ class TestProbeLocalEndpoint:
             )
 
         with patch(
-            "synthorg.api.controllers.providers.probe_preset_urls",
+            "synthorg.api.controllers.providers.connection.probe_preset_urls",
             side_effect=fake_probe,
         ):
             response = await ctrl.probe_local.fn(ctrl, state=state)
@@ -515,7 +540,7 @@ class TestProbeLocalEndpoint:
         ctrl = _provider_controller()
 
         with patch(
-            "synthorg.api.controllers.providers.list_probable_presets",
+            "synthorg.api.controllers.providers.connection.list_probable_presets",
             return_value=(),
         ):
             response = await ctrl.probe_local.fn(ctrl, state=state)
@@ -543,7 +568,7 @@ class TestProbeLocalEndpoint:
             return ProbeResult(url=None, model_count=0, candidates_tried=0)
 
         with patch(
-            "synthorg.api.controllers.providers.probe_preset_urls",
+            "synthorg.api.controllers.providers.connection.probe_preset_urls",
             side_effect=fast_probe,
         ):
             # Drain the bucket; one user, sequential calls.  Each

@@ -76,7 +76,22 @@ from synthorg.api.controllers.project_knowledge import (
     ProjectKnowledgeController,
 )
 from synthorg.api.controllers.projects import ProjectController
-from synthorg.api.controllers.providers import ProviderController
+from synthorg.api.controllers.providers.allowlists import (
+    ProviderAllowlistsController,
+)
+from synthorg.api.controllers.providers.audit import ProviderAuditController
+from synthorg.api.controllers.providers.capabilities import (
+    ProviderCapabilitiesController,
+)
+from synthorg.api.controllers.providers.connection import (
+    ProviderConnectionController,
+)
+from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.local_models import (
+    ProviderLocalModelsController,
+)
+from synthorg.api.controllers.providers.models import ProviderModelsController
+from synthorg.api.controllers.providers.presets import ProviderPresetsController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests import RequestController
@@ -136,7 +151,14 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     BudgetController,
     ForecastBudgetController,
     AnalyticsController,
-    ProviderController,
+    ProviderCrudController,
+    ProviderConnectionController,
+    ProviderModelsController,
+    ProviderLocalModelsController,
+    ProviderPresetsController,
+    ProviderCapabilitiesController,
+    ProviderAllowlistsController,
+    ProviderAuditController,
     ApprovalsController,
     EscalationsController,
     AutonomyController,
@@ -296,7 +318,14 @@ __all__ = [
     "ProjectController",
     "ProjectDocsController",
     "ProjectKnowledgeController",
-    "ProviderController",
+    "ProviderAllowlistsController",
+    "ProviderAuditController",
+    "ProviderCapabilitiesController",
+    "ProviderConnectionController",
+    "ProviderCrudController",
+    "ProviderLocalModelsController",
+    "ProviderModelsController",
+    "ProviderPresetsController",
     "QualityController",
     "ReadinessController",
     "ReportsController",

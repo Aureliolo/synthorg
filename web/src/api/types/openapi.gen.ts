@@ -12326,10 +12326,7 @@ export type components = {
              */
             readonly total_tokens_24h: number;
         };
-        /**
-         * ProviderModelConfig
-         * @description Model spec to add
-         */
+        /** ProviderModelConfig */
         readonly ProviderModelConfig: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
