@@ -96,7 +96,7 @@ class TestInMemoryResourceLock:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(5):
-                tg.create_task(try_acquire(f"agent-{i}"))
+                _ = tg.create_task(try_acquire(f"agent-{i}"))
 
         assert results.count(True) == 1
         assert results.count(False) == 4

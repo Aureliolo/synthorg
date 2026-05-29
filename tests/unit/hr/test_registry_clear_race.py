@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Concurrency tests for HRRegistry.clear.
 
 Production-safe ``clear`` must hold the same lock as ``register`` and
@@ -65,9 +65,9 @@ async def test_clear_concurrent_with_register_no_partial_state() -> None:
         await registry.clear()
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(_record_outcome(clear_under_lock(), results))
+        _ = tg.create_task(_record_outcome(clear_under_lock(), results))
         for i in range(50):
-            tg.create_task(_record_outcome(register_one(f"{i:03d}"), results))
+            _ = tg.create_task(_record_outcome(register_one(f"{i:03d}"), results))
 
     # Each ``register_one`` uses a distinct UUIDv5 (different suffix)
     # and the registry starts empty, so a duplicate-id collision is

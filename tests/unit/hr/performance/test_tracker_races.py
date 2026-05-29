@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """TOCTOU race tests for PerformanceTracker.
 
 Each test is written to fail reliably against the un-synchronized
@@ -101,9 +101,9 @@ class TestClearConcurrentWithRecord:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(n_records):
-                tg.create_task(_record(i))
+                _ = tg.create_task(_record(i))
                 if i == n_records // 2:
-                    tg.create_task(_clear())
+                    _ = tg.create_task(_clear())
 
         # Both record_task_metric and aclear MUST acquire
         # ``_metrics_lock`` -- if they don't, the test is vacuous and

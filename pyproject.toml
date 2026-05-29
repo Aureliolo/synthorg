@@ -722,7 +722,6 @@ disable_error_code = ["unused-awaitable"]
 # = false``) when the linked issue closes. Full breakdown lives in
 # docs/decisions/0006-tiered-module-size-policy.md Section F.1.
 #
-# * ``unused-awaitable`` (~23 sites): #2116
 # * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
 #   #2121
 # * ``unused-ignore`` is a holding pen for pre-existing per-line
@@ -732,7 +731,6 @@ disable_error_code = ["unused-awaitable"]
 module = "tests.*"
 disallow_any_explicit = false  # #2121
 disable_error_code = [
-    "unused-awaitable",      # #2116
     "unused-ignore",         # holding pen; closes alongside the above
 ]
 

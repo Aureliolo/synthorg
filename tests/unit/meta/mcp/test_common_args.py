@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the centralized MCP handler argument helpers.
 
 Covers every public helper in

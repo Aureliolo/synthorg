@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Edge-case tests for :class:`PendingFuturesRegistry`."""
 
 import asyncio
@@ -30,9 +30,9 @@ class TestRegistryBasics:
 
     async def test_register_twice_raises(self) -> None:
         reg = PendingFuturesRegistry()
-        await reg.register("esc-1")
+        _ = await reg.register("esc-1")
         with pytest.raises(ValueError, match="already registered"):
-            await reg.register("esc-1")
+            _ = await reg.register("esc-1")
 
     async def test_resolve_without_register_returns_false(self) -> None:
         reg = PendingFuturesRegistry()
@@ -51,7 +51,7 @@ class TestRegistryBasics:
     async def test_is_registered_reflects_state(self) -> None:
         reg = PendingFuturesRegistry()
         assert await reg.is_registered("esc-1") is False
-        await reg.register("esc-1")
+        _ = await reg.register("esc-1")
         assert await reg.is_registered("esc-1") is True
         await reg.resolve("esc-1", _decision())
         # Resolving pops the entry out of the map.

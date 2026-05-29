@@ -131,7 +131,7 @@ class TestDepartmentCAS:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(5):
-                tg.create_task(try_create(i))
+                _ = tg.create_task(try_create(i))
 
         assert results.count("ok") == 1, f"Expected exactly 1 success, got {results}"
 
@@ -160,8 +160,8 @@ class TestDepartmentCAS:
                 results.append(f"error:{exc!r}")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(try_create("Engineering"))
-            tg.create_task(try_create("Marketing"))
+            _ = tg.create_task(try_create("Engineering"))
+            _ = tg.create_task(try_create("Marketing"))
 
         # Both should succeed (possibly after retry)
         assert results.count("ok") == 2, f"Expected 2 successes, got {results}"
@@ -204,8 +204,8 @@ class TestCompanyUpdateCAS:
                 results.append("version_conflict")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(try_update("Company-A"))
-            tg.create_task(try_update("Company-B"))
+            _ = tg.create_task(try_update("Company-A"))
+            _ = tg.create_task(try_update("Company-B"))
 
         assert results.count("ok") == 1, f"Expected exactly 1 success, got {results}"
         assert results.count("version_conflict") == 1

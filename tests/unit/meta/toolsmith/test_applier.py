@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the tool-creation applier."""
 
 from datetime import UTC, datetime, timedelta

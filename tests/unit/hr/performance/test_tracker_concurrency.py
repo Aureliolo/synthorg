@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Concurrency regression tests for PerformanceTracker.
 
 The tracker's ``_metrics_lock`` historically only protected
@@ -56,7 +56,7 @@ class TestTrackerConcurrency:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(n_calls):
-                tg.create_task(_record(i))
+                _ = tg.create_task(_record(i))
 
         assert len(tracker._contributions[_AGENT_ID]) == n_calls * contribs_per_call
 
@@ -75,7 +75,7 @@ class TestTrackerConcurrency:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(n_events):
-                tg.create_task(_record(i))
+                _ = tg.create_task(_record(i))
 
         assert len(tracker._collab_metrics[_AGENT_ID]) == n_events
 
@@ -99,8 +99,8 @@ class TestTrackerConcurrency:
 
         async with asyncio.TaskGroup() as tg:
             for i in range(30):
-                tg.create_task(_record_task(i))
-                tg.create_task(_record_contrib(i))
+                _ = tg.create_task(_record_task(i))
+                _ = tg.create_task(_record_contrib(i))
 
         assert len(tracker._task_metrics[_AGENT_ID]) == 30
         assert len(tracker._contributions[_AGENT_ID]) == 30

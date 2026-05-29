@@ -75,7 +75,7 @@ class TestConcurrentWrites:
         async with asyncio.TaskGroup() as tg:
             for task_id in task_ids:
                 task = make_task(task_id=task_id)
-                tg.create_task(postgres_backend.tasks.save(task))
+                _ = tg.create_task(postgres_backend.tasks.save(task))
 
         # Verify every row is present.
         from synthorg.persistence.task_protocol import TaskFilterSpec
@@ -111,7 +111,7 @@ class TestConcurrentWrites:
 
         async with asyncio.TaskGroup() as tg:
             for record in records:
-                tg.create_task(postgres_backend.cost_records.append(record))
+                _ = tg.create_task(postgres_backend.cost_records.append(record))
 
         total = await postgres_backend.cost_records.aggregate(task_id="cost-parent")
         # Sum of 0.01 * (1..20) = 0.21 * 10 = 2.10
@@ -172,7 +172,7 @@ class TestPoolExhaustion:
 
                 async with asyncio.TaskGroup() as tg:
                     for _ in range(10):
-                        tg.create_task(run_query())
+                        _ = tg.create_task(run_query())
 
                 assert all(results), f"some health checks failed: {results}"
             finally:

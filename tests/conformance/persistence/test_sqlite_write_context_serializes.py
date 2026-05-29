@@ -43,7 +43,7 @@ async def test_sqlite_write_context_strictly_serializes_writers(
 
         async with asyncio.TaskGroup() as tg:
             for i in range(_WORKER_COUNT):
-                tg.create_task(worker(i))
+                _ = tg.create_task(worker(i))
 
         assert len(events) == 2 * _WORKER_COUNT
         for n in range(0, len(events), 2):

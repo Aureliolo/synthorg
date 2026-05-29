@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,unused-awaitable"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for InMemoryMessageBus."""
 
 import asyncio
@@ -291,8 +291,8 @@ class TestSubscription:
             await bus.unsubscribe("#general", "agent-a")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(receiver())
-            tg.create_task(unsubscriber())
+            _ = tg.create_task(receiver())
+            _ = tg.create_task(unsubscriber())
 
         assert received == [None]
 
@@ -314,10 +314,10 @@ class TestSubscription:
             await bus.unsubscribe("#general", "agent-a")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(receiver())
-            tg.create_task(receiver())
-            tg.create_task(receiver())
-            tg.create_task(unsubscriber())
+            _ = tg.create_task(receiver())
+            _ = tg.create_task(receiver())
+            _ = tg.create_task(receiver())
+            _ = tg.create_task(unsubscriber())
 
         assert len(received) == 3
         assert all(r is None for r in received)
@@ -408,8 +408,8 @@ class TestPublishReceive:
             await bus.publish(msg)
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(receiver())
-            tg.create_task(publisher())
+            _ = tg.create_task(receiver())
+            _ = tg.create_task(publisher())
 
         assert received == ["delayed"]
 
@@ -603,7 +603,7 @@ class TestConcurrency:
             return received
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(publisher())
+            _ = tg.create_task(publisher())
             consumer_task = tg.create_task(consumer())
 
         result = consumer_task.result()
@@ -641,7 +641,7 @@ class TestConcurrency:
 
         async with asyncio.TaskGroup() as tg:
             for p in range(num_publishers):
-                tg.create_task(publisher(f"pub-{p}"))
+                _ = tg.create_task(publisher(f"pub-{p}"))
             consumer_task = tg.create_task(consumer())
 
         result = consumer_task.result()
@@ -685,7 +685,7 @@ class TestReceiveValidation:
             await bus.stop()
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(stop_after_delay())
+            _ = tg.create_task(stop_after_delay())
             result = await bus.receive("#general", "agent-a", timeout=5.0)
 
         assert result is None
