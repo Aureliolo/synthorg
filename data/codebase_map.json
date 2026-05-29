@@ -177,7 +177,7 @@
     },
     {
       "kind": "code",
-      "loc": 704,
+      "loc": 633,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -369,6 +369,13 @@
       "loc": 813,
       "loc_cap": 500,
       "module": "src/synthorg/api/auto_wire.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 135,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/boot_persistence.py",
       "owning_feature": "api_core"
     },
     {

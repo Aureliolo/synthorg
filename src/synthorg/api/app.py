@@ -5,9 +5,7 @@ controllers, middleware, exception handlers, plugins, and
 lifecycle hooks (startup/shutdown).
 """
 
-import os
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
@@ -22,7 +20,6 @@ from synthorg.api.app_builders import (
 from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
-    _resolve_artifact_dir_env,
 )
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller_helpers import require_password_changed
@@ -31,6 +28,7 @@ from synthorg.api.auto_wire import (
     auto_wire_meetings,
     auto_wire_phase1,
 )
+from synthorg.api.boot_persistence import resolve_boot_persistence
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     create_channels_plugin,
@@ -103,7 +101,6 @@ from synthorg.hr.training.service import TrainingService
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import (
     get_logger,
-    log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.api import (
@@ -113,13 +110,6 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.artifact_storage import (
     ArtifactStorageBackend,
 )
-from synthorg.persistence.config_factory import (
-    build_filesystem_artifact_storage,
-    build_postgres_persistence_config_from_url,
-    build_sqlite_persistence_config,
-    normalize_ssl_mode_value,
-)
-from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
@@ -259,95 +249,18 @@ def create_app(  # noqa: PLR0913
 
     api_config = effective_config.api
 
-    # Resolve runtime paths for backup service wiring.
-    resolved_db_path: Path | None = None
-    resolved_config_path_str = (os.environ.get("SYNTHORG_CONFIG_PATH") or "").strip()
-    resolved_config_path: Path | None = (
-        Path(resolved_config_path_str) if resolved_config_path_str else None
+    # Auto-wire persistence + artifact storage from the CLI-provided env vars
+    # (unless injected); the raw env values flow through for downstream wiring.
+    boot = resolve_boot_persistence(
+        persistence=persistence,
+        artifact_storage=artifact_storage,
     )
-
-    # Read persistence env vars unconditionally so downstream code
-    # (e.g. the secret-backend gate below) can still observe which
-    # environment choice won, even when ``persistence`` was injected
-    # by the caller rather than auto-wired here.
-    db_url = (os.environ.get("SYNTHORG_DATABASE_URL") or "").strip()
-    db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
-
-    # Auto-wire persistence from CLI-provided env vars. The CLI compose
-    # template sets ONE of these per init choice:
-    #   * SYNTHORG_DATABASE_URL=postgresql://user:pass@host:port/db   (postgres)
-    #   * SYNTHORG_DB_PATH=/data/synthorg.db                          (sqlite)
-    # Postgres takes precedence so a half-converted state (both env
-    # vars present) does not silently fall back to SQLite. The startup
-    # lifecycle handles connect() + migrate() + auth service creation.
-    if persistence is None:
-        if db_url:
-            try:
-                pg_persistence_config = build_postgres_persistence_config_from_url(
-                    db_url,
-                    ssl_mode_override=normalize_ssl_mode_value(
-                        os.environ.get("SYNTHORG_POSTGRES_SSL_MODE"),
-                    ),
-                )
-                persistence = create_backend(pg_persistence_config)
-            except Exception as exc:
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger,
-                    API_APP_STARTUP,
-                    exc,
-                    note="Postgres persistence creation failed",
-                )
-                raise
-            assert pg_persistence_config.postgres is not None  # noqa: S101
-            logger.info(
-                API_APP_STARTUP,
-                note="Auto-wired Postgres persistence from SYNTHORG_DATABASE_URL",
-                host=pg_persistence_config.postgres.host,
-                database=pg_persistence_config.postgres.database,
-            )
-            # Postgres has no on-disk artifact directory tied to the DB
-            # path, so default artifact storage to /data (the standard
-            # data volume in the CLI compose template) when not set.
-            if artifact_storage is None:
-                artifact_dir_str = _resolve_artifact_dir_env()
-                artifact_storage = build_filesystem_artifact_storage(
-                    data_dir=Path(artifact_dir_str),
-                )
-                logger.info(
-                    API_APP_STARTUP,
-                    note="Auto-wired filesystem artifact storage (postgres mode)",
-                    data_dir=artifact_dir_str,
-                )
-        elif db_path:
-            resolved_db_path = Path(db_path)
-            try:
-                persistence = create_backend(
-                    build_sqlite_persistence_config(path=db_path),
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                log_exception_redacted(
-                    logger,
-                    API_APP_STARTUP,
-                    exc,
-                    note="Failed to create persistence backend from env",
-                )
-                raise
-            logger.info(
-                API_APP_STARTUP,
-                note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
-                db_name=Path(db_path).name,
-            )
-            # Auto-wire artifact storage from the same data directory.
-            if artifact_storage is None:
-                artifact_storage = build_filesystem_artifact_storage(
-                    data_dir=resolved_db_path.parent,
-                )
-                logger.info(
-                    API_APP_STARTUP,
-                    note="Auto-wired filesystem artifact storage",
-                )
+    persistence = boot.persistence
+    artifact_storage = boot.artifact_storage
+    resolved_db_path = boot.resolved_db_path
+    resolved_config_path = boot.resolved_config_path
+    db_url = boot.db_url
+    db_path = boot.db_path
 
     # ── Construction-time auto-wire: services that don't need connected persistence ──
     phase1 = auto_wire_phase1(
