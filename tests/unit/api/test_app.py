@@ -154,7 +154,7 @@ class TestCreateApp:
         Moving the registry build after auto_wire_meetings made the meeting
         orchestrator receive `None`, which then 500s on the first request.
         """
-        import synthorg.api.app as app_module
+        import synthorg.api.construction_phase as construction_module
         from synthorg.api.auto_wire import auto_wire_meetings as _original_auto_wire
 
         captured: dict[str, Any] = {}
@@ -163,7 +163,7 @@ class TestCreateApp:
             captured["agent_registry"] = kwargs.get("agent_registry")
             return _original_auto_wire(**kwargs)
 
-        monkeypatch.setattr(app_module, "auto_wire_meetings", _capturing)
+        monkeypatch.setattr(construction_module, "auto_wire_meetings", _capturing)
 
         create_app(
             config=root_config,

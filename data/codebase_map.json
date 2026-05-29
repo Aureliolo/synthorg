@@ -184,7 +184,7 @@
     },
     {
       "kind": "code",
-      "loc": 399,
+      "loc": 108,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -432,6 +432,13 @@
       "loc": 359,
       "loc_cap": 500,
       "module": "src/synthorg/api/config.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 338,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/construction_phase.py",
       "owning_feature": "api_core"
     },
     {

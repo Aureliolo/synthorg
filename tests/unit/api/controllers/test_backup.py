@@ -425,7 +425,7 @@ class TestBackupGuards:
         scheduler.stop = AsyncMock(spec=BackupScheduler.stop)
         mock_svc.scheduler = scheduler
         monkeypatch.setattr(
-            "synthorg.api.app.build_backup_service",
+            "synthorg.api.construction_phase.build_backup_service",
             lambda *_a, **_kw: mock_svc,
         )
         app_state = async_test_client.app.state.app_state

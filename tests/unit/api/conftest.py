@@ -153,7 +153,7 @@ def _no_backup_service() -> Iterator[None]:
     from unittest.mock import patch
 
     with patch(
-        "synthorg.api.app.build_backup_service",
+        "synthorg.api.construction_phase.build_backup_service",
         return_value=None,
     ):
         yield
