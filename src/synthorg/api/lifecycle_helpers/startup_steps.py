@@ -6,17 +6,202 @@ closing over ``create_app`` locals) and is scheduled into the Litestar
 ``on_startup`` sequence by the composition root.
 """
 
+from typing import Any
+
 from pydantic import ValidationError
 
+from synthorg.api._app_wiring import (
+    _try_wire_cockpit,
+    _try_wire_cost_dial,
+    _wire_environment_service,
+)
+from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import set_error_docs_base_url
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.api import API_BRIDGE_CONFIG_RESOLVE_FAILED
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_BRIDGE_CONFIG_RESOLVE_FAILED,
+)
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 logger = get_logger(__name__)
+
+
+async def install_runtime_services(
+    app_state: AppState,
+    *,
+    connection_catalog: Any,
+) -> None:
+    """Install worker-execution + coordinator runtime services at boot.
+
+    Installs the worker execution service AND the multi-agent coordinator
+    behind the single provider-present switch, both sharing one boot
+    AgentEngine. Scheduled first (immediately after the core startup hooks
+    that connect persistence and wire SettingsService / ConfigResolver) and
+    before any other appended hook, so the once-only
+    ``set_worker_execution_service`` / ``set_coordinator`` cannot lose a
+    race with the worker-service property's lazy lifecycle-only default.
+    With no provider this installs the empty-company backstop and no
+    coordinator (``/coordinate`` honestly 503s); a provider added later
+    swaps both in via ``post_setup_reinit`` (no restart). The caller guards
+    re-entry idempotency so the one-shot ``set_`` calls survive a lifespan
+    re-entry (shared-app test fixtures).
+
+    Raises:
+        RuntimeServicesBuildError: If the runtime-services build fails.
+    """
+    from synthorg.engine.errors import (  # noqa: PLC0415
+        RuntimeServicesBuildError,
+    )
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        WorkspaceStateSlice,
+        agent_workspace_root_of,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+    from synthorg.providers.state import (  # noqa: PLC0415
+        has_active_provider,
+    )
+    from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+        build_runtime_services,
+    )
+
+    # Pin the sandbox workspace onto the mounted data volume in an
+    # env-driven deployment so agent file/sandbox tools persist with
+    # the runtime data, not a process temp dir. Injected/dev apps
+    # return None and keep the documented temp fallback.
+    env_workspace_root = resolve_agent_workspace_root_env()
+    if env_workspace_root is not None:
+        app_state.wire(WorkspaceStateSlice, agent_workspace_root=env_workspace_root)
+
+    # Per-project persistent workspace substrate. The git backend is
+    # config-selected (embedded default, no external dep);
+    # ProjectWorkspaceService provisions one persistent git-backed
+    # tree per project under the workspace base. Persistence-less
+    # boots (test fixtures, dev apps with no DB) skip wiring.
+    _try_wire_cost_dial(app_state)
+    _try_wire_cockpit(app_state)
+
+    # service is optional and gates on ``has_project_workspace_service``.
+    if (
+        app_state.slice(PersistenceStateSlice).backend is not None
+        and app_state.slice(WorkspaceStateSlice).project_workspace_service is None
+    ):
+        # Guard against partial-startup retry: this hook fires once
+        # the persistence layer is connected, but ``build_runtime_services``
+        # below is fallible and a re-entry after its failure would
+        # otherwise hit the ``_set_once`` guard inside
+        # ``set_project_workspace_service`` and fail with
+        # "already configured" instead of cleanly retrying the
+        # runtime-services build.
+        from synthorg.engine.workspace.git_backend import (  # noqa: PLC0415
+            GitBackendConfig,
+            GitBackendDeps,
+            build_git_backend,
+        )
+        from synthorg.engine.workspace.project_workspace_service import (  # noqa: PLC0415
+            ProjectWorkspaceService,
+        )
+
+        git_backend_config = GitBackendConfig()
+        git_backend = build_git_backend(
+            git_backend_config,
+            GitBackendDeps(
+                workspace_base_root=agent_workspace_root_of(app_state),
+                connection_catalog=connection_catalog,
+                clock=app_state.clock,
+            ),
+        )
+        app_state.wire(
+            WorkspaceStateSlice,
+            project_workspace_service=ProjectWorkspaceService(
+                base_root=agent_workspace_root_of(app_state),
+                repo=persistence_of(app_state).project_workspaces,
+                git_backend=git_backend,
+                config=git_backend_config,
+                clock=app_state.clock,
+            ),
+        )
+
+    # Per-project reproducible environment substrate (extracted to
+    # keep this hook under the cyclomatic-complexity cap).
+    _wire_environment_service(app_state)
+
+    try:
+        services = await build_runtime_services(
+            app_state,
+            workspace_root=agent_workspace_root_of(app_state),
+        )
+    except Exception as exc:
+        reraise_critical(exc)
+        log_exception_redacted(
+            logger,
+            API_APP_STARTUP,
+            exc,
+            service="runtime_services",
+            note="failed to build the runtime services at boot",
+            provider_present=has_active_provider(app_state),
+        )
+        msg = "Runtime services failed to build at boot"
+        raise RuntimeServicesBuildError(msg) from exc
+    app_state.set_worker_execution_service(
+        services.worker_execution_service,
+    )
+    # An explicitly injected coordinator (``create_app(coordinator=)``
+    # in tests / custom DI) wins over the autowired one, matching the
+    # injection-over-autowire convention used across ``create_app``.
+    # ``set_coordinator_if_absent`` makes the check-and-set atomic in
+    # the seam (no boot-time check-then-act), so an injected
+    # coordinator is kept and the built one is a logged no-op then.
+    if services.coordinator is not None:
+        app_state.set_coordinator_if_absent(services.coordinator)
+    # Same injection-over-autowire rule for the work pipeline spine:
+    # an injected ``create_app(work_pipeline=)`` is kept, the built
+    # one is a logged no-op then.
+    if services.work_pipeline is not None:
+        app_state.set_work_pipeline_if_absent(services.work_pipeline)
+    # Attach the vision verifier gate to the review gate service when
+    # the subsystem is enabled. The service was built during app
+    # construction (before a provider connected); the gate is built
+    # here once the workspace + provider are available.
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+
+    review_gate_service = app_state.slice(ApprovalStateSlice).review_gate
+    if services.vision_gate is not None and review_gate_service is not None:
+        review_gate_service.set_vision_gate(services.vision_gate)
+    # Same seam for the adversarial red-team gate: built in the
+    # runtime wiring once the boot engine exists, attached here so a
+    # review pipeline supplied with red_team_input reaches the live
+    # gate. ``None`` when the red-team subsystem is disabled.
+    if services.red_team_runtime is not None and review_gate_service is not None:
+        review_gate_service.set_red_team_gate(
+            services.red_team_runtime.gate,
+        )
+    # Bring the real client-request, goal/objective, and
+    # task-board work-entry paths online: ensure the configured
+    # default projects exist and attach the entry adapters. No-op
+    # for an empty company (no pipeline). The task-board adapter
+    # follows the same gate but skips the project bootstrap (board
+    # filings carry their own project).
+    from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+        wire_real_intake_entry,
+        wire_real_objective_entry,
+        wire_real_task_board_entry,
+    )
+
+    await wire_real_intake_entry(app_state)
+    await wire_real_objective_entry(app_state)
+    await wire_real_task_board_entry(app_state)
 
 
 async def resolve_runtime_security_settings(app_state: AppState) -> None:

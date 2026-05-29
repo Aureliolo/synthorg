@@ -170,7 +170,7 @@
     },
     {
       "kind": "code",
-      "loc": 1150,
+      "loc": 1055,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -1416,7 +1416,7 @@
     },
     {
       "kind": "code",
-      "loc": 91,
+      "loc": 221,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
