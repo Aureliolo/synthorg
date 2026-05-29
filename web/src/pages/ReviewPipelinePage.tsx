@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
 import {
   CheckCircle,
@@ -52,10 +52,16 @@ function useReviewPipeline(taskId: string | undefined): ReviewPipelineState {
   const [actionError, setActionError] = useState<string | null>(null)
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous re-entrancy guard: ``submitting`` only commits on the
+  // next render, so a rapid double-click could pass an ``if (submitting)``
+  // check twice before React updates it and fire two decideReviewStage
+  // calls. The ref flips immediately, closing that window.
+  const inFlightRef = useRef(false)
 
   const handleDecide = useCallback<DecideStage>(
     async (stageName, verdict) => {
-      if (!taskId || submitting) return
+      if (!taskId || inFlightRef.current) return
+      inFlightRef.current = true
       setSubmitting(true)
       setActionError(null)
       // Clear any prior success notice so a stale "Recorded ..." banner
@@ -72,10 +78,11 @@ function useReviewPipeline(taskId: string | undefined): ReviewPipelineState {
         log.error('decide_stage_failed', err)
         setActionError('Failed to record stage decision.')
       } finally {
+        inFlightRef.current = false
         setSubmitting(false)
       }
     },
-    [taskId, submitting],
+    [taskId],
   )
 
   useEffect(() => {
