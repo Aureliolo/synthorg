@@ -10061,9 +10061,51 @@
     },
     {
       "kind": "code",
-      "loc": 856,
+      "loc": 26,
       "loc_cap": 500,
-      "module": "src/synthorg/meta/mcp/handlers/communication.py",
+      "module": "src/synthorg/meta/mcp/handlers/communication/__init__.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 50,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/_shared.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 220,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/connections.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 197,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/meetings.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 188,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/messages.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 75,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/tunnel.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 262,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/communication/webhooks.py",
       "owning_feature": "meta"
     },
     {
@@ -10082,9 +10124,100 @@
     },
     {
       "kind": "code",
-      "loc": 1358,
+      "loc": 47,
       "loc_cap": 500,
-      "module": "src/synthorg/meta/mcp/handlers/infrastructure.py",
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/__init__.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 83,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/_shared.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 85,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/audit_events.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 221,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/backup.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 44,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/health.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 74,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/integration_health.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 198,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/projects.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 144,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/providers.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 105,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/requests.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 159,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/settings.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 84,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/setup.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 103,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/simulations.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 168,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/template_packs.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 208,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/infrastructure/users.py",
       "owning_feature": "meta"
     },
     {
