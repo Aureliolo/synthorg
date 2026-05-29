@@ -232,6 +232,16 @@ class DeviceFlow:
         # integer ``interval`` and a strictly-positive integer
         # ``expires_in``.
         def _positive_int(field_name: str, default: int) -> int:
+            """Coerce a device-code field to a strictly-positive int.
+
+            Returns:
+                The validated positive integer.
+
+            Raises:
+                TokenExchangeFailedError: If the field is not a positive
+                    integer (booleans, non-ints, and values <= 0 are
+                    rejected).
+            """
             raw: object = data.get(field_name, default)
             if isinstance(raw, bool) or not isinstance(raw, int):
                 msg = (

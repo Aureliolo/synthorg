@@ -73,7 +73,12 @@ class InMemoryMcpInstallationRepository:
         self,
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
-        """Fetch by catalog entry id."""
+        """Fetch by catalog entry id.
+
+        Returns:
+            The ``McpInstallation`` for the given ``catalog_entry_id``,
+            or ``None`` when no matching row exists.
+        """
         async with self._get_lock():
             return self._store.get(catalog_entry_id)
 
@@ -96,6 +101,15 @@ class InMemoryMcpInstallationRepository:
         match the sqlite/postgres contract: silently coercing them
         would let bugs that the durable backends catch slip through
         in tests and no-persistence deployments.
+
+        Returns:
+            A tuple of ``McpInstallation`` rows ordered by
+            ``(installed_at, catalog_entry_id)`` ascending, sliced to the
+            requested page window.
+
+        Raises:
+            QueryError: If ``limit`` or ``offset`` is invalid (``limit <
+                1``, ``offset < 0``, non-int, or ``bool``).
         """
         validate_pagination_args(
             limit,
@@ -114,7 +128,12 @@ class InMemoryMcpInstallationRepository:
         return rows[offset : offset + limit]
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
-        """Delete by catalog entry id."""
+        """Delete by catalog entry id.
+
+        Returns:
+            ``True`` when a row was found and removed; ``False`` when no
+            row matched the given ``catalog_entry_id``.
+        """
         async with self._get_lock():
             removed = self._store.pop(catalog_entry_id, None) is not None
         if removed:
@@ -131,6 +150,9 @@ class InMemoryMcpInstallationRepository:
         Used by tests between scenarios and by the dev-mode reset
         endpoint. Production deployments use the durable backends so
         this method is never reachable in serious environments.
+
+        Returns:
+            The number of installation rows that were removed.
         """
         async with self._get_lock():
             removed = len(self._store)

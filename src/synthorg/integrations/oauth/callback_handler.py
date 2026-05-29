@@ -46,6 +46,10 @@ async def resolve_oauth_http_timeout(
     break the OAuth callback path; interpreter-critical errors
     (``MemoryError`` / ``RecursionError``) still propagate via
     ``reraise_critical``.
+
+    Returns:
+        The operator-configured OAuth HTTP timeout in seconds, or
+        ``None`` when no resolver is available or the lookup fails.
     """
     if config_resolver is None:
         return None
@@ -114,6 +118,10 @@ async def handle_oauth_callback(  # noqa: PLR0913
         TokenExchangeFailedError: If the code exchange fails or the
             exchange credentials (token_url / client_id /
             client_secret) are missing from the connection.
+        OIDCVerificationError: If an OIDC-configured connection returns
+            no ``id_token`` (or an ``id_token`` without a ``jwks_uri`` /
+            ``oidc_issuer`` / state nonce), or ``verify_id_token``
+            rejects the token's nonce, issuer, or audience.
     """
     logger.info(OAUTH_CALLBACK_RECEIVED, state_prefix=state_param[:8])
 

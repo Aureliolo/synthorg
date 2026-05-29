@@ -27,7 +27,12 @@ class GenericHttpAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields."""
+        """Validate credential fields.
+
+        Raises:
+            InvalidConnectionAuthError: If ``base_url`` is missing,
+                non-string, or blank.
+        """
         base_url = credentials.get("base_url")
         if not isinstance(base_url, str) or not base_url.strip():
             logger.warning(

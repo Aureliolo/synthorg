@@ -29,6 +29,9 @@ def _config_signature(config: RateLimiterConfig) -> str:
     ``RateLimiterConfig`` instances targeting the same connection
     get distinct limiters instead of silently reusing whichever
     config was cached first.
+
+    Returns:
+        A stable JSON string uniquely representing the config instance.
     """
     return config.model_dump_json()
 
@@ -37,7 +40,12 @@ def _get_or_create_limiter(
     connection_name: str,
     config: RateLimiterConfig,
 ) -> RateLimiter:
-    """Get or create a rate limiter for a connection."""
+    """Get or create a rate limiter for a connection.
+
+    Returns:
+        The existing or newly-created ``RateLimiter`` for the
+        ``(connection_name, config_signature)`` key.
+    """
     key = (connection_name, _config_signature(config))
     if key not in _limiters:
         _limiters[key] = RateLimiter(
@@ -84,6 +92,11 @@ def with_connection_rate_limit(
 
         @functools.wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
+            """Acquire the connection's rate-limit slot, then run ``fn``.
+
+            Returns:
+                The wrapped coroutine's result, unchanged.
+            """
             from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
                 get_coordinator,
             )

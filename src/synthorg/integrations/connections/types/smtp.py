@@ -27,7 +27,14 @@ class SmtpAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields."""
+        """Validate credential fields.
+
+        Raises:
+            InvalidConnectionAuthError: If ``host`` is missing,
+                non-string, or blank; ``username``/``password`` is a
+                non-string value; or exactly one of
+                ``username``/``password`` is supplied without the other.
+        """
         host = credentials.get("host")
         if not isinstance(host, str) or not host.strip():
             logger.warning(

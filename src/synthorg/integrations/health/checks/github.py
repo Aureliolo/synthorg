@@ -118,6 +118,11 @@ class GitHubHealthCheck:
         built-in allowlist, so no per-instance entry is needed.
         Returns an empty tuple as well when the URL is malformed; the
         caller's allowlist falls back to the built-in suffixes only.
+
+        Returns:
+            A one-element tuple with the lowercase hostname of
+            ``default_api_url``, or an empty tuple for the public default
+            or a malformed URL.
         """
         try:
             parsed = urlparse(default_api_url)
@@ -133,7 +138,13 @@ class GitHubHealthCheck:
         self._catalog = catalog
 
     async def check(self, connection: Connection) -> HealthReport:
-        """Verify the GitHub token is valid via /user endpoint."""
+        """Verify the GitHub token is valid via /user endpoint.
+
+        Returns:
+            A ``HealthReport``: ``HEALTHY`` on HTTP 200, ``UNHEALTHY`` on
+            non-200 or network error, or ``UNKNOWN`` when the catalog is
+            not bound or ``token`` is missing.
+        """
         now = datetime.now(UTC)
         if self._catalog is None:
             logger.warning(

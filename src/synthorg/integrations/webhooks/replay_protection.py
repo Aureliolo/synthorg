@@ -118,6 +118,10 @@ class ReplayProtector:
         eviction so a clock advance between two reads cannot open a
         boundary replay window where the freshness check uses one
         ``now`` and the nonce eviction uses another.
+
+        Returns:
+            ``True`` when the timestamp is absent or within the
+            configured window; ``False`` when it is non-finite or stale.
         """
         if timestamp is None:
             return True
@@ -186,6 +190,10 @@ class ReplayProtector:
         handles the nonce side of replay protection. ``now`` is taken
         from the same clock read the caller used so eviction and
         dedup observe the same instant.
+
+        Returns:
+            ``True`` when the nonce is absent or unseen within the
+            window; ``False`` when it was previously seen (a replay).
         """
         if nonce is None:
             with self._lock:

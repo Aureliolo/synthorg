@@ -29,7 +29,13 @@ class DatabaseAuthenticator:
         self,
         credentials: dict[str, str],
     ) -> None:
-        """Validate credential fields."""
+        """Validate credential fields.
+
+        Raises:
+            InvalidConnectionAuthError: If ``dialect`` is
+                missing/blank/unsupported, ``host`` is missing/blank for
+                a non-sqlite dialect, or ``database`` is missing/blank.
+        """
         # Type-guard every field before calling ``.strip()`` so a
         # non-string payload surfaces as a structured
         # ``InvalidConnectionAuthError`` instead of ``AttributeError``.

@@ -162,9 +162,11 @@ class OAuthTokenManager:
             apply(value)
 
     def _apply_interval(self, seconds: int) -> None:
+        """Update the refresh-loop poll interval (seconds)."""
         self._interval = seconds
 
     def _apply_threshold(self, seconds: int) -> None:
+        """Update the pre-expiry refresh threshold (seconds)."""
         self._threshold = timedelta(seconds=seconds)
 
     async def start(self) -> None:
@@ -192,7 +194,12 @@ class OAuthTokenManager:
             self._task = None
 
     async def _refresh_loop(self) -> None:
-        """Periodically check and refresh expiring tokens."""
+        """Periodically check and refresh expiring tokens.
+
+        Raises:
+            asyncio.CancelledError: If the refresh task is cancelled via
+                ``stop()`` or direct task cancellation.
+        """
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
@@ -351,6 +358,11 @@ class OAuthTokenManager:
         deliberately not logged: the stack frames here hold the OAuth
         client secret and refresh token, so only a redacted
         description is emitted.
+
+        Returns:
+            ``True`` when tokens were persisted (and metadata updated if
+            an expiry was present); ``False`` when the access token was
+            empty or the persistence write failed.
         """
         access_token = refreshed.access_token
         if not access_token:

@@ -40,6 +40,10 @@ def _wall_clock_seconds() -> float:
     coordination. Monotonic clocks are process-local, so their
     values are meaningless when published over the message bus
     to other workers.
+
+    Returns:
+        The current wall-clock time as a Unix epoch float (seconds
+        since 1970-01-01 UTC).
     """
     return datetime.now(UTC).timestamp()
 
@@ -374,6 +378,10 @@ def get_coordinator(connection_name: str) -> SharedRateLimitCoordinator | None:
     :func:`set_coordinator_factory_sync`) cannot leave us calling a
     stale or ``None`` factory between the existence check and the
     invocation.
+
+    Returns:
+        The existing or newly-created ``SharedRateLimitCoordinator`` for
+        the connection, or ``None`` when no factory is registered.
     """
     with _COORDINATOR_LOCK:
         if _coordinator_factory is None:

@@ -43,14 +43,20 @@ class OAuthRotationMixin:
         _repo: ConnectionRepository
         _secret_backend: SecretBackend
 
-        async def _lock_for(self, name: str) -> asyncio.Lock: ...
+        async def _lock_for(self, name: str) -> asyncio.Lock:
+            """Return the per-connection lock (provided by the host class)."""
+            ...
 
-        async def get_or_raise(self, name: str) -> Connection: ...
+        async def get_or_raise(self, name: str) -> Connection:
+            """Load a connection or raise (provided by the host class)."""
+            ...
 
         async def _resolve_credentials_for(
             self,
             conn: Connection,
-        ) -> dict[str, str]: ...
+        ) -> dict[str, str]:
+            """Merge a connection's credentials (provided by the host class)."""
+            ...
 
         async def _store_secret(
             self,
@@ -59,9 +65,13 @@ class OAuthRotationMixin:
             *,
             connection_name: str,
             failure_event: str,
-        ) -> None: ...
+        ) -> None:
+            """Write a secret blob to the backend (provided by the host class)."""
+            ...
 
-        def _invalidate_cache(self) -> None: ...
+        def _invalidate_cache(self) -> None:
+            """Drop the cached connection snapshot (provided by the host class)."""
+            ...
 
     async def store_oauth_tokens(
         self,
@@ -79,6 +89,10 @@ class OAuthRotationMixin:
         previously-referenced secrets are deleted from the backend
         so ``get_credentials`` cannot reintroduce stale keys on
         the next resolve.
+
+        Returns:
+            The updated ``Connection`` row with a single fresh
+            ``SecretRef`` pointing at the merged token payload.
 
         Raises:
             ConnectionNotFoundError: If the connection does not exist.
@@ -120,6 +134,11 @@ class OAuthRotationMixin:
         would leave sibling refs pointing at stale credential slices,
         and ``get_credentials`` merges them in order so old values
         could shadow the fresh token on the next resolve.
+
+        Returns:
+            A ``(new_secret_id, updated_connection)`` tuple: the
+            freshly-allocated secret UUID and the connection with its
+            ``secret_refs`` collapsed to that single ref.
         """
         new_secret_id = str(uuid4())
         # Route through ``_store_secret`` so a backend-store failure
