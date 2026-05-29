@@ -6,7 +6,7 @@ these Protocols instead of the SQLite classes so the persistence
 backend can be swapped without touching service code.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
@@ -33,6 +33,7 @@ class FineTuneRunRepository(
     atomically marks all active runs as FAILED (startup recovery).
     """
 
+    @override
     async def save(self, entity: FineTuneRun) -> None:
         """Upsert a run by ``id`` (idempotent semantics).
 
@@ -44,6 +45,7 @@ class FineTuneRunRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> FineTuneRun | None:
         """Retrieve a run by ID.
 
@@ -58,6 +60,7 @@ class FineTuneRunRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a run by ID.
 
@@ -72,6 +75,7 @@ class FineTuneRunRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -176,6 +180,7 @@ class FineTuneCheckpointRepository(
     checkpoint at a time, domain enforcement).
     """
 
+    @override
     async def save(self, entity: CheckpointRecord) -> None:
         """Upsert a checkpoint by ``id`` (idempotent semantics).
 
@@ -187,6 +192,7 @@ class FineTuneCheckpointRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> CheckpointRecord | None:
         """Retrieve a checkpoint by ID.
 
@@ -201,6 +207,7 @@ class FineTuneCheckpointRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a checkpoint by ID.
 
@@ -218,6 +225,7 @@ class FineTuneCheckpointRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

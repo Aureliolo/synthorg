@@ -1,5 +1,7 @@
 """Custom exception hierarchy for template errors."""
 
+from typing import override
+
 from synthorg.config.errors import ConfigError, ConfigLocation
 
 
@@ -45,6 +47,7 @@ class TemplateValidationError(TemplateError):
         super().__init__(message, locations)
         self.field_errors = field_errors
 
+    @override
     def __str__(self) -> str:
         """Format validation error with per-field details."""
         if not self.field_errors:

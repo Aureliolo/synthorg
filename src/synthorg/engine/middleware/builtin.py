@@ -7,7 +7,7 @@ These wrappers will delegate to the real implementations once the
 agent middleware chain is wired into the execution loop.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from synthorg.engine.middleware.protocol import (
     BaseAgentMiddleware,
@@ -59,6 +59,7 @@ class SecurityInterceptorMiddleware(BaseAgentMiddleware):
         super().__init__(name="security_interceptor")
         self._interceptor = interceptor
 
+    @override
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,
@@ -92,6 +93,7 @@ class SanitizeMessageMiddleware(BaseAgentMiddleware):
     def __init__(self, **_kwargs: object) -> None:
         super().__init__(name="sanitize_message")
 
+    @override
     async def before_model(
         self,
         ctx: AgentMiddlewareContext,
@@ -132,6 +134,7 @@ class ApprovalGateMiddleware(BaseAgentMiddleware):
         super().__init__(name="approval_gate")
         self._gate = approval_gate
 
+    @override
     async def after_model(
         self,
         ctx: AgentMiddlewareContext,
@@ -172,6 +175,7 @@ class ClassificationMiddleware(BaseAgentMiddleware):
         super().__init__(name="classification")
         self._config = error_taxonomy_config
 
+    @override
     async def wrap_model_call(
         self,
         ctx: AgentMiddlewareContext,
@@ -186,6 +190,7 @@ class ClassificationMiddleware(BaseAgentMiddleware):
         # not per-call. This middleware provides the named slot.
         return await call(ctx)
 
+    @override
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,
@@ -222,6 +227,7 @@ class CostRecordingMiddleware(BaseAgentMiddleware):
         super().__init__(name="cost_recording")
         self._tracker = tracker
 
+    @override
     async def after_agent(
         self,
         ctx: AgentMiddlewareContext,
@@ -265,6 +271,7 @@ class CheckpointResumeMiddleware(BaseAgentMiddleware):
         self._checkpoint_repo = checkpoint_repo
         self._heartbeat_repo = heartbeat_repo
 
+    @override
     async def before_agent(
         self,
         ctx: AgentMiddlewareContext,

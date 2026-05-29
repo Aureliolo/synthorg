@@ -1,6 +1,6 @@
 """Task repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,6 +45,7 @@ class TaskRepository(
     (ADR-0001).
     """
 
+    @override
     async def save(self, entity: Task) -> None:
         """Persist a task (insert or update by id).
 
@@ -56,6 +57,7 @@ class TaskRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Task | None:
         """Retrieve a task by its ID.
 
@@ -70,6 +72,7 @@ class TaskRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -90,6 +93,7 @@ class TaskRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: TaskFilterSpec,
@@ -112,6 +116,7 @@ class TaskRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: TaskFilterSpec) -> int:
         """Count tasks matching the filter spec.
 
@@ -126,6 +131,7 @@ class TaskRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a task by ID.
 

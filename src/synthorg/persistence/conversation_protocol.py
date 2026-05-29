@@ -15,7 +15,7 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,6 +62,7 @@ class ConversationRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def save(self, entity: Conversation) -> None:
         """Upsert a conversation header.
 
@@ -71,6 +72,7 @@ class ConversationRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Conversation | None:
         """Retrieve a conversation by id, or ``None`` when absent.
 
@@ -79,6 +81,7 @@ class ConversationRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a conversation by id. ``True`` iff a row existed.
 
@@ -101,6 +104,7 @@ class ConversationRepository(
         """
         ...
 
+    @override
     async def transition_if(
         self,
         entity_id: NotBlankStr,
@@ -141,6 +145,7 @@ class ConversationTurnRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def append(self, event: ConversationTurn) -> None:
         """Append one turn (immutable once written).
 
@@ -151,6 +156,7 @@ class ConversationTurnRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ConversationTurnFilterSpec,
@@ -168,6 +174,7 @@ class ConversationTurnRepository(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: datetime) -> int:
         """Delete turns created before ``threshold``. Returns rows removed.
 

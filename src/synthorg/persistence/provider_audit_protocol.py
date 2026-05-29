@@ -22,7 +22,7 @@ write path.
 """
 
 from datetime import datetime
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -80,6 +80,7 @@ class ProviderAuditRepo(
     suite under ``tests/integration/persistence/``.
     """
 
+    @override
     async def append(self, event: ProviderAuditEvent) -> None:
         """Persist one audit event (append-only).
 
@@ -114,6 +115,7 @@ class ProviderAuditRepo(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ProviderAuditFilterSpec,
@@ -169,6 +171,7 @@ class ProviderAuditRepo(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: datetime) -> int:
         """Delete events older than ``threshold`` by occurred_at.
 

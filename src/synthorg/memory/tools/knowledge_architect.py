@@ -10,7 +10,7 @@ Write/delete tools enforce autonomy gating: ``FULL`` disabled,
 allowed (upstream approval / plan-review gate expected).
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -82,10 +82,11 @@ class KnowledgeArchitectGuideTool(BaseTool):
             category=ToolCategory.MEMORY,
         )
 
+    @override
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],  # noqa: ARG002
+        arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Return the mechanics guide.
 
@@ -113,6 +114,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
         )
         self._org_backend = org_backend
 
+    @override
     async def execute(
         self,
         *,
@@ -182,6 +184,7 @@ class KnowledgeArchitectReadTool(BaseTool):
         )
         self._org_backend = org_backend
 
+    @override
     async def execute(
         self,
         *,
@@ -270,6 +273,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
         self._autonomy_level = autonomy_level
         self._architect_writes_enabled = architect_writes_enabled
 
+    @override
     async def execute(
         self,
         *,
@@ -398,6 +402,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         self._autonomy_level = autonomy_level
         self._architect_writes_enabled = architect_writes_enabled
 
+    @override
     async def execute(
         self,
         *,
@@ -507,6 +512,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         self._wiki_exporter = wiki_exporter
         self._agent_id = agent_id
 
+    @override
     async def execute(
         self,
         *,

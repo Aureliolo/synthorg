@@ -15,7 +15,7 @@ import math
 import time
 from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple, override
 
 from synthorg.budget._tracker_helpers import (
     _aggregate,
@@ -764,6 +764,7 @@ class CostTracker(CostTrackerSummaryMixin):
                 cost=cost_record.cost,
             )
 
+    @override
     async def _snapshot(
         self,
         *,
@@ -807,6 +808,7 @@ class CostTracker(CostTrackerSummaryMixin):
         self._records = [r for r in self._records if r.timestamp >= cutoff]
         return before - len(self._records)
 
+    @override
     def _build_dept_spendings(
         self,
         agent_spendings: list[AgentSpending],
@@ -848,6 +850,7 @@ class CostTracker(CostTrackerSummaryMixin):
             )
         return results
 
+    @override
     def _build_budget_context(
         self,
         total_cost: float,
@@ -871,6 +874,7 @@ class CostTracker(CostTrackerSummaryMixin):
         alert = self._compute_alert_level(used_pct)
         return budget_monthly, used_pct, alert
 
+    @override
     def _compute_alert_level(self, used_pct: float) -> BudgetAlertLevel:
         """Determine alert level from the rounded budget percentage.
 
@@ -890,6 +894,7 @@ class CostTracker(CostTrackerSummaryMixin):
             return BudgetAlertLevel.WARNING
         return BudgetAlertLevel.NORMAL
 
+    @override
     def _resolve_department(self, agent_id: str) -> str | None:
         """Resolve agent to department, logging resolver errors.
 

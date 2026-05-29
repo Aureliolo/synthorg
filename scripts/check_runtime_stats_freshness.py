@@ -27,9 +27,9 @@ Exit codes
 
 Flags
 -----
-* ``--skip-network`` -- bypass fetchers that shell out to ``gh`` or
-  ``pytest --collect-only`` (``tests``, ``mem0_stars``). Pre-push uses
-  this so developers without a ``gh`` token are not gated; CI runs
+* ``--skip-network`` -- bypass fetchers that shell out to
+  ``pytest --collect-only`` (``tests``). Pre-push uses this so
+  developers do not pay the collection cost on every push; CI runs
   without the flag to perform the full check.
 """
 
@@ -54,11 +54,11 @@ _YAML_FILE: Path = REPO_ROOT / "data" / "runtime_stats.yaml"
 # orthogonal to the per-stat drift check below.
 _STALE_AFTER_DAYS: Final[int] = 14
 
-# Fetchers whose source call is a subprocess to ``gh`` or
-# ``pytest --collect-only``. Skipped under ``--skip-network`` so
-# developers can pre-push without a configured ``gh`` token; CI runs
-# without the flag and covers every fetcher.
-_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests", "mem0_stars"})
+# Fetchers whose source call is a subprocess to ``pytest --collect-only``.
+# Skipped under ``--skip-network`` so developers can pre-push without
+# paying the collection cost; CI runs without the flag and covers every
+# fetcher.
+_NETWORK_STATS: Final[frozenset[str]] = frozenset({"tests"})
 
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_runtime_stats.py"
 
@@ -225,9 +225,9 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-network",
         action="store_true",
         help=(
-            "Skip network-backed fetchers (tests, mem0_stars). "
-            "Used by pre-push so developers without a configured gh token "
-            "are not blocked."
+            "Skip subprocess-backed fetchers (tests). "
+            "Used by pre-push so developers do not pay the pytest "
+            "collection cost on every push."
         ),
     )
     args = parser.parse_args(argv)

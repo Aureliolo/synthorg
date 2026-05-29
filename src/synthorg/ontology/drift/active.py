@@ -4,7 +4,7 @@ Same logic as passive but intended to run at delegation time
 (triggered by ``EntityAlignmentGuard`` in validate/enforce mode).
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, override
 
 from synthorg.observability import get_logger
 from synthorg.ontology.drift.passive import PassiveMonitorStrategy
@@ -43,6 +43,7 @@ class ActiveValidatorStrategy(PassiveMonitorStrategy):
             threshold=threshold,
         )
 
+    @override
     @property
     def strategy_name(self) -> str:
         """Return ``"active"``."""

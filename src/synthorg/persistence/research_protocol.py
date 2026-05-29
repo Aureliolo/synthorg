@@ -13,7 +13,7 @@ no bespoke methods (listing runs for a brief is an ordinary filtered
 query).
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,18 +67,22 @@ class ResearchRunRepository(
     a stable tie-breaker.
     """
 
+    @override
     async def save(self, entity: ResearchRun) -> None:
         """Persist a run row via upsert (PK ``run_id``)."""
         ...
 
+    @override
     async def get(self, entity_id: ResearchRunKey) -> ResearchRun | None:
         """Retrieve a run by ``run_id``, or ``None`` when absent."""
         ...
 
+    @override
     async def delete(self, entity_id: ResearchRunKey) -> bool:
         """Delete a run by ``run_id``. ``True`` iff a row existed."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -88,6 +92,7 @@ class ResearchRunRepository(
         """List runs across all briefs, most-recent first."""
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ResearchRunFilter,
@@ -98,6 +103,7 @@ class ResearchRunRepository(
         """Return runs matching the filter, most-recent first."""
         ...
 
+    @override
     async def count(self, filter_spec: ResearchRunFilter) -> int:
         """Count runs matching the filter spec."""
         ...

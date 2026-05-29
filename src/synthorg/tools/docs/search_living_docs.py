@@ -7,7 +7,7 @@ tagged checkout"). The transparent RAG path lives on
 memories on the normal ``memory.retrieve`` call.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -63,6 +63,7 @@ class SearchLivingDocsTool(BaseTool):
         self._docs_service = docs_service
         self._project_id = project_id
 
+    @override
     async def execute(
         self,
         *,

@@ -16,7 +16,7 @@ keep their once-only / if-absent / hot-replace semantics.
 import asyncio
 import threading
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, override
 
 from synthorg.api.state_services_bridge import _BridgeConfigPrimitivesMixin
 from synthorg.api.state_services_locks import _RequestLockPrimitivesMixin
@@ -24,9 +24,7 @@ from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_SERVICE_UNAVAILABLE,
-)
+from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
 from synthorg.settings.bridge_configs import (
     ApiBridgeConfig,
     MemoryBridgeConfig,
@@ -146,6 +144,7 @@ class AppState(
         # eagerly so concurrent first-reads share one ``Event``.
         self._shutdown_requested: asyncio.Event = asyncio.Event()
 
+    @override
     def _require_service[T](self, service: T | None, name: str) -> T:
         """Return *service* or raise 503 if not configured.
 

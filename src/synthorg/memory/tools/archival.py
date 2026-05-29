@@ -1,6 +1,6 @@
 """Archival memory tools (search/write) for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -50,6 +50,7 @@ class ArchivalMemorySearchTool(BaseTool):
         self._strategy = strategy
         self._agent_id = agent_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Execute an archival memory search via the self-editing strategy.
 
@@ -93,6 +94,7 @@ class ArchivalMemoryWriteTool(BaseTool):
         self._strategy = strategy
         self._agent_id = agent_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Execute an archival memory write via the self-editing strategy.
 

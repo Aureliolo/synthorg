@@ -18,7 +18,7 @@ locals would obscure the one-line intent with no runtime benefit.
 import asyncio
 import copy
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, override
 from uuid import UUID, uuid4
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
@@ -60,6 +60,7 @@ class UnsetType:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @override
     def __repr__(self) -> str:
         return "UNSET"
 

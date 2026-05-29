@@ -6,7 +6,7 @@ design artifacts.
 """
 
 import copy
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -138,6 +138,7 @@ class AssetManagerTool(BaseDesignTool):
             asset_type=metadata.get("type", "unknown"),
         )
 
+    @override
     async def execute(
         self,
         *,

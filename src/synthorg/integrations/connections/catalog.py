@@ -8,6 +8,7 @@ import asyncio
 import copy
 import json
 from datetime import UTC, datetime
+from typing import override
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
@@ -138,6 +139,7 @@ class ConnectionCatalog(OAuthRotationMixin):
                 self._cache = {c.name: c for c in collected}
                 self._cache_valid = True
 
+    @override
     def _invalidate_cache(self) -> None:
         self._cache_valid = False
 
@@ -153,6 +155,7 @@ class ConnectionCatalog(OAuthRotationMixin):
             return None
         return self._cache.get(name)
 
+    @override
     async def _lock_for(self, name: str) -> asyncio.Lock:
         """Return (or create) the mutation lock for a connection name."""
         async with self._name_locks_lock:
@@ -233,6 +236,7 @@ class ConnectionCatalog(OAuthRotationMixin):
             )
             raise
 
+    @override
     async def _store_secret(
         self,
         secret_id: str,
@@ -386,6 +390,7 @@ class ConnectionCatalog(OAuthRotationMixin):
         await self._ensure_cache()
         return self._cache.get(name)
 
+    @override
     async def get_or_raise(self, name: str) -> Connection:
         """Retrieve a connection by name, or raise.
 
@@ -686,6 +691,7 @@ class ConnectionCatalog(OAuthRotationMixin):
         conn = await self.get_or_raise(name)
         return await self._resolve_credentials_for(conn)
 
+    @override
     async def _resolve_credentials_for(
         self,
         conn: Connection,

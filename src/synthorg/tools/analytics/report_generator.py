@@ -6,7 +6,7 @@ the results into human-readable reports in text, markdown, or JSON.
 
 import asyncio
 import json
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -105,6 +105,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
+    @override
     async def execute(
         self,
         *,

@@ -5,7 +5,7 @@ before execution.  In ``enforce`` mode, denied actions are blocked;
 in ``log_only`` mode, denials are logged but the action proceeds.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ToolCallable
@@ -54,6 +54,7 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
         self._engine = policy_engine
         self._evaluation_mode = evaluation_mode
 
+    @override
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,

@@ -1,6 +1,6 @@
 """Circuit breaker state persistence protocol and model."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,6 +49,7 @@ class CircuitBreakerStateRepository(
     expected cardinality of agent pairs.
     """
 
+    @override
     async def save(self, entity: CircuitBreakerStateRecord) -> None:
         """Persist a circuit breaker state record (upsert).
 
@@ -60,6 +61,7 @@ class CircuitBreakerStateRepository(
         """
         ...
 
+    @override
     async def get(
         self, entity_id: CircuitBreakerPairKey
     ) -> CircuitBreakerStateRecord | None:
@@ -76,6 +78,7 @@ class CircuitBreakerStateRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -123,6 +126,7 @@ class CircuitBreakerStateRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
         """Delete a circuit breaker state record.
 

@@ -17,7 +17,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, override
 
 from psycopg.rows import dict_row
 from pydantic import BaseModel
@@ -387,6 +387,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._fine_tune_runs: PostgresFineTuneRunRepository | None = None
         self._fine_tune_checkpoints: PostgresFineTuneCheckpointRepository | None = None
 
+    @override
     def _clear_state(self) -> None:
         """Reset pool and repository references to ``None``."""
         self._pool = None
@@ -453,6 +454,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._oauth_states = None
         self._webhook_receipts = None
 
+    @override
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool."""
         assert self._pool is not None  # noqa: S101

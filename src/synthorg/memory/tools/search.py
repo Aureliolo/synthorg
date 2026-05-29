@@ -1,6 +1,6 @@
 """``SearchMemoryTool`` for ToolRegistry integration."""
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -49,6 +49,7 @@ class SearchMemoryTool(BaseTool):
         self._strategy = strategy
         self._agent_id = agent_id
 
+    @override
     async def execute(
         self,
         *,

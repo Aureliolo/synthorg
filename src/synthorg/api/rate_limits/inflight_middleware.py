@@ -12,7 +12,7 @@ so auth-populated ``scope["user"]`` is already available and the
 permit is held only during actual handler execution.
 """
 
-from typing import Any, Final
+from typing import Any, Final, override
 
 from litestar.connection import ASGIConnection
 from litestar.enums import ScopeType
@@ -134,6 +134,7 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
     # cannot accidentally match the per_op_concurrency key.
     scopes: tuple[ScopeType, ...] = (ScopeType.HTTP,)
 
+    @override
     async def handle(
         self,
         scope: Scope,

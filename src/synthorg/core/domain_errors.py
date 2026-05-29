@@ -13,7 +13,7 @@ any future extension that wants to raise / catch SynthOrg errors without
 pulling in :mod:`synthorg.api`.
 """
 
-from typing import ClassVar
+from typing import ClassVar, override
 
 from synthorg.core.error_taxonomy import (
     CODE_CATEGORY_PREFIX,
@@ -48,6 +48,7 @@ class DomainError(Exception):
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message or self.default_message)
 
+    @override
     def __init_subclass__(cls, **kwargs: object) -> None:
         """Validate that error_code's first digit matches error_category.
 

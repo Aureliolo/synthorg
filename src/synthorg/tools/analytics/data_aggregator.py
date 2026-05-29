@@ -7,7 +7,7 @@ shipped -- users inject a provider at construction time.
 
 import asyncio
 from datetime import datetime
-from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -242,6 +242,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         return None
 
+    @override
     async def execute(
         self,
         *,

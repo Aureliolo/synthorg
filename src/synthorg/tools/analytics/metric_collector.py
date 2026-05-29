@@ -6,7 +6,7 @@ users inject a sink at construction time.
 """
 
 import math
-from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -127,6 +127,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
         )
         self._sink = sink
 
+    @override
     async def execute(
         self,
         *,

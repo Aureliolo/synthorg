@@ -7,7 +7,7 @@ inject a provider at construction time.
 
 import asyncio
 import base64
-from typing import Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -133,6 +133,7 @@ class ImageGeneratorTool(BaseDesignTool):
         )
         self._provider = provider
 
+    @override
     async def execute(
         self,
         *,

@@ -1,6 +1,6 @@
 """Checkpoint and heartbeat repository protocols."""
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -49,6 +49,7 @@ class CheckpointRepository(
       removes only by timestamp, not by execution scope.
     """
 
+    @override
     async def append(self, checkpoint: Checkpoint) -> None:
         """Persist a checkpoint row (append-only).
 
@@ -60,6 +61,7 @@ class CheckpointRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: CheckpointFilterSpec,
@@ -70,6 +72,7 @@ class CheckpointRepository(
         """Return checkpoints matching the filter, newest first."""
         ...
 
+    @override
     async def purge_before(self, threshold: AwareDatetime) -> int:
         """Delete checkpoints with ``saved_at < threshold``.
 

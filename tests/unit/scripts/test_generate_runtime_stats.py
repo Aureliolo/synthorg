@@ -63,11 +63,6 @@ def _fake_fetchers(
             "rounded": 17000,
             "display": "17,000+",
         },
-        "mem0_stars": lambda: {
-            "raw": 54312,
-            "rounded": 54000,
-            "display": "54k+",
-        },
         "providers_curated": lambda: {"raw": 19, "display": "19"},
         "providers_via_litellm": lambda: {"raw": 100, "display": "100+"},
         "subagents": lambda: {"raw": 7, "display": "7"},
@@ -104,10 +99,6 @@ class TestFormatHelpers:
         assert gen._format_thousands_plus(17000) == "17,000+"
         assert gen._format_thousands_plus(27000) == "27,000+"
 
-    def test_k_plus(self) -> None:
-        assert gen._format_k_plus(54000) == "54k+"
-        assert gen._format_k_plus(125000) == "125k+"
-
 
 @pytest.mark.unit
 class TestMainHappyPath:
@@ -125,7 +116,6 @@ class TestMainHappyPath:
         assert "generator_revision" in loaded
         stats = loaded["stats"]
         assert stats["tests"]["display"] == "17,000+"
-        assert stats["mem0_stars"]["display"] == "54k+"
         assert stats["providers_curated"]["display"] == "19"
         assert stats["providers_via_litellm"]["display"] == "100+"
         assert stats["subagents"]["display"] == "7"
@@ -157,11 +147,6 @@ class TestMainSingleFetcherFails:
                     "rounded": 9000,
                     "display": "9,000+",
                 },
-                "mem0_stars": {
-                    "raw": 1000,
-                    "rounded": 1000,
-                    "display": "1k+",
-                },
                 "providers_curated": {"raw": 1, "display": "1"},
                 "providers_via_litellm": {"raw": 50, "display": "50+"},
                 "subagents": {"raw": 3, "display": "3"},
@@ -171,27 +156,27 @@ class TestMainSingleFetcherFails:
         }
         out_file.write_text(yaml.safe_dump(seed), encoding="utf-8")
 
-        stat_name = "mem0_stars"
-        source = "gh api repos/mem0ai/mem0"
-        reason = "simulated rate limit"
+        stat_name = "providers_curated"
+        source = "synthorg.providers.presets.list_featured_presets"
+        reason = "simulated parse failure"
 
         def _raise() -> dict[str, Any]:
             raise gen._StatFetchError(stat_name, source, reason)
 
-        fetchers = _fake_fetchers({"mem0_stars": _raise})
+        fetchers = _fake_fetchers({"providers_curated": _raise})
         with patch.object(gen, "_FETCHERS", fetchers):
             assert gen.main() == 0
 
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
-        # Mem0 preserved from seed; others updated from fakes.
-        assert loaded["stats"]["mem0_stars"]["display"] == "1k+"
+        # providers_curated preserved from seed; others updated from fakes.
+        assert loaded["stats"]["providers_curated"]["display"] == "1"
         assert loaded["stats"]["tests"]["display"] == "17,000+"
 
         err = capsys.readouterr().err
-        assert "mem0_stars" in err
+        assert "providers_curated" in err
         assert "fetch_failed" in err
         assert "keeping_prior_value=True" in err
-        assert "simulated rate limit" in err
+        assert "simulated parse failure" in err
 
 
 @pytest.mark.unit
@@ -287,31 +272,6 @@ class TestFetchConventionGates:
 
 
 @pytest.mark.unit
-class TestFetchMem0Stars:
-    """`_fetch_mem0_stars` calls `gh api` and rounds to nearest 1000."""
-
-    def test_rounds_and_formats(self) -> None:
-        completed = MagicMock(spec=subprocess.CompletedProcess)
-        completed.stdout = "54312\n"
-        completed.returncode = 0
-        with patch("subprocess.run", return_value=completed):
-            result = gen._fetch_mem0_stars()
-        assert result["raw"] == 54312
-        assert result["rounded"] == 54000
-        assert result["display"] == "54k+"
-
-    def test_non_integer_stdout_raises(self) -> None:
-        completed = MagicMock(spec=subprocess.CompletedProcess)
-        completed.stdout = "not a number\n"
-        completed.returncode = 0
-        with (
-            patch("subprocess.run", return_value=completed),
-            pytest.raises(gen._StatFetchError),
-        ):
-            gen._fetch_mem0_stars()
-
-
-@pytest.mark.unit
 class TestFetchTests:
     """`_fetch_tests` parses pytest --collect-only output and rounds."""
 
@@ -360,14 +320,6 @@ class TestFormatHelpersBoundaries:
 
     def test_thousands_plus_zero(self) -> None:
         assert gen._format_thousands_plus(0) == "0+"
-
-    def test_k_plus_zero(self) -> None:
-        assert gen._format_k_plus(0) == "0k+"
-
-    def test_k_plus_below_step_renders_as_zero(self) -> None:
-        # Inputs below `_STARS_ROUND_TO` floor to 0 -- the formatter still
-        # renders sensibly without dividing by zero or producing junk.
-        assert gen._format_k_plus(100) == "0k+"
 
 
 @pytest.mark.unit

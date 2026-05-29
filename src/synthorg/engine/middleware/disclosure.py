@@ -7,6 +7,7 @@ threshold.
 """
 
 import json
+from typing import override
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
@@ -47,6 +48,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         super().__init__(name="disclosure")
         self._config = config or ToolDisclosureConfig()
 
+    @override
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,

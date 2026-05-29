@@ -12,7 +12,7 @@ machine: PENDING -> VALIDATED -> ACTIVE -> RETIRED) and
 the generic surface.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -83,6 +83,7 @@ class DynamicToolRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def save(self, entity: ToolBlueprint) -> None:
         """Upsert a blueprint.
 
@@ -92,6 +93,7 @@ class DynamicToolRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ToolBlueprint | None:
         """Retrieve a blueprint by id, or ``None`` if absent.
 
@@ -100,6 +102,7 @@ class DynamicToolRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a blueprint by id; ``True`` iff a row existed.
 
@@ -121,6 +124,7 @@ class DynamicToolRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ToolBlueprintFilterSpec,
@@ -137,6 +141,7 @@ class DynamicToolRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ToolBlueprintFilterSpec) -> int:
         """Count blueprints matching the filter spec.
 
@@ -145,6 +150,7 @@ class DynamicToolRepository(
         """
         ...
 
+    @override
     async def transition_if(
         self,
         entity_id: NotBlankStr,

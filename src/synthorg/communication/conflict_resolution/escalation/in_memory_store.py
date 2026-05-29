@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Final
+from typing import Final, override
 
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -44,6 +44,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         self._rows: dict[str, Escalation] = {}
         self._lock = asyncio.Lock()
 
+    @override
     async def create(self, escalation: Escalation) -> None:
         """Insert a PENDING escalation.
 
@@ -102,11 +103,13 @@ class InMemoryEscalationStore(EscalationQueueStore):
             ),
         )
 
+    @override
     async def get(self, escalation_id: str) -> Escalation | None:
         """Fetch by ID or return ``None``."""
         async with self._lock:
             return self._rows.get(escalation_id)
 
+    @override
     async def list_items(
         self,
         *,
@@ -131,6 +134,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         page = tuple(matching[offset : offset + limit])
         return page, total
 
+    @override
     async def apply_decision(
         self,
         escalation_id: str,
@@ -184,6 +188,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         )
         return updated
 
+    @override
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
         """Transition PENDING -> CANCELLED."""
         async with self._lock:
@@ -227,6 +232,7 @@ class InMemoryEscalationStore(EscalationQueueStore):
         )
         return updated
 
+    @override
     async def mark_expired(self, now_iso: str) -> tuple[str, ...]:
         """Expire PENDING rows past their deadline.
 
@@ -274,15 +280,17 @@ class InMemoryEscalationStore(EscalationQueueStore):
             )
         return tuple(expired_ids)
 
+    @override
     async def close(self) -> None:
         """Clear the store."""
         async with self._lock:
             self._rows.clear()
 
+    @override
     @asynccontextmanager
     async def subscribe_notifications(
         self,
-        channel: str,  # noqa: ARG002
+        channel: str,
     ) -> AsyncIterator[AsyncIterator[str]]:
         """Return an iterator that blocks until cancelled (no-op).
 

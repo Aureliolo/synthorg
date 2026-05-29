@@ -7,7 +7,7 @@ interface exposes durable read/write operations plus the cache.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -74,6 +74,7 @@ class SessionRepository(
         """Load revoked session IDs from durable storage into memory."""
         ...
 
+    @override
     async def save(self, entity: Session) -> None:
         """Persist a session (insert or update by session_id).
 
@@ -85,6 +86,7 @@ class SessionRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> Session | None:
         """Retrieve a session by session_id.
 
@@ -99,6 +101,7 @@ class SessionRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -125,6 +128,7 @@ class SessionRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: SessionFilterSpec,
@@ -147,6 +151,7 @@ class SessionRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: SessionFilterSpec) -> int:
         """Count sessions matching the filter spec.
 
@@ -161,6 +166,7 @@ class SessionRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a session by session_id.
 

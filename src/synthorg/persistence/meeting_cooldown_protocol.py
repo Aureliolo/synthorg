@@ -16,7 +16,7 @@ This repository persists one row per meeting type. The scheduler:
   the persisted value remains meaningful across process boundaries.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -57,6 +57,7 @@ class MeetingCooldownRepository(
     cardinality matches the static meeting catalogue.
     """
 
+    @override
     async def save(self, entity: MeetingCooldownRecord) -> None:
         """Insert or replace the cooldown row for one meeting type.
 
@@ -68,6 +69,7 @@ class MeetingCooldownRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> MeetingCooldownRecord | None:
         """Read the cooldown row for one meeting type, or ``None`` if absent.
 
@@ -82,6 +84,7 @@ class MeetingCooldownRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the cooldown row for one meeting type.
 
@@ -96,6 +99,7 @@ class MeetingCooldownRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

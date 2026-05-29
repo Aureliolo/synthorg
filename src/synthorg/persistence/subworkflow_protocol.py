@@ -8,7 +8,7 @@ semver row.  Parent workflows pin a specific version in their
 ``SUBWORKFLOW`` node configs; deleting a pinned version is rejected.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -47,6 +47,7 @@ class SubworkflowRepository(
     references with domain logic (scanning nested subworkflows).
     """
 
+    @override
     async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a new subworkflow version (insert-only).
 
@@ -63,6 +64,7 @@ class SubworkflowRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: SubworkflowKey) -> WorkflowDefinition | None:
         """Fetch a specific subworkflow version.
 
@@ -74,6 +76,7 @@ class SubworkflowRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: SubworkflowKey) -> bool:
         """Delete a specific subworkflow version.
 
@@ -88,6 +91,7 @@ class SubworkflowRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

@@ -1,6 +1,6 @@
 """Repository protocol for custom signal rule persistence."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +40,7 @@ class CustomRuleRepository(
     single-row lookup is wasteful.
     """
 
+    @override
     async def save(self, entity: CustomRuleDefinition) -> None:
         """Persist a custom rule (insert or update by id).
 
@@ -53,6 +54,7 @@ class CustomRuleRepository(
         """
         ...
 
+    @override
     async def get(
         self,
         entity_id: NotBlankStr,
@@ -87,6 +89,7 @@ class CustomRuleRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -107,6 +110,7 @@ class CustomRuleRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: CustomRuleFilterSpec,
@@ -129,10 +133,12 @@ class CustomRuleRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
         """Count custom rules matching the filter spec."""
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a custom rule by id.
 

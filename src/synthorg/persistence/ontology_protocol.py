@@ -7,7 +7,7 @@ persistence-layer repository; lifecycle methods (``connect`` /
 belong to :class:`PersistenceBackend`.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -60,6 +60,7 @@ class OntologyEntityRepository(
         """Human-readable backend identifier."""
         ...
 
+    @override
     async def save(self, entity: EntityDefinition) -> None:
         """Insert or update an entity (idempotent upsert).
 
@@ -76,6 +77,7 @@ class OntologyEntityRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> EntityDefinition | None:
         """Retrieve an entity definition by name.
 
@@ -92,6 +94,7 @@ class OntologyEntityRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an entity definition by name.
 
@@ -105,6 +108,7 @@ class OntologyEntityRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -232,6 +236,7 @@ class OntologyDriftReportRepository(
     subqueries for fast per-entity selection).
     """
 
+    @override
     async def append(self, event: DriftReport) -> None:
         """Append one drift report (write-only; reports are immutable once written).
 

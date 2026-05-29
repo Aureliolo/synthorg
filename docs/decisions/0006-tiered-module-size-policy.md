@@ -311,7 +311,7 @@ follow-ups below is the contract for "100% enforced".**
 
 | Exemption | Mechanism | Acceptance criterion in PR 3 |
 |-----------|-----------|------------------------------|
-| Mypy override for `synthorg.api.*` (`disallow_any_explicit`, `explicit-override`, `possibly-undefined`, `unused-awaitable`) | PR 3 decomposes 8 multi-controllers + `api/app.py` into per-sub-domain packages; new files written strict-clean | Remove or narrow the `synthorg.api.*` override block to only `synthorg.api.lifecycle*` / `synthorg.api.dto*` |
+| Mypy override for `synthorg.api.*` (`disallow_any_explicit`, `unused-awaitable`) | PR 3 decomposes 8 multi-controllers + `api/app.py` into per-sub-domain packages; new files written strict-clean | Remove or narrow the `synthorg.api.*` override block to only `synthorg.api.lifecycle*` / `synthorg.api.dto*` |
 | `_module_size_baseline.json` entries for the 14 PR-3-named files (named multi-controllers + `api/auth/controller.py`, `meta/mcp/handlers/{infrastructure,communication}.py`, `api/app.py`, `api/auto_wire.py`, `api/lifecycle*.py`) | PR 3 shrinks each below tier cap | Drop those 14 entries from the baseline. The remaining ~93 `src/synthorg/api/**`, `meta/mcp/**` entries in the baseline are covered by EPIC #2077 (Section F), not PR 3. |
 | Ruff `BLE001/C901/PLR0911-15/DOC*` per-file-ignore for `src/synthorg/**` (partial drain for decomposed packages) | New small files pass strict | Tighten the per-file-ignore from `src/synthorg/**` to only the residual god-modules / undecomposed packages |
 | `check_no_growth_in_god_modules.py` allowlist | PR 3 shrinks `api/app.py` to <200 LOC and `api/state.py` to <150 LOC | Gate flips from "must net-shrink" to "must remain at tier cap"; allowlist drained (mostly empty) |
@@ -347,7 +347,7 @@ and closed for the project to reach 100% strict enforcement.
 | Exemption | Required follow-up | Estimated size |
 |-----------|-------------------|----------------|
 | Ruff `BLE001` (1007 sites) on `src/synthorg/**` | Issue #2062: "Typed-except remediation: replace blind-except across src/synthorg/" | Large (multi-PR program by package) |
-| Mypy `explicit-override` (648 sites; per-package disabled) | Issue #2057: "@override decorator backfill across synthorg.*" | Medium (mechanical) |
+| Mypy `explicit-override` (648 sites at introduction; per-package disabled) | Issue #2057: "@override decorator backfill across synthorg.*" (RESOLVED: `@override` from `typing` added to all 461 remaining override sites across the 25 in-scope packages; every per-package `disable_error_code` entry for `explicit-override` dropped, leaving only the global `enable_error_code`) | Medium (mechanical) |
 | Mypy `unused-awaitable` (108 sites) | Issue #2058: "Async cleanup: await or store every Task" | Medium |
 | Mypy `disallow_any_explicit` (4136 sites across 29 synthorg packages at introduction: 22 individual blocks plus a 7-package grouped block; drained per-package, live status in EPIC #2056) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
 | Mypy `possibly-undefined` (4 sites) | Issue #2059: "Mypy possibly-undefined cleanup" | Trivial |

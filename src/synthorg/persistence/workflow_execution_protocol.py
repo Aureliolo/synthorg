@@ -1,6 +1,6 @@
 """Repository protocol for workflow execution persistence."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -58,6 +58,7 @@ class WorkflowExecutionRepository(
     perf-sensitive operation.
     """
 
+    @override
     async def save(self, execution: WorkflowExecution) -> None:
         """Persist a workflow execution (insert or update).
 
@@ -78,6 +79,7 @@ class WorkflowExecutionRepository(
         """
         ...
 
+    @override
     async def get(
         self,
         execution_id: NotBlankStr,
@@ -95,6 +97,7 @@ class WorkflowExecutionRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -115,6 +118,7 @@ class WorkflowExecutionRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: WorkflowExecutionFilterSpec,
@@ -139,6 +143,7 @@ class WorkflowExecutionRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: WorkflowExecutionFilterSpec) -> int:
         """Count executions matching the filter spec.
 
@@ -174,6 +179,7 @@ class WorkflowExecutionRepository(
         """
         ...
 
+    @override
     async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a workflow execution by ID.
 

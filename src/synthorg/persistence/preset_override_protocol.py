@@ -14,7 +14,7 @@ does not apply here -- overrides are operator state and survive until
 explicitly cleared with ``delete``.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
@@ -34,6 +34,7 @@ class PresetOverrideRepo(
     conformance suite under ``tests/integration/persistence/``.
     """
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> PresetOverride | None:
         """Read the override for ``entity_id``, if any.
 
@@ -48,6 +49,7 @@ class PresetOverrideRepo(
         """
         ...
 
+    @override
     async def save(self, entity: PresetOverride) -> None:
         """Insert or replace the override for ``entity.preset_name``.
 
@@ -62,6 +64,7 @@ class PresetOverrideRepo(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Remove the override for ``entity_id``.
 
@@ -77,6 +80,7 @@ class PresetOverrideRepo(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

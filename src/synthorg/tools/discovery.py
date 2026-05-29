@@ -12,7 +12,7 @@ Discovery tools signal load/unload state changes via
 """
 
 import json
-from typing import Any, ClassVar, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -110,10 +110,11 @@ class ListToolsTool(BaseTool):
         )
         self._manager = manager
 
+    @override
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],  # noqa: ARG002
+        arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Return JSON array of L1 metadata.
 
@@ -156,6 +157,7 @@ class LoadToolTool(BaseTool):
         )
         self._manager = manager
 
+    @override
     async def execute(
         self,
         *,
@@ -206,6 +208,7 @@ class LoadToolResourceTool(BaseTool):
         )
         self._manager = manager
 
+    @override
     async def execute(
         self,
         *,

@@ -1,7 +1,7 @@
 """Decision records repository protocol."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -121,6 +121,7 @@ class DecisionRepository(
         """
         ...
 
+    @override
     async def append(self, event: DecisionRecord) -> None:
         """Append a decision record via precomputed version.
 
@@ -138,6 +139,7 @@ class DecisionRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: DecisionFilterSpec,
@@ -236,6 +238,7 @@ class DecisionRepository(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: datetime) -> int:
         """Delete decision records older than threshold (retention).
 

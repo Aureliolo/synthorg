@@ -4,7 +4,7 @@ Co-located because every API key belongs to a user (FK) and the two
 repositories share the auth admin surface.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +59,7 @@ class UserRepository(
     - ``list_after_id``: keyset cursor pagination for the dashboard
     """
 
+    @override
     async def save(self, entity: User) -> None:
         """Persist a user (insert or update by id).
 
@@ -70,6 +71,7 @@ class UserRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> User | None:
         """Retrieve a user by its ID.
 
@@ -98,6 +100,7 @@ class UserRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -144,6 +147,7 @@ class UserRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: UserFilterSpec,
@@ -166,6 +170,7 @@ class UserRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: UserFilterSpec) -> int:
         """Count users matching the filter spec.
 
@@ -194,6 +199,7 @@ class UserRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a user by ID.
 
@@ -222,6 +228,7 @@ class ApiKeyRepository(
     - ``get_by_hash``: alternate-key lookup on indexed key_hash column
     """
 
+    @override
     async def save(self, entity: ApiKey) -> None:
         """Persist an API key (insert or update by id).
 
@@ -233,6 +240,7 @@ class ApiKeyRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by its ID.
 
@@ -261,6 +269,7 @@ class ApiKeyRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -281,6 +290,7 @@ class ApiKeyRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ApiKeyFilterSpec,
@@ -303,6 +313,7 @@ class ApiKeyRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
         """Count API keys matching the filter spec.
 
@@ -317,6 +328,7 @@ class ApiKeyRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an API key by ID.
 

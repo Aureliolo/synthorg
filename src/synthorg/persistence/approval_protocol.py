@@ -8,7 +8,7 @@ reference typed against this protocol so the storage implementation
 can be swapped without changing the store itself.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,6 +69,7 @@ class ApprovalRepository(
     :class:`QueryError`.
     """
 
+    @override
     async def save(self, entity: ApprovalItem) -> None:
         """Upsert an approval item.
 
@@ -97,6 +98,7 @@ class ApprovalRepository(
         """
         ...
 
+    @override
     async def transition_if(
         self,
         entity_id: NotBlankStr,
@@ -182,6 +184,7 @@ class ApprovalRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ApprovalItem | None:
         """Retrieve an approval item by ID.
 
@@ -238,6 +241,7 @@ class ApprovalRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ApprovalFilterSpec,
@@ -264,6 +268,7 @@ class ApprovalRepository(
         """
         ...
 
+    @override
     async def count(self, filter_spec: ApprovalFilterSpec) -> int:
         """Count approval items matching the filter spec.
 
@@ -278,6 +283,7 @@ class ApprovalRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an approval item by ID.
 

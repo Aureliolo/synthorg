@@ -9,7 +9,7 @@ on version conflict.
 
 import json
 import math
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
 
 from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.services._org_agent_mutations import OrgAgentMutationsMixin
@@ -105,6 +105,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
                 entity_id="default",
             )
 
+    @override
     async def _snapshot_company(self, saved_by: str) -> None:
         """Snapshot the current Company structure if content changed."""
         if self._company_versioning is None:
@@ -132,6 +133,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
 
     # ── Internal helpers ──────────────────────────────────────
 
+    @override
     async def _read_setting_versioned(
         self,
         namespace: str,
@@ -145,6 +147,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         result: tuple[str, str] = await self._settings.get_versioned(namespace, key)
         return result
 
+    @override
     async def _read_departments(self) -> tuple[Department, ...]:
         """Read the current departments via the resolver for CAS.
 
@@ -153,6 +156,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """
         return await self._resolver.get_departments()
 
+    @override
     async def _write_departments(
         self,
         departments: tuple[Department, ...],
@@ -171,6 +175,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             expected_updated_at=expected_updated_at,
         )
 
+    @override
     async def _read_agents(self) -> tuple[AgentConfig, ...]:
         """Read the current agents via the resolver for CAS.
 
@@ -179,6 +184,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """
         return await self._resolver.get_agents()
 
+    @override
     async def _write_agents(
         self,
         agents: tuple[AgentConfig, ...],
@@ -197,6 +203,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             expected_updated_at=expected_updated_at,
         )
 
+    @override
     def _find_department(
         self,
         departments: tuple[Department, ...],
@@ -209,6 +216,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """
         return find_by_name_ci(departments, name)
 
+    @override
     @staticmethod
     def _collect_department_updates(
         data: UpdateDepartmentRequest,
@@ -231,6 +239,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             updates["ceremony_policy"] = data.ceremony_policy
         return updates
 
+    @override
     def _find_agent(
         self,
         agents: tuple[AgentConfig, ...],
@@ -243,6 +252,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         """
         return find_by_name_ci(agents, name)
 
+    @override
     def _validate_permutation(
         self,
         current_names: tuple[str, ...],
@@ -268,6 +278,7 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
             )
             raise ValidationError(msg)
 
+    @override
     def _check_budget_sum(
         self,
         departments: tuple[Department, ...],

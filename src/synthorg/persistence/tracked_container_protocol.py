@@ -21,7 +21,7 @@ sandbox lifecycle calls :func:`reconcile_tracked_containers` (in
 5. Keeps rows for containers present in both sources.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -61,6 +61,7 @@ class TrackedContainerRepository(
     is also provided to satisfy the generic surface.
     """
 
+    @override
     async def save(self, entity: TrackedContainerRecord) -> None:
         """Insert or replace the tracking row for one container.
 
@@ -72,6 +73,7 @@ class TrackedContainerRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> TrackedContainerRecord | None:
         """Read the tracking row for one container, or ``None`` if absent.
 
@@ -86,6 +88,7 @@ class TrackedContainerRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete the tracking row for one container.
 
@@ -100,6 +103,7 @@ class TrackedContainerRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,

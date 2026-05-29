@@ -9,6 +9,8 @@ When the APIs actually diverge, split the subclass bodies; the
 connection identities and saved rows stay unchanged.
 """
 
+from typing import override
+
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.errors import InvalidConnectionAuthError
 from synthorg.observability import get_logger
@@ -60,6 +62,7 @@ class _GiteaFamilyAuthenticator:
 class GiteaAuthenticator(_GiteaFamilyAuthenticator):
     """Validates Gitea connection credentials."""
 
+    @override
     @property
     def connection_type(self) -> ConnectionType:
         """The connection type this authenticator handles."""
@@ -69,6 +72,7 @@ class GiteaAuthenticator(_GiteaFamilyAuthenticator):
 class ForgejoAuthenticator(_GiteaFamilyAuthenticator):
     """Validates Forgejo connection credentials."""
 
+    @override
     @property
     def connection_type(self) -> ConnectionType:
         """The connection type this authenticator handles."""

@@ -5,7 +5,7 @@ supervisor-facing async task operations as LLM-callable tools.
 """
 
 import json
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -54,6 +54,7 @@ class StartAsyncTaskTool(BaseTool):
         self._supervisor_id = supervisor_id
         self._supervisor_task_id = supervisor_task_id
 
+    @override
     async def execute(
         self,
         *,
@@ -105,6 +106,7 @@ class CheckAsyncTaskTool(BaseTool):
         )
         self._service = service
 
+    @override
     async def execute(
         self,
         *,
@@ -149,6 +151,7 @@ class UpdateAsyncTaskTool(BaseTool):
         )
         self._service = service
 
+    @override
     async def execute(
         self,
         *,
@@ -200,6 +203,7 @@ class CancelAsyncTaskTool(BaseTool):
         self._service = service
         self._supervisor_id = supervisor_id
 
+    @override
     async def execute(
         self,
         *,
@@ -251,6 +255,7 @@ class ListAsyncTasksTool(BaseTool):
         self._service = service
         self._supervisor_task_id = supervisor_task_id
 
+    @override
     async def execute(
         self,
         *,

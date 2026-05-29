@@ -1,7 +1,7 @@
 """Message repository protocol."""
 
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +39,7 @@ class MessageRepository(
       generic ``purge_before(threshold)`` is the retention sweeper.
     """
 
+    @override
     async def append(self, message: Message) -> None:
         """Persist a message (append-only).
 
@@ -51,6 +52,7 @@ class MessageRepository(
         """
         ...
 
+    @override
     async def query(
         self,
         filter_spec: MessageFilterSpec,
@@ -73,6 +75,7 @@ class MessageRepository(
         """
         ...
 
+    @override
     async def purge_before(self, threshold: datetime) -> int:
         """Delete messages with ``timestamp < threshold``.
 

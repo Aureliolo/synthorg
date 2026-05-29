@@ -1,6 +1,6 @@
 """Project environment repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
@@ -26,6 +26,7 @@ class ProjectEnvironmentRepository(
     end-user CRUD surface).
     """
 
+    @override
     async def save(self, entity: ProjectEnvironment) -> None:
         """Persist a project environment via upsert (insert or update).
 
@@ -38,6 +39,7 @@ class ProjectEnvironmentRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
         """Retrieve a project environment by owning project id.
 
@@ -52,6 +54,7 @@ class ProjectEnvironmentRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -73,6 +76,7 @@ class ProjectEnvironmentRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a project environment by owning project id.
 

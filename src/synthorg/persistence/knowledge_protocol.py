@@ -14,7 +14,7 @@ bespoke methods on the provenance repo are justified under ADR-0001 D7
 (see their docstrings).
 """
 
-from typing import Protocol, Self, runtime_checkable
+from typing import Protocol, Self, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -125,18 +125,22 @@ class KnowledgeSourceRepository(
     with ``source_id`` as a stable tie-breaker.
     """
 
+    @override
     async def save(self, entity: KnowledgeSource) -> None:
         """Persist a source row via upsert (PK ``source_id``)."""
         ...
 
+    @override
     async def get(self, entity_id: KnowledgeSourceKey) -> KnowledgeSource | None:
         """Retrieve a source by ``source_id``, or ``None`` when absent."""
         ...
 
+    @override
     async def delete(self, entity_id: KnowledgeSourceKey) -> bool:
         """Delete a source by ``source_id``. ``True`` iff a row existed."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -146,6 +150,7 @@ class KnowledgeSourceRepository(
         """List sources across all scopes, most-recent first."""
         ...
 
+    @override
     async def query(
         self,
         filter_spec: KnowledgeSourceFilter,
@@ -156,6 +161,7 @@ class KnowledgeSourceRepository(
         """Return sources matching the filter, most-recent first."""
         ...
 
+    @override
     async def count(self, filter_spec: KnowledgeSourceFilter) -> int:
         """Count sources matching the filter spec."""
         ...
@@ -184,18 +190,22 @@ class ChunkProvenanceRepository(
     in ascending ``(source_id, chunk_index)`` order.
     """
 
+    @override
     async def save(self, entity: ChunkProvenanceRow) -> None:
         """Persist a provenance row via upsert (PK ``chunk_id``)."""
         ...
 
+    @override
     async def get(self, entity_id: ChunkProvenanceKey) -> ChunkProvenanceRow | None:
         """Retrieve a provenance row by ``chunk_id``, or ``None``."""
         ...
 
+    @override
     async def delete(self, entity_id: ChunkProvenanceKey) -> bool:
         """Delete a provenance row by ``chunk_id``. ``True`` iff existed."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -205,6 +215,7 @@ class ChunkProvenanceRepository(
         """List provenance rows ordered by ``(source_id, chunk_index)``."""
         ...
 
+    @override
     async def query(
         self,
         filter_spec: ChunkProvenanceFilter,
@@ -215,6 +226,7 @@ class ChunkProvenanceRepository(
         """Return provenance rows for a source, ``chunk_index`` ascending."""
         ...
 
+    @override
     async def count(self, filter_spec: ChunkProvenanceFilter) -> int:
         """Count provenance rows for a source."""
         ...

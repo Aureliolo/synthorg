@@ -10,6 +10,7 @@ Concrete middleware for the four S1 risk mitigations:
 
 import hashlib
 import re
+from typing import override
 
 from synthorg.core.middleware_config import (
     AuthorityDeferenceConfig,
@@ -64,6 +65,7 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
         self._config = config or AuthorityDeferenceConfig()
         self._compiled = tuple(re.compile(p) for p in self._config.patterns)
 
+    @override
     async def before_agent(
         self,
         ctx: AgentMiddlewareContext,
@@ -127,6 +129,7 @@ class AuthorityDeferenceCoordinationMiddleware(
         self._config = config or AuthorityDeferenceConfig()
         self._compiled = tuple(re.compile(p) for p in self._config.patterns)
 
+    @override
     async def before_update_parent(
         self,
         ctx: CoordinationMiddlewareContext,
@@ -195,6 +198,7 @@ class AssumptionViolationMiddleware(BaseAgentMiddleware):
             (re.compile(p), vtype) for p, vtype in _ASSUMPTION_VIOLATION_PATTERNS
         )
 
+    @override
     async def after_model(
         self,
         ctx: AgentMiddlewareContext,
@@ -271,6 +275,7 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
             re.compile(p, re.IGNORECASE) for p in self._config.generic_patterns
         )
 
+    @override
     async def before_decompose(
         self,
         ctx: CoordinationMiddlewareContext,
@@ -351,6 +356,7 @@ class DelegationChainHashMiddleware(BaseAgentMiddleware):
     def __init__(self, **_kwargs: object) -> None:
         super().__init__(name="delegation_chain_hash")
 
+    @override
     async def before_agent(
         self,
         ctx: AgentMiddlewareContext,

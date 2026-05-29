@@ -2,7 +2,7 @@
 
 import copy
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -29,6 +29,7 @@ class StrategyFactoryError(DomainError):
         )
         super().__init__(message)
 
+    @override
     def __str__(self) -> str:
         """Render with context for log output."""
         if not self.context:

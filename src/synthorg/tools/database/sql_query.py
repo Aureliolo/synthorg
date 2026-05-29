@@ -16,7 +16,7 @@ prevent filesystem escape regardless of read_only setting.
 import asyncio
 import re
 import urllib.parse
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 import aiosqlite
 from pydantic import BaseModel
@@ -134,6 +134,7 @@ class SqlQueryTool(BaseDatabaseTool):
             config=config,
         )
 
+    @override
     async def execute(
         self,
         *,

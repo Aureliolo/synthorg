@@ -5,7 +5,7 @@ retrieve entity definitions.  No prompt injection -- agents
 discover entities through the tool interface.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -62,6 +62,7 @@ class LookupEntityTool(BaseTool):
         )
         self._backend = backend
 
+    @override
     async def execute(
         self,
         *,

@@ -5,7 +5,7 @@ by downstream tools or the web dashboard.  No external provider is
 required -- the tool outputs DSL text directly.
 """
 
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -85,6 +85,7 @@ class DiagramGeneratorTool(BaseDesignTool):
             config=config,
         )
 
+    @override
     async def execute(
         self,
         *,

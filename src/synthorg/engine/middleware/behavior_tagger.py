@@ -9,7 +9,7 @@ default agent chain.  Enable by adding ``"behavior_tagger"``
 to the company's ``AgentMiddlewareConfig.chain``.
 """
 
-from typing import Final
+from typing import Final, override
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import BehaviorTag
@@ -85,6 +85,7 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         super().__init__(name="behavior_tagger")
         self._tool_tag_map = tool_tag_map or dict(_DEFAULT_TOOL_TAG_MAP)
 
+    @override
     async def after_model(
         self,
         ctx: AgentMiddlewareContext,

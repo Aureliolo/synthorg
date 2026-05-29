@@ -1,6 +1,6 @@
 """ParkedContext repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
@@ -21,6 +21,7 @@ class ParkedContextRepository(
     routing through a ``FilteredQueryRepository.query`` call.
     """
 
+    @override
     async def save(self, entity: ParkedContext) -> None:
         """Persist a parked context.
 
@@ -32,6 +33,7 @@ class ParkedContextRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
         """Retrieve a parked context by ID.
 
@@ -46,6 +48,7 @@ class ParkedContextRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -106,6 +109,7 @@ class ParkedContextRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a parked context by ID.
 

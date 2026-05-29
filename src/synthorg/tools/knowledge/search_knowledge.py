@@ -7,7 +7,7 @@ any source type -- may carry injected instructions.
 """
 
 import builtins
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -60,6 +60,7 @@ class SearchKnowledgeTool(BaseTool):
         self._service = service
         self._project_id = project_id
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         """Dispatch a ``search_knowledge`` invocation to the service.
 

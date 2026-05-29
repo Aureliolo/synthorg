@@ -1,6 +1,6 @@
 """Project workspace repository protocol."""
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, override, runtime_checkable
 
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
@@ -25,6 +25,7 @@ class ProjectWorkspaceRepository(
     needed; provisioning is not an end-user CRUD surface).
     """
 
+    @override
     async def save(self, entity: ProjectWorkspace) -> None:
         """Persist a project workspace via upsert (insert or update).
 
@@ -37,6 +38,7 @@ class ProjectWorkspaceRepository(
         """
         ...
 
+    @override
     async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
         """Retrieve a project workspace by owning project id.
 
@@ -51,6 +53,7 @@ class ProjectWorkspaceRepository(
         """
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -72,6 +75,7 @@ class ProjectWorkspaceRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a project workspace by owning project id.
 

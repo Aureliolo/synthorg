@@ -7,7 +7,7 @@ import logging
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from pydantic import ValidationError
 
@@ -258,6 +258,7 @@ class AuditChainSink(logging.Handler):
         ts_result = await self._timestamp_provider.get_timestamp(binding_payload)
         return signed, ts_result
 
+    @override
     def emit(  # lint-allow: boundary-typed -- AuditChainEventPayload constructor IS the validator  # noqa: E501
         self, record: logging.LogRecord
     ) -> None:

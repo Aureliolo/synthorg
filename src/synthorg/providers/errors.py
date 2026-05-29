@@ -8,7 +8,7 @@ exception types.
 import copy
 import math
 from types import MappingProxyType
-from typing import Any, ClassVar, Final, Literal
+from typing import Any, ClassVar, Final, Literal, override
 
 from synthorg.core.domain_errors import ConflictError, DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -106,6 +106,7 @@ class ProviderError(DomainError):
         )
         super().__init__(message)
 
+    @override
     def __str__(self) -> str:
         """Format error with optional context metadata.
 

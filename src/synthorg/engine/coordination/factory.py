@@ -4,7 +4,7 @@ Constructs the decomposition, routing, execution, and workspace
 dependency tree from config and runtime services.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
@@ -61,14 +61,16 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
     tests). Attempting to actually decompose will raise a clear error.
     """
 
+    @override
     def get_strategy_name(self) -> str:
         """Return placeholder strategy name."""
         return "no-provider-placeholder"
 
+    @override
     async def decompose(
         self,
-        task: Task,  # noqa: ARG002
-        context: DecompositionContext,  # noqa: ARG002
+        task: Task,
+        context: DecompositionContext,
     ) -> DecompositionPlan:
         """Raise DecompositionError -- no provider configured.
 

@@ -23,7 +23,7 @@ from collections.abc import (
 )
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from litestar.enums import ScopeType
 from litestar.middleware import ASGIMiddleware
@@ -154,6 +154,7 @@ class AuthContextMiddleware(ASGIMiddleware):
 
     scopes: tuple[ScopeType, ...] = (ScopeType.HTTP,)
 
+    @override
     async def handle(
         self,
         scope: Scope,

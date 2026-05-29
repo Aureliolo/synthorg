@@ -2,7 +2,7 @@
 
 from collections import Counter
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, override
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -114,6 +114,7 @@ class DataPart(BaseModel):
 
         return _thaw(value)  # type: ignore[return-value]
 
+    @override
     def model_copy(
         self,
         *,

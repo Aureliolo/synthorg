@@ -22,7 +22,7 @@ protocol.  Three strategies ship:
 
 import hashlib
 import threading
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, override, runtime_checkable
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.observability import get_logger
@@ -229,6 +229,7 @@ class ScriptedDriver(BaseCompletionProvider):
             ),
         )
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -240,6 +241,7 @@ class ScriptedDriver(BaseCompletionProvider):
         """Return the strategy's next response."""
         return self._strategy.next_response(messages, model, tools, config)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -265,6 +267,7 @@ class ScriptedDriver(BaseCompletionProvider):
 
         return _chunks()
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -284,6 +287,7 @@ class ScriptedDriver(BaseCompletionProvider):
             cost_per_1k_output=_SCRIPTED_COST,
         )
 
+    @override
     async def batch_get_capabilities(
         self,
         models: tuple[str, ...],

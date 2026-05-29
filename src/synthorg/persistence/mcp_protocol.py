@@ -5,7 +5,7 @@ the other durable-state protocols.  Domain types (``McpInstallation``)
 stay in ``synthorg.integrations.mcp_catalog``.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
@@ -26,10 +26,12 @@ class McpInstallationRepository(
     only listing surface; no bespoke filtered query is needed.
     """
 
+    @override
     async def save(self, entity: McpInstallation) -> None:
         """Upsert an installation (idempotent on catalog_entry_id)."""
         ...
 
+    @override
     async def get(
         self,
         entity_id: NotBlankStr,
@@ -37,6 +39,7 @@ class McpInstallationRepository(
         """Fetch an installation by catalog entry id."""
         ...
 
+    @override
     async def list_items(
         self,
         *,
@@ -52,6 +55,7 @@ class McpInstallationRepository(
         """
         ...
 
+    @override
     async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete an installation.  Return ``True`` if a row was deleted."""
         ...

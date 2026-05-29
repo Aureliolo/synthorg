@@ -8,7 +8,7 @@ via ``DetectorVariant.LLM_SEMANTIC`` in the per-category config.
 
 import json
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.coordination_config import (
@@ -387,6 +387,7 @@ class _BaseSemanticDetector:
 class SemanticContradictionDetector(_BaseSemanticDetector):
     """LLM-backed detector for logical contradictions."""
 
+    @override
     @property
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
@@ -397,6 +398,7 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.SAME_TASK})
 
+    @override
     def _prompt(self, conversation_text: str) -> str:
         return (
             "You are an error analysis assistant. The conversation "
@@ -415,6 +417,7 @@ class SemanticContradictionDetector(_BaseSemanticDetector):
 class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
     """LLM-backed detector for numerical inconsistencies."""
 
+    @override
     @property
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
@@ -427,6 +430,7 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
             {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
         )
 
+    @override
     def _prompt(self, conversation_text: str) -> str:
         return (
             "You are a numerical verification assistant. The conversation "
@@ -445,6 +449,7 @@ class SemanticNumericalVerificationDetector(_BaseSemanticDetector):
 class SemanticMissingReferenceDetector(_BaseSemanticDetector):
     """LLM-backed detector for missing entity references."""
 
+    @override
     @property
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
@@ -457,6 +462,7 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
             {DetectionScope.SAME_TASK, DetectionScope.TASK_TREE},
         )
 
+    @override
     def _prompt(self, conversation_text: str) -> str:
         return (
             "You are a context analysis assistant. The conversation "
@@ -475,6 +481,7 @@ class SemanticMissingReferenceDetector(_BaseSemanticDetector):
 class SemanticCoordinationDetector(_BaseSemanticDetector):
     """LLM-backed detector for coordination breakdowns."""
 
+    @override
     @property
     def category(self) -> ErrorCategory:
         """Error category this detector targets."""
@@ -485,6 +492,7 @@ class SemanticCoordinationDetector(_BaseSemanticDetector):
         """Detection scopes this detector can operate on."""
         return frozenset({DetectionScope.TASK_TREE})
 
+    @override
     def _prompt(self, conversation_text: str) -> str:
         return (
             "You are a coordination analysis assistant. The conversation "

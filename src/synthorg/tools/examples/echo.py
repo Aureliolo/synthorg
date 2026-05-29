@@ -10,7 +10,7 @@ It sets ``args_model = EchoArgs`` so the ``ToolInvoker`` validates
 automatically.
 """
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -41,6 +41,7 @@ class EchoTool(BaseTool):
             parameters_schema=EchoArgs.model_json_schema(),
         )
 
+    @override
     async def execute(
         self,
         *,

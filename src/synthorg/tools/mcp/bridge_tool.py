@@ -5,7 +5,7 @@ from an MCP server, bridging MCP protocol calls into the internal
 tool system.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
@@ -63,6 +63,7 @@ class MCPBridgeTool(BaseTool):
         """The underlying MCP tool metadata."""
         return self._tool_info
 
+    @override
     async def execute(
         self,
         *,

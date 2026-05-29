@@ -10,7 +10,7 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, override
 
 from pydantic import BaseModel
 
@@ -87,6 +87,7 @@ class EmailSenderTool(BaseCommunicationTool):
             config=config,
         )
 
+    @override
     async def execute(
         self,
         *,
