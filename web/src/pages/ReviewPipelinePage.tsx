@@ -58,6 +58,9 @@ function useReviewPipeline(taskId: string | undefined): ReviewPipelineState {
       if (!taskId || submitting) return
       setSubmitting(true)
       setActionError(null)
+      // Clear any prior success notice so a stale "Recorded ..." banner
+      // cannot linger beside a fresh failure from this attempt.
+      setDecisionNotice(null)
       try {
         const result = await decideReviewStage(taskId, stageName, {
           verdict,

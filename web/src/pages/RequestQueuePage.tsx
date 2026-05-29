@@ -79,11 +79,15 @@ function useRequestActions(
   setError: (error: string | null) => void,
 ): RequestActions {
   const [pending, setPending] = useState<Record<string, boolean>>({})
-  // Read the live pending map through a ref so `run` does not depend on
-  // `pending`; otherwise every pending transition re-creates run (and the
-  // three action handlers below), needlessly invalidating RequestCard memo.
-  const pendingRef = useRef(pending)
-  pendingRef.current = pending
+  // Synchronous in-flight guard. ``setPending`` only commits on the next
+  // render, so a rapid second click would re-enter `run` before the
+  // `pending` state reflects the first; mutating this ref atomically at
+  // the start (and clearing it in `finally`) closes that re-entrancy
+  // race. Keeping the guard in a ref rather than `pending` state also
+  // means `run` does not depend on `pending`, so it and the three action
+  // handlers stay stable and do not invalidate the RequestCard memo on
+  // every transition.
+  const inFlightRef = useRef<Record<string, boolean>>({})
 
   const run = useCallback(
     async (
@@ -92,7 +96,8 @@ function useRequestActions(
       errorMsg: string,
       logEvent: string,
     ) => {
-      if (pendingRef.current[requestId]) return
+      if (inFlightRef.current[requestId]) return
+      inFlightRef.current[requestId] = true
       setPending((prev) => ({ ...prev, [requestId]: true }))
       try {
         await action()
@@ -101,6 +106,7 @@ function useRequestActions(
         log.error(logEvent, err)
         setError(errorMsg)
       } finally {
+        inFlightRef.current[requestId] = false
         setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },

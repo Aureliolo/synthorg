@@ -3,6 +3,7 @@ import { ErrorBanner } from '@/components/ui/error-banner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PresetPickerSections } from '@/components/providers/PresetPickerSections'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
 import { validateProvidersStep } from '@/utils/setup-validation'
@@ -34,7 +35,10 @@ async function addDetectedLocalProvider(presetName: string, detectedUrl: string)
   // toast (so a dismissed toast still leaves an observability trace) AND
   // clear providersError so the new provider is not surfaced as
   // "Failed to load providers".
-  log.warn('fetch_providers_after_create_failed', { preset: presetName, error: fetchErrMsg })
+  log.warn('fetch_providers_after_create_failed', {
+    preset: sanitizeForLog(presetName),
+    error: sanitizeForLog(fetchErrMsg),
+  })
   useSetupWizardStore.setState({ providersError: null })
   useToastStore.getState().add({
     variant: 'warning',

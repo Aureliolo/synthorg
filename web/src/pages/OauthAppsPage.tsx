@@ -175,8 +175,12 @@ export default function OauthAppsPage() {
         pendingDelete={pendingDelete}
         onCancel={() => setPendingDelete(null)}
         onConfirm={async (conn) => {
-          await deleteConnection(conn.name)
-          setPendingDelete(null)
+          // Only dismiss the dialog when the delete actually succeeded;
+          // the store returns ``false`` and surfaces its own error toast
+          // on failure, so leaving the dialog open lets the user retry.
+          if (await deleteConnection(conn.name)) {
+            setPendingDelete(null)
+          }
         }}
       />
     </div>

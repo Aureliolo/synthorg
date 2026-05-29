@@ -221,26 +221,33 @@ function RateLimitsBody({
   onRetry,
   onClose,
 }: RateLimitsBodyProps) {
-  const showError = error !== null && isLoadedForActiveProvider
+  // A first-load failure leaves ``rateLimits`` null, so the banner must
+  // key off ``error`` alone (the parent already scopes it to the active
+  // provider); gating on ``isLoadedForActiveProvider`` would hide it and
+  // strand the user on a perpetual skeleton. The skeleton renders only
+  // while loading with no error.
+  const showSkeleton =
+    error === null
+    && (loading || !isLoadedForActiveProvider || rateLimits === null || providerName === null)
 
   return (
     <div className="flex flex-col gap-section-gap p-card">
       <RateLimitsErrorBanner
-        show={showError}
+        show={error !== null}
         providerName={providerName}
         error={error}
         onRetry={onRetry}
       />
-      {loading || !isLoadedForActiveProvider || rateLimits === null || providerName === null ? (
+      {showSkeleton ? (
         <RateLimitsSkeleton />
-      ) : (
+      ) : isLoadedForActiveProvider && rateLimits !== null && providerName !== null ? (
         <RateLimitsForm
           key={`${providerName}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`}
           providerName={providerName}
           initial={rateLimits}
           onClose={onClose}
         />
-      )}
+      ) : null}
     </div>
   )
 }

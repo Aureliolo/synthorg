@@ -14,6 +14,7 @@ import { DocViewer } from './project-docs/DocViewer'
 const log = createLogger('project-docs-page')
 
 interface DocFetchResult {
+  projectId: string
   slug: string
   doc: LivingDocument | null
   error: string | null
@@ -25,13 +26,19 @@ interface ResolvedDoc {
   docLoading: boolean
 }
 
-// A result is only current when it matches the requested slug; a stale
-// result from a previous slug reads as "still loading".
-function resolveDoc(slug: string | undefined, docResult: DocFetchResult | null): ResolvedDoc {
-  if (!slug) {
+// A result is only current when it matches the requested project AND
+// slug; a stale result from a previous project/slug reads as "still
+// loading". Keying on slug alone briefly surfaced project A's doc for
+// project B when both expose a doc under the same slug.
+function resolveDoc(
+  projectId: string | undefined,
+  slug: string | undefined,
+  docResult: DocFetchResult | null,
+): ResolvedDoc {
+  if (!projectId || !slug) {
     return { doc: null, docError: null, docLoading: false }
   }
-  if (docResult === null || docResult.slug !== slug) {
+  if (docResult === null || docResult.projectId !== projectId || docResult.slug !== slug) {
     return { doc: null, docError: null, docLoading: true }
   }
   return { doc: docResult.doc, docError: docResult.error, docLoading: false }
@@ -81,19 +88,19 @@ function useProjectDocsData(
     const controller = new AbortController()
     getProjectDoc(projectId, slug, controller.signal)
       .then((value) => {
-        setDocResult({ slug, doc: value, error: null })
+        setDocResult({ projectId, slug, doc: value, error: null })
       })
       .catch((err: unknown) => {
         if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('get doc failed', err)
-        setDocResult({ slug, doc: null, error: 'Could not load this document.' })
+        setDocResult({ projectId, slug, doc: null, error: 'Could not load this document.' })
       })
     return () => {
       controller.abort()
     }
   }, [projectId, slug])
 
-  const { doc, docError, docLoading } = resolveDoc(slug, docResult)
+  const { doc, docError, docLoading } = resolveDoc(projectId, slug, docResult)
 
   const handleSelect = useCallback(
     (selectedSlug: string) => {
