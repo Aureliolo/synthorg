@@ -287,20 +287,23 @@ class TestOverrideStoreNotConfigured:
         fake_bus = FakeMessageBus()
         await fake_bus.start()
 
-        tracker = PerformanceTracker()  # No override_store
-        auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
-        _seed_test_users(fake_persistence, auth_service)
-
-        app = create_app(
-            config=RootConfig(company_name="test-company"),
-            persistence=fake_persistence,
-            message_bus=fake_bus,
-            cost_tracker=CostTracker(),
-            approval_store=ApprovalStore(),
-            auth_service=auth_service,
-            performance_tracker=tracker,
-        )
+        # Guard from the moment both fakes are live: if create_app() or any
+        # app-setup step below raises, the finally still stops the bus and
+        # disconnects persistence so neither leaks tasks/state across tests.
         try:
+            tracker = PerformanceTracker()  # No override_store
+            auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
+            _seed_test_users(fake_persistence, auth_service)
+
+            app = create_app(
+                config=RootConfig(company_name="test-company"),
+                persistence=fake_persistence,
+                message_bus=fake_bus,
+                cost_tracker=CostTracker(),
+                approval_store=ApprovalStore(),
+                auth_service=auth_service,
+                performance_tracker=tracker,
+            )
             async with LoopAsyncClient(app) as client:
                 client.headers.update(make_auth_headers("ceo"))
                 yield client
