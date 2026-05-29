@@ -10,19 +10,21 @@ import { useToastStore } from '@/stores/toast'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupSummary } from './SetupSummary'
 import { CheckCircle } from 'lucide-react'
+import type { SetupCompanyResponse } from '@/api/types/setup'
 
-export function CompleteStep() {
+interface CompleteStepActions {
+  confirmOpen: boolean
+  setConfirmOpen: (open: boolean) => void
+  finishAndNavigate: () => void
+  handleComplete: () => Promise<void>
+}
+
+function useCompleteStepActions(
+  companyResponse: SetupCompanyResponse | null,
+  wizardCompleteSetup: () => Promise<void>,
+): CompleteStepActions {
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
-
-  const companyResponse = useSetupWizardStore((s) => s.companyResponse)
-  const agents = useSetupWizardStore((s) => s.agents)
-  const providers = useSetupWizardStore((s) => s.providers)
-  const currency = useSetupWizardStore((s) => s.currency)
-  const completing = useSetupWizardStore((s) => s.completing)
-  const completionError = useSetupWizardStore((s) => s.completionError)
-  const completionWarning = useSetupWizardStore((s) => s.completionWarning)
-  const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
   const finishAndNavigate = useCallback(() => {
     useSetupStore.setState({ setupComplete: true })
@@ -66,6 +68,104 @@ export function CompleteStep() {
     finishAndNavigate()
   }, [wizardCompleteSetup, finishAndNavigate])
 
+  return { confirmOpen, setConfirmOpen, finishAndNavigate, handleComplete }
+}
+
+interface CompleteStepFooterProps {
+  completionError: string | null
+  completionWarning: string | null
+  completing: boolean
+  confirmOpen: boolean
+  setConfirmOpen: (open: boolean) => void
+  finishAndNavigate: () => void
+  handleComplete: () => Promise<void>
+}
+
+function CompleteStepFooter({
+  completionError,
+  completionWarning,
+  completing,
+  confirmOpen,
+  setConfirmOpen,
+  finishAndNavigate,
+  handleComplete,
+}: CompleteStepFooterProps) {
+  const showWarningOnly = Boolean(completionWarning) && !completionError
+  return (
+    <>
+      {completionError && (
+        <ErrorBanner
+          variant="section"
+          severity="error"
+          title="Could not complete setup"
+          description={
+            // Append a contextual help line for users hitting this
+            // repeatedly: setup may have already completed in a
+            // previous attempt and the wizard just hasn't observed
+            // the new state. A page refresh confirms.
+            `${completionError} If you see this repeatedly, setup may have already completed; refresh the page to confirm.`
+          }
+          onRetry={() => void handleComplete()}
+        />
+      )}
+
+      {showWarningOnly && (
+        // Non-fatal warning surface: setup did persist, but the
+        // backend reported a runtime caveat (embedder auto-selection
+        // failed, provider health degraded mid-setup). Holding the
+        // wizard open here avoids the previous behaviour of
+        // navigating to a half-configured dashboard with no notice.
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="Setup complete with a warning"
+          description={`${completionWarning} You can continue to the dashboard and resolve this from Settings.`}
+        />
+      )}
+
+      {showWarningOnly ? (
+        <Button onClick={finishAndNavigate} className="w-full gap-2" size="lg">
+          <CheckCircle className="size-4" />
+          Continue to dashboard
+        </Button>
+      ) : (
+        <Button
+          onClick={() => setConfirmOpen(true)}
+          disabled={completing}
+          className="w-full gap-2"
+          size="lg"
+        >
+          <CheckCircle className="size-4" />
+          {completing ? 'Completing Setup...' : 'Complete Setup'}
+        </Button>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Launch your organization?"
+        description="This will start all configured agents and complete the setup process."
+        confirmLabel="Launch"
+        onConfirm={handleComplete}
+        loading={completing}
+      />
+    </>
+  )
+}
+
+export function CompleteStep() {
+  const companyResponse = useSetupWizardStore((s) => s.companyResponse)
+  const agents = useSetupWizardStore((s) => s.agents)
+  const providers = useSetupWizardStore((s) => s.providers)
+  const currency = useSetupWizardStore((s) => s.currency)
+  const completing = useSetupWizardStore((s) => s.completing)
+  const completionError = useSetupWizardStore((s) => s.completionError)
+  const completionWarning = useSetupWizardStore((s) => s.completionWarning)
+  const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
+
+  const { confirmOpen, setConfirmOpen, finishAndNavigate, handleComplete } =
+    useCompleteStepActions(companyResponse, wizardCompleteSetup)
+
   if (!companyResponse) {
     return <SkipWizardForm />
   }
@@ -90,66 +190,14 @@ export function CompleteStep() {
         currency={currency}
       />
 
-      {completionError && (
-        <ErrorBanner
-          variant="section"
-          severity="error"
-          title="Could not complete setup"
-          description={
-            // Append a contextual help line for users hitting this
-            // repeatedly: setup may have already completed in a
-            // previous attempt and the wizard just hasn't observed
-            // the new state. A page refresh confirms.
-            `${completionError} If you see this repeatedly, setup may have already completed; refresh the page to confirm.`
-          }
-          onRetry={() => void handleComplete()}
-        />
-      )}
-
-      {completionWarning && !completionError && (
-        // Non-fatal warning surface: setup did persist, but the
-        // backend reported a runtime caveat (embedder auto-selection
-        // failed, provider health degraded mid-setup). Holding the
-        // wizard open here avoids the previous behaviour of
-        // navigating to a half-configured dashboard with no notice.
-        <ErrorBanner
-          variant="section"
-          severity="warning"
-          title="Setup complete with a warning"
-          description={`${completionWarning} You can continue to the dashboard and resolve this from Settings.`}
-        />
-      )}
-
-      {/* Complete button */}
-      {completionWarning && !completionError ? (
-        <Button
-          onClick={finishAndNavigate}
-          className="w-full gap-2"
-          size="lg"
-        >
-          <CheckCircle className="size-4" />
-          Continue to dashboard
-        </Button>
-      ) : (
-        <Button
-          onClick={() => setConfirmOpen(true)}
-          disabled={completing}
-          className="w-full gap-2"
-          size="lg"
-        >
-          <CheckCircle className="size-4" />
-          {completing ? 'Completing Setup...' : 'Complete Setup'}
-        </Button>
-      )}
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title="Launch your organization?"
-        description="This will start all configured agents and complete the setup process."
-        confirmLabel="Launch"
-        onConfirm={handleComplete}
-        loading={completing}
+      <CompleteStepFooter
+        completionError={completionError}
+        completionWarning={completionWarning}
+        completing={completing}
+        confirmOpen={confirmOpen}
+        setConfirmOpen={setConfirmOpen}
+        finishAndNavigate={finishAndNavigate}
+        handleComplete={handleComplete}
       />
     </div>
   )

@@ -90,17 +90,41 @@ interface AgentNodeProps {
   isHead: boolean
 }
 
+type AgentTier = 'head' | 'leader' | 'member'
+
+/**
+ * Classify an agent for node styling. Department heads outrank leaders
+ * (c-suite / vp / director / principal / lead), who outrank members.
+ */
+function agentTier(agent: SetupAgentSummary, isHead: boolean): AgentTier {
+  if (isHead) return 'head'
+  if (agent.level != null && LEADER_LEVELS.has(agent.level)) return 'leader'
+  return 'member'
+}
+
+const NODE_STROKE_CLASS: Record<AgentTier, string> = {
+  head: 'stroke-accent',
+  leader: 'stroke-accent/70',
+  member: 'stroke-accent/30',
+}
+
+const NODE_FILL_CLASS: Record<AgentTier, string> = {
+  head: 'fill-accent/15',
+  leader: 'fill-card',
+  member: 'fill-card',
+}
+
+const NODE_STROKE_WIDTH: Record<AgentTier, string> = {
+  head: 'var(--so-stroke-thin)',
+  leader: 'var(--so-stroke-thin)',
+  member: 'var(--so-stroke-hairline)',
+}
+
 function AgentNode({
   agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight, isHead,
 }: AgentNodeProps) {
-  const isLeader = agent.level != null && LEADER_LEVELS.has(agent.level)
+  const tier = agentTier(agent, isHead)
   const effectiveRadius = isHead ? radius + 2 : radius
-  const strokeClass = isHead
-    ? 'stroke-accent'
-    : isLeader
-      ? 'stroke-accent/70'
-      : 'stroke-accent/30'
-  const fillClass = isHead ? 'fill-accent/15' : 'fill-card'
   const titleSuffix = agent.level ? ` · ${agent.level.replace('_', '-')}` : ''
   return (
     <g>
@@ -116,12 +140,8 @@ function AgentNode({
         cx={agentX}
         cy={agentY}
         r={effectiveRadius}
-        className={cn(fillClass, strokeClass)}
-        strokeWidth={
-          isHead || isLeader
-            ? 'var(--so-stroke-thin)'
-            : 'var(--so-stroke-hairline)'
-        }
+        className={cn(NODE_FILL_CLASS[tier], NODE_STROKE_CLASS[tier])}
+        strokeWidth={NODE_STROKE_WIDTH[tier]}
       >
         <title>{`${agent.name} -- ${agent.role}${titleSuffix}${isHead ? ' (head)' : ''}`}</title>
       </circle>

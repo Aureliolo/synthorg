@@ -10,8 +10,115 @@ import { useClearStepRevalidationOnMount, useStepCompletionSync } from './_hooks
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
 import { Users } from 'lucide-react'
+import type { SetupAgentSummary } from '@/api/types/setup'
 
-export function AgentsStep() {
+type UnresolvedAgent = ReturnType<typeof resolveAgentModels>[number]
+
+/**
+ * Trapped-state banner: agents whose model_provider / model_id no longer
+ * resolves against the current providers map (the operator removed the
+ * provider, swapped the model, or the template generated an agent
+ * referencing a non-existent provider). Without it the operator can
+ * submit a setup whose agents fail at runtime with no clear pointer at
+ * the upstream cause.
+ */
+function UnresolvedAgentsBanner({
+  unresolvedAgents,
+  onOpenProviders,
+}: {
+  unresolvedAgents: readonly UnresolvedAgent[]
+  onOpenProviders: () => void
+}) {
+  return (
+    <ErrorBanner
+      severity="warning"
+      title={
+        unresolvedAgents.length === 1
+          ? 'One agent references a missing provider or model'
+          : `${unresolvedAgents.length} agents reference a missing provider or model`
+      }
+      description={
+        <ul className="ml-4 list-disc space-y-1">
+          {unresolvedAgents.map(({ index, name, provider, modelId, reason }) => (
+            <li key={`${name}-${index}`}>
+              <span className="font-medium">{name}</span>
+              {': '}
+              {reason === 'unassigned'
+                ? 'no model assigned'
+                : reason === 'missing_provider'
+                  ? `provider '${provider}' is not configured`
+                  : `provider '${provider}' has no model '${modelId}'`}
+            </li>
+          ))}
+        </ul>
+      }
+      action={{ label: 'Open Providers step', onClick: onOpenProviders }}
+    />
+  )
+}
+
+/**
+ * Loading / error / empty fallbacks rendered before the agent grid.
+ * Reached only when the caller has confirmed `agentsLoading` OR the
+ * agent list is empty, so the final branch is the empty state.
+ */
+function AgentsStepFallback({
+  agentsLoading,
+  agentsError,
+  onRetry,
+}: {
+  agentsLoading: boolean
+  agentsError: string | null
+  onRetry: () => void
+}) {
+  if (agentsLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32 rounded-lg" />
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-24 rounded-lg" />
+        ))}
+      </div>
+    )
+  }
+
+  if (agentsError) {
+    return (
+      <ErrorBanner
+        title="Could not load agents"
+        description={agentsError}
+        onRetry={onRetry}
+      />
+    )
+  }
+
+  return (
+    <EmptyState
+      icon={Users}
+      title="No agents configured"
+      description="Go back to the Company step and apply a template to generate agents."
+    />
+  )
+}
+
+interface AgentsStepController {
+  agents: readonly SetupAgentSummary[]
+  agentsLoading: boolean
+  agentsError: string | null
+  providers: ReturnType<typeof useSetupWizardStore.getState>['providers']
+  personalityPresets: ReturnType<typeof useSetupWizardStore.getState>['personalityPresets']
+  personalityPresetsError: string | null
+  unresolvedAgents: readonly UnresolvedAgent[]
+  fetchAgents: () => Promise<void>
+  fetchPersonalityPresets: () => Promise<void>
+  handleNameChange: (index: number, name: string) => Promise<void>
+  handleModelChange: (index: number, provider: string, modelId: string) => Promise<void>
+  handleRandomizeName: (index: number) => Promise<void>
+  handlePersonalityChange: (index: number, preset: string) => Promise<void>
+  goToProvidersStep: () => void
+}
+
+function useAgentsStepController(): AgentsStepController {
   const agents = useSetupWizardStore((s) => s.agents)
   const agentsLoading = useSetupWizardStore((s) => s.agentsLoading)
   const agentsError = useSetupWizardStore((s) => s.agentsError)
@@ -55,10 +162,9 @@ export function AgentsStep() {
   const handleRandomizeName = useCallback(randomizeAgentName, [randomizeAgentName])
   const handlePersonalityChange = useCallback(updateAgentPersonality, [updateAgentPersonality])
 
-  const goToProvidersStep = useCallback(
-    () => navigate('/setup/providers'),
-    [navigate],
-  )
+  const goToProvidersStep = useCallback(() => {
+    void navigate('/setup/providers')
+  }, [navigate])
 
   // Detect agents whose model_provider / model_id no longer resolves against
   // the current providers map (the operator removed the provider, swapped the
@@ -84,33 +190,37 @@ export function AgentsStep() {
   )
   useClearStepRevalidationOnMount('agents')
 
-  if (agentsLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-32 rounded-lg" />
-        {Array.from({ length: 3 }, (_, i) => (
-          <Skeleton key={i} className="h-24 rounded-lg" />
-        ))}
-      </div>
-    )
+  return {
+    agents, agentsLoading, agentsError, providers, personalityPresets, personalityPresetsError,
+    unresolvedAgents, fetchAgents, fetchPersonalityPresets, handleNameChange, handleModelChange,
+    handleRandomizeName, handlePersonalityChange, goToProvidersStep,
   }
+}
 
-  if (agents.length === 0 && agentsError) {
+export function AgentsStep() {
+  const {
+    agents,
+    agentsLoading,
+    agentsError,
+    providers,
+    personalityPresets,
+    personalityPresetsError,
+    unresolvedAgents,
+    fetchAgents,
+    fetchPersonalityPresets,
+    handleNameChange,
+    handleModelChange,
+    handleRandomizeName,
+    handlePersonalityChange,
+    goToProvidersStep,
+  } = useAgentsStepController()
+
+  if (agentsLoading || agents.length === 0) {
     return (
-      <ErrorBanner
-        title="Could not load agents"
-        description={agentsError}
+      <AgentsStepFallback
+        agentsLoading={agentsLoading}
+        agentsError={agentsError}
         onRetry={() => void fetchAgents()}
-      />
-    )
-  }
-
-  if (agents.length === 0) {
-    return (
-      <EmptyState
-        icon={Users}
-        title="No agents configured"
-        description="Go back to the Company step and apply a template to generate agents."
       />
     )
   }
@@ -142,29 +252,9 @@ export function AgentsStep() {
       )}
 
       {unresolvedAgents.length > 0 && (
-        <ErrorBanner
-          severity="warning"
-          title={
-            unresolvedAgents.length === 1
-              ? 'One agent references a missing provider or model'
-              : `${unresolvedAgents.length} agents reference a missing provider or model`
-          }
-          description={
-            <ul className="ml-4 list-disc space-y-1">
-              {unresolvedAgents.map(({ index, name, provider, modelId, reason }) => (
-                <li key={`${name}-${index}`}>
-                  <span className="font-medium">{name}</span>
-                  {': '}
-                  {reason === 'unassigned'
-                    ? 'no model assigned'
-                    : reason === 'missing_provider'
-                      ? `provider '${provider}' is not configured`
-                      : `provider '${provider}' has no model '${modelId}'`}
-                </li>
-              ))}
-            </ul>
-          }
-          action={{ label: 'Open Providers step', onClick: () => { void goToProvidersStep() } }}
+        <UnresolvedAgentsBanner
+          unresolvedAgents={unresolvedAgents}
+          onOpenProviders={goToProvidersStep}
         />
       )}
 

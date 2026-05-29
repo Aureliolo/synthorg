@@ -15,8 +15,175 @@ import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 import { ErrorCode } from '@/api/types/errors'
 import { TemplateVariables } from './TemplateVariables'
+import type { SetupAgentSummary, SetupCompanyResponse } from '@/api/types/setup'
 
-export function CompanyStep() {
+type TemplateVariableValue = string | number | boolean
+
+interface CompanyDetailsFormProps {
+  companyName: string
+  setCompanyName: (value: string) => void
+  companyDescription: string
+  setCompanyDescription: (value: string) => void
+  currency: CurrencyCode
+  setCurrency: (value: CurrencyCode) => void
+  templateVariables: Readonly<Record<string, TemplateVariableValue>>
+  setTemplateVariable: (key: string, value: TemplateVariableValue) => void
+}
+
+function CompanyDetailsForm({
+  companyName,
+  setCompanyName,
+  companyDescription,
+  setCompanyDescription,
+  currency,
+  setCurrency,
+  templateVariables,
+  setTemplateVariable,
+}: CompanyDetailsFormProps) {
+  return (
+    <div className="space-y-4 rounded-lg border border-border bg-card p-card">
+      <InputField
+        label="Company Name"
+        required
+        value={companyName}
+        onChange={(e) => setCompanyName(e.currentTarget.value)}
+        placeholder="Your organization name"
+        // Hint sets expectations up front; the error below fires
+        // only once the user crosses the boundary, so the two
+        // never display together.
+        hint="Max 200 characters. Apply Template stays disabled until this is valid."
+        error={
+          companyName.trim() === ''
+            ? null
+            : graphemeLength(companyName.trim()) > 200
+              ? 'Max 200 characters'
+              : null
+        }
+      />
+
+      <InputField
+        label="Description"
+        multiline
+        rows={3}
+        value={companyDescription}
+        onChange={(e) => setCompanyDescription(e.currentTarget.value)}
+        placeholder="Describe your organization (optional)"
+        hint="Max 1000 characters"
+        error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
+      />
+
+      <SelectField
+        label="Display Currency"
+        options={[...CURRENCY_OPTIONS]}
+        value={currency}
+        onChange={(value) => setCurrency(value as CurrencyCode)}
+      />
+
+      <SelectField
+        label="Model Tier Profile"
+        options={[
+          { value: 'economy', label: 'Economy' },
+          { value: 'balanced', label: 'Balanced' },
+          { value: 'premium', label: 'Premium' },
+        ]}
+        value={String(templateVariables.model_tier_profile ?? 'balanced')}
+        onChange={(v) => setTemplateVariable('model_tier_profile', v)}
+        hint="Influences which model tiers are assigned to agents."
+      />
+    </div>
+  )
+}
+
+function ApplyTemplateButton({
+  onApply,
+  disabled,
+  loading,
+}: {
+  onApply: () => void
+  disabled: boolean
+  loading: boolean
+}) {
+  return (
+    <Button onClick={onApply} disabled={disabled} className="w-full">
+      {loading ? 'Applying Template...' : 'Apply Template'}
+    </Button>
+  )
+}
+
+interface CompanyErrorBannerProps {
+  companyError: string | null
+  tierCoverageInsufficient: boolean
+  applyDisabled: boolean
+  onApply: () => void
+  onOpenProviders: () => void
+}
+
+function CompanyErrorBanner({
+  companyError,
+  tierCoverageInsufficient,
+  applyDisabled,
+  onApply,
+  onOpenProviders,
+}: CompanyErrorBannerProps) {
+  if (!companyError) return null
+  return (
+    <ErrorBanner
+      variant="section"
+      severity="error"
+      title="Could not apply template"
+      description={companyError}
+      // Gate Retry by the same submit gate that controls the Apply button
+      // so the user cannot retry while base details are invalid or while
+      // a submit is already in flight. For the tier-coverage error
+      // specifically, hide Retry entirely (it would always re-fail until
+      // upstream provider state is fixed) and surface the
+      // "Open Providers step" action via the ``action`` prop instead.
+      onRetry={tierCoverageInsufficient || applyDisabled ? undefined : () => void onApply()}
+      action={
+        tierCoverageInsufficient ? { label: 'Open Providers step', onClick: onOpenProviders } : undefined
+      }
+    />
+  )
+}
+
+function CompanyPreview({
+  companyResponse,
+  agents,
+}: {
+  companyResponse: SetupCompanyResponse
+  agents: readonly SetupAgentSummary[]
+}) {
+  return (
+    <>
+      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
+        <StaggerItem>
+          <MetricCard label="Departments" value={companyResponse.department_count} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="Agents" value={companyResponse.agent_count} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="Template" value={companyResponse.template_applied ?? 'None'} />
+        </StaggerItem>
+      </StaggerGroup>
+
+      {agents.length > 0 && (
+        <SectionCard title="Generated Agents">
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {agents.map((agent, index) => (
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
+              <li key={`${agent.name}-${index}`}>
+                {agent.name} ({agent.department}) - {agent.tier} model
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+    </>
+  )
+}
+
+function useCompanyStepController() {
   const templates = useSetupWizardStore((s) => s.templates)
   const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
   const companyName = useSetupWizardStore((s) => s.companyName)
@@ -92,9 +259,36 @@ export function CompanyStep() {
   // code is the contract.
   const tierCoverageInsufficient =
     companyErrorCode === ErrorCode.PROVIDER_TIER_COVERAGE_INSUFFICIENT
-  const errorBannerAction = tierCoverageInsufficient
-    ? { label: 'Open Providers step', onClick: goToProvidersStep }
-    : undefined
+
+  return {
+    selectedTemplate, companyName, setCompanyName, companyDescription, setCompanyDescription,
+    currency, setCurrency, templateVariables, setTemplateVariable, selectedTemplateObj,
+    companyResponse, companyError, agents, companyLoading, applyDisabled, tierCoverageInsufficient,
+    handleApplyTemplate, goToProvidersStep,
+  }
+}
+
+export function CompanyStep() {
+  const {
+    selectedTemplate,
+    companyName,
+    setCompanyName,
+    companyDescription,
+    setCompanyDescription,
+    currency,
+    setCurrency,
+    templateVariables,
+    setTemplateVariable,
+    selectedTemplateObj,
+    companyResponse,
+    companyError,
+    agents,
+    companyLoading,
+    applyDisabled,
+    tierCoverageInsufficient,
+    handleApplyTemplate,
+    goToProvidersStep,
+  } = useCompanyStepController()
 
   return (
     <div className="space-y-section-gap">
@@ -113,57 +307,16 @@ export function CompanyStep() {
         </div>
       )}
 
-      {/* Company details form */}
-      <div className="space-y-4 rounded-lg border border-border bg-card p-card">
-        <InputField
-          label="Company Name"
-          required
-          value={companyName}
-          onChange={(e) => setCompanyName(e.currentTarget.value)}
-          placeholder="Your organization name"
-          // Hint sets expectations up front; the error below fires
-          // only once the user crosses the boundary, so the two
-          // never display together.
-          hint="Max 200 characters. Apply Template stays disabled until this is valid."
-          error={
-            companyName.trim() === ''
-              ? null
-              : graphemeLength(companyName.trim()) > 200
-                ? 'Max 200 characters'
-                : null
-          }
-        />
-
-        <InputField
-          label="Description"
-          multiline
-          rows={3}
-          value={companyDescription}
-          onChange={(e) => setCompanyDescription(e.currentTarget.value)}
-          placeholder="Describe your organization (optional)"
-          hint="Max 1000 characters"
-          error={graphemeLength(companyDescription) > 1000 ? 'Max 1000 characters' : null}
-        />
-
-        <SelectField
-          label="Display Currency"
-          options={[...CURRENCY_OPTIONS]}
-          value={currency}
-          onChange={(value) => setCurrency(value as CurrencyCode)}
-        />
-
-        <SelectField
-          label="Model Tier Profile"
-          options={[
-            { value: 'economy', label: 'Economy' },
-            { value: 'balanced', label: 'Balanced' },
-            { value: 'premium', label: 'Premium' },
-          ]}
-          value={String(templateVariables.model_tier_profile ?? 'balanced')}
-          onChange={(v) => setTemplateVariable('model_tier_profile', v)}
-          hint="Influences which model tiers are assigned to agents."
-        />
-      </div>
+      <CompanyDetailsForm
+        companyName={companyName}
+        setCompanyName={setCompanyName}
+        companyDescription={companyDescription}
+        setCompanyDescription={setCompanyDescription}
+        currency={currency}
+        setCurrency={setCurrency}
+        templateVariables={templateVariables}
+        setTemplateVariable={setTemplateVariable}
+      />
 
       {/* Template variables */}
       <TemplateVariables
@@ -175,64 +328,23 @@ export function CompanyStep() {
 
       {/* Apply template button. */}
       {!companyResponse && (
-        <Button
-          onClick={handleApplyTemplate}
+        <ApplyTemplateButton
+          onApply={handleApplyTemplate}
           disabled={applyDisabled}
-          className="w-full"
-        >
-          {companyLoading ? 'Applying Template...' : 'Apply Template'}
-        </Button>
-      )}
-
-      {companyError && (
-        <ErrorBanner
-          variant="section"
-          severity="error"
-          title="Could not apply template"
-          description={companyError}
-          // Gate Retry by the same submit gate that controls the Apply button
-          // so the user cannot retry while base details are invalid or while
-          // a submit is already in flight. For the tier-coverage error
-          // specifically, hide Retry entirely (it would always re-fail until
-          // upstream provider state is fixed) and surface the
-          // "Open Providers step" action via the ``action`` prop instead.
-          onRetry={
-            tierCoverageInsufficient || applyDisabled
-              ? undefined
-              : () => void handleApplyTemplate()
-          }
-          action={errorBannerAction}
+          loading={companyLoading}
         />
       )}
 
-      {/* Preview after applying */}
-      {companyResponse && (
-        <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
-          <StaggerItem>
-            <MetricCard label="Departments" value={companyResponse.department_count} />
-          </StaggerItem>
-          <StaggerItem>
-            <MetricCard label="Agents" value={companyResponse.agent_count} />
-          </StaggerItem>
-          <StaggerItem>
-            <MetricCard label="Template" value={companyResponse.template_applied ?? 'None'} />
-          </StaggerItem>
-        </StaggerGroup>
-      )}
+      <CompanyErrorBanner
+        companyError={companyError}
+        tierCoverageInsufficient={tierCoverageInsufficient}
+        applyDisabled={applyDisabled}
+        onApply={handleApplyTemplate}
+        onOpenProviders={goToProvidersStep}
+      />
 
-      {/* Agent preview list */}
-      {companyResponse && agents.length > 0 && (
-        <SectionCard title="Generated Agents">
-          <ul className="space-y-1 text-xs text-muted-foreground">
-            {agents.map((agent, index) => (
-              // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
-              <li key={`${agent.name}-${index}`}>
-                {agent.name} ({agent.department}) - {agent.tier} model
-              </li>
-            ))}
-          </ul>
-        </SectionCard>
-      )}
+      {/* Preview after applying */}
+      {companyResponse && <CompanyPreview companyResponse={companyResponse} agents={agents} />}
     </div>
   )
 }

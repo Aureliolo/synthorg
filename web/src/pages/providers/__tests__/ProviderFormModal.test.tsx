@@ -6,7 +6,8 @@ import type {
   CreateProviderRequest,
   ProviderConfig,
 } from '@/api/types/providers'
-import { ProviderFormModal, type ProviderFormOverrides } from '../ProviderFormModal'
+import { ProviderFormModal } from '../ProviderFormModal'
+import type { ProviderFormOverrides } from '../provider-form-helpers'
 
 const anthropic: CloudPreset = {
   kind: 'cloud',

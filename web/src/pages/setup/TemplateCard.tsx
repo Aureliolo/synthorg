@@ -26,6 +26,34 @@ function humanizeWorkflow(raw: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+function autonomyLabel(level: string | null | undefined): string {
+  if (!level) return ''
+  return AUTONOMY_LABELS[level] ?? level
+}
+
+function TemplateCardMetadata({ template }: { template: TemplateInfoResponse }) {
+  return (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1.5" title="Agents">
+        <Users className="size-3.5 text-accent" aria-hidden="true" />
+        <span>{template.agent_count} agent{template.agent_count !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="flex items-center gap-1.5" title="Departments">
+        <Building2 className="size-3.5 text-accent" aria-hidden="true" />
+        <span>{template.department_count} dept{template.department_count !== 1 ? 's' : ''}</span>
+      </div>
+      <div className="flex items-center gap-1.5" title="Autonomy level">
+        <Shield className="size-3.5 text-accent" aria-hidden="true" />
+        <span>{autonomyLabel(template.autonomy_level)}</span>
+      </div>
+      <div className="flex items-center gap-1.5" title="Workflow">
+        <GitBranch className="size-3.5 text-accent" aria-hidden="true" />
+        <span>{WORKFLOW_LABELS[template.workflow] ?? humanizeWorkflow(template.workflow)}</span>
+      </div>
+    </div>
+  )
+}
+
 export interface TemplateCardProps {
   template: TemplateInfoResponse
   selected: boolean
@@ -85,24 +113,7 @@ export function TemplateCard({
       </div>
 
       {/* Structural metadata */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5" title="Agents">
-          <Users className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{template.agent_count} agent{template.agent_count !== 1 ? 's' : ''}</span>
-        </div>
-        <div className="flex items-center gap-1.5" title="Departments">
-          <Building2 className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{template.department_count} dept{template.department_count !== 1 ? 's' : ''}</span>
-        </div>
-        <div className="flex items-center gap-1.5" title="Autonomy level">
-          <Shield className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{(template.autonomy_level && AUTONOMY_LABELS[template.autonomy_level]) ?? template.autonomy_level ?? ''}</span>
-        </div>
-        <div className="flex items-center gap-1.5" title="Workflow">
-          <GitBranch className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{WORKFLOW_LABELS[template.workflow] ?? humanizeWorkflow(template.workflow)}</span>
-        </div>
-      </div>
+      <TemplateCardMetadata template={template} />
 
       {/* Tags */}
       <div className="flex flex-wrap gap-1">

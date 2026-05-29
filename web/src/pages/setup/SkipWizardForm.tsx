@@ -7,7 +7,16 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
 
-export function SkipWizardForm() {
+interface SkipWizardSubmit {
+  companyName: string
+  setCompanyName: (value: string) => void
+  error: string | null
+  setError: (value: string | null) => void
+  loading: boolean
+  handleSubmit: (e?: React.FormEvent) => Promise<void>
+}
+
+function useSkipWizardSubmit(): SkipWizardSubmit {
   const navigate = useNavigate()
   const [companyName, setCompanyName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +82,13 @@ export function SkipWizardForm() {
       setLoading(false)
     }
   }, [companyName, setCompanyNameStore, submitCompany, wizardCompleteSetup, navigate])
+
+  return { companyName, setCompanyName, error, setError, loading, handleSubmit }
+}
+
+export function SkipWizardForm() {
+  const { companyName, setCompanyName, error, setError, loading, handleSubmit } =
+    useSkipWizardSubmit()
 
   return (
     <div className="mx-auto max-w-md space-y-section-gap">
