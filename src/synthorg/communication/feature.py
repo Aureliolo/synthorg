@@ -20,6 +20,7 @@ from synthorg.api.controllers.events import (
 )
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.messages import MessageController
+from synthorg.communication._construction import wire_construction
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.meta.mcp.domains.communication import COMMUNICATION_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -59,6 +60,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

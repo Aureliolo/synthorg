@@ -22,6 +22,7 @@ from synthorg.api.controllers.personalities import PersonalityPresetController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.scaling import ScalingController
 from synthorg.api.controllers.training import TrainingController
+from synthorg.hr._construction import wire_construction
 from synthorg.hr.state import HrStateSlice
 from synthorg.meta.mcp.domains.agents import AGENT_TOOLS
 from synthorg.meta.mcp.domains.quality import QUALITY_TOOLS
@@ -78,6 +79,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

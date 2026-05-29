@@ -34,6 +34,7 @@ from synthorg.api.route_predicates import (
     tunnel_controller_ready,
     webhooks_controller_ready,
 )
+from synthorg.integrations._construction import wire_construction
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.meta.mcp.domains.integrations import INTEGRATION_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -97,6 +98,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

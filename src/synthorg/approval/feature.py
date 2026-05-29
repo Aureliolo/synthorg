@@ -13,6 +13,7 @@ from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
 from synthorg.api.controllers.approvals.query import ApprovalsQueryController
 from synthorg.api.controllers.reviews import ReviewController
+from synthorg.approval._construction import wire_construction
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -46,6 +47,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=("ApprovalGate",),
     depends_on=(),
 )

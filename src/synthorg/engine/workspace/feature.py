@@ -10,6 +10,7 @@ settings namespace.
 
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.artifacts import ArtifactController
+from synthorg.engine.workspace._construction import wire_construction
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 
 FEATURE: FeatureModule = FeatureManifest(
@@ -19,6 +20,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(ArtifactController,),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "ProjectWorkspaceService",
         "PushQueueCoordinator",

@@ -37,6 +37,7 @@ from synthorg.api.route_predicates import (
     brownfield_controller_ready,
     objective_controller_ready,
 )
+from synthorg.engine._construction import wire_construction
 from synthorg.engine._mcp import ENGINE_MCP_HANDLERS
 from synthorg.engine.state import EngineStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -62,6 +63,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=ENGINE_MCP_HANDLERS,
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "AgentEngine",
         "IntakeEngine",

@@ -10,6 +10,7 @@ the feature has no MCP domain or ghost-wired symbols of its own.
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
+from synthorg.security._construction import wire_construction
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
 
@@ -20,6 +21,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(AuditController, AutonomyController),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "TrustService",
         "build_autonomy_change_strategy",

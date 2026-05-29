@@ -17,9 +17,8 @@ edge so dependency-ordered discovery runs the producer first (e.g.
 ``communication`` reads ``settings``'s config resolver).
 """
 
+from dataclasses import dataclass
 from typing import Any
-
-from pydantic import BaseModel, ConfigDict
 
 from synthorg._core.features import discover_features
 from synthorg.api.auth.service import AuthService
@@ -54,7 +53,8 @@ from synthorg.tools.invocation_tracker import ToolInvocationTracker
 logger = get_logger(__name__)
 
 
-class ConstructionDeps(BaseModel):
+@dataclass(frozen=True)
+class ConstructionDeps:
     """The construction-time service bundle handed to every feature wirer.
 
     Built once by ``create_app`` from the construction-phase auto-wiring
@@ -64,11 +64,11 @@ class ConstructionDeps(BaseModel):
     auto-wire result bundles (``phase1`` / ``meeting_wire`` / ``integrations``)
     are nested so a wirer reads them by provenance.
 
-    ``arbitrary_types_allowed`` carries the plain service references directly;
-    the model stays frozen so the bundle cannot mutate between wirers.
+    A frozen dataclass (not a Pydantic model) so it carries the plain
+    service references -- including the ``Phase1Result`` / ``MeetingWireResult``
+    NamedTuples -- without Pydantic introspecting their nested forward refs;
+    ``frozen=True`` keeps the bundle immutable between wirers.
     """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     effective_config: RootConfig
     phase1: Phase1Result

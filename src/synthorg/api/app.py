@@ -41,6 +41,10 @@ from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     create_channels_plugin,
 )
+from synthorg.api.construction_wiring import (
+    ConstructionDeps,
+    run_construction_wiring,
+)
 from synthorg.api.cursor import CursorSecret
 from synthorg.api.cursor_config import CursorConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
@@ -376,9 +380,6 @@ def create_app(  # noqa: PLR0913
     task_engine = phase1.task_engine
     provider_registry = phase1.provider_registry
     provider_health_tracker = phase1.provider_health_tracker
-    distributed_task_queue = phase1.distributed_task_queue
-    distributed_dispatcher = phase1.distributed_dispatcher
-    distributed_backend_services = phase1.distributed_backend_services
 
     # Pre-meetings; versioning wires on startup once persistence.connect() runs.
     if agent_registry is None:
@@ -437,12 +438,6 @@ def create_app(  # noqa: PLR0913
         boot_db_path=db_path,
     )
     connection_catalog = integrations.connection_catalog
-    oauth_token_manager = integrations.oauth_token_manager
-    health_prober_service = integrations.health_prober_service
-    tunnel_provider = integrations.tunnel_provider
-    webhook_event_bridge = integrations.webhook_event_bridge
-    mcp_catalog_service = integrations.mcp_catalog_service
-    mcp_installations_repo = integrations.mcp_installations_repo
 
     # Auto-wire control-plane services when not injected.
     if audit_log is None:
@@ -481,142 +476,51 @@ def create_app(  # noqa: PLR0913
     from synthorg.communication.state import (  # noqa: PLC0415
         CommunicationStateSlice,
     )
-    from synthorg.coordination.state import (  # noqa: PLC0415
-        CoordinationStateSlice,
-    )
-    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
-    from synthorg.engine.workspace.state import (  # noqa: PLC0415
-        WorkspaceStateSlice,
-    )
-    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
-    from synthorg.integrations.state import (  # noqa: PLC0415
-        IntegrationsStateSlice,
-    )
-    from synthorg.notifications.state import (  # noqa: PLC0415
-        NotificationsStateSlice,
-    )
-    from synthorg.persistence.state import (  # noqa: PLC0415
-        PersistenceStateSlice,
-    )
-    from synthorg.providers.state import ProvidersStateSlice  # noqa: PLC0415
-    from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-    from synthorg.tools.state import ToolsStateSlice  # noqa: PLC0415
 
-    # ``model_construct`` skips validation so the slices accept the same
-    # already-constructed services the legacy slots held (and the test
-    # doubles injected via ``create_app``), matching the no-revalidation
-    # behaviour of the old attribute bag and the lazy-wire ``model_copy``
-    # shims.
-    app_state.swap_slice(
-        SecurityStateSlice.model_construct(
-            audit_log=audit_log,
-            trust_service=trust_service,
-            autonomy_change_strategy=autonomy_change_strategy,
-        )
-    )
-    app_state.swap_slice(
-        ToolsStateSlice.model_construct(invocation_tracker=tool_invocation_tracker)
-    )
-    app_state.swap_slice(
-        CoordinationStateSlice.model_construct(metrics_store=coordination_metrics_store)
-    )
-    app_state.swap_slice(
-        ApprovalStateSlice.model_construct(store=effective_approval_store)
-    )
-    app_state.swap_slice(PersistenceStateSlice.model_construct(backend=persistence))
-    app_state.swap_slice(
-        ProvidersStateSlice.model_construct(
-            registry=provider_registry,
-            health_tracker=provider_health_tracker,
-        )
-    )
-    app_state.swap_slice(
-        HrStateSlice.model_construct(
-            agent_registry=agent_registry,
-            performance_tracker=performance_tracker,
-            training_service=training_service,
-        )
-    )
-    app_state.swap_slice(
-        CommunicationStateSlice.model_construct(
-            message_bus=message_bus,
-            meeting_orchestrator=meeting_orchestrator,
-            meeting_scheduler=meeting_scheduler,
-            event_stream_hub=event_stream_hub,
-            interrupt_store=interrupt_store,
-            delegation_record_store=delegation_record_store,
-        )
-    )
-    app_state.swap_slice(BudgetStateSlice.model_construct(cost_tracker=cost_tracker))
-    app_state.swap_slice(
-        EngineStateSlice.model_construct(
-            task_engine=task_engine,
-            work_pipeline=work_pipeline,
-            ceremony_scheduler=ceremony_scheduler,
-            intake_entry_adapter=intake_entry_adapter,
-            task_board_entry_adapter=task_board_entry_adapter,
-        )
-    )
-    app_state.swap_slice(
-        IntegrationsStateSlice.model_construct(
-            connection_catalog=connection_catalog,
-            oauth_token_manager=oauth_token_manager,
-            health_prober_service=health_prober_service,
-            tunnel_provider=tunnel_provider,
-            webhook_event_bridge=webhook_event_bridge,
-            mcp_catalog_service=mcp_catalog_service,
-            mcp_installations_repo=mcp_installations_repo,
-        )
-    )
-    app_state.swap_slice(
-        SettingsStateSlice.model_construct(settings_service=settings_service)
-    )
-    app_state.swap_slice(
-        WorkspaceStateSlice.model_construct(artifact_storage=artifact_storage)
-    )
-    app_state.swap_slice(
-        NotificationsStateSlice.model_construct(dispatcher=notification_dispatcher)
-    )
-    from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
-
-    app_state.swap_slice(
-        RuntimeStateSlice.model_construct(
-            coordinator=coordinator,
-            distributed_task_queue=distributed_task_queue,
-            distributed_backend_services=distributed_backend_services,
-        )
-    )
-    if distributed_dispatcher is not None:
-        # Late-bind the live bridge-config provider now that AppState
-        # exists (the dispatcher is built in auto_wire_phase1 before
-        # AppState). Each publish then reads the current snapshot, so
-        # an operator hot-reload of a workers.dispatcher_publish_*
-        # setting takes effect without restarting the dispatcher.
-        distributed_dispatcher.set_workers_bridge_provider(
-            lambda: app_state.workers_bridge_config,
-        )
-
-    # Opaque pagination cursor HMAC secret.  Loaded from the
-    # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a
-    # random per-process key silently invalidates every client cursor
-    # on every restart, which is a correctness defect, not a warning.
-    # We refuse to boot unconditionally -- dev, pre-release, and prod
-    # share the same posture so this latent failure can never hide
-    # behind a "looks fine in dev" code path.
+    # Opaque pagination cursor HMAC secret. Loaded from the
+    # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a random
+    # per-process key silently invalidates every client cursor on every
+    # restart, which is a correctness defect, not a warning. The
+    # refuse-to-boot guard below runs unconditionally so this latent
+    # failure can never hide behind a "looks fine in dev" code path.
     cursor_secret = CursorSecret.from_config(CursorConfig.from_env())
-    from synthorg.api.api_core_state import ApiCoreStateSlice  # noqa: PLC0415
-    from synthorg.api.auth.presence import UserPresence  # noqa: PLC0415
-    from synthorg.api.auth.ticket_store import WsTicketStore  # noqa: PLC0415
 
-    app_state.swap_slice(
-        ApiCoreStateSlice.model_construct(
-            cursor_secret=cursor_secret,
-            auth_service=auth_service,
-            ticket_store=WsTicketStore(),
-            user_presence=UserPresence(),
-        )
+    # Construction-phase service bundle handed to every feature's
+    # ``construction_wirer``. Each feature populates its own state slice from
+    # these already-built services; ``run_construction_wiring`` invokes the
+    # wirers in dependency order (so ``communication`` reads the ``settings``
+    # config resolver only after ``settings`` wired it).
+    construction_deps = ConstructionDeps(
+        effective_config=effective_config,
+        phase1=phase1,
+        meeting_wire=meeting_wire,
+        integrations=integrations,
+        approval_store=effective_approval_store,
+        autonomy_change_strategy=autonomy_change_strategy,
+        notification_dispatcher=notification_dispatcher,
+        event_stream_hub=event_stream_hub,
+        interrupt_store=interrupt_store,
+        cursor_secret=cursor_secret,
+        persistence=persistence,
+        settings_service=settings_service,
+        auth_service=auth_service,
+        audit_log=audit_log,
+        trust_service=trust_service,
+        coordination_metrics_store=coordination_metrics_store,
+        performance_tracker=performance_tracker,
+        agent_registry=agent_registry,
+        training_service=training_service,
+        delegation_record_store=delegation_record_store,
+        tool_invocation_tracker=tool_invocation_tracker,
+        artifact_storage=artifact_storage,
+        coordinator=coordinator,
+        work_pipeline=work_pipeline,
+        intake_entry_adapter=intake_entry_adapter,
+        task_board_entry_adapter=task_board_entry_adapter,
     )
+    run_construction_wiring(app_state, construction_deps)
+
     # Compose the config resolver + management / org-mutation / audit /
     # preset services when a settings service is injected at build time
     # (a no-op when no settings service is provided, where the startup

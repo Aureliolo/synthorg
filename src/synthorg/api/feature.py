@@ -10,6 +10,7 @@ handler. The composition root mounts these from this manifest.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
+from synthorg.api._construction import wire_construction
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
 from synthorg.api.auth.controllers.credentials import AuthCredentialsController
@@ -55,6 +56,7 @@ FEATURE: FeatureModule = FeatureManifest(
     websocket_handlers=(ws_handler,),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=("build_chief_of_staff_proposer",),
     depends_on=(),
 )

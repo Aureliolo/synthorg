@@ -16,6 +16,7 @@ from synthorg.api.controllers.budget_config_versions import (
 )
 from synthorg.api.controllers.budget_forecast import ForecastBudgetController
 from synthorg.api.controllers.reports import ReportsController
+from synthorg.budget._construction import wire_construction
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.meta.mcp.domains.budget import BUDGET_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -51,6 +52,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "BaselineStore",
         "CoordinationMetricsCollector",

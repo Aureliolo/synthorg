@@ -14,6 +14,7 @@ from synthorg.api.controllers.settings.observability import (
     SettingsObservabilityController,
 )
 from synthorg.api.controllers.settings.security import SettingsSecurityController
+from synthorg.settings._construction import wire_construction
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import SettingsStateSlice
 
@@ -28,6 +29,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

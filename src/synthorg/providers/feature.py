@@ -22,6 +22,7 @@ from synthorg.api.controllers.providers.local_models import (
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
 from synthorg.api.controllers.providers.presets import ProviderPresetsController
+from synthorg.providers._construction import wire_construction
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.enums import SettingNamespace
 
@@ -41,6 +42,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

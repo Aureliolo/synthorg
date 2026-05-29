@@ -9,6 +9,7 @@ the navigation index.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
+from synthorg.persistence._construction import wire_construction
 from synthorg.persistence.state import PersistenceStateSlice
 
 FEATURE: FeatureModule = FeatureManifest(
@@ -18,6 +19,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )

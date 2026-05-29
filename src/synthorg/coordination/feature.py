@@ -14,6 +14,7 @@ from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
 )
+from synthorg.coordination._construction import wire_construction
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.meta.mcp.domains.coordination import COORDINATION_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -46,6 +47,7 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
     depends_on=(),
 )
