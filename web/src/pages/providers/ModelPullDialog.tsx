@@ -13,6 +13,76 @@ interface ModelPullDialogProps {
   onClose: () => void
 }
 
+function ModelPullForm({
+  modelName,
+  setModelName,
+  onPull,
+}: {
+  modelName: string
+  setModelName: (value: string) => void
+  onPull: () => Promise<void>
+}) {
+  return (
+    <div className="mt-4 flex flex-col gap-section-gap">
+      <AlertDialog.Description className="sr-only">
+        Enter a model name to pull from the provider.
+      </AlertDialog.Description>
+      <InputField
+        label="Model name"
+        value={modelName}
+        onValueChange={setModelName}
+        placeholder="e.g. llama3.2:1b"
+        hint="Enter the model name and optional tag"
+      />
+      <div className="flex justify-end gap-2">
+        <AlertDialog.Close
+          render={
+            <Button variant="outline" size="sm">
+              Cancel
+            </Button>
+          }
+        />
+        <Button size="sm" onClick={onPull} disabled={!modelName.trim()}>
+          <Download className="size-3.5 mr-1.5" />
+          Pull
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ModelPullProgress({
+  progressPercent,
+  statusText,
+  error,
+  onCancel,
+}: {
+  progressPercent: number
+  statusText: string
+  error: string | null | undefined
+  onCancel: () => void
+}) {
+  return (
+    <div className="mt-4 flex flex-col gap-section-gap">
+      <AlertDialog.Description className="sr-only">
+        Model download in progress.
+      </AlertDialog.Description>
+      <div className="flex items-center justify-center py-4">
+        <ProgressGauge value={progressPercent} variant="linear" />
+      </div>
+      <LiveRegion>
+        <p className="text-center text-sm text-text-secondary truncate">{statusText}</p>
+        {error && <p className="text-center text-sm text-danger">{error}</p>}
+      </LiveRegion>
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialogProps) {
   const [modelName, setModelName] = useState('')
   const pullingModel = useProvidersStore((s) => s.pullingModel)
@@ -73,62 +143,14 @@ export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialog
           </AlertDialog.Title>
 
           {!pullingModel ? (
-            <div className="mt-4 flex flex-col gap-section-gap">
-              <AlertDialog.Description className="sr-only">
-                Enter a model name to pull from the provider.
-              </AlertDialog.Description>
-              <InputField
-                label="Model name"
-                value={modelName}
-                onValueChange={setModelName}
-                placeholder="e.g. llama3.2:1b"
-                hint="Enter the model name and optional tag"
-              />
-              <div className="flex justify-end gap-2">
-                <AlertDialog.Close
-                  render={
-                    <Button variant="outline" size="sm">
-                      Cancel
-                    </Button>
-                  }
-                />
-                <Button
-                  size="sm"
-                  onClick={handlePull}
-                  disabled={!modelName.trim()}
-                >
-                  <Download className="size-3.5 mr-1.5" />
-                  Pull
-                </Button>
-              </div>
-            </div>
+            <ModelPullForm modelName={modelName} setModelName={setModelName} onPull={handlePull} />
           ) : (
-            <div className="mt-4 flex flex-col gap-section-gap">
-              <AlertDialog.Description className="sr-only">
-                Model download in progress.
-              </AlertDialog.Description>
-              <div className="flex items-center justify-center py-4">
-                <ProgressGauge
-                  value={progressPercent}
-                  variant="linear"
-                />
-              </div>
-              <LiveRegion>
-                <p className="text-center text-sm text-text-secondary truncate">
-                  {statusText}
-                </p>
-                {pullProgress?.error && (
-                  <p className="text-center text-sm text-danger">
-                    {pullProgress.error}
-                  </p>
-                )}
-              </LiveRegion>
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
+            <ModelPullProgress
+              progressPercent={progressPercent}
+              statusText={statusText}
+              error={pullProgress?.error}
+              onCancel={handleCancel}
+            />
           )}
         </AlertDialog.Popup>
       </AlertDialog.Portal>

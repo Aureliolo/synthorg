@@ -156,6 +156,99 @@ function useAuditLogView(providerName: string | null, open: boolean): AuditLogVi
   }
 }
 
+function AuditErrorBanner({
+  visibleError,
+  providerName,
+  onRetry,
+}: {
+  visibleError: string | null
+  providerName: string | null
+  onRetry: (name: string) => void
+}) {
+  if (!visibleError) return null
+  return (
+    <ErrorBanner
+      severity="error"
+      title="Failed to load audit log"
+      description={visibleError}
+      onRetry={
+        providerName
+          ? () => {
+              void onRetry(providerName)
+            }
+          : undefined
+      }
+    />
+  )
+}
+
+function AuditLogList({
+  loading,
+  visibleError,
+  visibleEvents,
+}: {
+  loading: boolean
+  visibleError: string | null
+  visibleEvents: readonly ProviderAuditEvent[]
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-grid-gap">
+        {[1, 2, 3, 4, 5].map((idx) => (
+          <Skeleton key={idx} className="h-14 w-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (!visibleError && visibleEvents.length === 0) {
+    return (
+      <EmptyState
+        title="No audit events"
+        description="Mutations to this provider will appear here."
+      />
+    )
+  }
+
+  if (visibleEvents.length > 0) {
+    return (
+      <ol className="flex flex-col divide-y divide-border">
+        {visibleEvents.map((event) => (
+          <AuditRowItem
+            key={event.id ?? `${event.provider_name}-${event.occurred_at}`}
+            event={event}
+          />
+        ))}
+      </ol>
+    )
+  }
+
+  return null
+}
+
+function AuditLoadMore({
+  visibleHasMore,
+  loadingMore,
+  onLoadMore,
+}: {
+  visibleHasMore: boolean
+  loadingMore: boolean
+  onLoadMore: () => void
+}) {
+  if (!visibleHasMore) return null
+  return (
+    <Button
+      variant="secondary"
+      onClick={() => {
+        void onLoadMore()
+      }}
+      disabled={loadingMore}
+    >
+      {loadingMore ? 'Loading…' : 'Load more'}
+    </Button>
+  )
+}
+
 function AuditLogBody({
   view,
   providerName,
@@ -166,58 +259,17 @@ function AuditLogBody({
   const { visibleEvents, visibleError, visibleHasMore, loading, loadingMore } = view
   return (
     <div className="flex flex-col gap-grid-gap p-card">
-      {visibleError && (
-        <ErrorBanner
-          severity="error"
-          title="Failed to load audit log"
-          description={visibleError}
-          onRetry={
-            providerName
-              ? () => {
-                  void view.fetchAudit(providerName)
-                }
-              : undefined
-          }
-        />
-      )}
-
-      {loading && (
-        <div className="flex flex-col gap-grid-gap">
-          {[1, 2, 3, 4, 5].map((idx) => (
-            <Skeleton key={idx} className="h-14 w-full" />
-          ))}
-        </div>
-      )}
-
-      {!loading && !visibleError && visibleEvents.length === 0 && (
-        <EmptyState
-          title="No audit events"
-          description="Mutations to this provider will appear here."
-        />
-      )}
-
-      {!loading && visibleEvents.length > 0 && (
-        <ol className="flex flex-col divide-y divide-border">
-          {visibleEvents.map((event) => (
-            <AuditRowItem
-              key={event.id ?? `${event.provider_name}-${event.occurred_at}`}
-              event={event}
-            />
-          ))}
-        </ol>
-      )}
-
-      {visibleHasMore && (
-        <Button
-          variant="secondary"
-          onClick={() => {
-            void view.fetchMoreAudit()
-          }}
-          disabled={loadingMore}
-        >
-          {loadingMore ? 'Loading…' : 'Load more'}
-        </Button>
-      )}
+      <AuditErrorBanner
+        visibleError={visibleError}
+        providerName={providerName}
+        onRetry={view.fetchAudit}
+      />
+      <AuditLogList loading={loading} visibleError={visibleError} visibleEvents={visibleEvents} />
+      <AuditLoadMore
+        visibleHasMore={visibleHasMore}
+        loadingMore={loadingMore}
+        onLoadMore={view.fetchMoreAudit}
+      />
     </div>
   )
 }

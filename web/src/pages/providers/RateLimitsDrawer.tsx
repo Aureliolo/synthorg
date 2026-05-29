@@ -43,6 +43,23 @@ type RateLimitValidation =
   | { ok: true; updates: RateLimitUpdates }
   | { ok: false; error: string }
 
+// Diff the parsed caps against the persisted config; only changed
+// fields land in the updates patch.
+function diffRateLimitUpdates(
+  rpmCap: number | null,
+  concurrentCap: number | null,
+  initial: RateLimitsConfig,
+): RateLimitUpdates {
+  const updates: RateLimitUpdates = {}
+  if (rpmCap !== initial.requests_per_minute) {
+    updates.requests_per_minute = rpmCap ?? 0
+  }
+  if (concurrentCap !== initial.concurrent_requests) {
+    updates.concurrent_requests = concurrentCap ?? 0
+  }
+  return updates
+}
+
 // Pure validation + diff for the rate-limit form. Keeps ``handleSave``
 // under the complexity cap by returning either the diffed updates or a
 // single user-facing error string.
@@ -53,19 +70,15 @@ function validateRateLimits(
 ): RateLimitValidation {
   const rpmCap = parseCap(rpm)
   const concurrentCap = parseCap(concurrent)
-  if (rpmCap === null && rpm.trim() !== '') {
+  const rpmInvalid = rpmCap === null && rpm.trim() !== ''
+  if (rpmInvalid) {
     return { ok: false, error: 'Requests per minute must be a non-negative integer.' }
   }
-  if (concurrentCap === null && concurrent.trim() !== '') {
+  const concurrentInvalid = concurrentCap === null && concurrent.trim() !== ''
+  if (concurrentInvalid) {
     return { ok: false, error: 'Concurrent requests must be a non-negative integer.' }
   }
-  const updates: RateLimitUpdates = {}
-  if (rpmCap !== initial.requests_per_minute) {
-    updates.requests_per_minute = rpmCap ?? 0
-  }
-  if (concurrentCap !== initial.concurrent_requests) {
-    updates.concurrent_requests = concurrentCap ?? 0
-  }
+  const updates = diffRateLimitUpdates(rpmCap, concurrentCap, initial)
   if (Object.keys(updates).length === 0) {
     return { ok: false, error: 'No fields changed.' }
   }
@@ -168,6 +181,37 @@ interface RateLimitsBodyProps {
   onClose: () => void
 }
 
+function RateLimitsErrorBanner({
+  show,
+  providerName,
+  error,
+  onRetry,
+}: {
+  show: boolean
+  providerName: string | null
+  error: string | null
+  onRetry: (name: string) => void
+}) {
+  if (!show || providerName === null) return null
+  return (
+    <ErrorBanner
+      severity="error"
+      title="Failed to load rate limits"
+      description={error}
+      onRetry={() => onRetry(providerName)}
+    />
+  )
+}
+
+function RateLimitsSkeleton() {
+  return (
+    <div className="flex flex-col gap-grid-gap">
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-12 w-full" />
+    </div>
+  )
+}
+
 function RateLimitsBody({
   providerName,
   rateLimits,
@@ -178,29 +222,20 @@ function RateLimitsBody({
   onClose,
 }: RateLimitsBodyProps) {
   const showError = error !== null && isLoadedForActiveProvider
-  const formKey =
-    isLoadedForActiveProvider && rateLimits !== null
-      ? `${providerName ?? ''}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`
-      : 'loading'
 
   return (
     <div className="flex flex-col gap-section-gap p-card">
-      {showError && providerName !== null && (
-        <ErrorBanner
-          severity="error"
-          title="Failed to load rate limits"
-          description={error}
-          onRetry={() => onRetry(providerName)}
-        />
-      )}
+      <RateLimitsErrorBanner
+        show={showError}
+        providerName={providerName}
+        error={error}
+        onRetry={onRetry}
+      />
       {loading || !isLoadedForActiveProvider || rateLimits === null || providerName === null ? (
-        <div className="flex flex-col gap-grid-gap">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
+        <RateLimitsSkeleton />
       ) : (
         <RateLimitsForm
-          key={formKey}
+          key={`${providerName}/${rateLimits.requests_per_minute}/${rateLimits.concurrent_requests}`}
           providerName={providerName}
           initial={rateLimits}
           onClose={onClose}
