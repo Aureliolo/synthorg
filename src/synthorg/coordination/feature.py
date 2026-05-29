@@ -7,6 +7,7 @@ app build time; the feature has no MCP domain or ghost-wired symbols here.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule
+from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
 )
@@ -17,7 +18,7 @@ FEATURE: FeatureModule = FeatureManifest(
     name="coordination",
     settings_namespace=SettingNamespace.COORDINATION,
     state_slice=CoordinationStateSlice,
-    controllers=(CoordinationMetricsController,),
+    controllers=(CoordinationController, CoordinationMetricsController),
     mcp_handlers=(),
     lifecycle_hooks=(),
     ghost_wired_symbols=(),

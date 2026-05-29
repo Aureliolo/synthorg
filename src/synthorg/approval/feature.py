@@ -2,9 +2,9 @@
 """Approval feature manifest.
 
 Declares the approval feature's surface: its state slice (store + gate +
-timeout scheduler + review gate), the approvals REST controller, the MCP
-tools, and the boot-constructed approval gate. The approval feature has no
-dedicated settings namespace.
+timeout scheduler + review gate), the approvals + review REST controllers,
+the MCP tools, and the boot-constructed approval gate. The approval feature
+has no dedicated settings namespace.
 """
 
 from synthorg._core.features import (
@@ -13,6 +13,7 @@ from synthorg._core.features import (
     McpHandlerDescriptor,
 )
 from synthorg.api.controllers.approvals import ApprovalsController
+from synthorg.api.controllers.reviews import ReviewController
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
 
@@ -20,7 +21,7 @@ FEATURE: FeatureModule = FeatureManifest(
     name="approval",
     settings_namespace=None,
     state_slice=ApprovalStateSlice,
-    controllers=(ApprovalsController,),
+    controllers=(ApprovalsController, ReviewController),
     mcp_handlers=(
         McpHandlerDescriptor(
             domain="approvals",

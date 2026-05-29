@@ -1458,7 +1458,7 @@
     },
     {
       "kind": "feature",
-      "loc": 29,
+      "loc": 30,
       "loc_cap": 100,
       "module": "src/synthorg/approval/feature.py",
       "owning_feature": "approval"
@@ -2683,7 +2683,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 35,
       "loc_cap": 100,
       "module": "src/synthorg/communication/feature.py",
       "owning_feature": "communication"
@@ -3047,7 +3047,7 @@
     },
     {
       "kind": "feature",
-      "loc": 21,
+      "loc": 22,
       "loc_cap": 100,
       "module": "src/synthorg/coordination/feature.py",
       "owning_feature": "coordination"
@@ -4433,7 +4433,7 @@
     },
     {
       "kind": "feature",
-      "loc": 41,
+      "loc": 63,
       "loc_cap": 100,
       "module": "src/synthorg/engine/feature.py",
       "owning_feature": "engine"
@@ -6701,7 +6701,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 40,
       "loc_cap": 100,
       "module": "src/synthorg/hr/feature.py",
       "owning_feature": "hr"
@@ -9389,7 +9389,7 @@
     },
     {
       "kind": "feature",
-      "loc": 21,
+      "loc": 32,
       "loc_cap": 100,
       "module": "src/synthorg/meta/feature.py",
       "owning_feature": "meta"

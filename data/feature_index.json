@@ -41,7 +41,8 @@
     },
     {
       "controllers": [
-        "ApprovalsController"
+        "ApprovalsController",
+        "ReviewController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/approval",
@@ -199,7 +200,14 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MessageController",
+        "MeetingController",
+        "CeremonyPolicyController",
+        "EventStreamController",
+        "InterruptController",
+        "EscalationsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/communication",
       "ghost_wired_symbols": [],
@@ -232,6 +240,7 @@
     },
     {
       "controllers": [
+        "CoordinationController",
         "CoordinationMetricsController"
       ],
       "depends_on": [],
@@ -281,7 +290,15 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ProjectController",
+        "TaskController",
+        "WorkflowController",
+        "WorkflowVersionController",
+        "WorkflowExecutionController",
+        "SubworkflowController",
+        "EvaluationConfigVersionController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
@@ -372,7 +389,16 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "AgentController",
+        "AgentIdentityVersionController",
+        "ActivityController",
+        "PersonalityPresetController",
+        "ScalingController",
+        "TrainingController",
+        "QualityController",
+        "CollaborationController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [],
@@ -478,7 +504,13 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MetaController",
+        "MetaAnalyticsController",
+        "AnalyticsController",
+        "ExperimentsController",
+        "CustomRuleController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/meta",
       "ghost_wired_symbols": [],
@@ -833,6 +865,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T17:01:15.225075Z",
+  "generated_at": "2026-05-29T17:05:27.827615Z",
   "schema_version": 1
 }
