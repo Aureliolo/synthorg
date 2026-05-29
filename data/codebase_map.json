@@ -366,7 +366,7 @@
     },
     {
       "kind": "code",
-      "loc": 324,
+      "loc": 332,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -688,7 +688,7 @@
     },
     {
       "kind": "controller",
-      "loc": 69,
+      "loc": 67,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/memory/entries.py",
       "owning_feature": "api_core"
@@ -884,9 +884,37 @@
     },
     {
       "kind": "code",
-      "loc": 903,
+      "loc": 6,
       "loc_cap": 500,
-      "module": "src/synthorg/api/controllers/settings.py",
+      "module": "src/synthorg/api/controllers/settings/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 282,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/settings/_sinks.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 370,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/settings/core.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 145,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/settings/observability.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 177,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/settings/security.py",
       "owning_feature": "api_core"
     },
     {
@@ -15269,7 +15297,7 @@
     },
     {
       "kind": "feature",
-      "loc": 20,
+      "loc": 29,
       "loc_cap": 100,
       "module": "src/synthorg/settings/feature.py",
       "owning_feature": "settings"

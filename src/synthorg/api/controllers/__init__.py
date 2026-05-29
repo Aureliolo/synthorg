@@ -103,7 +103,11 @@ from synthorg.api.controllers.requests import RequestController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.scaling import ScalingController
-from synthorg.api.controllers.settings import SettingsController
+from synthorg.api.controllers.settings.core import SettingsCoreController
+from synthorg.api.controllers.settings.observability import (
+    SettingsObservabilityController,
+)
+from synthorg.api.controllers.settings.security import SettingsSecurityController
 from synthorg.api.controllers.setup_controller import SetupController
 from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
@@ -175,7 +179,9 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     InterruptController,
     AuditController,
     CoordinationMetricsController,
-    SettingsController,
+    SettingsCoreController,
+    SettingsObservabilityController,
+    SettingsSecurityController,
     SetupController,
     SetupPersonalityController,
     PersonalityPresetController,
@@ -344,7 +350,9 @@ __all__ = [
     "ReviewController",
     "RoleVersionController",
     "ScalingController",
-    "SettingsController",
+    "SettingsCoreController",
+    "SettingsObservabilityController",
+    "SettingsSecurityController",
     "SetupController",
     "SetupPersonalityController",
     "SimulationController",
