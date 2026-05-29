@@ -1,0 +1,111 @@
+import { useEffect, useMemo, useState } from 'react'
+import { getParetoFrontier } from '@/api/endpoints/budget'
+import type { ParetoFrontier } from '@/api/types'
+import { createLogger } from '@/lib/logger'
+import { useBudgetData } from '@/hooks/useBudgetData'
+import {
+  computeAgentSpending,
+  computeBudgetMetricCards,
+  computeCategoryBreakdown,
+  computeCostBreakdown,
+  filterCfoEvents,
+  getThresholdZone,
+  type BreakdownDimension,
+} from '@/utils/budget'
+import { useBudgetForecastStore } from '@/stores/budgetForecast'
+
+const log = createLogger('budget-page')
+
+export type BudgetData = ReturnType<typeof useBudgetData>
+export type CurrentForecast = ReturnType<typeof useBudgetForecastStore.getState>['current']
+
+export function useParetoFrontier() {
+  const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
+  const [paretoLoading, setParetoLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void getParetoFrontier()
+      .then((frontier) => {
+        if (!cancelled) setParetoFrontier(frontier)
+      })
+      .catch((err) => {
+        log.warn('failed to load pareto frontier', err)
+        if (!cancelled) setParetoFrontier(null)
+      })
+      .finally(() => {
+        if (!cancelled) setParetoLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return { paretoFrontier, paretoLoading }
+}
+
+export interface BudgetDerived {
+  currency: string | undefined
+  thresholdZone: ReturnType<typeof getThresholdZone>
+  metricCards: ReturnType<typeof computeBudgetMetricCards>
+  agentSpendingRows: ReturnType<typeof computeAgentSpending>
+  costBreakdown: ReturnType<typeof computeCostBreakdown>
+  categoryRatio: ReturnType<typeof computeCategoryBreakdown>
+  cfoEvents: ReturnType<typeof filterCfoEvents>
+}
+
+export function useBudgetDerived(
+  data: BudgetData,
+  breakdownDimension: BreakdownDimension,
+): BudgetDerived {
+  const { overview, budgetConfig, forecast, costRecords, activities, agentNameMap, agentDeptMap } =
+    data
+
+  const thresholdZone = useMemo(
+    () =>
+      overview && budgetConfig
+        ? getThresholdZone(overview.budget_used_percent, budgetConfig.alerts)
+        : ('normal' as const),
+    [overview, budgetConfig],
+  )
+  const metricCards = useMemo(
+    () => (overview ? computeBudgetMetricCards(overview, budgetConfig, forecast) : []),
+    [overview, budgetConfig, forecast],
+  )
+  const agentSpendingRows = useMemo(
+    () => computeAgentSpending(costRecords, budgetConfig?.total_monthly ?? 0, agentNameMap),
+    [costRecords, budgetConfig, agentNameMap],
+  )
+  const costBreakdown = useMemo(
+    () => computeCostBreakdown(costRecords, breakdownDimension, agentNameMap, agentDeptMap),
+    [costRecords, breakdownDimension, agentNameMap, agentDeptMap],
+  )
+  const categoryRatio = useMemo(() => computeCategoryBreakdown(costRecords), [costRecords])
+  const cfoEvents = useMemo(() => filterCfoEvents(activities), [activities])
+
+  return {
+    currency: overview?.currency ?? budgetConfig?.currency,
+    thresholdZone,
+    metricCards,
+    agentSpendingRows,
+    costBreakdown,
+    categoryRatio,
+    cfoEvents,
+  }
+}
+
+export interface ForecastActions {
+  forecastMutating: boolean
+  approveForecast: ReturnType<typeof useBudgetForecastStore.getState>['approveForecast']
+  rejectForecast: ReturnType<typeof useBudgetForecastStore.getState>['rejectForecast']
+  raiseCeiling: ReturnType<typeof useBudgetForecastStore.getState>['raiseCeiling']
+}
+
+export function useForecastActions(): ForecastActions {
+  return {
+    forecastMutating: useBudgetForecastStore((s) => s.mutating),
+    approveForecast: useBudgetForecastStore((s) => s.approveForecast),
+    rejectForecast: useBudgetForecastStore((s) => s.rejectForecast),
+    raiseCeiling: useBudgetForecastStore((s) => s.raiseCeiling),
+  }
+}

@@ -51,97 +51,78 @@ interface FormState {
   altitudes: Set<ProposalAltitude>
 }
 
-function initialFormState(rule: CustomRule | null): FormState {
+function formatThreshold(threshold: number | null | undefined): string {
+  return threshold !== undefined && threshold !== null ? String(threshold) : ''
+}
+
+function emptyFormState(): FormState {
   return {
-    name: rule?.name ?? '',
-    description: rule?.description ?? '',
-    metricPath: rule?.metric_path ?? '',
-    comparator: rule?.comparator ?? 'gt',
-    threshold:
-      rule?.threshold !== undefined && rule?.threshold !== null
-        ? String(rule.threshold)
-        : '',
-    severity: rule?.severity ?? 'warning',
-    altitudes: new Set<ProposalAltitude>(rule?.target_altitudes ?? []),
+    name: '',
+    description: '',
+    metricPath: '',
+    comparator: 'gt',
+    threshold: '',
+    severity: 'warning',
+    altitudes: new Set<ProposalAltitude>(),
   }
 }
 
-function CustomRuleForm({
-  rule,
-  mode,
-  onClose,
+function ruleFormFromRule(rule: CustomRule): FormState {
+  return {
+    name: rule.name ?? '',
+    description: rule.description ?? '',
+    metricPath: rule.metric_path ?? '',
+    comparator: rule.comparator ?? 'gt',
+    threshold: formatThreshold(rule.threshold),
+    severity: rule.severity ?? 'warning',
+    altitudes: new Set<ProposalAltitude>(rule.target_altitudes ?? []),
+  }
+}
+
+function initialFormState(rule: CustomRule | null): FormState {
+  return rule ? ruleFormFromRule(rule) : emptyFormState()
+}
+
+function validateRuleForm(form: FormState): string | null {
+  if (!form.name.trim()) return 'Name is required.'
+  if (!form.metricPath.trim()) return 'Metric path is required.'
+  if (form.threshold.trim() === '' || !Number.isFinite(Number(form.threshold))) {
+    return 'Threshold must be a finite number.'
+  }
+  if (form.altitudes.size === 0) return 'Select at least one proposal altitude.'
+  return null
+}
+
+function buildRulePayload(form: FormState): CreateCustomRuleRequest {
+  return {
+    name: form.name.trim(),
+    description: form.description.trim(),
+    metric_path: form.metricPath.trim(),
+    comparator: form.comparator,
+    threshold: Number(form.threshold),
+    severity: form.severity,
+    target_altitudes: Array.from(form.altitudes),
+  }
+}
+
+function ruleSubmitLabel(submitting: boolean, mode: 'create' | 'edit'): string {
+  if (submitting) return mode === 'create' ? 'Creating…' : 'Saving…'
+  return mode === 'create' ? 'Create rule' : 'Save changes'
+}
+
+type UpdateField = <K extends keyof FormState>(key: K, value: FormState[K]) => void
+
+function CustomRuleFields({
+  form,
+  update,
+  toggleAltitude,
 }: {
-  rule: CustomRule | null
-  mode: 'create' | 'edit'
-  onClose: () => void
+  form: FormState
+  update: UpdateField
+  toggleAltitude: (altitude: ProposalAltitude) => void
 }) {
-  const createRule = useCustomRulesStore((s) => s.createRule)
-  const updateRule = useCustomRulesStore((s) => s.updateRule)
-  const submitting = useCustomRulesStore((s) => s.submitting)
-
-  const [form, setForm] = useState<FormState>(() => initialFormState(rule))
-  const [validationError, setValidationError] = useState<string | null>(null)
-
-  const update = <K extends keyof FormState>(key: K, value: FormState[K]): void => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const toggleAltitude = (altitude: ProposalAltitude): void => {
-    setForm((prev) => {
-      const next = new Set(prev.altitudes)
-      if (next.has(altitude)) {
-        next.delete(altitude)
-      } else {
-        next.add(altitude)
-      }
-      return { ...prev, altitudes: next }
-    })
-  }
-
-  const handleSubmit = async (): Promise<void> => {
-    if (!form.name.trim()) {
-      setValidationError('Name is required.')
-      return
-    }
-    if (!form.metricPath.trim()) {
-      setValidationError('Metric path is required.')
-      return
-    }
-    const thresholdValue = Number(form.threshold)
-    if (form.threshold.trim() === '' || !Number.isFinite(thresholdValue)) {
-      setValidationError('Threshold must be a finite number.')
-      return
-    }
-    if (form.altitudes.size === 0) {
-      setValidationError('Select at least one proposal altitude.')
-      return
-    }
-    setValidationError(null)
-    const payload: CreateCustomRuleRequest = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      metric_path: form.metricPath.trim(),
-      comparator: form.comparator,
-      threshold: thresholdValue,
-      severity: form.severity,
-      target_altitudes: Array.from(form.altitudes),
-    }
-    const result =
-      mode === 'create'
-        ? await createRule(payload)
-        : rule
-          ? await updateRule(rule.id, payload)
-          : null
-    if (result !== null) {
-      onClose()
-    }
-  }
-
   return (
     <>
-      {validationError && (
-        <ErrorBanner severity="warning" title={validationError} />
-      )}
       <InputField
         label="Name"
         value={form.name}
@@ -192,37 +173,86 @@ function CustomRuleForm({
           The proposal altitudes this rule's signal can trigger.
         </p>
         <div className="mt-1 flex flex-wrap gap-grid-gap">
-          {ALTITUDE_OPTIONS.map((opt) => {
-            const checked = form.altitudes.has(opt.value)
-            return (
-              <label
-                key={opt.value}
-                className="flex cursor-pointer items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleAltitude(opt.value)}
-                />
-                {opt.label}
-              </label>
-            )
-          })}
+          {ALTITUDE_OPTIONS.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex cursor-pointer items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-sm text-foreground"
+            >
+              <input
+                type="checkbox"
+                checked={form.altitudes.has(opt.value)}
+                onChange={() => toggleAltitude(opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
         </div>
       </fieldset>
+    </>
+  )
+}
 
+function CustomRuleForm({
+  rule,
+  mode,
+  onClose,
+}: {
+  rule: CustomRule | null
+  mode: 'create' | 'edit'
+  onClose: () => void
+}) {
+  const createRule = useCustomRulesStore((s) => s.createRule)
+  const updateRule = useCustomRulesStore((s) => s.updateRule)
+  const submitting = useCustomRulesStore((s) => s.submitting)
+
+  const [form, setForm] = useState<FormState>(() => initialFormState(rule))
+  const [validationError, setValidationError] = useState<string | null>(null)
+
+  const update: UpdateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const toggleAltitude = (altitude: ProposalAltitude): void => {
+    setForm((prev) => {
+      const next = new Set(prev.altitudes)
+      if (next.has(altitude)) {
+        next.delete(altitude)
+      } else {
+        next.add(altitude)
+      }
+      return { ...prev, altitudes: next }
+    })
+  }
+
+  const handleSubmit = async (): Promise<void> => {
+    const error = validateRuleForm(form)
+    if (error) {
+      setValidationError(error)
+      return
+    }
+    setValidationError(null)
+    const payload = buildRulePayload(form)
+    const result =
+      mode === 'create'
+        ? await createRule(payload)
+        : rule
+          ? await updateRule(rule.id, payload)
+          : null
+    if (result !== null) {
+      onClose()
+    }
+  }
+
+  return (
+    <>
+      {validationError && <ErrorBanner severity="warning" title={validationError} />}
+      <CustomRuleFields form={form} update={update} toggleAltitude={toggleAltitude} />
       <div className="flex justify-end gap-grid-gap pt-card">
         <Button variant="secondary" onClick={onClose} disabled={submitting}>
           Cancel
         </Button>
         <Button onClick={() => void handleSubmit()} disabled={submitting}>
-          {submitting
-            ? mode === 'create'
-              ? 'Creating…'
-              : 'Saving…'
-            : mode === 'create'
-              ? 'Create rule'
-              : 'Save changes'}
+          {ruleSubmitLabel(submitting, mode)}
         </Button>
       </div>
     </>

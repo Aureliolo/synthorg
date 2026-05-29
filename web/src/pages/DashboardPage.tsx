@@ -26,6 +26,32 @@ function readFirstRunFlag(): boolean {
   }
 }
 
+type DashboardData = ReturnType<typeof useDashboardData>
+
+function DashboardBudgetSection({
+  overview,
+  forecast,
+  budgetConfig,
+}: {
+  overview: DashboardData['overview']
+  forecast: DashboardData['forecast']
+  budgetConfig: DashboardData['budgetConfig']
+}) {
+  return (
+    <ErrorBoundary level="section">
+      <Suspense fallback={<SkeletonChart />}>
+        <BudgetBurnChart
+          trendData={overview?.cost_7d_trend ?? []}
+          forecast={forecast}
+          budgetTotal={budgetConfig?.total_monthly ?? 0}
+          budgetRemaining={overview?.budget_remaining}
+          currency={overview?.currency}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+
 export default function DashboardPage() {
   const [showGuidance, setShowGuidance] = useState(() => readFirstRunFlag())
 
@@ -86,17 +112,7 @@ export default function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <ErrorBoundary level="section">
-        <Suspense fallback={<SkeletonChart />}>
-          <BudgetBurnChart
-            trendData={overview?.cost_7d_trend ?? []}
-            forecast={forecast}
-            budgetTotal={budgetConfig?.total_monthly ?? 0}
-            budgetRemaining={overview?.budget_remaining}
-            currency={overview?.currency}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      <DashboardBudgetSection overview={overview} forecast={forecast} budgetConfig={budgetConfig} />
     </div>
   )
 }

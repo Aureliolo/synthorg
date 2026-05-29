@@ -19,8 +19,39 @@ interface DocFetchResult {
   error: string | null
 }
 
-export default function ProjectDocsPage() {
-  const { projectId, slug } = useParams<{ projectId: string; slug?: string }>()
+interface ResolvedDoc {
+  doc: LivingDocument | null
+  docError: string | null
+  docLoading: boolean
+}
+
+// A result is only current when it matches the requested slug; a stale
+// result from a previous slug reads as "still loading".
+function resolveDoc(slug: string | undefined, docResult: DocFetchResult | null): ResolvedDoc {
+  if (!slug) {
+    return { doc: null, docError: null, docLoading: false }
+  }
+  if (docResult === null || docResult.slug !== slug) {
+    return { doc: null, docError: null, docLoading: true }
+  }
+  return { doc: docResult.doc, docError: docResult.error, docLoading: false }
+}
+
+interface ProjectDocsData {
+  docs: readonly DocSummary[]
+  listError: string | null
+  filter: DocType | null
+  setFilter: (filter: DocType | null) => void
+  doc: LivingDocument | null
+  docError: string | null
+  docLoading: boolean
+  handleSelect: (selectedSlug: string) => void
+}
+
+function useProjectDocsData(
+  projectId: string | undefined,
+  slug: string | undefined,
+): ProjectDocsData {
   const navigate = useNavigate()
   const [docs, setDocs] = useState<readonly DocSummary[]>([])
   const [docResult, setDocResult] = useState<DocFetchResult | null>(null)
@@ -62,13 +93,7 @@ export default function ProjectDocsPage() {
     }
   }, [projectId, slug])
 
-  // A result is only current when it matches the requested slug; a
-  // stale result from a previous slug reads as "still loading".
-  const resolved = slug && docResult?.slug === slug ? docResult : null
-  const doc = resolved?.doc ?? null
-  const docError = resolved?.error ?? null
-  const docLoading = Boolean(slug) && resolved === null
-
+  const { doc, docError, docLoading } = resolveDoc(slug, docResult)
 
   const handleSelect = useCallback(
     (selectedSlug: string) => {
@@ -81,6 +106,14 @@ export default function ProjectDocsPage() {
     },
     [navigate, projectId],
   )
+
+  return { docs, listError, filter, setFilter, doc, docError, docLoading, handleSelect }
+}
+
+export default function ProjectDocsPage() {
+  const { projectId, slug } = useParams<{ projectId: string; slug?: string }>()
+  const { docs, listError, filter, setFilter, doc, docError, docLoading, handleSelect } =
+    useProjectDocsData(projectId, slug)
 
   if (!projectId) {
     return (

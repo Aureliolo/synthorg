@@ -25,6 +25,81 @@ type ModalState =
   | { kind: 'create' }
   | { kind: 'edit'; connection: Connection }
 
+interface OauthAppsContentProps {
+  oauthApps: readonly Connection[]
+  loading: boolean
+  hasData: boolean
+  onEdit: (connection: Connection) => void
+  onDelete: (connection: Connection) => void
+  onConnect: (connection: Connection) => void
+  onRegister: () => void
+}
+
+function OauthAppsContent({
+  oauthApps,
+  loading,
+  hasData,
+  onEdit,
+  onDelete,
+  onConnect,
+  onRegister,
+}: OauthAppsContentProps) {
+  if (loading && !hasData) {
+    return <ConnectionsSkeleton />
+  }
+  return (
+    <ErrorBoundary level="section">
+      {hasData ? (
+        <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
+          {oauthApps.map((conn) => (
+            <StaggerItem key={conn.name}>
+              <OauthAppCard
+                connection={conn}
+                onEdit={() => onEdit(conn)}
+                onDelete={() => onDelete(conn)}
+                onConnect={() => onConnect(conn)}
+              />
+            </StaggerItem>
+          ))}
+        </StaggerGroup>
+      ) : (
+        <EmptyState
+          icon={KeyRound}
+          title="No OAuth apps registered"
+          description="Register an OAuth client app to reuse it across multiple connections."
+          action={{ label: 'Register app', onClick: onRegister }}
+        />
+      )}
+    </ErrorBoundary>
+  )
+}
+
+function OauthAppDeleteDialog({
+  pendingDelete,
+  onCancel,
+  onConfirm,
+}: {
+  pendingDelete: Connection | null
+  onCancel: () => void
+  onConfirm: (connection: Connection) => Promise<void>
+}) {
+  return (
+    <ConfirmDialog
+      open={pendingDelete !== null}
+      title={`Delete ${pendingDelete?.name ?? ''}?`}
+      description="This will permanently remove the OAuth app and its stored credentials."
+      confirmLabel="Delete"
+      variant="destructive"
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
+      onConfirm={async () => {
+        if (pendingDelete) await onConfirm(pendingDelete)
+      }}
+    />
+  )
+}
+
 export default function OauthAppsPage() {
   const { connections, loading, error } = useConnectionsData()
   const deleteConnection = useConnectionsStore((s) => s.deleteConnection)
@@ -78,36 +153,15 @@ export default function OauthAppsPage() {
         />
       )}
 
-      {loading && !hasData ? (
-        <ConnectionsSkeleton />
-      ) : (
-        <ErrorBoundary level="section">
-          {hasData ? (
-            <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[767px]:grid-cols-1">
-              {oauthApps.map((conn) => (
-                <StaggerItem key={conn.name}>
-                  <OauthAppCard
-                    connection={conn}
-                    onEdit={() => setModal({ kind: 'edit', connection: conn })}
-                    onDelete={() => setPendingDelete(conn)}
-                    onConnect={() => void handleConnect(conn)}
-                  />
-                </StaggerItem>
-              ))}
-            </StaggerGroup>
-          ) : (
-            <EmptyState
-              icon={KeyRound}
-              title="No OAuth apps registered"
-              description="Register an OAuth client app to reuse it across multiple connections."
-              action={{
-                label: 'Register app',
-                onClick: () => setModal({ kind: 'create' }),
-              }}
-            />
-          )}
-        </ErrorBoundary>
-      )}
+      <OauthAppsContent
+        oauthApps={oauthApps}
+        loading={loading}
+        hasData={hasData}
+        onEdit={(conn) => setModal({ kind: 'edit', connection: conn })}
+        onDelete={(conn) => setPendingDelete(conn)}
+        onConnect={(conn) => void handleConnect(conn)}
+        onRegister={() => setModal({ kind: 'create' })}
+      />
 
       <ConnectionFormModal
         open={modal.kind !== 'closed'}
@@ -117,20 +171,12 @@ export default function OauthAppsPage() {
         onClose={() => setModal({ kind: 'closed' })}
       />
 
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={`Delete ${pendingDelete?.name ?? ''}?`}
-        description="This will permanently remove the OAuth app and its stored credentials."
-        confirmLabel="Delete"
-        variant="destructive"
-        onOpenChange={(next) => {
-          if (!next) setPendingDelete(null)
-        }}
-        onConfirm={async () => {
-          if (pendingDelete) {
-            await deleteConnection(pendingDelete.name)
-            setPendingDelete(null)
-          }
+      <OauthAppDeleteDialog
+        pendingDelete={pendingDelete}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async (conn) => {
+          await deleteConnection(conn.name)
+          setPendingDelete(null)
         }}
       />
     </div>

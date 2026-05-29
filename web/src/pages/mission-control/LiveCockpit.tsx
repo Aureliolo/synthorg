@@ -136,12 +136,15 @@ interface CockpitMetrics {
 function deriveCockpitMetrics(
   snapshot: ReturnType<typeof useMissionControlData>['snapshot'],
 ): CockpitMetrics {
+  if (!snapshot) {
+    return { agents: [], activeCount: 0, stuckCount: 0, runawayCount: 0, totalCost: 0 }
+  }
   return {
-    agents: snapshot?.agents ?? [],
-    activeCount: snapshot?.active_count ?? 0,
-    stuckCount: snapshot?.stuck_agents.length ?? 0,
-    runawayCount: snapshot?.runaway_agents.length ?? 0,
-    totalCost: snapshot?.total_cost ?? 0,
+    agents: snapshot.agents ?? [],
+    activeCount: snapshot.active_count ?? 0,
+    stuckCount: snapshot.stuck_agents.length,
+    runawayCount: snapshot.runaway_agents.length,
+    totalCost: snapshot.total_cost ?? 0,
   }
 }
 
