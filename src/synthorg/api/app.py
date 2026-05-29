@@ -64,6 +64,7 @@ from synthorg.api.lifecycle_helpers.settings_dispatcher import (
 from synthorg.api.lifecycle_helpers.startup_steps import (
     install_runtime_services,
     resolve_runtime_security_settings,
+    wire_brownfield_intake,
 )
 from synthorg.api.lifecycle_helpers.toolsmith_wiring import wire_toolsmith
 from synthorg.api.middleware import security_headers_hook
@@ -958,31 +959,10 @@ def create_app(  # noqa: PLR0913
     _brownfield_intake_installed = False
 
     async def _wire_brownfield_intake() -> None:
-        # Brownfield codebase intake (the "merger/acquisition" entry mode).
-        # Runs AFTER _wire_knowledge_engine so the import service can index
-        # the codebase into the knowledge store. Best-effort + idempotent:
-        # a missing collaborator (no persistence / workspace / knowledge)
-        # leaves the /brownfield controller to 503 rather than poisoning
-        # startup.
         nonlocal _brownfield_intake_installed
         if _brownfield_intake_installed:
             return
-        from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
-            wire_real_brownfield_entry,
-        )
-
-        try:
-            await wire_real_brownfield_entry(app_state)
-            _brownfield_intake_installed = True
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.info(
-                API_APP_STARTUP,
-                service="brownfield_intake",
-                note="brownfield intake wiring unavailable; skipped",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        _brownfield_intake_installed = await wire_brownfield_intake(app_state)
 
     async def _compose_feature_slices() -> None:
         compose_feature_slices(app_state)

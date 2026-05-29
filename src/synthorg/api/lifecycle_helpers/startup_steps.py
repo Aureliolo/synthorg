@@ -204,6 +204,39 @@ async def install_runtime_services(
     await wire_real_task_board_entry(app_state)
 
 
+async def wire_brownfield_intake(app_state: AppState) -> bool:
+    """Wire the brownfield codebase-intake entry (best-effort, idempotent).
+
+    Brownfield codebase intake (the "merger/acquisition" entry mode). Runs
+    AFTER the knowledge engine is wired so the import service can index the
+    codebase into the knowledge store. Best-effort: a missing collaborator
+    (no persistence / workspace / knowledge) leaves the ``/brownfield``
+    controller to 503 rather than poisoning startup. The caller guards
+    re-entry idempotency off the returned flag.
+
+    Returns:
+        ``True`` when the intake entry was wired, ``False`` when a missing
+        collaborator left it unavailable.
+    """
+    from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+        wire_real_brownfield_entry,
+    )
+
+    try:
+        await wire_real_brownfield_entry(app_state)
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.info(
+            API_APP_STARTUP,
+            service="brownfield_intake",
+            note="brownfield intake wiring unavailable; skipped",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return False
+    return True
+
+
 async def resolve_runtime_security_settings(app_state: AppState) -> None:
     """Resolve operator-overridable API security settings into module state.
 
