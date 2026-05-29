@@ -227,7 +227,7 @@ jobs:
               got_draft=true
               break
             fi
-            if grep -qiE 'not found|could not resolve|HTTP 404' "$release_err"; then
+            if grep -qiE 'not found|HTTP 404' "$release_err"; then
               last_kind=notfound
             else
               last_kind=transient
