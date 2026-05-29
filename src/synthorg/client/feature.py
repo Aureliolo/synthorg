@@ -18,6 +18,7 @@ from synthorg._core.features import (
 from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.requests import RequestController
 from synthorg.api.controllers.simulations import SimulationController
+from synthorg.client._construction import wire_construction
 from synthorg.client.state import ClientStateSlice, has_simulation_runtime
 from synthorg.settings.enums import SettingNamespace
 
@@ -36,6 +37,7 @@ FEATURE: FeatureModule = FeatureManifest(
     ),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(),
-    depends_on=(),
+    depends_on=("budget", "engine", "providers"),
 )

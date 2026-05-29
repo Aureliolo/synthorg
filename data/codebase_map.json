@@ -184,7 +184,7 @@
     },
     {
       "kind": "code",
-      "loc": 491,
+      "loc": 466,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -429,7 +429,7 @@
     },
     {
       "kind": "code",
-      "loc": 113,
+      "loc": 115,
       "loc_cap": 500,
       "module": "src/synthorg/api/construction_wiring.py",
       "owning_feature": "api_core"
@@ -1794,7 +1794,7 @@
     },
     {
       "kind": "code",
-      "loc": 9,
+      "loc": 26,
       "loc_cap": 500,
       "module": "src/synthorg/approval/_construction.py",
       "owning_feature": "approval"
@@ -2368,6 +2368,13 @@
     },
     {
       "kind": "code",
+      "loc": 25,
+      "loc_cap": 500,
+      "module": "src/synthorg/client/_construction.py",
+      "owning_feature": "client"
+    },
+    {
+      "kind": "code",
       "loc": 47,
       "loc_cap": 500,
       "module": "src/synthorg/client/adapters.py",
@@ -2403,7 +2410,7 @@
     },
     {
       "kind": "feature",
-      "loc": 37,
+      "loc": 39,
       "loc_cap": 100,
       "module": "src/synthorg/client/feature.py",
       "owning_feature": "client"

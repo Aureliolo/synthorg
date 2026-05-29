@@ -176,7 +176,11 @@
         "SimulationController",
         "RequestController"
       ],
-      "depends_on": [],
+      "depends_on": [
+        "budget",
+        "engine",
+        "providers"
+      ],
       "directory": "src/synthorg/client",
       "ghost_wired_symbols": [],
       "mcp_tool_names": [],
@@ -1121,6 +1125,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T22:14:05.303306Z",
+  "generated_at": "2026-05-29T22:20:16.121437Z",
   "schema_version": 1
 }

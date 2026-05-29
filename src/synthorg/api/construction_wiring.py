@@ -28,6 +28,7 @@ from synthorg.api.integrations_wiring import IntegrationsBundle
 from synthorg.api.state import AppState
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
@@ -96,6 +97,7 @@ class ConstructionDeps:
     work_pipeline: WorkPipeline | None = None
     intake_entry_adapter: WorkEntryAdapter[Any] | None = None
     task_board_entry_adapter: TaskBoardEntryAdapter | None = None
+    client_simulation_state: ClientSimulationState | None = None
 
 
 def run_construction_wiring(app_state: AppState, deps: ConstructionDeps) -> None:

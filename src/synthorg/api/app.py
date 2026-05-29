@@ -84,7 +84,6 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
 )
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -354,7 +353,6 @@ def create_app(  # noqa: PLR0913
     # shims have a slice to ``model_copy`` from. The startup hook
     # re-runs this idempotently (skips already-composed slices).
     compose_feature_slices(app_state)
-    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.communication.state import (  # noqa: PLC0415
         CommunicationStateSlice,
     )
@@ -400,6 +398,7 @@ def create_app(  # noqa: PLR0913
         work_pipeline=work_pipeline,
         intake_entry_adapter=intake_entry_adapter,
         task_board_entry_adapter=task_board_entry_adapter,
+        client_simulation_state=client_simulation_state,
     )
     run_construction_wiring(app_state, construction_deps)
 
@@ -538,36 +537,6 @@ def create_app(  # noqa: PLR0913
     # and the per-collaborator 404 gate (catalog / bus / tunnel-provider)
     # when it is on.
 
-    # Client-simulation runtime. An explicit kwarg always wins (test
-    # doubles / bespoke wiring). Otherwise, when a TaskEngine is
-    # present, build the live runtime (real IntakeEngine + review
-    # pipeline) so ``has_simulation_runtime`` is true and the
-    # ``/simulations`` + ``/requests`` controllers register; the
-    # default ``direct`` intake strategy makes no LLM calls and works
-    # for an empty company. With no TaskEngine the intake engine has
-    # nothing to create tasks against, so fall back to a fresh empty
-    # ``ClientSimulationState()`` -- the always-registered
-    # ``ClientController`` still serves an empty ``/clients`` list
-    # instead of 503ing on every dashboard poll. This mirrors the
-    # ``review_gate_service`` "build it whenever task_engine exists"
-    # gate above.
-    if client_simulation_state is None:
-        if task_engine is not None:
-            from synthorg.client.runtime_builder import (  # noqa: PLC0415
-                build_client_simulation_runtime,
-            )
-
-            client_simulation_state = build_client_simulation_runtime(app_state)
-        else:
-            from synthorg.client.simulation_state import (  # noqa: PLC0415
-                ClientSimulationState as _ClientSimulationState,
-            )
-
-            client_simulation_state = _ClientSimulationState()
-    from synthorg.client.state import ClientStateSlice  # noqa: PLC0415
-
-    app_state.wire(ClientStateSlice, simulation_state=client_simulation_state)
-
     # Route registration is discovery-based: collect every feature
     # manifest's controllers (api-mounted vs root-mounted) and websocket
     # handlers, evaluating each ControllerRegistration predicate against
@@ -586,27 +555,6 @@ def create_app(  # noqa: PLR0913
     # enabling condition -- SettingsService needs connected persistence
     # and is created in on_startup after _init_persistence().
     _should_auto_wire = settings_service is None and persistence is not None
-
-    # Review gate service -- transitions tasks from IN_REVIEW on approval.
-    # Needs ``task_engine`` for self-review enforcement (preflight) and
-    # state transitions; ``persistence`` is OPTIONAL and only used for
-    # the auditable decisions drop-box.  Construct the service whenever
-    # ``task_engine`` exists so the fail-fast self-review / missing-task
-    # preflight still runs in task-engine-only deployments; decision
-    # recording gracefully degrades to a WARNING-level no-op when
-    # persistence is absent.
-    if task_engine is not None:
-        review_gate_service = ReviewGateService(
-            task_engine=task_engine,
-            persistence=persistence,
-        )
-        from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
-
-        app_state.swap_slice(
-            app_state.slice(ApprovalStateSlice).model_copy(
-                update={"review_gate": review_gate_service}
-            )
-        )
 
     # ``approval_timeout_scheduler`` is built above (alongside the
     # backup service and bridge); the lifecycle owns starting it.
