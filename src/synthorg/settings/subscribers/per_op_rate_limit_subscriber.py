@@ -327,8 +327,9 @@ class PerOpRateLimitSettingsSubscriber:
             A mapping of operation name to its concurrency limit.
 
         Raises:
-            TypeError: If *raw* is not a JSON object.
-            ValueError: If any value is not a non-negative integer.
+            TypeError: If *raw* is not a JSON object, or a value is not
+                an integer (via :func:`_strict_int`).
+            ValueError: If any value is a negative integer.
         """
         if not isinstance(raw, dict):
             msg = (
