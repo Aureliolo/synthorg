@@ -16,7 +16,7 @@
     },
     {
       "kind": "code",
-      "loc": 392,
+      "loc": 396,
       "loc_cap": 500,
       "module": "src/synthorg/_core/features.py",
       "owning_feature": null
@@ -1731,7 +1731,7 @@
     },
     {
       "kind": "feature",
-      "loc": 35,
+      "loc": 41,
       "loc_cap": 100,
       "module": "src/synthorg/approval/feature.py",
       "owning_feature": "approval"
@@ -2081,7 +2081,7 @@
     },
     {
       "kind": "feature",
-      "loc": 36,
+      "loc": 52,
       "loc_cap": 100,
       "module": "src/synthorg/budget/feature.py",
       "owning_feature": "budget"
@@ -2956,7 +2956,7 @@
     },
     {
       "kind": "feature",
-      "loc": 35,
+      "loc": 54,
       "loc_cap": 100,
       "module": "src/synthorg/communication/feature.py",
       "owning_feature": "communication"
@@ -3320,7 +3320,7 @@
     },
     {
       "kind": "feature",
-      "loc": 22,
+      "loc": 41,
       "loc_cap": 100,
       "module": "src/synthorg/coordination/feature.py",
       "owning_feature": "coordination"
@@ -3719,7 +3719,7 @@
     },
     {
       "kind": "feature",
-      "loc": 38,
+      "loc": 44,
       "loc_cap": 100,
       "module": "src/synthorg/docs_engine/feature.py",
       "owning_feature": "docs"
@@ -3792,6 +3792,13 @@
       "loc": 456,
       "loc_cap": 500,
       "module": "src/synthorg/engine/__init__.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 36,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/_mcp.py",
       "owning_feature": "engine"
     },
     {
@@ -4230,7 +4237,7 @@
     },
     {
       "kind": "feature",
-      "loc": 33,
+      "loc": 40,
       "loc_cap": 100,
       "module": "src/synthorg/engine/cockpit/feature.py",
       "owning_feature": "cockpit"
@@ -4706,7 +4713,7 @@
     },
     {
       "kind": "feature",
-      "loc": 81,
+      "loc": 83,
       "loc_cap": 100,
       "module": "src/synthorg/engine/feature.py",
       "owning_feature": "engine"
@@ -6974,7 +6981,7 @@
     },
     {
       "kind": "feature",
-      "loc": 40,
+      "loc": 69,
       "loc_cap": 100,
       "module": "src/synthorg/hr/feature.py",
       "owning_feature": "hr"
@@ -7723,7 +7730,7 @@
     },
     {
       "kind": "feature",
-      "loc": 19,
+      "loc": 39,
       "loc_cap": 100,
       "module": "src/synthorg/infrastructure/feature.py",
       "owning_feature": "facades"
@@ -7877,7 +7884,7 @@
     },
     {
       "kind": "feature",
-      "loc": 74,
+      "loc": 92,
       "loc_cap": 100,
       "module": "src/synthorg/integrations/feature.py",
       "owning_feature": "integrations"
@@ -8325,7 +8332,7 @@
     },
     {
       "kind": "feature",
-      "loc": 40,
+      "loc": 46,
       "loc_cap": 100,
       "module": "src/synthorg/knowledge/feature.py",
       "owning_feature": "knowledge"
@@ -8780,7 +8787,7 @@
     },
     {
       "kind": "feature",
-      "loc": 30,
+      "loc": 46,
       "loc_cap": 100,
       "module": "src/synthorg/memory/feature.py",
       "owning_feature": "memory"
@@ -9480,7 +9487,7 @@
     },
     {
       "kind": "feature",
-      "loc": 29,
+      "loc": 35,
       "loc_cap": 100,
       "module": "src/synthorg/meta/charter/feature.py",
       "owning_feature": "charter"
@@ -9662,7 +9669,7 @@
     },
     {
       "kind": "feature",
-      "loc": 32,
+      "loc": 75,
       "loc_cap": 100,
       "module": "src/synthorg/meta/feature.py",
       "owning_feature": "meta"
@@ -9959,6 +9966,13 @@
       "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/errors.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 36,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/feature_descriptors.py",
       "owning_feature": "meta"
     },
     {
@@ -12217,7 +12231,7 @@
     },
     {
       "kind": "feature",
-      "loc": 32,
+      "loc": 51,
       "loc_cap": 100,
       "module": "src/synthorg/organization/feature.py",
       "owning_feature": "organization"
@@ -14177,7 +14191,7 @@
     },
     {
       "kind": "feature",
-      "loc": 41,
+      "loc": 48,
       "loc_cap": 100,
       "module": "src/synthorg/research/feature.py",
       "owning_feature": "research"

@@ -114,8 +114,17 @@ class TestSupportProtocols:
         assert not isinstance(hook, ServiceLifecycleHook)
 
     def test_mcp_handler_module_structural_match(self) -> None:
-        descriptor = SimpleNamespace(domain="charter", tool_names=("synthorg_x",))
+        descriptor = SimpleNamespace(
+            domain="charter",
+            tool_names=("synthorg_x",),
+            tool_defs=(),
+            handlers_factory=None,
+        )
         assert isinstance(descriptor, McpHandlerModule)
+
+    def test_mcp_handler_module_missing_tool_defs_is_not_a_match(self) -> None:
+        descriptor = SimpleNamespace(domain="charter", tool_names=("synthorg_x",))
+        assert not isinstance(descriptor, McpHandlerModule)
 
 
 class TestControllerRegistration:

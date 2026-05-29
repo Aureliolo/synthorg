@@ -178,6 +178,12 @@ class McpHandlerModule(Protocol):
     @property
     def tool_names(self) -> tuple[str, ...]: ...
 
+    @property
+    def tool_defs(self) -> tuple[object, ...]: ...
+
+    @property
+    def handlers_factory(self) -> Callable[[], Mapping[str, object]] | None: ...
+
 
 @runtime_checkable
 class FeatureModule(Protocol):

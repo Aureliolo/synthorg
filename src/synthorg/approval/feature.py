@@ -3,20 +3,31 @@
 
 Declares the approval feature's surface: its state slice (store + gate +
 timeout scheduler + review gate), the approvals + review REST controllers,
-the MCP tools, and the boot-constructed approval gate. The approval feature
-has no dedicated settings namespace.
+the approvals MCP domain, and the boot-constructed approval gate. The
+approval feature has no dedicated settings namespace.
 """
 
-from synthorg._core.features import (
-    FeatureManifest,
-    FeatureModule,
-    McpHandlerDescriptor,
-)
+from collections.abc import Mapping
+
+from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
 from synthorg.api.controllers.approvals.query import ApprovalsQueryController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
+from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
+
+
+def _approval_mcp_handlers() -> Mapping[str, object]:
+    """Deferred loader for the approvals MCP handler map.
+
+    Returns:
+        The approvals ``{tool_name: ToolHandler}`` map.
+    """
+    from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS  # noqa: PLC0415
+
+    return APPROVAL_HANDLERS
+
 
 FEATURE: FeatureModule = FeatureManifest(
     name="approval",
@@ -28,9 +39,10 @@ FEATURE: FeatureModule = FeatureManifest(
         ReviewController,
     ),
     mcp_handlers=(
-        McpHandlerDescriptor(
+        mcp_descriptor(
             domain="approvals",
-            tool_names=tuple(tool.name for tool in APPROVAL_TOOLS),
+            tool_defs=APPROVAL_TOOLS,
+            handlers=_approval_mcp_handlers,
         ),
     ),
     lifecycle_hooks=(),

@@ -11,6 +11,8 @@ predicates), so a disabled or partially-wired integrations subsystem
 evaluates the predicates at route assembly.
 """
 
+from collections.abc import Mapping
+
 from synthorg._core.features import (
     ControllerRegistration,
     FeatureManifest,
@@ -33,7 +35,23 @@ from synthorg.api.route_predicates import (
     webhooks_controller_ready,
 )
 from synthorg.integrations.state import IntegrationsStateSlice
+from synthorg.meta.mcp.domains.integrations import INTEGRATION_TOOLS
+from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
 from synthorg.settings.enums import SettingNamespace
+
+
+def _integration_mcp_handlers() -> Mapping[str, object]:
+    """Deferred loader for the integrations MCP handler map.
+
+    Returns:
+        The integrations ``{tool_name: ToolHandler}`` map.
+    """
+    from synthorg.meta.mcp.handlers.integrations import (  # noqa: PLC0415
+        INTEGRATION_HANDLERS,
+    )
+
+    return INTEGRATION_HANDLERS
+
 
 FEATURE: FeatureModule = FeatureManifest(
     name="integrations",
@@ -71,7 +89,13 @@ FEATURE: FeatureModule = FeatureManifest(
             controller=TunnelController, predicate=tunnel_controller_ready
         ),
     ),
-    mcp_handlers=(),
+    mcp_handlers=(
+        mcp_descriptor(
+            domain="integrations",
+            tool_defs=INTEGRATION_TOOLS,
+            handlers=_integration_mcp_handlers,
+        ),
+    ),
     lifecycle_hooks=(),
     ghost_wired_symbols=(),
     depends_on=(),

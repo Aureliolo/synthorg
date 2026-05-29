@@ -3,9 +3,10 @@
 
 Declares the engine feature's surface: its ``engine`` settings
 namespace, the :class:`EngineStateSlice` (task engine, work pipeline,
-workflow services, entry adapters, etc.), and its core work-pipeline
+workflow services, entry adapters, etc.), its core work-pipeline
 REST controllers (projects, tasks, workflows, workflow versions /
-executions, subworkflows, evaluation-config versions) mounted by the
+executions, subworkflows, evaluation-config versions), and the tasks +
+workflows MCP domains (assembled in ``engine/_mcp.py``) mounted by the
 composition root. The objective and brownfield controllers mount only
 when their work-entry adapter is wired (predicates read the engine state
 slice); the adapters are wired during startup, so on the standard boot
@@ -36,6 +37,7 @@ from synthorg.api.route_predicates import (
     brownfield_controller_ready,
     objective_controller_ready,
 )
+from synthorg.engine._mcp import ENGINE_MCP_HANDLERS
 from synthorg.engine.state import EngineStateSlice
 from synthorg.settings.enums import SettingNamespace
 
@@ -58,7 +60,7 @@ FEATURE: FeatureModule = FeatureManifest(
             controller=BrownfieldController, predicate=brownfield_controller_ready
         ),
     ),
-    mcp_handlers=(),
+    mcp_handlers=ENGINE_MCP_HANDLERS,
     lifecycle_hooks=(),
     ghost_wired_symbols=(
         "AgentEngine",

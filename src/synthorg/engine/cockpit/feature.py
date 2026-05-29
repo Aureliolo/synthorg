@@ -2,18 +2,30 @@
 """Cockpit (mission-control) feature manifest.
 
 Declares the cockpit feature's surface: its state slice, REST controller,
-MCP tools, and the boot-constructed symbols the ghost-wiring gate tracks.
+the cockpit MCP domain, and the boot-constructed symbols the ghost-wiring
+gate tracks.
 """
 
-from synthorg._core.features import (
-    FeatureManifest,
-    FeatureModule,
-    McpHandlerDescriptor,
-)
+from collections.abc import Mapping
+
+from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.cockpit import CockpitController
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.meta.mcp.domains.cockpit import COCKPIT_TOOLS
+from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
 from synthorg.settings.enums import SettingNamespace
+
+
+def _cockpit_mcp_handlers() -> Mapping[str, object]:
+    """Deferred loader for the cockpit MCP handler map.
+
+    Returns:
+        The cockpit ``{tool_name: ToolHandler}`` map.
+    """
+    from synthorg.meta.mcp.handlers.cockpit import COCKPIT_HANDLERS  # noqa: PLC0415
+
+    return COCKPIT_HANDLERS
+
 
 FEATURE: FeatureModule = FeatureManifest(
     name="cockpit",
@@ -21,9 +33,10 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=CockpitStateSlice,
     controllers=(CockpitController,),
     mcp_handlers=(
-        McpHandlerDescriptor(
+        mcp_descriptor(
             domain="cockpit",
-            tool_names=tuple(tool.name for tool in COCKPIT_TOOLS),
+            tool_defs=COCKPIT_TOOLS,
+            handlers=_cockpit_mcp_handlers,
         ),
     ),
     lifecycle_hooks=(),

@@ -695,6 +695,7 @@ disable_error_code = ["unused-awaitable"]
 # the broader typing PRs.
 [[tool.mypy.overrides]]
 module = [
+    "synthorg._core.*",
     "synthorg.backup.*",
     "synthorg.coordination.*",
     "synthorg.docs_engine.*",
