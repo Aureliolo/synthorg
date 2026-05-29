@@ -4,7 +4,11 @@ from typing import TYPE_CHECKING
 
 from litestar import Controller
 
-from synthorg.api.auth.controller import AuthController
+from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
+from synthorg.api.auth.controllers.credentials import AuthCredentialsController
+from synthorg.api.auth.controllers.identity import AuthIdentityController
+from synthorg.api.auth.controllers.session import AuthSessionController
+from synthorg.api.auth.controllers.sessions_mgmt import AuthSessionsController
 from synthorg.api.controllers.activities import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
@@ -177,7 +181,11 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ApprovalsDecisionsController,
     EscalationsController,
     AutonomyController,
-    AuthController,
+    AuthBootstrapController,
+    AuthSessionController,
+    AuthCredentialsController,
+    AuthIdentityController,
+    AuthSessionsController,
     CollaborationController,
     CeremonyPolicyController,
     CoordinationController,
@@ -303,7 +311,11 @@ __all__ = [
     "ApprovalsQueryController",
     "ArtifactController",
     "AuditController",
-    "AuthController",
+    "AuthBootstrapController",
+    "AuthCredentialsController",
+    "AuthIdentityController",
+    "AuthSessionController",
+    "AuthSessionsController",
     "AutonomyController",
     "BackupController",
     "BrownfieldController",

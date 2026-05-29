@@ -11,7 +11,11 @@ handler. The composition root mounts these from this manifest.
 
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.api_core_state import ApiCoreStateSlice
-from synthorg.api.auth.controller import AuthController
+from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
+from synthorg.api.auth.controllers.credentials import AuthCredentialsController
+from synthorg.api.auth.controllers.identity import AuthIdentityController
+from synthorg.api.auth.controllers.session import AuthSessionController
+from synthorg.api.auth.controllers.sessions_mgmt import AuthSessionsController
 from synthorg.api.controllers.capabilities import CapabilitiesController
 from synthorg.api.controllers.health import (
     LivenessController,
@@ -35,7 +39,11 @@ FEATURE: FeatureModule = FeatureManifest(
         LivenessController,
         ReadinessController,
         CapabilitiesController,
-        AuthController,
+        AuthBootstrapController,
+        AuthSessionController,
+        AuthCredentialsController,
+        AuthIdentityController,
+        AuthSessionsController,
         UserController,
         SetupStatusController,
         SetupCompanyController,

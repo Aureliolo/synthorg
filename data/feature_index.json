@@ -23,7 +23,11 @@
         "LivenessController",
         "ReadinessController",
         "CapabilitiesController",
-        "AuthController",
+        "AuthBootstrapController",
+        "AuthSessionController",
+        "AuthCredentialsController",
+        "AuthIdentityController",
+        "AuthSessionsController",
         "UserController",
         "SetupStatusController",
         "SetupCompanyController",
@@ -904,6 +908,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-29T18:53:10.609723Z",
+  "generated_at": "2026-05-29T19:01:47.557945Z",
   "schema_version": 1
 }

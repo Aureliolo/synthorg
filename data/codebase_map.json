@@ -219,13 +219,6 @@
     },
     {
       "kind": "code",
-      "loc": 805,
-      "loc_cap": 500,
-      "module": "src/synthorg/api/auth/controller.py",
-      "owning_feature": "api_core"
-    },
-    {
-      "kind": "code",
       "loc": 127,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/controller_dtos.py",
@@ -236,6 +229,55 @@
       "loc": 266,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/controller_helpers.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 13,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/auth/controllers/__init__.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 87,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/auth/controllers/_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 135,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/auth/controllers/bootstrap.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 152,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/auth/controllers/credentials.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 131,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/auth/controllers/identity.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 287,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/auth/controllers/session.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 137,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/auth/controllers/sessions_mgmt.py",
       "owning_feature": "api_core"
     },
     {
@@ -366,7 +408,7 @@
     },
     {
       "kind": "code",
-      "loc": 347,
+      "loc": 359,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -1227,7 +1269,7 @@
     },
     {
       "kind": "feature",
-      "loc": 48,
+      "loc": 56,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
