@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { ErrorBanner } from '@/components/ui/error-banner'
 
@@ -79,6 +79,11 @@ function useRequestActions(
   setError: (error: string | null) => void,
 ): RequestActions {
   const [pending, setPending] = useState<Record<string, boolean>>({})
+  // Read the live pending map through a ref so `run` does not depend on
+  // `pending`; otherwise every pending transition re-creates run (and the
+  // three action handlers below), needlessly invalidating RequestCard memo.
+  const pendingRef = useRef(pending)
+  pendingRef.current = pending
 
   const run = useCallback(
     async (
@@ -87,7 +92,7 @@ function useRequestActions(
       errorMsg: string,
       logEvent: string,
     ) => {
-      if (pending[requestId]) return
+      if (pendingRef.current[requestId]) return
       setPending((prev) => ({ ...prev, [requestId]: true }))
       try {
         await action()
@@ -99,7 +104,7 @@ function useRequestActions(
         setPending((prev) => ({ ...prev, [requestId]: false }))
       }
     },
-    [refresh, pending, setError],
+    [refresh, setError],
   )
 
   const handleScope = useCallback(

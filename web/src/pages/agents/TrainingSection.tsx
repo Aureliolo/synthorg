@@ -35,7 +35,7 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
   useEffect(() => {
     if (!agentName) return
     // Hydrate both plan + result so a page refresh after executing
-    // does not drop back to the "Create Plan" form (issue #1394).
+    // does not drop back to the "Create Plan" form.
     void hydrateForAgent(agentName)
   }, [agentName, hydrateForAgent])
 

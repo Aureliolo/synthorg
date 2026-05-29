@@ -122,6 +122,8 @@ export interface CompanySlice {
   setBudgetCapEnabled: (enabled: boolean) => void
   setBudgetCap: (cap: number | null) => void
   submitCompany: () => Promise<void>
+  /** Clear a stale company error, unless a submit is currently in flight. */
+  clearCompanyError: () => void
 }
 
 export interface AgentsSlice {

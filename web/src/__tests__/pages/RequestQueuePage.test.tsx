@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -6,6 +6,7 @@ import { emptyPage, paginatedFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
 import type { ClientRequest, listRequests } from '@/api/endpoints/clients'
+import { approveRequest, rejectRequest, scopeRequest } from '@/api/endpoints/clients'
 
 interface CapReturn {
   capabilities: Capabilities
@@ -19,7 +20,27 @@ vi.mock('@/hooks/useCapabilities', () => ({
   useCapabilities: () => capReturn,
 }))
 
+vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
+  scopeRequest: vi.fn(async () => undefined),
+  approveRequest: vi.fn(async () => undefined),
+  rejectRequest: vi.fn(async () => undefined),
+}))
+
 const { default: RequestQueuePage } = await import('@/pages/RequestQueuePage')
+
+function seedSubmittedRequest() {
+  server.use(
+    http.get('/api/v1/requests', () =>
+      HttpResponse.json(
+        paginatedFor<typeof listRequests>({
+          ...emptyPage<ClientRequest>(),
+          data: [makeRequest({ status: 'submitted' })],
+        }),
+      ),
+    ),
+  )
+}
 
 const ALL_ENABLED: Capabilities = {
   simulations: true,
@@ -106,5 +127,40 @@ describe('RequestQueuePage', () => {
     // grouped board once data lands.
     expect(await screen.findByText('Build a thing')).toBeInTheDocument()
     expect(screen.queryByText('No requests yet')).not.toBeInTheDocument()
+  })
+
+  it('scopes a request from the board', async () => {
+    seedSubmittedRequest()
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Scope' }))
+    await waitFor(() =>
+      expect(scopeRequest).toHaveBeenCalledWith('req-1', { notes: 'Scoped from dashboard' }),
+    )
+  })
+
+  it('approves a request from the board', async () => {
+    seedSubmittedRequest()
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
+    await waitFor(() => expect(approveRequest).toHaveBeenCalledWith('req-1'))
+  })
+
+  it('rejects a request from the board', async () => {
+    seedSubmittedRequest()
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    await waitFor(() =>
+      expect(rejectRequest).toHaveBeenCalledWith('req-1', 'Rejected from dashboard'),
+    )
+  })
+
+  it('filters out non-matching requests by search query', async () => {
+    seedSubmittedRequest()
+    renderPage()
+    expect(await screen.findByText('Build a thing')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Search requests'), {
+      target: { value: 'zzz-no-match' },
+    })
+    expect(screen.queryByText('Build a thing')).not.toBeInTheDocument()
   })
 })

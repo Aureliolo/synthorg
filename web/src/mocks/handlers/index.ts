@@ -74,6 +74,7 @@ import { projectDocsHandlers } from './projectDocs'
 import { projectsHandlers } from './projects'
 import { providersHandlers } from './providers'
 import { qualityHandlers } from './quality'
+import { reportsHandlers } from './reports'
 import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
@@ -130,6 +131,7 @@ export const defaultHandlers = [
   ...projectsHandlers,
   ...providersHandlers,
   ...qualityHandlers,
+  ...reportsHandlers,
   ...rolesHandlers,
   ...scalingHandlers,
   ...settingsHandlers,
@@ -152,6 +154,9 @@ export { authLoginSuccess, authSetupSuccess } from './auth'
 
 // ── Entity builders consumed by store unit tests. ──
 
+export { buildAuditEntry } from './audit'
 export { buildCharter } from './charter'
+export { buildConnection } from './connections'
 export { buildCustomRule } from './custom-rules'
 export { buildCloudPreset, buildLocalPreset } from './providers'
+export { buildSimulation } from './clients'

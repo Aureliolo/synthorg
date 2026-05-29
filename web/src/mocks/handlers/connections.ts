@@ -12,7 +12,7 @@ import { apiError, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
 
-function buildConnection(
+export function buildConnection(
   overrides: Partial<Connection> = {},
 ): Connection {
   return {

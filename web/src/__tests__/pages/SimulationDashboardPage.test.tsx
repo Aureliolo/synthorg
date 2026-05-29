@@ -1,7 +1,15 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { buildSimulation, emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
+import type {
+  cancelSimulation,
+  listSimulations,
+  SimulationStatusResponse,
+} from '@/api/endpoints/clients'
 
 interface CapReturn {
   capabilities: Capabilities
@@ -26,6 +34,19 @@ const ALL_ENABLED: Capabilities = {
   a2a: true,
   telemetry: false,
   integrations: true,
+}
+
+function seedRunningSimulation() {
+  server.use(
+    http.get('/api/v1/simulations', () =>
+      HttpResponse.json(
+        paginatedFor<typeof listSimulations>({
+          ...emptyPage<SimulationStatusResponse>(),
+          data: [buildSimulation({ simulation_id: 'sim-1', status: 'running' })],
+        }),
+      ),
+    ),
+  )
 }
 
 function renderPage() {
@@ -67,5 +88,54 @@ describe('SimulationDashboardPage', () => {
     renderPage()
     expect(await screen.findByText('No simulation runs yet')).toBeInTheDocument()
     expect(screen.getByText('Active runs')).toBeInTheDocument()
+  })
+
+  it('renders run cards and active-run metrics when simulations load', async () => {
+    seedRunningSimulation()
+    renderPage()
+    expect(await screen.findByText('sim-1')).toBeInTheDocument()
+    expect(screen.getByText('Active runs')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Report' })).toBeInTheDocument()
+  })
+
+  it('shows the report card when Report is clicked', async () => {
+    seedRunningSimulation()
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Report' }))
+    expect(await screen.findByText('Report: sim-1')).toBeInTheDocument()
+  })
+
+  it('cancels a running simulation and reflects the cancelled status', async () => {
+    let cancelled = false
+    server.use(
+      http.post('/api/v1/simulations/:id/cancel', ({ params }) => {
+        cancelled = true
+        return HttpResponse.json(
+          successFor<typeof cancelSimulation>(
+            buildSimulation({ simulation_id: String(params.id), status: 'cancelled' }),
+          ),
+        )
+      }),
+      http.get('/api/v1/simulations', () =>
+        HttpResponse.json(
+          paginatedFor<typeof listSimulations>({
+            ...emptyPage<SimulationStatusResponse>(),
+            data: [
+              buildSimulation({
+                simulation_id: 'sim-1',
+                status: cancelled ? 'cancelled' : 'running',
+              }),
+            ],
+          }),
+        ),
+      ),
+    )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('cancelled')).toBeInTheDocument()
   })
 })

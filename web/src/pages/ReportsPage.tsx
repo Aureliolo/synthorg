@@ -27,6 +27,8 @@ import { formatDateTime } from '@/utils/format'
 
 const log = createLogger('ReportsPage')
 
+const LOCALE = getLocale()
+
 interface GeneratedReportState {
   period: ReportPeriod
   response: ReportResponse
@@ -175,9 +177,8 @@ function useReportPeriodsView(): ReportPeriodsView {
     const matched = trimmed
       ? periods.filter((p) => formatReportPeriod(p).toLowerCase().includes(trimmed))
       : periods
-    const locale = getLocale()
     return [...matched].sort((a, b) => {
-      const cmp = formatReportPeriod(a).localeCompare(formatReportPeriod(b), locale)
+      const cmp = formatReportPeriod(a).localeCompare(formatReportPeriod(b), LOCALE)
       return periodSort === 'name-asc' ? cmp : -cmp
     })
   }, [periods, periodFilter, periodSort])

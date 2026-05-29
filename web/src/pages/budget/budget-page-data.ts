@@ -19,25 +19,31 @@ const log = createLogger('budget-page')
 export type BudgetData = ReturnType<typeof useBudgetData>
 export type CurrentForecast = ReturnType<typeof useBudgetForecastStore.getState>['current']
 
-export function useParetoFrontier() {
+export interface ParetoFrontierState {
+  paretoFrontier: ParetoFrontier | null
+  paretoLoading: boolean
+}
+
+export function useParetoFrontier(): ParetoFrontierState {
   const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
   const [paretoLoading, setParetoLoading] = useState<boolean>(true)
 
   useEffect(() => {
-    let cancelled = false
-    void getParetoFrontier()
+    const controller = new AbortController()
+    void getParetoFrontier(controller.signal)
       .then((frontier) => {
-        if (!cancelled) setParetoFrontier(frontier)
+        if (!controller.signal.aborted) setParetoFrontier(frontier)
       })
       .catch((err) => {
+        if (controller.signal.aborted) return
         log.warn('failed to load pareto frontier', err)
-        if (!cancelled) setParetoFrontier(null)
+        setParetoFrontier(null)
       })
       .finally(() => {
-        if (!cancelled) setParetoLoading(false)
+        if (!controller.signal.aborted) setParetoLoading(false)
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [])
 

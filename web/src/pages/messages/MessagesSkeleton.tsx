@@ -17,7 +17,7 @@ function MessageRowSkeleton() {
 
 export function MessagesSkeleton() {
   return (
-    <div className="flex gap-6" role="status" aria-label="Loading messages">
+    <div className="flex gap-section-gap" role="status" aria-label="Loading messages">
       {/* Channel sidebar skeleton */}
       <div className="flex w-56 shrink-0 flex-col gap-2 border-r border-border pr-4">
         <Skeleton className="mb-2 h-4 w-20" />

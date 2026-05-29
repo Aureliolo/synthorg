@@ -1,10 +1,10 @@
 import { screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiError } from '@/mocks/handlers'
+import { apiError, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import { renderRoutes } from '@/__tests__/test-utils'
-import type { ClientProfile } from '@/api/endpoints/clients'
+import type { ClientProfile, getClientSatisfaction } from '@/api/endpoints/clients'
 
 let clients: readonly ClientProfile[]
 
@@ -41,5 +41,40 @@ describe('ClientDetailPage', () => {
     )
     renderPage()
     expect(await screen.findByText('Client not found')).toBeInTheDocument()
+  })
+
+  it('renders the satisfaction metrics when reviews are present', async () => {
+    server.use(
+      http.get('/api/v1/clients/:id/satisfaction', ({ params }) =>
+        HttpResponse.json(
+          successFor<typeof getClientSatisfaction>({
+            client_id: String(params.id),
+            total_reviews: 3,
+            acceptance_rate: 0.67,
+            average_score: 4.2,
+            history: [],
+          }),
+        ),
+      ),
+    )
+    renderPage()
+    expect(await screen.findByText('Reviews')).toBeInTheDocument()
+    expect(screen.getByText('Acceptance')).toBeInTheDocument()
+    expect(screen.getByText('Avg score')).toBeInTheDocument()
+    expect(screen.getByText('67%')).toBeInTheDocument()
+  })
+
+  it('shows an inline satisfaction error but still renders the profile', async () => {
+    server.use(
+      http.get('/api/v1/clients/:id/satisfaction', () =>
+        HttpResponse.json(apiError('satisfaction boom'), { status: 500 }),
+      ),
+    )
+    renderPage()
+    expect(
+      await screen.findByText('Could not load satisfaction history'),
+    ).toBeInTheDocument()
+    // The profile section is isolated from the satisfaction failure.
+    expect(screen.getByRole('heading', { name: 'Default Client' })).toBeInTheDocument()
   })
 })

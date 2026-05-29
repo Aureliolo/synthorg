@@ -218,21 +218,12 @@ function useCompanyStepController() {
 
   useStepCompletionSync('company', validation.valid)
 
-  // Clear a stale companyError on unmount unless a submit is currently
-  // in flight. The in-flight guard matters because a long-running submit
-  // that completes AFTER the user navigates away must be allowed to land
-  // its error in the store; the next CompanyStep mount then surfaces it.
-  // Clearing on mount instead would wipe such errors before the user
-  // could see them.
+  // Clear a stale companyError on unmount; the store action no-ops while
+  // a submit is in flight so a late-completing submit can still land its
+  // error for the next CompanyStep mount to surface.
   useEffect(() => {
     return () => {
-      const state = useSetupWizardStore.getState()
-      if (!state.companyLoading) {
-        useSetupWizardStore.setState({
-          companyError: null,
-          companyErrorCode: null,
-        })
-      }
+      useSetupWizardStore.getState().clearCompanyError()
     }
   }, [])
 

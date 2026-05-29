@@ -30,7 +30,7 @@ function SubworkflowNodeComponent({ data, selected }: NodeProps<SubworkflowNodeT
   return (
     <div
       className={cn(
-        'min-w-40 max-w-56 rounded-lg border border-border bg-card px-3 py-2',
+        'min-w-40 max-w-56 rounded-lg border border-border bg-card p-card-tight',
         selected && 'ring-2 ring-accent',
         data.hasError && 'ring-2 ring-danger',
       )}

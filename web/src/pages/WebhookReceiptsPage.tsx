@@ -116,33 +116,27 @@ function useWebhookConnectionSelect(connections: ConnectionList): {
   const urlConnection = searchParams.get('connection') ?? ''
   const [selected, setSelected] = useState<string>('')
 
+  // Resolve the active connection in one effect, so it does not depend on
+  // `selected` and re-fire on its own writes. Precedence: a valid
+  // URL-specified connection wins; otherwise keep a still-valid current
+  // selection; otherwise fall back to the first connection. The microtask
+  // defer keeps eslint-react's set-state-in-effect rule satisfied.
   useEffect(() => {
-    if (!urlConnection) return
-    if (connections.length === 0) return
-    if (!connections.some((c) => c.name === urlConnection)) return
     let cancelled = false
     void Promise.resolve().then(() => {
       if (cancelled) return
-      setSelected((prev) => (prev === urlConnection ? prev : urlConnection))
+      setSelected((prev) => {
+        if (urlConnection && connections.some((c) => c.name === urlConnection)) {
+          return urlConnection
+        }
+        if (prev !== '' && connections.some((c) => c.name === prev)) return prev
+        return connections[0]?.name ?? ''
+      })
     })
     return () => {
       cancelled = true
     }
-  }, [urlConnection, connections])
-
-  useEffect(() => {
-    const exists = selected !== '' && connections.some((c) => c.name === selected)
-    if (exists) return
-    if (urlConnection && connections.some((c) => c.name === urlConnection)) return
-    let cancelled = false
-    void Promise.resolve().then(() => {
-      if (cancelled) return
-      setSelected(connections[0]?.name ?? '')
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [connections, selected, urlConnection])
+  }, [connections, urlConnection])
 
   const options = useMemo(
     () => connections.map((c) => ({ value: c.name, label: c.name })),

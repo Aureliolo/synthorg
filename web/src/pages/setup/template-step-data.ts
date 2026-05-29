@@ -223,12 +223,19 @@ export function useTemplateStepController(): TemplateStepController {
     useSetupWizardStore.getState().clearComparison()
   }, [])
 
+  const onRetry = useCallback(() => {
+    // Mark fetched so the mount effect does not fire a second fetch when
+    // the retry succeeds (templatesLoading -> false, templatesError -> null
+    // would otherwise re-satisfy the effect guard when it never ran).
+    hasFetchedRef.current = true
+    void useSetupWizardStore.getState().fetchTemplates()
+  }, [])
+
   return {
     templates, templatesLoading, templatesError, selectedTemplate, comparedTemplates,
     recommendedTemplates, availableCategories, filteredTemplates, recommended, others,
     comparedTemplateObjects, searchQuery, setSearchQuery, categoryFilter, setCategoryFilter,
     sizeFilter, setSizeFilter, hasActiveFilters, handleSelect, handleToggleCompare,
-    handleRemoveFromCompare, clearFilters, clearComparison,
-    onRetry: () => void useSetupWizardStore.getState().fetchTemplates(),
+    handleRemoveFromCompare, clearFilters, clearComparison, onRetry,
   }
 }

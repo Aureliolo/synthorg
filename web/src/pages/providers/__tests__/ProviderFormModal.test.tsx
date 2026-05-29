@@ -24,13 +24,13 @@ const anthropic: CloudPreset = {
   default_models: [],
 }
 
-const openai: CloudPreset = {
+const cloudApiKeyOnly: CloudPreset = {
   kind: 'cloud',
-  name: 'openai',
-  display_name: 'OpenAI',
-  description: 'GPT models',
+  name: 'cloud-apikey-only',
+  display_name: 'Cloud API-Key Provider',
+  description: 'API-key-only cloud provider',
   driver: 'litellm',
-  litellm_provider: 'openai',
+  litellm_provider: 'cloud-apikey-only',
   auth_type: 'api_key',
   supported_auth_types: ['api_key'],
   default_base_url: null,
@@ -41,7 +41,7 @@ const openai: CloudPreset = {
 
 function makeOverrides(): ProviderFormOverrides {
   return {
-    presets: [anthropic, openai],
+    presets: [anthropic, cloudApiKeyOnly],
     presetsLoading: false,
     presetsError: null,
     onFetchPresets: vi.fn(),
@@ -127,7 +127,7 @@ describe('ProviderFormModal: Anthropic subscription billing banner', () => {
         open
         onClose={() => undefined}
         mode="create"
-        initialPreset="openai"
+        initialPreset="cloud-apikey-only"
         overrides={makeOverrides()}
       />,
     )

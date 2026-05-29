@@ -80,9 +80,9 @@ function useSimulationDashboard(): SimulationDashboardState {
   }, [])
 
   // Capability-gated effect: skip the network call entirely when the
-  // simulations subsystem is not configured. The backend route is also
-  // unregistered (404), so calling listSimulations() would log a 404 in
-  // the audit trail per the issue #1666 B-3 contract.
+  // simulations subsystem is not configured. The backend route is then
+  // unregistered, so calling listSimulations() would return a 404 and
+  // inject a spurious error into the audit trail.
   useEffect(() => {
     if (capLoading) return
     if (!capabilities.simulations) {

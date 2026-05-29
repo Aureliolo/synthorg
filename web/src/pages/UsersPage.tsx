@@ -9,7 +9,7 @@
  * invite / delete-user surface is not yet exposed in the TS endpoint
  * module and is therefore out of scope here.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -22,11 +22,14 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useUsersStore } from '@/stores/users'
 import { formatDateTime } from '@/utils/format'
+import { getLocale } from '@/utils/locale'
 import type { OrgRole } from '@/api/types/enums'
 import type { UserResponse } from '@/api/endpoints/users'
 import { GrantRoleDialog } from './users/GrantRoleDialog'
 import { cn } from '@/lib/utils'
 import { ROLE_BADGE_COLORS } from '@/styles/status-colors'
+
+const LOCALE = getLocale()
 
 interface RevokeTarget {
   user: UserResponse
@@ -245,15 +248,18 @@ function useUsersPageController() {
             u.username.toLowerCase().includes(q) || u.role.toLowerCase().includes(q),
         )
       : users
-    return [...filtered].sort((a, b) => a.username.localeCompare(b.username))
+    return [...filtered].sort((a, b) => a.username.localeCompare(b.username, LOCALE))
   }, [users, trimmedQuery])
 
-  const handleRevoke = async (target: RevokeTarget): Promise<void> => {
-    const ok = await revokeOrgRole(target.user.id, target.role)
-    // Only dismiss on success; on failure the store has already surfaced
-    // the error toast and we keep the dialog open so the user can retry.
-    if (ok) setRevokingTarget(null)
-  }
+  const handleRevoke = useCallback(
+    async (target: RevokeTarget): Promise<void> => {
+      const ok = await revokeOrgRole(target.user.id, target.role)
+      // Only dismiss on success; on failure the store has already surfaced
+      // the error toast and we keep the dialog open so the user can retry.
+      if (ok) setRevokingTarget(null)
+    },
+    [revokeOrgRole, setRevokingTarget],
+  )
 
   return {
     users, loading, loadingMore, error, hasMore, submitting, fetchUsers, fetchMoreUsers,

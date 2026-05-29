@@ -26,6 +26,8 @@ import {
 
 const log = createLogger('providers')
 
+const EMPTY_PRESETS: readonly ProviderPreset[] = []
+
 export interface ProviderFields {
   selectedPreset: string | null
   setSelectedPreset: Dispatch<SetStateAction<string | null>>
@@ -60,12 +62,21 @@ function useProviderFields(): ProviderFields {
   const [submitting, setSubmitting] = useState(false)
   const [showTosDialog, setShowTosDialog] = useState(false)
   const [tosAccepted, setTosAccepted] = useState(false)
-  return {
-    selectedPreset, setSelectedPreset, name, setName, authType, setAuthType,
-    apiKey, setApiKey, subscriptionToken, setSubscriptionToken, baseUrl, setBaseUrl,
-    litellmProvider, setLitellmProvider, submitting, setSubmitting,
-    showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
-  }
+  // Memoised so the object identity is stable across renders where no
+  // field value changed; this keeps the handler useCallbacks (which
+  // depend on `fields`) from re-creating on every parent re-render.
+  return useMemo(
+    () => ({
+      selectedPreset, setSelectedPreset, name, setName, authType, setAuthType,
+      apiKey, setApiKey, subscriptionToken, setSubscriptionToken, baseUrl, setBaseUrl,
+      litellmProvider, setLitellmProvider, submitting, setSubmitting,
+      showTosDialog, setShowTosDialog, tosAccepted, setTosAccepted,
+    }),
+    [
+      selectedPreset, name, authType, apiKey, subscriptionToken, baseUrl,
+      litellmProvider, submitting, showTosDialog, tosAccepted,
+    ],
+  )
 }
 
 function applyEditModeReset(fields: ProviderFields): void {
@@ -174,14 +185,19 @@ interface ProviderPresetsResult {
 }
 
 function useProviderPresets(overrides?: ProviderFormOverrides): ProviderPresetsResult {
-  const storePresets = useProvidersStore((s) => s.presets)
-  const storePresetsLoading = useProvidersStore((s) => s.presetsLoading)
-  const storePresetsError = useProvidersStore((s) => s.presetsError)
+  // With overrides the store slices are unused, so the selectors return
+  // stable constants to avoid re-rendering this modal on unrelated
+  // providers-store updates (the setup wizard owns its own preset state).
+  const hasOverrides = overrides != null
+  const storePresets = useProvidersStore((s) => (hasOverrides ? EMPTY_PRESETS : s.presets))
+  const storePresetsLoading = useProvidersStore((s) => (hasOverrides ? false : s.presetsLoading))
+  const storePresetsError = useProvidersStore((s) => (hasOverrides ? null : s.presetsError))
+  const storeFetchPresets = useProvidersStore((s) => s.fetchPresets)
   return {
     presets: overrides ? overrides.presets : storePresets,
     presetsLoading: overrides ? overrides.presetsLoading : storePresetsLoading,
     presetsError: overrides ? overrides.presetsError : storePresetsError,
-    fetchPresetsFn: overrides?.onFetchPresets ?? useProvidersStore.getState().fetchPresets,
+    fetchPresetsFn: overrides?.onFetchPresets ?? storeFetchPresets,
   }
 }
 
@@ -315,8 +331,6 @@ export function useProviderFormController(
     fields.setSubmitting(true)
     try {
       if (await runSubmit(valuesOf(fields))) handleClose()
-    } catch (err) {
-      log.error('Submit failed:', err instanceof Error ? err.message : 'Unknown error')
     } finally {
       fields.setSubmitting(false)
     }

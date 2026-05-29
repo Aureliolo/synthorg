@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ClientProfile } from '@/api/endpoints/clients'
+import { deleteClient } from '@/api/endpoints/clients'
 
 interface ClientsData {
   clients: readonly ClientProfile[]
@@ -15,6 +16,11 @@ let hookReturn: ClientsData
 
 vi.mock('@/hooks/useClientsData', () => ({
   useClientsData: () => hookReturn,
+}))
+
+vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
+  deleteClient: vi.fn(async () => undefined),
 }))
 
 const { default: ClientListPage } = await import('@/pages/ClientListPage')
@@ -94,11 +100,27 @@ describe('ClientListPage', () => {
     expect(screen.getByText('Real-time updates disconnected')).toBeInTheDocument()
   })
 
-  it('shows a search-empty message when a filter matches nothing', () => {
+  it('shows the filtered-empty message when a search matches nothing', () => {
     hookReturn = { ...defaultReturn, clients: [makeClient({ name: 'Acme Corp' })] }
     renderPage()
-    // The roster is non-empty, so the truly-empty copy must not show.
+    fireEvent.change(screen.getByLabelText('Search clients'), {
+      target: { value: 'no-such-client' },
+    })
+    expect(screen.getByText('No matching clients')).toBeInTheDocument()
+    // The truly-empty copy must not show while a filter is active.
     expect(screen.queryByText('No clients yet')).not.toBeInTheDocument()
-    expect(screen.getByText('Acme Corp')).toBeInTheDocument()
+  })
+
+  it('bulk-deactivates a selected client through the confirm dialog', async () => {
+    hookReturn = {
+      ...defaultReturn,
+      clients: [makeClient({ client_id: 'c-1', name: 'Acme Corp' })],
+    }
+    renderPage()
+    fireEvent.click(screen.getByLabelText('Select client Acme Corp'))
+    fireEvent.click(await screen.findByRole('button', { name: /Deactivate 1/ }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate 1' }))
+    await waitFor(() => expect(deleteClient).toHaveBeenCalledWith('c-1'))
   })
 })
