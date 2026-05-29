@@ -58,6 +58,7 @@ from synthorg.api.lifecycle_helpers.startup_steps import (
     install_runtime_services,
     resolve_runtime_security_settings,
 )
+from synthorg.api.lifecycle_helpers.toolsmith_wiring import wire_toolsmith
 from synthorg.api.middleware import security_headers_hook
 from synthorg.api.middleware_factory import _build_middleware
 from synthorg.api.rate_limits import (
@@ -145,12 +146,7 @@ if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
 
     from synthorg.client.simulation_state import ClientSimulationState
-    from synthorg.meta.config import SelfImprovementConfig
-    from synthorg.meta.toolsmith.factory import ToolsmithRuntime
-    from synthorg.meta.toolsmith.models import ToolBlueprint
-    from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
     from synthorg.settings.service import SettingsService
-    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
@@ -223,82 +219,6 @@ def _resolve_budget_int(key: str) -> int:
     requires a restart -- the consumer is a fixed-length ring buffer).
     """
     return resolve_init_int(SettingNamespace.BUDGET, key)
-
-
-def _build_dynamic_tool_repo(
-    persistence: PersistenceBackend,
-) -> DynamicToolRepository:
-    """Build the backend-specific authored-tool blueprint repository."""
-    if persistence.backend_name == "sqlite":
-        from synthorg.persistence.sqlite.tool_blueprint_repo import (  # noqa: PLC0415
-            SQLiteDynamicToolRepository,
-        )
-
-        return SQLiteDynamicToolRepository(
-            persistence.get_db(),
-            write_context=persistence.write_context,
-        )
-    from synthorg.persistence.postgres.tool_blueprint_repo import (  # noqa: PLC0415
-        PostgresDynamicToolRepository,
-    )
-
-    return PostgresDynamicToolRepository(persistence.get_db())
-
-
-def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith runtime dependencies
-    *,
-    si_config: SelfImprovementConfig,
-    provider_registry: ProviderRegistry,
-    persistence: PersistenceBackend,
-    approval_store: ApprovalStoreProtocol | None,
-    cost_tracker: CostTracker | None,
-    workspace_root: Path,
-) -> ToolsmithRuntime | None:
-    """Resolve dependencies and build the toolsmith runtime, or None.
-
-    Returns ``None`` when no provider is registered (nothing to author
-    with). The sandbox resolver maps each blueprint's declared backend to
-    a concrete sandbox built from the default sandboxing config, so a
-    Docker-declared authored tool runs under Docker and a subprocess one
-    under subprocess. The sandbox workspace pins to the app's resolved
-    workspace root (the same root the project-workspace service uses) so
-    authored tools and the rest of the runtime share one writable mount
-    instead of diverging on the process CWD. The golden-scorecard
-    provider is intentionally absent here: until a runnable
-    score-with-candidate benchmark API is available, the validation gate
-    fails closed (a missing provider rejects the apply) rather than
-    trusting an unvalidated tool.
-    """
-    from synthorg.meta.toolsmith.factory import build_toolsmith  # noqa: PLC0415
-    from synthorg.tools.sandbox.factory import (  # noqa: PLC0415
-        build_sandbox_backends,
-    )
-    from synthorg.tools.sandbox.sandboxing_config import (  # noqa: PLC0415
-        SandboxingConfig,
-    )
-
-    provider_names = provider_registry.list_providers()
-    if not provider_names:
-        return None
-    provider = provider_registry.get(provider_names[0])
-    repo = _build_dynamic_tool_repo(persistence)
-
-    sandboxing = SandboxingConfig()
-    backends = build_sandbox_backends(config=sandboxing, workspace=workspace_root)
-
-    def _resolve_sandbox(blueprint: ToolBlueprint) -> SandboxBackend:
-        return backends.get(
-            blueprint.sandbox_backend.value, backends[sandboxing.default_backend]
-        )
-
-    return build_toolsmith(
-        si_config=si_config,
-        provider=provider,
-        repo=repo,
-        sandbox_resolver=_resolve_sandbox,
-        approval_store=approval_store,
-        cost_tracker=cost_tracker,
-    )
 
 
 def _build_default_approval_timeout_scheduler(
@@ -1227,84 +1147,13 @@ def create_app(  # noqa: PLR0913
         app_state.wire(BudgetStateSlice, report_service=report_service)
 
     async def _wire_toolsmith() -> None:
-        # Self-extending toolkit. Wired only when
-        # ``tool_creation_enabled`` is set AND a provider is registered
-        # AND persistence is connected (authored blueprints are durable).
-        # Disabled by default, so a normal boot skips this entirely.
-        # Idempotent for re-entered lifespans (shared-app fixtures).
-        from synthorg.engine.workspace.state import (  # noqa: PLC0415
-            agent_workspace_root_of,
+        await wire_toolsmith(
+            app_state,
+            provider_registry=provider_registry,
+            persistence=persistence,
+            approval_store=effective_approval_store,
+            cost_tracker=cost_tracker,
         )
-        from synthorg.meta.toolsmith.state import (  # noqa: PLC0415
-            ToolsmithStateSlice,
-        )
-        from synthorg.persistence.state import (  # noqa: PLC0415
-            PersistenceStateSlice,
-        )
-        from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
-
-        if (
-            app_state.slice(ToolsmithStateSlice).service is not None
-            or provider_registry is None
-        ):
-            return
-        if (
-            persistence is None
-            or app_state.slice(PersistenceStateSlice).backend is None
-        ):
-            return
-        from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-
-        si_config = await load_self_improvement_config(
-            app_state.slice(SettingsStateSlice).settings_service,
-        )
-        if not si_config.tool_creation_enabled:
-            return
-        try:
-            runtime = _build_toolsmith_runtime(
-                si_config=si_config,
-                provider_registry=provider_registry,
-                persistence=persistence,
-                approval_store=effective_approval_store,
-                cost_tracker=cost_tracker,
-                workspace_root=agent_workspace_root_of(app_state),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="toolsmith",
-                note="toolsmith wiring failed; self-extending toolkit disabled",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        if runtime is None:
-            return
-        # Install the layered MCP surface BEFORE the once-only AppState
-        # mutation. ``set_toolsmith_service`` cannot be replayed on
-        # retry, so if the layer install fails after the AppState mutation
-        # the runtime is left half-wired (service present, layer missing)
-        # with no path back. Installing first means a failure here leaves
-        # the toolsmith disabled cleanly, mirroring the upstream try/except.
-        from synthorg.meta.mcp.server import (  # noqa: PLC0415
-            install_dynamic_tool_layer,
-        )
-
-        try:
-            install_dynamic_tool_layer(runtime.dynamic_registry)
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                API_APP_STARTUP,
-                service="toolsmith",
-                note="toolsmith dynamic layer install failed; disabled",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return
-        app_state.swap_slice(ToolsmithStateSlice(service=runtime.service))
-        logger.info(API_APP_STARTUP, service="toolsmith", note="wired")
 
     startup = [*startup, _wire_toolsmith]
 

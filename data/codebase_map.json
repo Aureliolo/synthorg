@@ -170,7 +170,7 @@
     },
     {
       "kind": "code",
-      "loc": 1055,
+      "loc": 929,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -1426,6 +1426,13 @@
       "loc": 280,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/ticket_cleanup.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 167,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
       "owning_feature": "api_core"
     },
     {
