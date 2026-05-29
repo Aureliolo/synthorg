@@ -15269,7 +15269,7 @@
     },
     {
       "kind": "code",
-      "loc": 307,
+      "loc": 308,
       "loc_cap": 500,
       "module": "src/synthorg/settings/subscribers/per_op_rate_limit_subscriber.py",
       "owning_feature": "settings"
