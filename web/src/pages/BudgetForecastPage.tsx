@@ -41,21 +41,10 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
   )
 }
 
-export default function BudgetForecastPage() {
-  const {
-    overview,
-    budgetConfig,
-    forecast,
-    trends,
-    loading,
-    error,
-    wsConnected,
-    wsSetupError,
-  } = useBudgetData()
+type ForecastData = ReturnType<typeof useBudgetData>['forecast']
 
-  const currency = overview?.currency ?? budgetConfig?.currency
-
-  const cumulativeValues = useMemo(() => {
+function useCumulativeValues(forecast: ForecastData): number[] {
+  return useMemo(() => {
     if (!forecast) return []
     let running = 0
     return forecast.daily_projections.map((p) => {
@@ -63,8 +52,13 @@ export default function BudgetForecastPage() {
       return running
     })
   }, [forecast])
+}
 
-  const metricCards = useMemo((): BudgetMetricCardData[] => {
+function useForecastMetricCards(
+  forecast: ForecastData,
+  currency: string | undefined,
+): BudgetMetricCardData[] {
+  return useMemo((): BudgetMetricCardData[] => {
     if (!forecast) return []
     return [
       {
@@ -88,20 +82,114 @@ export default function BudgetForecastPage() {
       },
     ]
   }, [forecast, currency])
+}
 
-  if (loading && !overview) {
+function ForecastLoadingSkeleton() {
+  return (
+    <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading forecast">
+      <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+        <SkeletonMetric />
+        <SkeletonMetric />
+        <SkeletonMetric />
+        <SkeletonMetric />
+      </div>
+      <SkeletonCard header lines={3} />
+      <SkeletonTable rows={7} columns={4} />
+    </div>
+  )
+}
+
+function ForecastBanners({
+  error,
+  wsConnected,
+  loading,
+  wsSetupError,
+}: {
+  error: string | null
+  wsConnected: boolean
+  loading: boolean
+  wsSetupError: string | null
+}) {
+  return (
+    <>
+      {error && (
+        <ErrorBanner severity="error" title="Could not load budget forecast" description={error} />
+      )}
+      {!wsConnected && !loading && (
+        <ErrorBanner
+          variant="offline"
+          title="Real-time updates disconnected"
+          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
+        />
+      )}
+    </>
+  )
+}
+
+interface DailyProjectionsProps {
+  forecast: ForecastData
+  cumulativeValues: readonly number[]
+  currency: string | undefined
+  totalMonthly: number
+  showEmpty: boolean
+}
+
+function DailyProjections({
+  forecast,
+  cumulativeValues,
+  currency,
+  totalMonthly,
+  showEmpty,
+}: DailyProjectionsProps) {
+  if (forecast && forecast.daily_projections.length > 0) {
     return (
-      <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading forecast">
-        <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
-          <SkeletonMetric />
-          <SkeletonMetric />
-          <SkeletonMetric />
-          <SkeletonMetric />
-        </div>
-        <SkeletonCard header lines={3} />
-        <SkeletonTable rows={7} columns={4} />
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-border bg-surface">
+              <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</th>
+              <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</th>
+              <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</th>
+              <th scope="col" className="min-w-[6ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {forecast.daily_projections.map((point, idx) => (
+              <ProjectionRow
+                key={point.day}
+                point={point}
+                cumulative={cumulativeValues[idx] ?? 0}
+                currency={currency}
+                totalMonthly={totalMonthly}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
     )
+  }
+  if (showEmpty) {
+    return (
+      <EmptyState
+        icon={Calendar}
+        title="No forecast data"
+        description="Forecast projections will appear once enough spending data is available"
+      />
+    )
+  }
+  return null
+}
+
+export default function BudgetForecastPage() {
+  const { overview, budgetConfig, forecast, trends, loading, error, wsConnected, wsSetupError } =
+    useBudgetData()
+
+  const currency = overview?.currency ?? budgetConfig?.currency
+  const cumulativeValues = useCumulativeValues(forecast)
+  const metricCards = useForecastMetricCards(forecast, currency)
+
+  if (loading && !overview) {
+    return <ForecastLoadingSkeleton />
   }
 
   return (
@@ -114,17 +202,12 @@ export default function BudgetForecastPage() {
       />
       <h1 className="text-lg font-semibold text-foreground">Budget Forecast</h1>
 
-      {error && (
-        <ErrorBanner severity="error" title="Could not load budget forecast" description={error} />
-      )}
-
-      {!wsConnected && !loading && (
-        <ErrorBanner
-          variant="offline"
-          title="Real-time updates disconnected"
-          description={wsSetupError ?? 'Data may be stale until the connection recovers.'}
-        />
-      )}
+      <ForecastBanners
+        error={error}
+        wsConnected={wsConnected}
+        loading={loading}
+        wsSetupError={wsSetupError}
+      />
 
       <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
         {metricCards.map((card) => (
@@ -148,37 +231,13 @@ export default function BudgetForecastPage() {
       </ErrorBoundary>
 
       <SectionCard title="Daily Projections" icon={Calendar}>
-        {forecast && forecast.daily_projections.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-surface">
-                  <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</th>
-                  <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</th>
-                  <th scope="col" className="min-w-[7ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</th>
-                  <th scope="col" className="min-w-[6ch] px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {forecast.daily_projections.map((point, idx) => (
-                  <ProjectionRow
-                    key={point.day}
-                    point={point}
-                    cumulative={cumulativeValues[idx] ?? 0}
-                    currency={currency}
-                    totalMonthly={budgetConfig?.total_monthly ?? 0}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : !error && (
-          <EmptyState
-            icon={Calendar}
-            title="No forecast data"
-            description="Forecast projections will appear once enough spending data is available"
-          />
-        )}
+        <DailyProjections
+          forecast={forecast}
+          cumulativeValues={cumulativeValues}
+          currency={currency}
+          totalMonthly={budgetConfig?.total_monthly ?? 0}
+          showEmpty={!error}
+        />
       </SectionCard>
     </div>
   )
