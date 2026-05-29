@@ -38,6 +38,13 @@ jobs:
       && github.event.workflow_run.head_repository.full_name == github.repository
       && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
+    # Cap total wall time. The transient-resilience retries below (sibling
+    # poll, release-view loop, and the two gh_retry budgets in the publish
+    # step) can sum to several minutes under a sustained API outage; without
+    # a bound, a stuck publish would hold a runner and block the per-tag
+    # concurrency group. Worst case is ~9 min, so 15 leaves headroom for one
+    # full pass of every retry budget.
+    timeout-minutes: 15
     # `workflow_run` sets `github.ref` to the default branch (main) regardless
     # of which tag triggered the upstream workflow, so the `release` env's
     # `main`-only branch policy matches cleanly. The workflow-level `if:` guard
@@ -151,8 +158,12 @@ jobs:
             if [ "$SIBLING_STATUS" = "completed" ]; then
               break
             fi
-            echo "Sibling $SIBLING_NAME status=$SIBLING_STATUS conclusion=$SIBLING_CONCLUSION (attempt $attempt/6); sleeping..."
-            sleep $((attempt * 10))
+            # No sleep after the final attempt: the loop is about to exit and
+            # the post-loop branch defers to the sibling's own retrigger.
+            if [ "$attempt" -lt 6 ]; then
+              echo "Sibling $SIBLING_NAME status=$SIBLING_STATUS conclusion=$SIBLING_CONCLUSION (attempt $attempt/6); sleeping..."
+              sleep $((attempt * 10))
+            fi
           done
 
           echo "$WORKFLOW_NAME (this trigger): $WORKFLOW_CONCLUSION"
@@ -189,10 +200,12 @@ jobs:
           # 3. Transient API error (empty / truncated body so gh's jq
           #    aborts with "unexpected end of JSON input", 5xx, DNS):
           #    RETRY within the SAME budget rather than failing on the
-          #    first blip. A bare assignment here used to abort under
-          #    `set -euo pipefail` even though both workflows had already
-          #    finished and no retrigger could recover the publish. Only
-          #    after the budget is exhausted by transient errors do we
+          #    first blip. Under `set -euo pipefail` a non-zero exit from a
+          #    bare `IS_DRAFT=$(gh ...)` assignment aborts the whole step
+          #    with no recovery path; both upstream workflows have already
+          #    finished by this point, so no later workflow_run can retry,
+          #    and a single transient blip would otherwise strand the draft.
+          #    Only after the budget is exhausted by transient errors do we
           #    fail the job non-zero so the run is visible and retryable.
           #    The kind of the LAST failure (notfound vs transient) is
           #    tracked so the exhaustion branch picks the right outcome.
@@ -289,9 +302,8 @@ jobs:
           # privileged publish job runs with NO actions/checkout by design
           # (see the workflow-level zizmor note), so there is no working
           # tree to source a helper from, and adding checkout to a
-          # contents:write job would be a security downgrade. Mirrors the
-          # shape of cla.yml's gh_api_retry. Backoff: 5, 10, 20, 40, 60
-          # (capped) = ~135s over 6 attempts.
+          # contents:write job would be a security downgrade. Backoff:
+          # 5, 10, 20, 40, 60 (capped) = ~135s over 6 attempts.
           gh_retry() {
             local attempt=0 max_attempts=6 delay=5 rc errf
             errf=$(mktemp)
