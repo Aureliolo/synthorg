@@ -317,7 +317,7 @@
     },
     {
       "kind": "controller",
-      "loc": 148,
+      "loc": 147,
       "loc_cap": 400,
       "module": "src/synthorg/api/auth/controllers/bootstrap.py",
       "owning_feature": "api_core"
