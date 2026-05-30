@@ -71,6 +71,14 @@ This PR extends ADR-0007's accepted frozen descriptors:
   during discovery never pulls the service-heavy handler graph.
 - `ServiceLifecycleHook`: extends `LifecycleHook` with `stop`. Used for
   feature services only.
+- `construction_wirer`: a per-feature `wire_construction(app_state, deps)`
+  callable discovered and run in `depends_on` order during the
+  construction phase (before persistence connects). The fifteen
+  `swap_slice(model_construct(...))` blocks that the old `app.py` ran
+  inline became feature-owned `_construction.py` wirers, threaded a frozen
+  `ConstructionDeps` bundle. A dataclass (not Pydantic) so nesting the
+  `Phase1Result` / `MeetingWireResult` NamedTuples does not trip Pydantic
+  forward-ref introspection.
 
 A small `meta/mcp/feature_descriptors.mcp_descriptor` helper pairs the
 eager tool-def tuple with the deferred loader so each manifest declares
@@ -97,6 +105,30 @@ work-entry adapter that is wired in a startup hook, after route assembly,
 so on the standard boot path they never register. The migration
 preserves this latent-dead status and locks it with a test rather than
 silently registering them.
+
+### Section B exemption lifts
+
+Bringing the centre under its caps lifts ADR-0006's Section B exemptions:
+
+- **God-module allowlist drained.** `api/app.py` (a 147-LOC
+  discovery-based composition root), `api/state.py`, `api/auto_wire.py`,
+  `api/lifecycle.py`, and `api/lifecycle_builder.py` all fall under their
+  code-tier cap, so they drop from `check_no_growth_in_god_modules.py`'s
+  net-shrink allowlist and are governed by `check_module_size_budget.py`.
+  `core/enums.py` + `observability/events/persistence.py` stay until
+  #2051.
+- **Mypy narrowed via specific override precedence.** A more-specific
+  override beats the `synthorg.api.*` wildcard, so the composition root,
+  the lifecycle runners, and the Any-clean decomposed controller packages
+  (`providers`, `memory`) hit the full strict++ bar. Modules that
+  inherited the work-pipeline `WorkEntryAdapter[Any]` boundary (same as
+  `api/state.py`) or other explicit-Any keep the `disallow_any_explicit`
+  exemption (the project-wide Any drain is #2056) but re-enable the
+  in-scope `unused-awaitable` check.
+- **Ruff DOC enforced.** The five ex-god-modules drop their
+  `DOC201/202/501` per-file-ignore and carry full docstrings. The
+  `BLE001` blind-except drain stays #2062; residual function-complexity
+  is governed by the module-size tier budget.
 
 ## Consequences
 
