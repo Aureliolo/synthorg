@@ -40,7 +40,6 @@ from synthorg.persistence.constraint_tokens import (
     USERS_USERNAME_UNIQUE,
 )
 from synthorg.persistence.state import persistence_of
-from synthorg.persistence.user_protocol import UserFilterSpec
 
 logger = get_logger(__name__)
 
@@ -90,13 +89,14 @@ class AuthBootstrapController(Controller):
             msg = "Username 'system' is reserved"
             raise ConflictError(msg)
 
-        # Block setup once ANY human user exists, not just a CEO: the
-        # ``count`` query already excludes the SYSTEM user, so a non-zero
-        # result means a real operator has been provisioned and first-run
-        # setup must stay closed even if (hypothetically) no CEO row
-        # remained. This is the fast-path pre-check; the atomic guarantee
-        # below covers the concurrent race.
-        if await persistence.users.count(UserFilterSpec()) > 0:
+        # First-run setup is gated on CEO existence (not total users): a
+        # non-CEO human (e.g. an OBSERVER seeded out-of-band) must never lock
+        # out first-CEO creation. The CEO can never be deleted or demoted
+        # below one (``enforce_ceo_minimum`` trigger + the delete-CEO guard in
+        # the user controller), so this count cannot drop back to zero once
+        # setup completes. This is the fast-path pre-check; the atomic
+        # guarantee below covers the concurrent race.
+        if await persistence.users.count_by_role(HumanRole.CEO) > 0:
             logger.warning(SECURITY_AUTH_FAILED, reason="setup_already_completed")
             msg = "Setup already completed"
             raise ConflictError(msg)
