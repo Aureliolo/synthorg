@@ -80,7 +80,7 @@ def _build_startup_with_failing_settings_autowire(
     # Mock _safe_startup so on_startup gets past the early stage.
     safe_startup_mock = AsyncMock()
     monkeypatch.setattr(
-        "synthorg.api.lifecycle_builder._safe_startup",
+        "synthorg.api.lifecycle_runner_startup._safe_startup",
         safe_startup_mock,
     )
     return startup[0]

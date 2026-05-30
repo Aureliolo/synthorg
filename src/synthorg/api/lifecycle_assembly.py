@@ -193,8 +193,8 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
     startup = [*startup, _wire_toolsmith]
 
     # Bring up the notification dispatcher's HTTP-bearing sinks lazily under
-    # their lifecycle locks. Shutdown registration lives in
-    # ``lifecycle_builder._safe_shutdown`` via ``notification_dispatcher.aclose``.
+    # their lifecycle locks. Teardown lives in the on-shutdown runner
+    # (``lifecycle_runner_shutdown``) via ``notification_dispatcher.aclose``.
     startup = [*startup, notification_dispatcher.start]
 
     async def _resolve_runtime_security_settings() -> None:
