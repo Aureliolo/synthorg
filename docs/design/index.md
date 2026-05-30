@@ -206,6 +206,14 @@ Queue: Hiring Queue
 
     Agent memory, retrieval pipeline, shared organisational memory, and consolidation.
 
+-   [**Project Brain**](project-brain.md)
+
+    ---
+
+    Structured, queryable per-project state store: decisions and rationale, open
+    questions, blockers, risks, dependencies, and the evolving plan. Append-only,
+    versioned in the workspace, and queried by agents on resume and by the operator.
+
 -   [**Semantic Ontology**](ontology.md)
 
     ---
