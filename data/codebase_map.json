@@ -1388,7 +1388,7 @@
     },
     {
       "kind": "code",
-      "loc": 796,
+      "loc": 253,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle.py",
       "owning_feature": "api_core"
@@ -1503,6 +1503,20 @@
       "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 196,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_shared.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 432,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/lifecycle_startup.py",
       "owning_feature": "api_core"
     },
     {
