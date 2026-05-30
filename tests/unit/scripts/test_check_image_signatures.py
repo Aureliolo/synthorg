@@ -100,6 +100,8 @@ class TestIsImmutableTag:
             "0.8.9-dev.51",
             "1.0.0-rc.1",
             "1.2.3+build.4",
+            "v1.0.0",  # optional v-prefix (future tag-policy hardening)
+            "v0.8.9-dev.51",
         ],
     )
     def test_immutable(self, tag: str) -> None:

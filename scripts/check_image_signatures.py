@@ -93,9 +93,15 @@ _TAG_RE = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 # signature-checked by ``_verify_pair``. Keying on these two fixed naming
 # conventions (rather than enumerating floating names) keeps the rule from
 # drifting if the floating-tag policy grows.
+#
+# The semver pattern tolerates an optional ``v``/``V`` prefix. The current
+# metadata-action ``{{version}}`` policy strips it (image tags are
+# ``0.8.9`` / ``0.8.9-dev.51``, never ``v0.8.9``), but a future tag-policy
+# change emitting a ``v``-prefixed immutable tag would otherwise be
+# misclassified as floating and silently dropped from the convergence check.
 _SHA_TAG_RE = re.compile(r"\Asha-[0-9a-f]{7,}\Z")
 _FULL_SEMVER_TAG_RE = re.compile(
-    r"\A[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z"
+    r"\A[vV]?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z"
 )
 
 
