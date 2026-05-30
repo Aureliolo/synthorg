@@ -1,4 +1,4 @@
-# module-kind: code
+# module-kind: orchestrator
 """On-startup wiring for the optional feature engines.
 
 Extracted from :mod:`synthorg.api.app` so the application factory stays

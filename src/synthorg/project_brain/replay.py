@@ -98,6 +98,7 @@ async def _reindex_project(
     indexed = await repo.indexed_revisions(project_id)
     reindexed = 0
     offset = 0
+    # lint-allow: long-running-loop-kill-switch -- bounded pagination drain
     while True:
         page = await repo.list_current(
             BrainFilterSpec(project_id=project_id),

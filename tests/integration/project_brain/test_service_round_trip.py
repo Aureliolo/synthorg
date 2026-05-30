@@ -268,8 +268,8 @@ class TestProjectBrainRoundTrip:
             await harness.backend.disconnect()
 
     async def test_resume_answers_decided_open_blocked(self, tmp_path: Path) -> None:
-        """Issue #1996 acceptance: a different agent resumes and answers
-        what is decided / open / blocked through transparent retrieval."""
+        """A different agent resumes and answers what is decided / open /
+        blocked through transparent retrieval (the core acceptance bar)."""
         harness = await _build(tmp_path)
         try:
             await _seed_resume_state(harness)
@@ -284,7 +284,7 @@ class TestProjectBrainRoundTrip:
             assert brain_hits, "brain state must surface on transparent re-entry"
             corpus = "\n".join(e.content for e in brain_hits).lower()
             # The resuming agent can see the decision, the open question, and the
-            # blocker -- and the SEC-1 fence is present.
+            # blocker, and the untrusted-content fence is present.
             assert "decision" in corpus
             assert "open_question" in corpus
             assert "blocker" in corpus
@@ -342,7 +342,7 @@ class TestProjectBrainRoundTrip:
 
     async def test_boot_replay_heals_unindexed_gap(self, tmp_path: Path) -> None:
         """An entry persisted while indexing was down is re-indexed at boot."""
-        # Phase 1: indexing fails, so the entry lands in SQL but not the index.
+        # Indexing fails, so the entry lands in SQL but not the index.
         failing = _FailingStoreBackend()
         harness = await _build(tmp_path, memory_backend=failing)
         try:
@@ -360,8 +360,8 @@ class TestProjectBrainRoundTrip:
         finally:
             await failing.disconnect()
 
-        # Phase 2: a healthy boot replays the gap. Reuse the populated repo
-        # from phase 1 so the boot sees the persisted-but-unindexed entry.
+        # A healthy boot replays the gap. Reuse the populated repo so the boot
+        # sees the persisted-but-unindexed entry.
         healthy = InMemoryBackend()
         harness2 = await _build(tmp_path, memory_backend=healthy)
         harness2.repo._rows = harness.repo._rows

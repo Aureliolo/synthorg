@@ -1,7 +1,8 @@
 """Tests for the project-brain leg of :class:`ProjectAwareMemoryFacade`.
 
 The facade fans out to a fourth leg for PROJECT_BRAIN memory and fences brain
-content under ``<brain-state>`` (SEC-1) before it reaches a resuming agent.
+content under ``<brain-state>`` (untrusted-content fence) before a resuming
+agent sees it.
 """
 
 import pytest

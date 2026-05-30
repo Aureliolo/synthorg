@@ -562,7 +562,7 @@ WHERE
     OR last_indexed_commit_sha != head_commit_sha;
 
 -- ── Long-horizon project brain ───────────────────────────────
--- Append-only structured project state (#1996): decisions, open
+-- Append-only structured project state: decisions, open
 -- questions, blockers, risks, dependencies, plan revisions. A change to
 -- a logical entry is a new row (same entry_id, revision incremented);
 -- current state is the latest revision per entry_id. payload is a
@@ -618,13 +618,13 @@ ON project_brain_entries (project_id, recorded_at DESC);
 -- searchable. ON DELETE CASCADE: deleting a project drops its index state.
 CREATE TABLE project_brain_index_state (
     project_id TEXT NOT NULL
-        CHECK (length(trim(project_id)) > 0),
+    CHECK (LENGTH(TRIM(project_id)) > 0),
     entry_id TEXT NOT NULL
-        CHECK (length(trim(entry_id)) > 0),
+    CHECK (LENGTH(TRIM(entry_id)) > 0),
     last_indexed_revision INTEGER NOT NULL
-        CHECK (last_indexed_revision >= 1),
+    CHECK (last_indexed_revision >= 1),
     PRIMARY KEY (project_id, entry_id),
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
 -- ── Knowledge + provenance substrate ─────────────────────────

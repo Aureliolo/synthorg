@@ -26,13 +26,20 @@ from synthorg.observability.events.project_brain import (
     BRAIN_PERSIST_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, format_iso_utc
+from synthorg.persistence._project_brain_sql import (
+    BRAIN_COLUMNS as _COLUMNS,
+)
+from synthorg.persistence._project_brain_sql import (
+    build_current_filter_sql,
+    build_filter_sql,
+    insert_params,
+    row_to_entry,
+)
+from synthorg.persistence._shared import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import (
     BrainEntry,
-    BrainEntryKind,
-    BrainEntryStatus,
 )
 
 if TYPE_CHECKING:
@@ -48,65 +55,23 @@ logger = get_logger(__name__)
 
 _MAX_LIST_ROWS: int = 10_000
 
-_COLUMNS = (
-    "project_id, entry_id, revision, entry_kind, title, rationale, status, "
-    "author, recorded_at, related_task_ids, related_entry_ids, "
-    "supersedes_entry_id, tags, confidence, citations, payload"
-)
-
 
 def _row_to_entry(row: aiosqlite.Row) -> BrainEntry:
-    """Reconstruct a :class:`BrainEntry` from a database row.
+    """Reconstruct a :class:`BrainEntry` from a SQLite row.
 
     Returns:
         The reconstructed entry.
     """
-    data = dict(row)
-    data.pop("rn", None)
-    data["entry_kind"] = BrainEntryKind(data["entry_kind"])
-    data["status"] = BrainEntryStatus(data["status"])
-    data["tags"] = tuple(json.loads(data["tags"]))
-    data["related_task_ids"] = tuple(json.loads(data["related_task_ids"]))
-    data["related_entry_ids"] = tuple(json.loads(data["related_entry_ids"]))
-    data["citations"] = json.loads(data["citations"])
-    data["payload"] = json.loads(data["payload"])
-    data["recorded_at"] = coerce_row_timestamp(data["recorded_at"])
-    return BrainEntry.model_validate(data)
+    return row_to_entry(dict(row), load_json=json.loads)
 
 
 def _insert_params(entity: BrainEntry) -> tuple[object, ...]:
-    """Scalar SQL parameters for a full-row INSERT (revision included).
+    """Positional INSERT parameters (``recorded_at`` as an ISO string).
 
     Returns:
         The positional parameter tuple in column order.
     """
-    return (
-        entity.project_id,
-        entity.entry_id,
-        entity.revision,
-        entity.entry_kind.value,
-        entity.title,
-        entity.rationale,
-        entity.status.value,
-        entity.author,
-        format_iso_utc(entity.recorded_at),
-        json.dumps(list(entity.related_task_ids)),
-        json.dumps(list(entity.related_entry_ids)),
-        entity.supersedes_entry_id,
-        json.dumps(list(entity.tags), sort_keys=True),
-        entity.confidence,
-        json.dumps([c.model_dump(mode="json") for c in entity.citations]),
-        json.dumps(entity.payload.model_dump(mode="json"), sort_keys=True),
-    )
-
-
-def _escape_like(value: str) -> str:
-    r"""Escape LIKE metacharacters so a JSON needle matches literally.
-
-    Returns:
-        The escaped value (paired with ``ESCAPE '\'`` in the query).
-    """
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return insert_params(entity, serialize_dt=format_iso_utc)
 
 
 class SQLiteProjectBrainRepository:
@@ -318,7 +283,7 @@ class SQLiteProjectBrainRepository:
         limit = validate_pagination_args(
             limit, offset, event=BRAIN_PERSIST_QUERY_FAILED
         )
-        where_sql, params = _build_filter_sql(filter_spec)
+        where_sql, params = _filter_sql(filter_spec)
         sql = (
             f"SELECT {_COLUMNS} FROM project_brain_entries {where_sql} "  # noqa: S608
             "ORDER BY recorded_at DESC, revision DESC LIMIT ? OFFSET ?"
@@ -342,7 +307,7 @@ class SQLiteProjectBrainRepository:
             QueryError: If the database query fails.
         """
         limit = validate_pagination_args(limit, offset, event=BRAIN_PERSIST_LIST_FAILED)
-        outer_where, params = _build_current_filter_sql(filter_spec)
+        outer_where, params = _current_filter_sql(filter_spec)
         sql = (
             f"SELECT {_COLUMNS} FROM ("  # noqa: S608
             f"SELECT *, ROW_NUMBER() OVER ("
@@ -363,7 +328,7 @@ class SQLiteProjectBrainRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        outer_where, params = _build_current_filter_sql(filter_spec)
+        outer_where, params = _current_filter_sql(filter_spec)
         sql = (
             "SELECT COUNT(*) AS n FROM ("  # noqa: S608
             "SELECT entry_id, status, entry_kind, author, recorded_at, tags, "
@@ -553,64 +518,21 @@ class SQLiteProjectBrainRepository:
             raise QueryError(msg) from exc
 
 
-def _filter_conditions(
-    filter_spec: BrainFilterSpec,
-) -> tuple[list[str], list[object]]:
-    """Build the shared AND-conditions (kind/status/tag/author/task/since).
-
-    Returns:
-        ``(conditions, params)`` excluding the leading ``project_id`` predicate.
-    """
-    conditions: list[str] = []
-    params: list[object] = []
-    if filter_spec.entry_kind is not None:
-        conditions.append("entry_kind = ?")
-        params.append(filter_spec.entry_kind.value)
-    if filter_spec.status is not None:
-        conditions.append("status = ?")
-        params.append(filter_spec.status.value)
-    if filter_spec.author is not None:
-        conditions.append("author = ?")
-        params.append(filter_spec.author)
-    if filter_spec.tag is not None:
-        conditions.append("tags LIKE ? ESCAPE '\\'")
-        params.append(f'%"{_escape_like(filter_spec.tag)}"%')
-    if filter_spec.related_task_id is not None:
-        conditions.append("related_task_ids LIKE ? ESCAPE '\\'")
-        params.append(f'%"{_escape_like(filter_spec.related_task_id)}"%')
-    if filter_spec.updated_since is not None:
-        conditions.append("recorded_at >= ?")
-        params.append(format_iso_utc(filter_spec.updated_since))
-    return conditions, params
-
-
-def _build_filter_sql(filter_spec: BrainFilterSpec) -> tuple[str, tuple[object, ...]]:
-    """Compose the ``WHERE`` clause for :meth:`query` (all revisions).
+def _filter_sql(filter_spec: BrainFilterSpec) -> tuple[str, tuple[object, ...]]:
+    """All-revisions ``WHERE`` clause for this backend (``?`` placeholders).
 
     Returns:
         ``(where_sql, params)`` with ``project_id`` first.
     """
-    conditions, params = _filter_conditions(filter_spec)
-    sql = "WHERE project_id = ?"
-    full_params: list[object] = [filter_spec.project_id, *params]
-    if conditions:
-        sql += " AND " + " AND ".join(conditions)
-    return sql, tuple(full_params)
+    return build_filter_sql(filter_spec, ph="?", serialize_dt=format_iso_utc)
 
 
-def _build_current_filter_sql(
+def _current_filter_sql(
     filter_spec: BrainFilterSpec,
 ) -> tuple[str, tuple[object, ...]]:
-    """Compose the outer AND-fragment for current-state queries.
-
-    The ``project_id`` predicate is applied in the inner window query, so this
-    returns only the outer conditions (status, author, and the rest are matched
-    against the current revision).
+    """Outer AND-fragment for current-state queries (``?`` placeholders).
 
     Returns:
-        ``(outer_and_sql, params)`` where ``outer_and_sql`` begins with `` AND``
-        when non-empty.
+        ``(outer_and_sql, params)`` beginning with `` AND`` when non-empty.
     """
-    conditions, params = _filter_conditions(filter_spec)
-    sql = (" AND " + " AND ".join(conditions)) if conditions else ""
-    return sql, tuple(params)
+    return build_current_filter_sql(filter_spec, ph="?", serialize_dt=format_iso_utc)

@@ -1,6 +1,6 @@
 -- depends: 20260522000003_codebase_structure_map
 
--- Long-horizon project brain (#1996). Append-only structured project
+-- Long-horizon project brain. Append-only structured project
 -- state: decisions, open questions, blockers, risks, dependencies, and
 -- plan revisions. A change to a logical entry is a new row (same
 -- entry_id, revision incremented); the current state is the latest
@@ -12,16 +12,16 @@
 
 CREATE TABLE project_brain_entries (
     project_id TEXT NOT NULL
-        CHECK (length(trim(project_id)) > 0),
+    CHECK (LENGTH(TRIM(project_id)) > 0),
     entry_id TEXT NOT NULL
-        CHECK (length(trim(entry_id)) > 0),
+    CHECK (LENGTH(TRIM(entry_id)) > 0),
     revision INTEGER NOT NULL
-        CHECK (revision >= 1),
+    CHECK (revision >= 1),
     entry_kind TEXT NOT NULL
-        CHECK (entry_kind IN (
-            'decision', 'open_question', 'blocker', 'risk',
-            'dependency', 'plan_revision'
-        )),
+    CHECK (entry_kind IN (
+        'decision', 'open_question', 'blocker', 'risk',
+        'dependency', 'plan_revision'
+    )),
     title TEXT NOT NULL,
     rationale TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -36,20 +36,20 @@ CREATE TABLE project_brain_entries (
     payload TEXT NOT NULL,
     PRIMARY KEY (project_id, entry_id, revision),
     UNIQUE (entry_id, revision),
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_project_brain_current
-    ON project_brain_entries(project_id, entry_id, revision DESC);
+ON project_brain_entries (project_id, entry_id, revision DESC);
 
 CREATE INDEX idx_project_brain_kind
-    ON project_brain_entries(project_id, entry_kind);
+ON project_brain_entries (project_id, entry_kind);
 
 CREATE INDEX idx_project_brain_status
-    ON project_brain_entries(project_id, status);
+ON project_brain_entries (project_id, status);
 
 CREATE INDEX idx_project_brain_recorded
-    ON project_brain_entries(project_id, recorded_at DESC);
+ON project_brain_entries (project_id, recorded_at DESC);
 
 -- Tracks the highest brain revision per entry confirmed present in the RAG
 -- index. A mutable bookkeeping projection (upsert), distinct from the
@@ -60,11 +60,11 @@ CREATE INDEX idx_project_brain_recorded
 -- still becomes searchable. ON DELETE CASCADE: deleting a project drops it.
 CREATE TABLE project_brain_index_state (
     project_id TEXT NOT NULL
-        CHECK (length(trim(project_id)) > 0),
+    CHECK (LENGTH(TRIM(project_id)) > 0),
     entry_id TEXT NOT NULL
-        CHECK (length(trim(entry_id)) > 0),
+    CHECK (LENGTH(TRIM(entry_id)) > 0),
     last_indexed_revision INTEGER NOT NULL
-        CHECK (last_indexed_revision >= 1),
+    CHECK (last_indexed_revision >= 1),
     PRIMARY KEY (project_id, entry_id),
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );

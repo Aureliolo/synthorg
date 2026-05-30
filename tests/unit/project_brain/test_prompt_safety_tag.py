@@ -1,4 +1,4 @@
-"""Verify the project-brain SEC-1 tag is well-formed and usable.
+"""Verify the project-brain untrusted-content tag is well-formed and usable.
 
 The brain wraps retrieved entries with ``TAG_BRAIN_STATE`` before they reach a
 resuming agent's context. The tag must match the prompt-safety tag grammar and
