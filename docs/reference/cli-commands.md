@@ -29,7 +29,7 @@ Defaults shown below are compiled into the binary; tunable defaults are also rea
 | `start` | `--dry-run` | `false` | Show what would happen without executing |
 | `start` | `--no-detach` | `false` | Run in foreground (stream logs; Ctrl+C to stop) |
 | `start` | `--no-verify` | `false` | Skip image signature verification (also `--skip-verify`) |
-| `stop` | `--timeout` / `-t` | `10s` | Graceful shutdown timeout |
+| `stop` | `--timeout` / `-t` | `10s` (Docker Compose default) | Graceful shutdown timeout (the CLI passes no `--timeout` unless set, deferring to Docker Compose) |
 | `stop` | `--volumes` | `false` | Remove named volumes (destructive) |
 | `update` | `--dry-run` | `false` | Show what would happen without executing |
 | `update` | `--no-restart` | `false` | Pull images but do not restart containers |

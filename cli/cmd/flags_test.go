@@ -71,6 +71,46 @@ func TestValidateCleanupFlags(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("zero keep is valid boundary", func(t *testing.T) {
+		old := cleanupKeep
+		defer func() { cleanupKeep = old }()
+		cleanupKeep = 0
+		if err := validateCleanupFlags(); err != nil {
+			t.Errorf("unexpected error for --keep 0: %v", err)
+		}
+	})
+
+	t.Run("large keep is valid", func(t *testing.T) {
+		old := cleanupKeep
+		defer func() { cleanupKeep = old }()
+		cleanupKeep = 100
+		if err := validateCleanupFlags(); err != nil {
+			t.Errorf("unexpected error for --keep 100: %v", err)
+		}
+	})
+
+	// validateCleanupFlags only checks cleanupKeep; it does not reference
+	// cleanupAll. This guards that contract: --all does not change the
+	// keep-validation verdict (the real --all/--keep interaction lives in
+	// the docker-dependent collectCleanupCandidates and is out of scope
+	// for unit tests). cleanupAll is saved/restored even though unused.
+	t.Run("cleanupAll does not affect keep validation", func(t *testing.T) {
+		oldKeep, oldAll := cleanupKeep, cleanupAll
+		defer func() { cleanupKeep, cleanupAll = oldKeep, oldAll }()
+		cleanupAll = true
+
+		for _, keep := range []int{0, 5} {
+			cleanupKeep = keep
+			if err := validateCleanupFlags(); err != nil {
+				t.Errorf("unexpected error for --all --keep %d: %v", keep, err)
+			}
+		}
+		cleanupKeep = -1
+		if err := validateCleanupFlags(); err == nil {
+			t.Error("expected error for --all --keep -1 (negative keep must still fail)")
+		}
+	})
 }
 
 // --- doctor flag validation ---
