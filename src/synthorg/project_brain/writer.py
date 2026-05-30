@@ -30,6 +30,7 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SNAPSHOT_FAILED,
     BRAIN_SNAPSHOT_WRITTEN,
 )
+from synthorg.project_brain._locks import PerKeyLockRegistry
 from synthorg.project_brain.constants import (
     BRAIN_BRANCH_NAME,
     BRAIN_WORKSPACE_SUBDIR,
@@ -52,7 +53,7 @@ _GIT_CMD_TIMEOUT_SECONDS: float = 30.0
 class BrainWriter:
     """Serialises brain entries and commits them on the project docs branch."""
 
-    __slots__ = ("_git_backend", "_locks", "_locks_guard", "_workspace_service")
+    __slots__ = ("_git_backend", "_locks", "_workspace_service")
 
     def __init__(
         self,
@@ -62,17 +63,7 @@ class BrainWriter:
     ) -> None:
         self._workspace_service = workspace_service
         self._git_backend = git_backend
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-
-    async def _lock_for(self, project_id: str) -> asyncio.Lock:
-        """Return the per-project commit lock, creating it on first use.
-
-        Returns:
-            The ``asyncio.Lock`` guarding workspace commits for the project.
-        """
-        async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
+        self._locks = PerKeyLockRegistry()
 
     async def write(
         self,
@@ -93,7 +84,7 @@ class BrainWriter:
             BrainCommitError: If any phase (workspace resolution, file write,
                 git add/commit, or push) failed.
         """
-        lock = await self._lock_for(project_id)
+        lock = await self._locks.acquire_for(project_id)
         async with lock:
             return await self._write_locked(project_id=project_id, entry=entry)
 

@@ -23,9 +23,9 @@ Construction is via :func:`synthorg.docs_engine.factory.build_docs_service`.
 """
 
 import asyncio
-import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -130,40 +130,39 @@ class ProjectAwareMemoryFacade:
                     _brain_query(project_id=project_id, base=query),
                 )
             )
-        tasks: list[asyncio.Task[tuple[MemoryEntry, ...]]] = []
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = [
-                    tg.create_task(self._backend.retrieve(target_id, target_query))
-                    for target_id, target_query in targets
-                ]
-        except builtins.BaseExceptionGroup as group:
-            if group.subgroup(asyncio.CancelledError) is not None:
-                raise
-            if (
-                group.subgroup(builtins.MemoryError) is not None
-                or group.subgroup(builtins.RecursionError) is not None
-            ):
-                raise
+        outcomes = await asyncio.gather(
+            *(
+                self._backend.retrieve(target_id, target_query)
+                for target_id, target_query in targets
+            ),
+            return_exceptions=True,
+        )
+        # Keep every leg that succeeded so one backend failure does not discard
+        # the other legs' hits. Interpreter-critical errors and a genuine
+        # cancellation still propagate; ordinary per-leg failures are logged
+        # and dropped.
+        results: list[tuple[MemoryEntry, ...]] = []
+        failures: list[BaseException] = []
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                reraise_critical(outcome)
+                if isinstance(outcome, asyncio.CancelledError):
+                    raise outcome
+                failures.append(outcome)
+            else:
+                results.append(outcome)
+        if failures:
             logger.warning(
                 DOC_FACADE_FANOUT_FAILED,
                 agent_id=agent_id,
                 project_id=project_id,
-                exceptions=tuple(type(exc).__name__ for exc in group.exceptions),
-                error=safe_error_description(group.exceptions[0])
-                if group.exceptions
-                else "no exceptions",
+                exceptions=tuple(type(exc).__name__ for exc in failures),
+                error=safe_error_description(failures[0]),
             )
-            agent_task = tasks[0] if tasks else None
-            if (
-                agent_task is not None
-                and agent_task.done()
-                and not agent_task.cancelled()
-                and agent_task.exception() is None
-            ):
-                return agent_task.result()
+        if not results:
+            # Every leg failed; fall back to an agent-only retrieve so a total
+            # fan-out failure still returns the agent's own memories.
             return await self._backend.retrieve(agent_id, query)
-        results = tuple(task.result() for task in tasks)
         merged = _merge_by_score(*results, limit=query.limit)
         wrapped = tuple(_wrap_brain_state(entry) for entry in merged)
         logger.debug(

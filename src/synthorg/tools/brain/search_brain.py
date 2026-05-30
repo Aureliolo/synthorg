@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -132,6 +133,11 @@ class SearchBrainTool(BaseTool):
 def _format_hits(hits: tuple[BrainSearchHit, ...]) -> str:
     """Render search hits to agent-readable text.
 
+    The chunk body is attacker-influenceable (an upstream agent may have been
+    prompt-injected when it authored the entry), so each one is fenced under
+    ``TAG_BRAIN_STATE`` before it reaches the agent's context, matching the
+    transparent retrieval path on :class:`ProjectAwareMemoryFacade`.
+
     Returns:
         A formatted multi-line summary, or a no-results notice.
     """
@@ -142,7 +148,7 @@ def _format_hits(hits: tuple[BrainSearchHit, ...]) -> str:
         lines.append(
             f"[{h.entry_kind.value}] {h.entry_id} (score={h.relevance_score:.2f}):"
         )
-        lines.append(h.chunk_text)
+        lines.append(wrap_untrusted(TAG_BRAIN_STATE, h.chunk_text))
         lines.append("")
     return "\n".join(lines).rstrip()
 

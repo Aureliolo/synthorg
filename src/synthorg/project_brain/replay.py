@@ -4,10 +4,9 @@ The write path persists the SQL row (durable) before the best-effort index, and
 records the last-indexed revision per entry in the ``project_brain_index_state``
 bookkeeping table only on a successful index. A transient memory-backend outage
 can therefore leave an entry persisted but absent from (or stale in) the RAG
-index, which makes it invisible to the transparent re-entry retrieval path the
-acceptance criterion turns on. The next revision of that entry re-indexes it
-idempotently, but a terminal-state entry that is never revised again would stay
-behind.
+index, which makes it invisible to the transparent re-entry retrieval path. The
+next revision of that entry re-indexes it idempotently, but a terminal-state
+entry that is never revised again would stay behind.
 
 :func:`reindex_unindexed` closes that gap at boot. For each project it reads the
 last-indexed revision per entry and re-indexes exactly the entries whose current
@@ -19,6 +18,7 @@ and entries stuck at an older revision.
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import (
@@ -118,7 +118,7 @@ async def _reindex_project(
                     chunks=chunks,
                 )
                 await repo.mark_indexed(project_id, entry.entry_id, entry.revision)
-            except BrainIndexError as exc:
+            except (BrainIndexError, QueryError) as exc:
                 logger.warning(
                     BRAIN_REPLAY_FAILED,
                     project_id=project_id,

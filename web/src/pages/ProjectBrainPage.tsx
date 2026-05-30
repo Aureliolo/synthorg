@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import {
   getProjectBrainEntry,
@@ -54,30 +54,69 @@ function resolveEntry(
   return { entry: result.entry, entryError: result.error, entryLoading: false }
 }
 
-function useBrainList(projectId: string | undefined): {
+interface BrainListState {
   entries: readonly BrainSummary[]
   listError: string | null
-} {
+  listLoading: boolean
+  hasMore: boolean
+  loadMore: () => void
+}
+
+function useBrainList(projectId: string | undefined): BrainListState {
   const [entries, setEntries] = useState<readonly BrainSummary[]>([])
   const [listError, setListError] = useState<string | null>(null)
+  const [listLoading, setListLoading] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
+  const controllerRef = useRef<AbortController | null>(null)
+
   useEffect(() => {
     if (!projectId) return
     const controller = new AbortController()
-    listProjectBrain(projectId, undefined, controller.signal)
-      .then((result) => {
+    controllerRef.current = controller
+    // Defer state writes to a microtask so the effect body itself stays free
+    // of synchronous setState calls (per @eslint-react/set-state-in-effect).
+    void Promise.resolve().then(async () => {
+      setListLoading(true)
+      setHasMore(false)
+      try {
+        const result = await listProjectBrain(projectId, undefined, controller.signal)
         setEntries(result.data)
+        setNextCursor(result.nextCursor)
+        setHasMore(result.hasMore)
         setListError(null)
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('list brain failed', err)
         setListError('Could not load the project brain.')
-      })
+      } finally {
+        if (!controller.signal.aborted) setListLoading(false)
+      }
+    })
     return () => {
       controller.abort()
     }
   }, [projectId])
-  return { entries, listError }
+
+  const loadMore = useCallback(() => {
+    if (!projectId || !hasMore || nextCursor === null) return
+    setListLoading(true)
+    listProjectBrain(projectId, { cursor: nextCursor }, controllerRef.current?.signal)
+      .then((result) => {
+        setEntries((prev) => [...prev, ...result.data])
+        setNextCursor(result.nextCursor)
+        setHasMore(result.hasMore)
+        setListLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
+        log.warn('load more brain failed', err)
+        setListError('Could not load more brain entries.')
+        setListLoading(false)
+      })
+  }, [projectId, hasMore, nextCursor])
+
+  return { entries, listError, listLoading, hasMore, loadMore }
 }
 
 function useBrainEntry(
@@ -112,32 +151,67 @@ function useBrainEntry(
 interface HistoryResult {
   entryId: string
   versions: readonly BrainEntryVersion[]
+  error: string | null
+}
+
+interface BrainHistoryState {
+  versions: readonly BrainEntryVersion[] | null
+  historyError: string | null
+  loadHistory: () => void
 }
 
 function useBrainHistory(
   projectId: string | undefined,
   entryId: string | undefined,
-): {
-  versions: readonly BrainEntryVersion[] | null
-  loadHistory: () => void
-} {
+): BrainHistoryState {
   const [result, setResult] = useState<HistoryResult | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  useEffect(
+    () => () => {
+      controllerRef.current?.abort()
+    },
+    [],
+  )
+
   const loadHistory = useCallback(() => {
     if (!projectId || !entryId) return
-    getProjectBrainHistory(projectId, entryId)
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+    getProjectBrainHistory(projectId, entryId, controller.signal)
       .then((versions) => {
-        setResult({ entryId, versions })
+        setResult({ entryId, versions, error: null })
       })
       .catch((err: unknown) => {
+        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('get brain history failed', err)
-        setResult({ entryId, versions: [] })
+        setResult({
+          entryId,
+          versions: [],
+          error: 'Could not load revision history.',
+        })
       })
   }, [projectId, entryId])
   // Derived staleness: history shown only when it matches the current entry,
   // so switching entries resets the panel without a set-state-in-effect.
-  const versions =
-    result !== null && result.entryId === entryId ? result.versions : null
-  return { versions, loadHistory }
+  const matches = result !== null && result.entryId === entryId
+  const versions = matches ? result.versions : null
+  const historyError = matches ? result.error : null
+  return { versions, historyError, loadHistory }
+}
+
+function MissingProjectBanner() {
+  return (
+    <div className="space-y-section-gap">
+      <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }]} />
+      <ErrorBanner
+        severity="error"
+        title="Missing project"
+        description="No project identifier in the URL."
+      />
+    </div>
+  )
 }
 
 export default function ProjectBrainPage() {
@@ -146,9 +220,13 @@ export default function ProjectBrainPage() {
     entryId?: string
   }>()
   const navigate = useNavigate()
-  const { entries, listError } = useBrainList(projectId)
+  const { entries, listError, listLoading, hasMore, loadMore } =
+    useBrainList(projectId)
   const { entry, entryError, entryLoading } = useBrainEntry(projectId, entryId)
-  const { versions, loadHistory } = useBrainHistory(projectId, entryId)
+  const { versions, historyError, loadHistory } = useBrainHistory(
+    projectId,
+    entryId,
+  )
   const [kindFilter, setKindFilter] = useState<BrainEntryKind | null>(null)
   const [statusFilter, setStatusFilter] = useState<BrainEntryStatus | null>(null)
 
@@ -166,16 +244,7 @@ export default function ProjectBrainPage() {
   )
 
   if (!projectId) {
-    return (
-      <div className="space-y-section-gap">
-        <Breadcrumbs items={[{ label: 'Projects', to: ROUTES.PROJECTS }]} />
-        <ErrorBanner
-          severity="error"
-          title="Missing project"
-          description="No project identifier in the URL."
-        />
-      </div>
-    )
+    return <MissingProjectBanner />
   }
 
   const projectDetailPath = ROUTES.PROJECT_DETAIL.replace(
@@ -203,10 +272,13 @@ export default function ProjectBrainPage() {
         <div className="grid grid-cols-1 gap-grid-gap md:grid-cols-[320px_1fr]">
           <BrainEntryList
             entries={entries}
+            loading={listLoading}
+            hasMore={hasMore}
             selectedEntryId={entryId ?? null}
             kindFilter={kindFilter}
             statusFilter={statusFilter}
             onSelect={handleSelect}
+            onLoadMore={loadMore}
             onKindFilterChange={setKindFilter}
             onStatusFilterChange={setStatusFilter}
           />
@@ -215,6 +287,7 @@ export default function ProjectBrainPage() {
             loading={entryLoading}
             error={entryError}
             versions={versions}
+            historyError={historyError}
             onShowHistory={loadHistory}
           />
         </div>

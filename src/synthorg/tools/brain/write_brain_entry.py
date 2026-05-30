@@ -169,12 +169,12 @@ class WriteBrainEntryTool(BaseTool):
             status=parsed.status,
             author=self._author_agent_id,
             payload=parsed.payload,
-            related_task_ids=parsed.related_task_ids,
-            related_entry_ids=parsed.related_entry_ids,
+            related_task_ids=parsed.related_task_ids or (),
+            related_entry_ids=parsed.related_entry_ids or (),
             supersedes_entry_id=parsed.supersedes_entry_id,
-            tags=parsed.tags,
+            tags=parsed.tags or (),
             confidence=parsed.confidence,
-            citations=parsed.citations,
+            citations=parsed.citations or (),
         )
 
     async def _revise(
@@ -185,8 +185,9 @@ class WriteBrainEntryTool(BaseTool):
     ) -> BrainEntry:
         """Append the next revision of an existing entry.
 
-        Empty list overrides collapse to ``None`` (inherit), so the agent
-        cannot accidentally clear links or tags by omitting them.
+        Omitted collection fields (``None``) inherit the current revision; an
+        explicit empty list clears that collection. Omission never clears, so
+        the agent cannot wipe links or tags by simply not mentioning them.
 
         Returns:
             The persisted new revision.
@@ -199,11 +200,11 @@ class WriteBrainEntryTool(BaseTool):
             title=parsed.title,
             rationale=parsed.rationale,
             payload=parsed.payload,
-            related_task_ids=parsed.related_task_ids or None,
-            related_entry_ids=parsed.related_entry_ids or None,
+            related_task_ids=parsed.related_task_ids,
+            related_entry_ids=parsed.related_entry_ids,
             supersedes_entry_id=parsed.supersedes_entry_id,
-            tags=parsed.tags or None,
-            citations=parsed.citations or None,
+            tags=parsed.tags,
+            citations=parsed.citations,
         )
 
 

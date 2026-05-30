@@ -6,11 +6,11 @@ in-process fake brain repo, and a real :class:`ProjectWorkspaceService` rooted a
 a pytest tmp dir, plus a real :class:`ProjectAwareMemoryFacade` with the brain
 leg enabled.
 
-The centrepiece (:meth:`test_resume_answers_decided_open_blocked`) is the issue
-#1996 acceptance bar: after entries are written by one agent, a *different* agent
-on a later task answers "what is decided / open / blocked, and why" purely
-through the transparent retrieval facade -- not by re-deriving -- with brain
-content fenced under ``<brain-state>``.
+The centrepiece (:meth:`test_resume_answers_decided_open_blocked`) verifies that
+after entries are written by one agent, a *different* agent on a later task can
+answer "what is decided / open / blocked, and why" purely through the transparent
+retrieval facade -- not by re-deriving -- with brain content fenced under
+``<brain-state>``.
 """
 
 from datetime import UTC, datetime
@@ -95,6 +95,7 @@ async def _build(
     tmp_path: Path,
     *,
     memory_backend: InMemoryBackend | None = None,
+    repo: FakeProjectBrainRepository | None = None,
 ) -> _BrainHarness:
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
@@ -110,7 +111,9 @@ async def _build(
     )
     backend = memory_backend if memory_backend is not None else InMemoryBackend()
     await backend.connect()
-    repo = FakeProjectBrainRepository()
+    # A caller can pass a populated repo to model a restart against the same
+    # durable store (boot-replay scenarios).
+    repo = repo if repo is not None else FakeProjectBrainRepository()
     runtime = build_project_brain_service(
         repo=repo,
         workspace_service=workspace_service,
@@ -262,14 +265,14 @@ class TestProjectBrainRoundTrip:
             hits = await service.query(
                 project_id=_PROJECT, query=NotBlankStr("checkout")
             )
-            assert len(hits) >= 1
+            assert len(hits) == 1
             assert hits[0].entry_kind is BrainEntryKind.DECISION
         finally:
             await harness.backend.disconnect()
 
     async def test_resume_answers_decided_open_blocked(self, tmp_path: Path) -> None:
         """A different agent resumes and answers what is decided / open /
-        blocked through transparent retrieval (the core acceptance bar)."""
+        blocked through transparent retrieval."""
         harness = await _build(tmp_path)
         try:
             await _seed_resume_state(harness)
@@ -283,11 +286,15 @@ class TestProjectBrainRoundTrip:
             brain_hits = [e for e in entries if f"<{TAG_BRAIN_STATE}>" in e.content]
             assert brain_hits, "brain state must surface on transparent re-entry"
             corpus = "\n".join(e.content for e in brain_hits).lower()
-            # The resuming agent can see the decision, the open question, and the
-            # blocker, and the untrusted-content fence is present.
+            # The resuming agent sees each entry's distinctive content -- the
+            # decision outcome, the open question's subject, and the blocker's
+            # subject -- not merely the kind tags the chunker always emits.
             assert "decision" in corpus
             assert "open_question" in corpus
             assert "blocker" in corpus
+            assert "event-sourcing" in corpus  # the decision outcome
+            assert "queue backend" in corpus  # the open question subject
+            assert "staging" in corpus  # the blocker subject
             assert f"</{TAG_BRAIN_STATE}>" in "\n".join(e.content for e in brain_hits)
         finally:
             await harness.backend.disconnect()
@@ -363,8 +370,7 @@ class TestProjectBrainRoundTrip:
         # A healthy boot replays the gap. Reuse the populated repo so the boot
         # sees the persisted-but-unindexed entry.
         healthy = InMemoryBackend()
-        harness2 = await _build(tmp_path, memory_backend=healthy)
-        harness2.repo._rows = harness.repo._rows
+        harness2 = await _build(tmp_path, memory_backend=healthy, repo=harness.repo)
         try:
             reindexed = await harness2.runtime.replay_unindexed(  # type: ignore[attr-defined]
                 project_ids=(_PROJECT,)

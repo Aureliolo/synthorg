@@ -14,12 +14,12 @@ store being append-only) would create a duplicate revision. The next write
 re-commits the latest state and re-indexes idempotently by the entry tag.
 """
 
-import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import MemoryCategory
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger, safe_error_description
@@ -30,6 +30,7 @@ from synthorg.observability.events.project_brain import (
     BRAIN_SEARCH_COMPLETE,
     BRAIN_SNAPSHOT_FAILED,
 )
+from synthorg.project_brain._locks import PerKeyLockRegistry
 from synthorg.project_brain.constants import (
     BRAIN_BRANCH_NAME,
     BRAIN_HISTORY_DEFAULT_LIMIT,
@@ -93,7 +94,6 @@ class ProjectBrainService:
         "_chunker",
         "_clock",
         "_indexer",
-        "_locks_guard",
         "_repo",
         "_workspace_service",
         "_write_locks",
@@ -118,18 +118,7 @@ class ProjectBrainService:
         self._writer = writer
         self._backend = backend
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._write_locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
-
-    async def _write_lock_for(self, project_id: NotBlankStr) -> asyncio.Lock:
-        """Return the per-project write lock, creating it on first use.
-
-        Returns:
-            The lock serialising revision assignment, snapshot, and index for
-            one project so they happen atomically.
-        """
-        async with self._locks_guard:
-            return self._write_locks.setdefault(project_id, asyncio.Lock())
+        self._write_locks = PerKeyLockRegistry()
 
     async def append_entry(  # noqa: PLR0913 -- envelope fields are explicit
         self,
@@ -189,7 +178,7 @@ class ProjectBrainService:
             confidence=confidence,
             citations=citations,
         )
-        lock = await self._write_lock_for(project_id)
+        lock = await self._write_locks.acquire_for(project_id)
         async with lock:
             return await self._append_revision(entry, event=BRAIN_ENTRY_APPENDED)
 
@@ -237,7 +226,7 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the revised envelope fails validation.
         """
-        lock = await self._write_lock_for(project_id)
+        lock = await self._write_locks.acquire_for(project_id)
         async with lock:
             current = await self._require_current(project_id, entry_id)
             revised = apply_overrides(
@@ -282,7 +271,7 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry kind cannot be resolved.
         """
-        lock = await self._write_lock_for(project_id)
+        lock = await self._write_locks.acquire_for(project_id)
         async with lock:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind not in _REVISABLE_BY_RESOLVE:
@@ -326,7 +315,7 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry kind cannot be superseded.
         """
-        lock = await self._write_lock_for(project_id)
+        lock = await self._write_locks.acquire_for(project_id)
         async with lock:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind not in _SUPERSEDABLE:
@@ -367,7 +356,7 @@ class ProjectBrainService:
             BrainEntryNotFoundError: If the entry does not exist.
             BrainEntryValidationError: If the entry is not a blocker.
         """
-        lock = await self._write_lock_for(project_id)
+        lock = await self._write_locks.acquire_for(project_id)
         async with lock:
             current = await self._require_current(project_id, entry_id)
             if current.entry_kind is not BrainEntryKind.BLOCKER:
@@ -643,11 +632,13 @@ class ProjectBrainService:
         """Re-index the entry's chunks, logging (not raising) on failure.
 
         On success the entry's last-indexed revision is recorded so boot replay
-        can skip it; on failure the index-state row stays behind, marking the
-        entry as a gap for the next boot replay (or the next revision) to heal.
+        can skip it; on failure the index-state row stays behind as a gap for the
+        next boot replay (or revision) to heal. Index and bookkeeping failures
+        are swallowed because the durable append already happened: a retry would
+        duplicate the revision.
         """
-        chunks = self._chunker.chunk(project_id=entry.project_id, entry=entry)
         try:
+            chunks = self._chunker.chunk(project_id=entry.project_id, entry=entry)
             await self._indexer.index(
                 project_id=entry.project_id,
                 entry_id=entry.entry_id,
@@ -656,7 +647,7 @@ class ProjectBrainService:
             await self._repo.mark_indexed(
                 entry.project_id, entry.entry_id, entry.revision
             )
-        except BrainIndexError as exc:
+        except (BrainIndexError, QueryError) as exc:
             logger.warning(
                 BRAIN_ENTRY_INDEX_FAILED,
                 project_id=entry.project_id,

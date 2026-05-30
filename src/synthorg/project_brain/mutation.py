@@ -123,11 +123,13 @@ def apply_overrides(  # noqa: PLR0913 -- optional overrides are explicit
         title: New title, or ``None`` to keep.
         rationale: New rationale, or ``None`` to keep.
         payload: New payload (same kind), or ``None`` to keep.
-        related_task_ids: Replacement task links, or ``None`` to keep.
-        related_entry_ids: Replacement entry links, or ``None`` to keep.
-        supersedes_entry_id: New supersession link, or ``None`` to keep.
-        tags: Replacement tags, or ``None`` to keep.
-        citations: Replacement citations, or ``None`` to keep.
+        related_task_ids: Replacement task links; ``None`` keeps, ``()`` clears.
+        related_entry_ids: Replacement entry links; ``None`` keeps, ``()`` clears.
+        supersedes_entry_id: New supersession link, or ``None`` to keep. Once
+            set it persists across revisions (there is no clear path; a
+            supersession is historical fact).
+        tags: Replacement tags; ``None`` keeps, ``()`` clears.
+        citations: Replacement citations; ``None`` keeps, ``()`` clears.
 
     Returns:
         The validated next-revision envelope.

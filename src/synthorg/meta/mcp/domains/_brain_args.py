@@ -58,12 +58,27 @@ class BrainAppendArgs(AdminGuardrailFields):
         default=None,
         description="Kind-specific payload, discriminated on entry_kind",
     )
-    related_task_ids: tuple[NotBlankStr, ...] = Field(default=())
-    related_entry_ids: tuple[NotBlankStr, ...] = Field(default=())
-    supersedes_entry_id: NotBlankStr | None = Field(default=None)
-    tags: tuple[NotBlankStr, ...] = Field(default=())
+    related_task_ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="On revise, omit to keep current links; pass [] to clear",
+    )
+    related_entry_ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="On revise, omit to keep current links; pass [] to clear",
+    )
+    supersedes_entry_id: NotBlankStr | None = Field(
+        default=None,
+        description="Entry this supersedes; once set it persists (no clear path)",
+    )
+    tags: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="On revise, omit to keep current tags; pass [] to clear",
+    )
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
-    citations: tuple[Citation, ...] = Field(default=())
+    citations: tuple[Citation, ...] | None = Field(
+        default=None,
+        description="On revise, omit to keep current citations; pass [] to clear",
+    )
 
 
 class BrainResolveArgs(AdminGuardrailFields):

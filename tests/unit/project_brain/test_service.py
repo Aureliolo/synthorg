@@ -1,15 +1,24 @@
 """Unit tests for :class:`synthorg.project_brain.service.ProjectBrainService`."""
 
+from typing import cast, override
+
 import pytest
 
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
+from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.errors import (
     BrainEntryNotFoundError,
+    BrainEntryRevisionConflictError,
     BrainEntryValidationError,
+    BrainIndexError,
 )
+from synthorg.project_brain.indexer import BrainIndexer
 from synthorg.project_brain.models import (
     BlockerPayload,
     BlockerSeverity,
+    BrainChunk,
     BrainEntry,
     BrainEntryKind,
     BrainEntryStatus,
@@ -20,6 +29,8 @@ from synthorg.project_brain.models import (
     PlanRevisionPayload,
 )
 from synthorg.project_brain.service import ProjectBrainService
+from synthorg.project_brain.writer import BrainWriter
+from tests._shared import FakeClock
 from tests.unit.api.fakes import FakeProjectBrainRepository
 from tests.unit.project_brain.conftest import FakeBrainWriter
 
@@ -27,6 +38,80 @@ pytestmark = pytest.mark.unit
 
 _PROJECT = NotBlankStr("proj-1")
 _AUTHOR = NotBlankStr("agent_alice")
+
+
+class _FailingIndexer:
+    """Indexer stub whose index step always raises ``BrainIndexError``."""
+
+    async def index(
+        self,
+        *,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        chunks: tuple[BrainChunk, ...],
+    ) -> None:
+        """Always fail.
+
+        Raises:
+            BrainIndexError: Always, to drive the best-effort index failure path.
+        """
+        msg = "index boom"
+        raise BrainIndexError(msg)
+
+
+class _MarkIndexedFailsRepo(FakeProjectBrainRepository):
+    """Repo whose index-state bookkeeping write raises ``QueryError``."""
+
+    @override
+    async def mark_indexed(
+        self,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        revision: int,
+    ) -> None:
+        """Always fail the bookkeeping write.
+
+        Raises:
+            QueryError: Always, to drive the best-effort bookkeeping failure path.
+        """
+        msg = "mark_indexed boom"
+        raise QueryError(msg)
+
+
+class _ConflictingRepo(FakeProjectBrainRepository):
+    """Repo whose next-revision append loses a concurrent-writer race."""
+
+    @override
+    async def append_with_next_revision(self, entry: BrainEntry) -> BrainEntry:
+        """Always raise as if a concurrent writer won the revision race.
+
+        Raises:
+            BrainEntryRevisionConflictError: Always.
+        """
+        msg = f"revision conflict for {entry.entry_id!r}"
+        raise BrainEntryRevisionConflictError(msg)
+
+
+def _service_with(
+    *,
+    repo: FakeProjectBrainRepository,
+    indexer: object,
+    memory_backend: InMemoryBackend,
+) -> ProjectBrainService:
+    """Build a service over *repo*/*indexer* and otherwise-default doubles.
+
+    Returns:
+        A :class:`ProjectBrainService` wired for a failure-path test.
+    """
+    return ProjectBrainService(
+        repo=repo,
+        workspace_service=cast("object", None),  # type: ignore[arg-type]
+        chunker=BrainChunker(),
+        indexer=cast("BrainIndexer", indexer),
+        writer=cast("BrainWriter", FakeBrainWriter()),
+        backend=memory_backend,
+        clock=FakeClock(),
+    )
 
 
 async def _decision(service: ProjectBrainService) -> BrainEntry:
@@ -196,6 +281,56 @@ async def test_snapshot_failure_does_not_fail_append(
     assert current is not None
 
 
+async def test_index_failure_does_not_fail_append(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """A best-effort index failure must not fail the durable append."""
+    repo = FakeProjectBrainRepository()
+    service = _service_with(
+        repo=repo, indexer=_FailingIndexer(), memory_backend=memory_backend
+    )
+    entry = await _decision(service)
+    assert entry.revision == 1
+    current = await service.get_current(project_id=_PROJECT, entry_id=entry.entry_id)
+    assert current is not None
+    # No index-state row was written, so boot replay can heal the gap.
+    assert await repo.indexed_revisions(_PROJECT) == {}
+
+
+async def test_index_bookkeeping_failure_does_not_fail_append(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """A ``mark_indexed`` ``QueryError`` is swallowed, not escaped as a retry.
+
+    Re-raising would tempt the caller to retry the whole append and duplicate
+    the revision in the append-only store.
+    """
+    repo = _MarkIndexedFailsRepo()
+    service = _service_with(
+        repo=repo,
+        indexer=BrainIndexer(backend=memory_backend),
+        memory_backend=memory_backend,
+    )
+    entry = await _decision(service)
+    assert entry.revision == 1
+    current = await service.get_current(project_id=_PROJECT, entry_id=entry.entry_id)
+    assert current is not None
+    assert await repo.indexed_revisions(_PROJECT) == {}
+
+
+async def test_revision_conflict_propagates_through_service(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """A repo revision conflict must surface through ``append_entry``."""
+    service = _service_with(
+        repo=_ConflictingRepo(),
+        indexer=BrainIndexer(backend=memory_backend),
+        memory_backend=memory_backend,
+    )
+    with pytest.raises(BrainEntryRevisionConflictError):
+        await _decision(service)
+
+
 async def test_list_current_and_count(
     brain_service: ProjectBrainService,
 ) -> None:
@@ -215,6 +350,14 @@ async def test_list_current_and_count(
     )
     assert len(decisions) == 1
     assert await brain_service.count_current(project_id=_PROJECT) == 2
+
+
+async def test_list_and_count_empty_when_no_entries(
+    brain_service: ProjectBrainService,
+) -> None:
+    """A project with no entries lists nothing and counts zero."""
+    assert await brain_service.list_current(project_id=_PROJECT) == ()
+    assert await brain_service.count_current(project_id=_PROJECT) == 0
 
 
 async def test_history_returns_chain_and_missing_raises(

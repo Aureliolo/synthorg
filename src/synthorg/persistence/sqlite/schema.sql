@@ -593,6 +593,9 @@ CREATE TABLE project_brain_entries (
     citations TEXT NOT NULL DEFAULT '[]',
     payload TEXT NOT NULL,
     PRIMARY KEY (project_id, entry_id, revision),
+    -- Redundant with the PK for per-project lookups, kept deliberately: it
+    -- enforces a globally unique (entry_id, revision) pair, so a revision is
+    -- addressable across projects without the project_id prefix.
     UNIQUE (entry_id, revision),
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
@@ -608,6 +611,9 @@ ON project_brain_entries (project_id, status);
 
 CREATE INDEX idx_project_brain_recorded
 ON project_brain_entries (project_id, recorded_at DESC);
+
+CREATE INDEX idx_project_brain_author
+ON project_brain_entries (project_id, author);
 
 -- Tracks the highest brain revision per entry confirmed present in the RAG
 -- index. A mutable bookkeeping projection (upsert), distinct from the

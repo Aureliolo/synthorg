@@ -201,8 +201,11 @@ class PostgresProjectBrainRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        assigned = int(row["revision"]) if row is not None else entry.revision
-        return entry.model_copy(update={"revision": assigned})
+        if row is None:
+            msg = f"Revision readback failed for brain entry {entry.entry_id!r}"
+            logger.error(BRAIN_PERSIST_SAVE_FAILED, entry_id=entry.entry_id, error=msg)
+            raise QueryError(msg)
+        return entry.model_copy(update={"revision": int(row["revision"])})
 
     async def get(self, entity_id: BrainEntryRevisionKey) -> BrainEntry | None:
         """Retrieve one exact revision.
@@ -375,7 +378,9 @@ class PostgresProjectBrainRepository:
             "INSERT INTO project_brain_index_state "
             "(project_id, entry_id, last_indexed_revision) VALUES (%s, %s, %s) "
             "ON CONFLICT (project_id, entry_id) DO UPDATE SET "
-            "last_indexed_revision = EXCLUDED.last_indexed_revision"
+            "last_indexed_revision = EXCLUDED.last_indexed_revision "
+            "WHERE EXCLUDED.last_indexed_revision "
+            "> project_brain_index_state.last_indexed_revision"
         )
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
@@ -443,9 +448,11 @@ class PostgresProjectBrainRepository:
         """
         sql = (
             "DELETE FROM project_brain_entries "
-            "WHERE recorded_at < %s AND (project_id, entry_id, revision) NOT IN ("
-            "SELECT project_id, entry_id, MAX(revision) FROM project_brain_entries "
-            "GROUP BY project_id, entry_id)"
+            "WHERE recorded_at < %s AND EXISTS ("
+            "SELECT 1 FROM project_brain_entries AS later "
+            "WHERE later.project_id = project_brain_entries.project_id "
+            "AND later.entry_id = project_brain_entries.entry_id "
+            "AND later.revision > project_brain_entries.revision)"
         )
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:

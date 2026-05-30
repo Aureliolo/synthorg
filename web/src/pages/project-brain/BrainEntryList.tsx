@@ -6,34 +6,18 @@ import {
   type BrainEntryStatus,
   type BrainSummary,
 } from '@/api/types'
-
-const KIND_LABEL: Record<BrainEntryKind, string> = {
-  decision: 'Decisions',
-  open_question: 'Open questions',
-  blocker: 'Blockers',
-  risk: 'Risks',
-  dependency: 'Dependencies',
-  plan_revision: 'Plan',
-}
-
-const STATUS_LABEL: Record<BrainEntryStatus, string> = {
-  open: 'Open',
-  resolved: 'Resolved',
-  accepted: 'Accepted',
-  superseded: 'Superseded',
-  blocked: 'Blocked',
-  cleared: 'Cleared',
-  active: 'Active',
-  mitigated: 'Mitigated',
-  retired: 'Retired',
-}
+import { SkeletonText } from '@/components/ui/skeleton'
+import { BRAIN_KIND_HEADING, BRAIN_STATUS_LABEL } from './labels'
 
 export interface BrainEntryListProps {
   entries: readonly BrainSummary[]
+  loading: boolean
+  hasMore: boolean
   selectedEntryId: string | null
   kindFilter: BrainEntryKind | null
   statusFilter: BrainEntryStatus | null
   onSelect: (entryId: string) => void
+  onLoadMore: () => void
   onKindFilterChange: (kind: BrainEntryKind | null) => void
   onStatusFilterChange: (status: BrainEntryStatus | null) => void
 }
@@ -49,10 +33,13 @@ function groupByKind(
 
 export function BrainEntryList({
   entries,
+  loading,
+  hasMore,
   selectedEntryId,
   kindFilter,
   statusFilter,
   onSelect,
+  onLoadMore,
   onKindFilterChange,
   onStatusFilterChange,
 }: BrainEntryListProps) {
@@ -69,7 +56,7 @@ export function BrainEntryList({
 
   return (
     <aside className="border-border flex flex-col gap-3 border-r pr-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by kind">
         <FilterChip
           label="All kinds"
           active={kindFilter === null}
@@ -78,13 +65,17 @@ export function BrainEntryList({
         {BRAIN_ENTRY_KIND_VALUES.map((kind) => (
           <FilterChip
             key={kind}
-            label={KIND_LABEL[kind]}
+            label={BRAIN_KIND_HEADING[kind]}
             active={kindFilter === kind}
             onClick={() => onKindFilterChange(kind)}
           />
         ))}
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Filter by status"
+      >
         <FilterChip
           label="Any status"
           active={statusFilter === null}
@@ -93,26 +84,73 @@ export function BrainEntryList({
         {BRAIN_ENTRY_STATUS_VALUES.map((status) => (
           <FilterChip
             key={status}
-            label={STATUS_LABEL[status]}
+            label={BRAIN_STATUS_LABEL[status]}
             active={statusFilter === status}
             onClick={() => onStatusFilterChange(status)}
           />
         ))}
       </div>
+      <BrainListBody
+        grouped={grouped}
+        loading={loading}
+        hasEntries={entries.length > 0}
+        hasMore={hasMore}
+        selectedEntryId={selectedEntryId}
+        onSelect={onSelect}
+        onLoadMore={onLoadMore}
+      />
+    </aside>
+  )
+}
+
+interface BrainListBodyProps {
+  grouped: readonly (readonly [BrainEntryKind, readonly BrainSummary[]])[]
+  loading: boolean
+  hasEntries: boolean
+  hasMore: boolean
+  selectedEntryId: string | null
+  onSelect: (entryId: string) => void
+  onLoadMore: () => void
+}
+
+function BrainListBody({
+  grouped,
+  loading,
+  hasEntries,
+  hasMore,
+  selectedEntryId,
+  onSelect,
+  onLoadMore,
+}: BrainListBodyProps) {
+  if (loading && !hasEntries) {
+    return <SkeletonText lines={6} className="pt-2" />
+  }
+  return (
+    <>
       {grouped.length === 0 ? (
         <p className="text-muted-foreground text-sm">No matching brain entries.</p>
       ) : (
         grouped.map(([kind, group]) => (
           <BrainKindSection
             key={kind}
-            heading={KIND_LABEL[kind]}
+            heading={BRAIN_KIND_HEADING[kind]}
             group={group}
             selectedEntryId={selectedEntryId}
             onSelect={onSelect}
           />
         ))
       )}
-    </aside>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={loading}
+          className="border-border text-foreground/80 hover:bg-muted/50 self-start rounded border px-3 py-1 text-xs disabled:opacity-50"
+        >
+          {loading ? 'Loading more...' : 'Load more'}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -169,7 +207,7 @@ function BrainEntryButton({ entry, selected, onSelect }: BrainEntryButtonProps) 
       >
         <span className="block text-sm font-medium">{entry.title}</span>
         <span className="text-muted-foreground block text-xs">
-          {STATUS_LABEL[entry.status]}
+          {BRAIN_STATUS_LABEL[entry.status]}
           {` ${'·'} r${entry.revision}`}
         </span>
       </button>

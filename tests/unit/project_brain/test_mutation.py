@@ -110,3 +110,14 @@ def test_apply_overrides_rejects_illegal_status_transition() -> None:
             author=NotBlankStr("bob"),
             status=BrainEntryStatus.CLEARED,  # blocker-only status
         )
+
+
+def test_apply_overrides_clears_tuple_field_with_empty_tuple() -> None:
+    """An explicit empty tuple clears a tuple field; ``None`` keeps it."""
+    current = _current().model_copy(
+        update={"tags": (NotBlankStr("infra"), NotBlankStr("urgent"))}
+    )
+    cleared = apply_overrides(current, now=_later(), author=NotBlankStr("bob"), tags=())
+    assert cleared.tags == ()
+    kept = apply_overrides(current, now=_later(), author=NotBlankStr("bob"))
+    assert kept.tags == (NotBlankStr("infra"), NotBlankStr("urgent"))

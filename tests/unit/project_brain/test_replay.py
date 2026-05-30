@@ -69,13 +69,13 @@ async def _indexed_entry_ids(backend: InMemoryBackend) -> set[str]:
     return ids
 
 
-async def test_replay_reindexes_only_the_gap() -> None:
+async def test_replay_reindexes_only_the_gap(
+    memory_backend: InMemoryBackend,
+) -> None:
     """An entry absent from the index is re-indexed; an indexed one is skipped."""
-    backend = InMemoryBackend()
-    await backend.connect()
     repo = FakeProjectBrainRepository()
     chunker = BrainChunker()
-    indexer = BrainIndexer(backend=backend)
+    indexer = BrainIndexer(backend=memory_backend)
 
     # e1 is persisted AND indexed (the happy path); e2 is persisted but its
     # index write "failed" (never indexed, never marked) -- the gap.
@@ -88,28 +88,54 @@ async def test_replay_reindexes_only_the_gap() -> None:
     await repo.mark_indexed(_PROJECT, e1.entry_id, e1.revision)
     e2 = await repo.append_with_next_revision(_entry("e2", 1))
 
-    assert await _indexed_entry_ids(backend) == {e1.entry_id}
+    assert await _indexed_entry_ids(memory_backend) == {e1.entry_id}
 
     reindexed = await reindex_unindexed(
         repo=repo, chunker=chunker, indexer=indexer, project_ids=(_PROJECT,)
     )
 
     assert reindexed == 1
-    assert await _indexed_entry_ids(backend) == {e1.entry_id, e2.entry_id}
+    assert await _indexed_entry_ids(memory_backend) == {e1.entry_id, e2.entry_id}
     # The gap entry is now marked indexed at its current revision.
     indexed_map = await repo.indexed_revisions(_PROJECT)
     assert indexed_map == {e1.entry_id: 1, e2.entry_id: 1}
 
-    await backend.disconnect()
 
-
-async def test_replay_noop_when_all_current() -> None:
-    """Replay re-indexes nothing when every entry is already current."""
-    backend = InMemoryBackend()
-    await backend.connect()
+async def test_replay_reindexes_stale_revision(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """An entry indexed at an older revision than its current one is healed."""
     repo = FakeProjectBrainRepository()
     chunker = BrainChunker()
-    indexer = BrainIndexer(backend=backend)
+    indexer = BrainIndexer(backend=memory_backend)
+
+    e1 = await repo.append_with_next_revision(_entry("e1", 0))
+    await indexer.index(
+        project_id=_PROJECT,
+        entry_id=e1.entry_id,
+        chunks=chunker.chunk(project_id=_PROJECT, entry=e1),
+    )
+    await repo.mark_indexed(_PROJECT, e1.entry_id, e1.revision)
+    # A newer revision lands but its index write never happened: the watermark
+    # is now stale (indexed r1 < current r2).
+    revised = await repo.append_with_next_revision(_entry("e1", 1))
+    assert revised.revision == 2
+
+    reindexed = await reindex_unindexed(
+        repo=repo, chunker=chunker, indexer=indexer, project_ids=(_PROJECT,)
+    )
+
+    assert reindexed == 1
+    assert await repo.indexed_revisions(_PROJECT) == {e1.entry_id: 2}
+
+
+async def test_replay_noop_when_all_current(
+    memory_backend: InMemoryBackend,
+) -> None:
+    """Replay re-indexes nothing when every entry is already current."""
+    repo = FakeProjectBrainRepository()
+    chunker = BrainChunker()
+    indexer = BrainIndexer(backend=memory_backend)
 
     entry = await repo.append_with_next_revision(_entry("e1", 0))
     await repo.mark_indexed(_PROJECT, entry.entry_id, entry.revision)
@@ -118,5 +144,3 @@ async def test_replay_noop_when_all_current() -> None:
         repo=repo, chunker=chunker, indexer=indexer, project_ids=(_PROJECT,)
     )
     assert reindexed == 0
-
-    await backend.disconnect()

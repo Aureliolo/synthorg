@@ -1,5 +1,6 @@
 import type { BrainEntry, BrainEntryVersion } from '@/api/types'
 import { formatRelativeTime } from '@/utils/format'
+import { BRAIN_KIND_LABEL, BRAIN_STATUS_LABEL } from './labels'
 
 const EMPTY_VALUE = '-'
 
@@ -8,6 +9,7 @@ export interface BrainEntryViewerProps {
   loading: boolean
   error: string | null
   versions: readonly BrainEntryVersion[] | null
+  historyError: string | null
   onShowHistory: () => void
 }
 
@@ -16,6 +18,7 @@ export function BrainEntryViewer({
   loading,
   error,
   versions,
+  historyError,
   onShowHistory,
 }: BrainEntryViewerProps) {
   if (loading) {
@@ -35,8 +38,8 @@ export function BrainEntryViewer({
     <article className="flex flex-col gap-4">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Pill text={entry.entry_kind} />
-          <Pill text={entry.status} />
+          <Pill text={BRAIN_KIND_LABEL[entry.entry_kind]} />
+          <Pill text={BRAIN_STATUS_LABEL[entry.status]} />
           <span className="text-muted-foreground text-xs">r{entry.revision}</span>
         </div>
         <h1 className="text-lg font-semibold">{entry.title}</h1>
@@ -46,7 +49,11 @@ export function BrainEntryViewer({
       </p>
       <PayloadFields payload={entry.payload} />
       <MetaList entry={entry} />
-      <HistoryPanel versions={versions} onShowHistory={onShowHistory} />
+      <HistoryPanel
+        versions={versions}
+        historyError={historyError}
+        onShowHistory={onShowHistory}
+      />
     </article>
   )
 }
@@ -67,7 +74,7 @@ function PayloadFields({ payload }: PayloadFieldsProps) {
   return (
     <dl className="border-border grid grid-cols-[140px_1fr] gap-x-4 gap-y-1 border-t pt-3 text-sm">
       {fields.map(([key, value]) => (
-        <DefRow key={key} term={key} value={renderValue(value)} />
+        <DefRow key={key} term={key.replaceAll('_', ' ')} value={renderValue(value)} />
       ))}
     </dl>
   )
@@ -109,11 +116,12 @@ function DefRow({ term, value }: DefRowProps) {
 
 interface HistoryPanelProps {
   versions: readonly BrainEntryVersion[] | null
+  historyError: string | null
   onShowHistory: () => void
 }
 
-function HistoryPanel({ versions, onShowHistory }: HistoryPanelProps) {
-  if (versions === null) {
+function HistoryPanel({ versions, historyError, onShowHistory }: HistoryPanelProps) {
+  if (versions === null && historyError === null) {
     return (
       <button
         type="button"
@@ -129,21 +137,48 @@ function HistoryPanel({ versions, onShowHistory }: HistoryPanelProps) {
       <h2 className="text-muted-foreground text-xs font-semibold uppercase">
         Revision history
       </h2>
-      {versions.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No committed snapshots for this entry yet.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-1 text-xs">
-          {versions.map((version) => (
-            <li key={version.commit_hash} className="text-foreground/80">
-              {`r${version.revision} | ${version.commit_hash.slice(0, 8)} | `}
-              {formatRelativeTime(version.committed_at)}
-            </li>
-          ))}
-        </ul>
-      )}
+      <HistoryContent versions={versions} historyError={historyError} />
     </section>
+  )
+}
+
+interface HistoryContentProps {
+  versions: readonly BrainEntryVersion[] | null
+  historyError: string | null
+}
+
+function HistoryContent({ versions, historyError }: HistoryContentProps) {
+  if (historyError !== null) {
+    return <p className="text-destructive text-sm">{historyError}</p>
+  }
+  if (versions === null || versions.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        No committed snapshots for this entry yet.
+      </p>
+    )
+  }
+  return (
+    <ul className="flex flex-col gap-1 text-xs">
+      {versions.map((version) => (
+        <HistoryRow key={version.commit_hash} version={version} />
+      ))}
+    </ul>
+  )
+}
+
+function HistoryRow({ version }: { version: BrainEntryVersion }) {
+  return (
+    <li className="text-foreground/80 flex flex-col">
+      <span>
+        {`r${version.revision} · ${version.commit_hash.slice(0, 8)} · `}
+        {formatRelativeTime(version.committed_at)}
+      </span>
+      <span className="text-muted-foreground break-words">
+        {version.summary}
+        {` · ${version.author}`}
+      </span>
+    </li>
   )
 }
 

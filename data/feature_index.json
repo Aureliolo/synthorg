@@ -916,6 +916,40 @@
     },
     {
       "controllers": [
+        "ProjectBrainController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/project_brain",
+      "ghost_wired_symbols": [
+        "build_project_brain_service",
+        "ProjectBrainService",
+        "BrainChunker",
+        "BrainIndexer",
+        "BrainWriter",
+        "ProjectBrainToolFactory",
+        "WriteBrainEntryTool",
+        "SearchBrainTool"
+      ],
+      "mcp_tool_names": [
+        "synthorg_brain_append",
+        "synthorg_brain_resolve",
+        "synthorg_brain_supersede",
+        "synthorg_brain_clear_blocker",
+        "synthorg_brain_get",
+        "synthorg_brain_list",
+        "synthorg_brain_query",
+        "synthorg_brain_history"
+      ],
+      "name": "project_brain",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service",
+        "tool_factory"
+      ]
+    },
+    {
+      "controllers": [
         "ProviderCrudController",
         "ProviderConnectionController",
         "ProviderModelsController",
@@ -1142,6 +1176,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-30T19:12:18.518531Z",
+  "generated_at": "2026-05-30T22:07:01.135408Z",
   "schema_version": 1
 }

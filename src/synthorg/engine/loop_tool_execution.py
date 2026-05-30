@@ -14,11 +14,13 @@ from synthorg.engine.loop_protocol import (
     TurnRecord,
 )
 from synthorg.engine.prompt_safety import (
+    TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
     TAG_MEMORY_ENTRY,
     TAG_PEER_CONTRIBUTION,
+    TAG_RESEARCH_SOURCE,
     TAG_TASK_DATA,
     TAG_TASK_FACT,
     TAG_TOOL_ARGUMENTS,
@@ -63,10 +65,10 @@ logger = get_logger(__name__)
 # is still wrapped in the fence, not rejected (rejection would
 # break legitimate tools that echo user text in responses).
 # Closing-tag look-alikes for every untrusted-content fence declared
-# in ``synthorg.engine.prompt_safety``.  Deriving the regex set from
-# the shared ``TAG_*`` constants keeps the advisory detector in sync
-# with the wrapper: if a new tag is added (or one is renamed), this
-# list updates automatically instead of silently drifting.  Optional
+# in ``synthorg.engine.prompt_safety``.  This list is maintained by
+# hand: the ``TAG_*`` constants are independent module-level names with
+# no shared registry to iterate, so every new fence tag must be added
+# here too or its closing-tag breakout attempts go undetected.  Optional
 # whitespace before ``>`` mirrors ``_escape_closing_tag`` so lenient
 # variants (``</task-data >`` / ``</task-data\t>``) still trip.
 _FENCE_TAGS: Final[tuple[str, ...]] = (
@@ -80,6 +82,8 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_CRITERIA_JSON,
     TAG_PEER_CONTRIBUTION,
     TAG_MEMORY_ENTRY,
+    TAG_RESEARCH_SOURCE,
+    TAG_BRAIN_STATE,
 )
 
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (

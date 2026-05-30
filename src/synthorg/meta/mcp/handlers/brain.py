@@ -101,12 +101,12 @@ async def _append_entry(svc: ProjectBrainService, args: BrainAppendArgs) -> Brai
             status=args.status,
             author=args.author,
             payload=args.payload,
-            related_task_ids=args.related_task_ids,
-            related_entry_ids=args.related_entry_ids,
+            related_task_ids=args.related_task_ids or (),
+            related_entry_ids=args.related_entry_ids or (),
             supersedes_entry_id=args.supersedes_entry_id,
-            tags=args.tags,
+            tags=args.tags or (),
             confidence=args.confidence,
-            citations=args.citations,
+            citations=args.citations or (),
         )
     return await svc.revise_entry(
         project_id=args.project_id,
@@ -116,11 +116,11 @@ async def _append_entry(svc: ProjectBrainService, args: BrainAppendArgs) -> Brai
         title=args.title,
         rationale=args.rationale,
         payload=args.payload,
-        related_task_ids=args.related_task_ids or None,
-        related_entry_ids=args.related_entry_ids or None,
+        related_task_ids=args.related_task_ids,
+        related_entry_ids=args.related_entry_ids,
         supersedes_entry_id=args.supersedes_entry_id,
-        tags=args.tags or None,
-        citations=args.citations or None,
+        tags=args.tags,
+        citations=args.citations,
     )
 
 

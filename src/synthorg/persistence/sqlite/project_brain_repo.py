@@ -197,8 +197,11 @@ class SQLiteProjectBrainRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        assigned = int(row["rev"]) if row and row["rev"] is not None else entry.revision
-        return entry.model_copy(update={"revision": assigned})
+        if row is None or row["rev"] is None:
+            msg = f"Revision readback failed for brain entry {entry.entry_id!r}"
+            logger.error(BRAIN_PERSIST_SAVE_FAILED, entry_id=entry.entry_id, error=msg)
+            raise QueryError(msg)
+        return entry.model_copy(update={"revision": int(row["rev"])})
 
     async def get(self, entity_id: BrainEntryRevisionKey) -> BrainEntry | None:
         """Retrieve one exact revision.
@@ -367,7 +370,9 @@ class SQLiteProjectBrainRepository:
             "INSERT INTO project_brain_index_state "
             "(project_id, entry_id, last_indexed_revision) VALUES (?, ?, ?) "
             "ON CONFLICT(project_id, entry_id) DO UPDATE SET "
-            "last_indexed_revision = excluded.last_indexed_revision"
+            "last_indexed_revision = excluded.last_indexed_revision "
+            "WHERE excluded.last_indexed_revision "
+            "> project_brain_index_state.last_indexed_revision"
         )
         async with self._write_context():
             try:
@@ -431,9 +436,11 @@ class SQLiteProjectBrainRepository:
         """
         sql = (
             "DELETE FROM project_brain_entries "
-            "WHERE recorded_at < ? AND (project_id, entry_id, revision) NOT IN ("
-            "SELECT project_id, entry_id, MAX(revision) FROM project_brain_entries "
-            "GROUP BY project_id, entry_id)"
+            "WHERE recorded_at < ? AND EXISTS ("
+            "SELECT 1 FROM project_brain_entries AS later "
+            "WHERE later.project_id = project_brain_entries.project_id "
+            "AND later.entry_id = project_brain_entries.entry_id "
+            "AND later.revision > project_brain_entries.revision)"
         )
         async with self._write_context():
             try:

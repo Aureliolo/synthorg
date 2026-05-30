@@ -93,6 +93,18 @@ def test_entry_to_search_hit_none_without_required_tags() -> None:
     )
 
 
+def test_entry_to_search_hit_none_with_unknown_kind() -> None:
+    """A ``brain_kind:`` tag that is not a member yields no hit."""
+    entry = _memory_entry(
+        (
+            f"{BRAIN_PROJECT_TAG_PREFIX}{_PROJECT}",
+            f"{BRAIN_ENTRY_TAG_PREFIX}e-42",
+            f"{BRAIN_KIND_TAG_PREFIX}not-a-real-kind",
+        )
+    )
+    assert entry_to_search_hit(entry) is None
+
+
 def test_build_filter_spec_passes_dimensions() -> None:
     spec = build_filter_spec(
         project_id=_PROJECT,
@@ -115,15 +127,16 @@ def test_parse_history_line_extracts_revision_from_subject() -> None:
     assert version.committed_at.tzinfo is not None
 
 
-def test_parse_history_line_rejects_naive_timestamp() -> None:
-    assert _parse_history_line("abc\t2026-05-30T12:00:00\tbrain: e r1") is None
-
-
-def test_parse_history_line_rejects_missing_revision() -> None:
-    assert (
-        _parse_history_line("abc\t2026-05-30T12:00:00+00:00\tno revision here") is None
-    )
-
-
-def test_parse_history_line_rejects_wrong_field_count() -> None:
-    assert _parse_history_line("abc\tonly-two-fields") is None
+@pytest.mark.parametrize(
+    "line",
+    [
+        pytest.param("abc\t2026-05-30T12:00:00\tbrain: e r1", id="naive-timestamp"),
+        pytest.param(
+            "abc\t2026-05-30T12:00:00+00:00\tno revision here", id="missing-revision"
+        ),
+        pytest.param("abc\tonly-two-fields", id="wrong-field-count"),
+        pytest.param("abc\tnot-a-date\tbrain: e r1", id="invalid-timestamp"),
+    ],
+)
+def test_parse_history_line_rejects_malformed(line: str) -> None:
+    assert _parse_history_line(line) is None

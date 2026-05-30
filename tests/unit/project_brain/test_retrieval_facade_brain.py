@@ -5,14 +5,22 @@ content under ``<brain-state>`` (untrusted-content fence) before a resuming
 agent sees it.
 """
 
+from typing import override
+
 import pytest
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.constants import SYSTEM_DOCS_AGENT_ID
 from synthorg.docs_engine.retrieval_facade import ProjectAwareMemoryFacade
 from synthorg.engine.prompt_safety import TAG_BRAIN_STATE
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
-from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
+from synthorg.memory.models import (
+    MemoryEntry,
+    MemoryMetadata,
+    MemoryQuery,
+    MemoryStoreRequest,
+)
 from synthorg.project_brain.constants import (
     BRAIN_MEMORY_NAMESPACE,
     BRAIN_PROJECT_TAG_PREFIX,
@@ -40,14 +48,14 @@ async def _store_brain_chunk(backend: InMemoryBackend, content: str) -> None:
     )
 
 
-async def test_facade_surfaces_brain_state_wrapped() -> None:
+async def test_facade_surfaces_brain_state_wrapped(
+    memory_backend: InMemoryBackend,
+) -> None:
     """A brain entry surfaces through the facade fenced under brain-state."""
-    backend = InMemoryBackend()
-    await backend.connect()
     await _store_brain_chunk(
-        backend, "[decision/accepted] We accepted the payments risk"
+        memory_backend, "[decision/accepted] We accepted the payments risk"
     )
-    facade = ProjectAwareMemoryFacade(backend=backend, brain_enabled=True)
+    facade = ProjectAwareMemoryFacade(backend=memory_backend, brain_enabled=True)
 
     results = await facade.retrieve(
         agent_id=_AGENT,
@@ -59,15 +67,14 @@ async def test_facade_surfaces_brain_state_wrapped() -> None:
     assert brain_hits, "brain entry should surface through the facade"
     assert f"</{TAG_BRAIN_STATE}>" in brain_hits[0].content
     assert "payments" in brain_hits[0].content
-    await backend.disconnect()
 
 
-async def test_facade_without_brain_enabled_skips_leg() -> None:
+async def test_facade_without_brain_enabled_skips_leg(
+    memory_backend: InMemoryBackend,
+) -> None:
     """With brain_enabled False the brain content is not fanned out."""
-    backend = InMemoryBackend()
-    await backend.connect()
-    await _store_brain_chunk(backend, "[decision/accepted] Hidden payments note")
-    facade = ProjectAwareMemoryFacade(backend=backend, brain_enabled=False)
+    await _store_brain_chunk(memory_backend, "[decision/accepted] Hidden payments note")
+    facade = ProjectAwareMemoryFacade(backend=memory_backend, brain_enabled=False)
 
     results = await facade.retrieve(
         agent_id=_AGENT,
@@ -75,4 +82,42 @@ async def test_facade_without_brain_enabled_skips_leg() -> None:
         query=MemoryQuery(text=NotBlankStr("payments"), limit=10),
     )
     assert all(f"<{TAG_BRAIN_STATE}>" not in r.content for r in results)
-    await backend.disconnect()
+
+
+class _DocsLegFailingBackend(InMemoryBackend):
+    """``InMemoryBackend`` whose docs-leg retrieve always raises.
+
+    Lets a test prove the facade keeps the surviving legs' hits when one leg's
+    backend call fails, rather than discarding the whole fan-out.
+    """
+
+    @override
+    async def retrieve(
+        self, agent_id: NotBlankStr, query: MemoryQuery
+    ) -> tuple[MemoryEntry, ...]:
+        if agent_id == SYSTEM_DOCS_AGENT_ID:
+            msg = "docs leg backend failure"
+            raise RuntimeError(msg)
+        return await super().retrieve(agent_id, query)
+
+
+async def test_facade_preserves_other_legs_when_one_fails() -> None:
+    """One leg's backend failure must not discard the other legs' hits."""
+    backend = _DocsLegFailingBackend()
+    await backend.connect()
+    try:
+        await _store_brain_chunk(
+            backend, "[decision/accepted] We accepted the payments risk"
+        )
+        facade = ProjectAwareMemoryFacade(backend=backend, brain_enabled=True)
+
+        results = await facade.retrieve(
+            agent_id=_AGENT,
+            project_id=_PROJECT,
+            query=MemoryQuery(text=NotBlankStr("payments"), limit=10),
+        )
+
+        brain_hits = [r for r in results if f"<{TAG_BRAIN_STATE}>" in r.content]
+        assert brain_hits, "brain hit must survive a failing docs leg"
+    finally:
+        await backend.disconnect()

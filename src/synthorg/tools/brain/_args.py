@@ -56,21 +56,25 @@ class WriteBrainEntryArgs(BaseModel):
         description="Kind-specific payload, discriminated on entry_kind "
         "(required on create)",
     )
-    related_task_ids: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Task IDs this entry references",
+    related_task_ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Task IDs this entry references; on revise omit to keep, "
+        "pass [] to clear",
     )
-    related_entry_ids: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Other brain entry IDs this entry references",
+    related_entry_ids: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Other brain entry IDs referenced; on revise omit to keep, "
+        "pass [] to clear",
     )
     supersedes_entry_id: NotBlankStr | None = Field(
         default=None,
-        description="Entry id this one supersedes, if any",
+        description="Entry id this one supersedes; once set it persists across "
+        "revisions (no clear path)",
     )
-    tags: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Free-form classification tags (unique)",
+    tags: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Free-form classification tags; on revise omit to keep, "
+        "pass [] to clear",
     )
     confidence: float | None = Field(
         default=None,
@@ -78,9 +82,10 @@ class WriteBrainEntryArgs(BaseModel):
         le=1.0,
         description="Optional confidence in this entry, 0..1",
     )
-    citations: tuple[Citation, ...] = Field(
-        default=(),
-        description="Provenance pointers backing this entry",
+    citations: tuple[Citation, ...] | None = Field(
+        default=None,
+        description="Provenance pointers backing this entry; on revise omit to "
+        "keep, pass [] to clear",
     )
 
 

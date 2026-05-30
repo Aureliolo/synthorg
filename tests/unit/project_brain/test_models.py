@@ -42,7 +42,7 @@ def _decision(**overrides: object) -> BrainEntry:
         "revision": 1,
         "entry_kind": BrainEntryKind.DECISION,
         "title": "Use append-only storage",
-        "rationale": "Full why/when history is required by the acceptance bar.",
+        "rationale": "A full why/when history of decisions is required.",
         "status": BrainEntryStatus.ACCEPTED,
         "author": "agent_alice",
         "recorded_at": _ts(),
@@ -120,20 +120,22 @@ class TestLegalStatusPerKind:
         with pytest.raises(ValidationError):
             _decision(status=BrainEntryStatus.RESOLVED)
 
-    def test_open_question_accepts_open_and_resolved(self) -> None:
-        for status in (BrainEntryStatus.OPEN, BrainEntryStatus.RESOLVED):
-            entry = BrainEntry(
-                project_id="proj-1",
-                revision=1,
-                entry_kind=BrainEntryKind.OPEN_QUESTION,
-                title="Which queue backend?",
-                rationale="Throughput target is unclear.",
-                status=status,
-                author="agent_alice",
-                recorded_at=_ts(),
-                payload=OpenQuestionPayload(),
-            )
-            assert entry.status is status
+    @pytest.mark.parametrize(
+        "status", [BrainEntryStatus.OPEN, BrainEntryStatus.RESOLVED]
+    )
+    def test_open_question_accepts_status(self, status: BrainEntryStatus) -> None:
+        entry = BrainEntry(
+            project_id="proj-1",
+            revision=1,
+            entry_kind=BrainEntryKind.OPEN_QUESTION,
+            title="Which queue backend?",
+            rationale="Throughput target is unclear.",
+            status=status,
+            author="agent_alice",
+            recorded_at=_ts(),
+            payload=OpenQuestionPayload(),
+        )
+        assert entry.status is status
 
     def test_risk_rejects_cleared(self) -> None:
         with pytest.raises(ValidationError):

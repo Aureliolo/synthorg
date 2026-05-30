@@ -70,13 +70,15 @@ not infer them.
 src/synthorg/project_brain/
   models.py          - BrainEntry envelope + per-kind payload union
   constants.py       - branch name, namespace, system agent id, limits
-  errors.py          - BrainEntryNotFoundError, BrainRevisionConflictError, ...
+  errors.py          - BrainEntryNotFoundError, BrainEntryRevisionConflictError, ...
   serializer.py      - deterministic JSON on disk (sorted keys, indent=2)
   chunker.py         - block-aware deterministic chunker for an entry
   indexer.py         - PROJECT_BRAIN entries with project + entry + kind tags
   writer.py          - serialise -> workspace -> commit on docs branch
   query.py           - current-state projection (latest revision per entry)
+  mutation.py        - build_entry / apply_overrides revision transforms
   service.py         - ProjectBrainService: append, revise, query, history
+  replay.py          - boot re-index of never-indexed / stale-revision entries
   factory.py         - build_project_brain_service(...) -> ProjectBrainRuntime
   tool_factory.py    - ProjectBrainToolFactory: per-task agent tools
   state.py           - ProjectBrainStateSlice + project_brain_service_of
@@ -223,10 +225,12 @@ The SQL append is the durable commit point. The git snapshot and the memory
 index follow. If indexing fails (for example a transient memory-backend outage)
 the SQL row and the git commit still stand; a boot-time replay re-indexes the
 gap, idempotently, because prior chunks are deleted by the `brain_entry:<id>`
-tag before fresh ones are stored. This mirrors the living-documentation
-head-commit versus last-indexed-commit replay contract: persistence tracks the
-latest committed snapshot and the snapshot the indexer last saw, and the gap
-between them is what the boot replay re-indexes.
+tag before fresh ones are stored. The gap is tracked per entry as a revision
+integer: the `project_brain_index_state` table records the last revision the
+indexer successfully stored for each entry, and the boot replay re-indexes every
+entry whose current revision exceeds its last-indexed revision (or that has no
+row at all). A never-revised entry left behind by a failed index is therefore
+healed at the next boot rather than waiting for a future write.
 
 ## Persistence
 
@@ -322,8 +326,10 @@ hold no logic; everything routes through the service.
 | `get_entry(project_id, entry_id, revision=None)` | One entry, latest or at an exact revision. |
 | `get_current(project_id, entry_id)` | Latest revision of one entry. |
 | `list_current(project_id, ...)` | Current-state projection, filtered by kind and status. |
+| `count_current(project_id, ...)` | Count of current-state entries matching the same filters. |
 | `query(project_id, query, ...)` | Semantic search over indexed brain entries. |
-| `history(project_id, entry_id, ...)` | Full revision chain of one entry. |
+| `history(project_id, entry_id, ...)` | Full SQL revision chain of one entry. |
+| `git_history(project_id, entry_id, ...)` | Git-commit history of the entry's on-disk snapshot, newest-first. |
 
 The lifecycle helpers (`resolve`, `supersede`, `clear_blocker`) are typed sugar:
 each is an append of a new revision with a status change, so the audit trail
@@ -408,7 +414,8 @@ Constructed per task by `ProjectBrainToolFactory`, exactly as
 
 ### MCP (operator-driven, `synthorg.meta.mcp.domains.brain`)
 
-Eight tools, registered in `meta/mcp/domains/__init__.py`. Write and
+Eight tools, defined in `meta/mcp/domains/brain.py` and contributed to the MCP
+registry through the `project_brain` feature manifest (`feature.py`). Write and
 lifecycle tools require the admin capability and call
 `require_admin_guardrails()` first; read tools do not.
 
@@ -417,7 +424,7 @@ lifecycle tools require the admin capability and call
 | `brain:append` | admin | Create or revise an entry. |
 | `brain:resolve` | admin | Resolve an open question or dependency. |
 | `brain:supersede` | admin | Supersede a decision or plan revision. |
-| `brain:clear-blocker` | admin | Clear a blocker with a resolution. |
+| `brain:clear_blocker` | admin | Clear a blocker with a resolution. |
 | `brain:get` | read | One entry, latest or at a revision. |
 | `brain:list` | read | Current-state list, filtered by kind and status. |
 | `brain:query` | read | Semantic search across indexed entries. |
@@ -432,7 +439,7 @@ in-process via the agent tool or the MCP handler.
 |---|---|---|
 | `GET` | `/projects/{project_id}/brain` | Current-state `BrainSummary[]`, filter by kind and status, cursor-paginated. |
 | `GET` | `/projects/{project_id}/brain/{entry_id}` | The latest `BrainEntry`. |
-| `GET` | `/projects/{project_id}/brain/{entry_id}/history` | `BrainEntryVersion[]` from the revision chain. |
+| `GET` | `/projects/{project_id}/brain/{entry_id}/history` | `BrainEntryVersion[]` from the git snapshot history (`git_history`), distinct from the SQL revision chain. |
 | `GET` | `/projects/{project_id}/brain/search?q=...` | `BrainSearchHit[]` ordered by relevance. |
 
 Responses use the standard `ApiResponse` / `PaginatedResponse` wrappers and the
