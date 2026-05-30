@@ -61,7 +61,7 @@ This PR extends ADR-0007's accepted frozen descriptors:
   preserves the historic 404-when-unwired behaviour for integration and
   optional controllers, so a disabled subsystem 404s rather than
   503-ing every dashboard poll.
-- `websocket_handlers`: the realtime `@websocket` handler is a function,
+- `websocket_handlers`: the real-time `@websocket` handler is a function,
   not a `Controller`; `api_core`'s manifest declares it here.
 - `McpHandlerDescriptor.tool_defs` + `handlers_factory`: the feature's
   `MCPToolDef` tuple plus a deferred handler-map loader. Both MCP
@@ -75,8 +75,8 @@ This PR extends ADR-0007's accepted frozen descriptors:
   callable discovered and run in `depends_on` order during the
   construction phase (before persistence connects). The fifteen
   `swap_slice(model_construct(...))` blocks that the old `app.py` ran
-  inline became feature-owned `_construction.py` wirers, threaded a frozen
-  `ConstructionDeps` bundle. A dataclass (not Pydantic) so nesting the
+  inline became feature-owned `_construction.py` wiring functions, threaded a
+  frozen `ConstructionDeps` bundle. A `dataclass` (not Pydantic) so nesting the
   `Phase1Result` / `MeetingWireResult` NamedTuples does not trip Pydantic
   forward-ref introspection.
 
@@ -93,7 +93,7 @@ not pure reverse order, and task-engine couples its inner stop timeout
 with the outer cancel. This core scaffold stays a hand-written ordered
 table run by one generic runner that tracks started services and cleans
 up in reverse; it is NOT migrated to the `ServiceLifecycleHook`
-protocol. Only feature services use the hook dispatcher. Uniformising
+protocol. Only feature services use the hook dispatcher. Unifying
 the core infrastructure would lose the budgets and coupling and is the
 central risk this decision deliberately avoids.
 
