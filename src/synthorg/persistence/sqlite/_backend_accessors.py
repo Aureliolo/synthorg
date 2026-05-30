@@ -97,6 +97,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.principle_override_protocol import (
         PrincipleOverrideRepository,
     )
+    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
@@ -171,6 +172,7 @@ class _BackendRepositoryAccessors:
     _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
     _project_docs: DocsRepository | None
+    _project_brain: ProjectBrainRepository | None
     _knowledge_sources: KnowledgeSourceRepository | None
     _knowledge_provenance: ChunkProvenanceRepository | None
     _research_runs: ResearchRunRepository | None
@@ -468,6 +470,15 @@ class _BackendRepositoryAccessors:
             Result of type ``DocsRepository``.
         """
         return self._require_connected(self._project_docs, "project_docs")
+
+    @property
+    def project_brain(self) -> ProjectBrainRepository:
+        """Repository for the long-horizon project-brain store.
+
+        Returns:
+            Result of type ``ProjectBrainRepository``.
+        """
+        return self._require_connected(self._project_brain, "project_brain")
 
     @property
     def knowledge_sources(self) -> KnowledgeSourceRepository:

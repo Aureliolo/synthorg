@@ -111,6 +111,7 @@ from synthorg.persistence.preset_protocol import (
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
+from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,
 )
@@ -452,6 +453,11 @@ class PersistenceBackend(Protocol):
     @property
     def project_docs(self) -> DocsRepository:
         """Repository for living-documentation metadata persistence."""
+        ...
+
+    @property
+    def project_brain(self) -> ProjectBrainRepository:
+        """Repository for the long-horizon project-brain store."""
         ...
 
     @property

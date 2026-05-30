@@ -127,6 +127,9 @@ from synthorg.persistence.postgres.preset_repo import (
 from synthorg.persistence.postgres.principle_override_repo import (
     PostgresPrincipleOverrideRepository,
 )
+from synthorg.persistence.postgres.project_brain_repo import (
+    PostgresProjectBrainRepository,
+)
 from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
@@ -260,6 +263,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.principle_override_protocol import (
         PrincipleOverrideRepository,
     )
+    from synthorg.persistence.project_brain_protocol import ProjectBrainRepository
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
@@ -326,6 +330,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._codebase_structure_maps: CodebaseStructureMapRepository | None = None
         self._project_environments: ProjectEnvironmentRepository | None = None
         self._project_docs: DocsRepository | None = None
+        self._project_brain: ProjectBrainRepository | None = None
         self._knowledge_sources: KnowledgeSourceRepository | None = None
         self._knowledge_provenance: ChunkProvenanceRepository | None = None
         self._research_runs: ResearchRunRepository | None = None
@@ -400,6 +405,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._research_runs = None
         self._project_environments = None
         self._project_docs = None
+        self._project_brain = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -470,6 +476,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._research_runs = PostgresResearchRunRepository(pool)
         self._project_environments = PostgresProjectEnvironmentRepository(pool)
         self._project_docs = PostgresDocsRepository(pool)
+        self._project_brain = PostgresProjectBrainRepository(pool)
         self._tasks = PostgresTaskRepository(pool)
         self._cost_records = PostgresCostRecordRepository(pool)
         self._messages = PostgresMessageRepository(pool)
@@ -876,6 +883,15 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             Result of type ``DocsRepository``.
         """
         return self._require_connected(self._project_docs, "project_docs")
+
+    @property
+    def project_brain(self) -> ProjectBrainRepository:
+        """Repository for the long-horizon project-brain store.
+
+        Returns:
+            Result of type ``ProjectBrainRepository``.
+        """
+        return self._require_connected(self._project_brain, "project_brain")
 
     @property
     def knowledge_sources(self) -> KnowledgeSourceRepository:

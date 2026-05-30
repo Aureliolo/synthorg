@@ -304,8 +304,13 @@ class BrainEntry(BaseModel):
         description="Stable logical identity, constant across revisions",
     )
     revision: int = Field(
+        default=1,
         ge=1,
-        description="Monotonic version per entry_id; server-assigned",
+        description=(
+            "Monotonic version per entry_id; server-assigned by the "
+            "repository on append. The default is a placeholder for "
+            "not-yet-persisted entries; append_with_next_revision overrides it."
+        ),
     )
     project_id: NotBlankStr = Field(description="Owning project")
     entry_kind: BrainEntryKind = Field(description="Record kind (discriminator)")

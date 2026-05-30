@@ -561,6 +561,54 @@ WHERE
     last_indexed_commit_sha IS NULL
     OR last_indexed_commit_sha != head_commit_sha;
 
+-- ── Long-horizon project brain ───────────────────────────────
+-- Append-only structured project state (#1996): decisions, open
+-- questions, blockers, risks, dependencies, plan revisions. A change to
+-- a logical entry is a new row (same entry_id, revision incremented);
+-- current state is the latest revision per entry_id. payload is a
+-- kind-discriminated JSON object; related ids, tags, and citations are
+-- JSON arrays. ON DELETE CASCADE drops a project's brain.
+CREATE TABLE project_brain_entries (
+    project_id TEXT NOT NULL
+    CHECK (LENGTH(TRIM(project_id)) > 0),
+    entry_id TEXT NOT NULL
+    CHECK (LENGTH(TRIM(entry_id)) > 0),
+    revision INTEGER NOT NULL
+    CHECK (revision >= 1),
+    entry_kind TEXT NOT NULL
+    CHECK (entry_kind IN (
+        'decision', 'open_question', 'blocker', 'risk',
+        'dependency', 'plan_revision'
+    )),
+    title TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    status TEXT NOT NULL,
+    author TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    related_task_ids TEXT NOT NULL DEFAULT '[]',
+    related_entry_ids TEXT NOT NULL DEFAULT '[]',
+    supersedes_entry_id TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    confidence REAL,
+    citations TEXT NOT NULL DEFAULT '[]',
+    payload TEXT NOT NULL,
+    PRIMARY KEY (project_id, entry_id, revision),
+    UNIQUE (entry_id, revision),
+    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_project_brain_current
+ON project_brain_entries (project_id, entry_id, revision DESC);
+
+CREATE INDEX idx_project_brain_kind
+ON project_brain_entries (project_id, entry_kind);
+
+CREATE INDEX idx_project_brain_status
+ON project_brain_entries (project_id, status);
+
+CREATE INDEX idx_project_brain_recorded
+ON project_brain_entries (project_id, recorded_at DESC);
+
 -- ── Knowledge + provenance substrate ─────────────────────────
 -- Registry of ingested corpus sources (PDF / web / repo / ticket /
 -- design doc). project_id is nullable: NULL means a global source
