@@ -321,7 +321,13 @@ allowlist and are now governed at their tier cap by
 `check_module_size_budget.py`; `core/enums.py` +
 `observability/events/persistence.py` remain net-shrink until #2051.
 `api/state.py` (354 LOC) is governed by the code-tier 500 cap (the EPIC's
-`<150` figure was descriptive, not a #2049 gate). See ADR-0008.
+`<150` figure was descriptive, not a #2049 gate). The decomposed sub-package
+files carry no baseline entries, so they are enforced at the controller-tier
+400 cap directly; the stale baseline entries for the nine deleted monolith
+files plus the four reduced `api/` modules are dropped by the operator's
+`check_module_size_budget.py --update-baseline` regen, the one remaining
+mechanical step (the gate is green either way, since every file is already
+under its cap). See ADR-0008.
 
 | Exemption | Mechanism | Acceptance criterion in PR 3 |
 |-----------|-----------|------------------------------|
