@@ -51,7 +51,7 @@
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/_demo/mcp.py",
       "owning_feature": "demo"
@@ -12308,7 +12308,7 @@
     },
     {
       "kind": "code",
-      "loc": 418,
+      "loc": 419,
       "loc_cap": 500,
       "module": "src/synthorg/observability/prometheus_labels.py",
       "owning_feature": "observability"
