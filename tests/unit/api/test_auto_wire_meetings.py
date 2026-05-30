@@ -32,7 +32,7 @@ class TestBuildProtocolRegistry:
     """Tests for _build_protocol_registry helper."""
 
     def test_returns_all_three_protocol_types(self) -> None:
-        from synthorg.api.auto_wire import _build_protocol_registry
+        from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
         registry = _build_protocol_registry()
 
@@ -42,7 +42,7 @@ class TestBuildProtocolRegistry:
         assert len(registry) == 3
 
     def test_protocol_instances_report_correct_type(self) -> None:
-        from synthorg.api.auto_wire import _build_protocol_registry
+        from synthorg.api.auto_wire_meetings import _build_protocol_registry
 
         registry = _build_protocol_registry()
 
@@ -55,7 +55,7 @@ class TestWireMeetingOrchestrator:
     """Tests for _wire_meeting_orchestrator helper."""
 
     def test_creates_valid_orchestrator(self) -> None:
-        from synthorg.api.auto_wire import _wire_meeting_orchestrator
+        from synthorg.api.auto_wire_meetings import _wire_meeting_orchestrator
 
         agent_registry, provider_registry = _fake_registries()
         orchestrator = _wire_meeting_orchestrator(
@@ -72,7 +72,7 @@ class TestWireMeetingScheduler:
     """Tests for _wire_meeting_scheduler helper."""
 
     def test_uses_registry_resolver_when_available(self) -> None:
-        from synthorg.api.auto_wire import (
+        from synthorg.api.auto_wire_meetings import (
             _wire_meeting_orchestrator,
             _wire_meeting_scheduler,
         )
@@ -91,7 +91,7 @@ class TestWireMeetingScheduler:
         assert isinstance(scheduler._resolver, RegistryParticipantResolver)
 
     def test_uses_passthrough_resolver_when_no_registry(self) -> None:
-        from synthorg.api.auto_wire import (
+        from synthorg.api.auto_wire_meetings import (
             _wire_meeting_orchestrator,
             _wire_meeting_scheduler,
         )
@@ -114,7 +114,7 @@ class TestAutoWireMeetings:
     """Tests for auto_wire_meetings main entry point."""
 
     def test_creates_both_services(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         agent_registry, provider_registry = _fake_registries()
@@ -133,7 +133,7 @@ class TestAutoWireMeetings:
         self,
     ) -> None:
         """Orchestrator still wires without registries; call raises loudly."""
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.communication.meeting.agent_caller import (
             MeetingAgentCallerNotConfiguredError,
         )
@@ -190,7 +190,7 @@ class TestAutoWireMeetings:
         expected_missing: tuple[str, ...],
     ) -> None:
         """Only the actually-missing dependency appears in the error."""
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.communication.meeting.agent_caller import (
             MeetingAgentCallerNotConfiguredError,
         )
@@ -213,7 +213,7 @@ class TestAutoWireMeetings:
         assert exc_info.value.missing_dependencies == expected_missing
 
     def test_preserves_explicit_orchestrator(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         explicit_orch = MagicMock(spec=MeetingOrchestrator)
@@ -230,7 +230,7 @@ class TestAutoWireMeetings:
         assert isinstance(result.meeting_scheduler, MeetingScheduler)
 
     def test_preserves_explicit_scheduler(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         # Cannot use spec=MeetingScheduler: PEP 649 deferred
@@ -250,7 +250,7 @@ class TestAutoWireMeetings:
         assert result.meeting_scheduler is explicit_sched
 
     def test_preserves_both_explicit(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         explicit_orch = MagicMock(spec=MeetingOrchestrator)
@@ -270,7 +270,7 @@ class TestAutoWireMeetings:
         assert result.meeting_scheduler is explicit_sched
 
     def test_logs_auto_wire_events(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         agent_registry, provider_registry = _fake_registries()
@@ -301,7 +301,7 @@ class TestAutoWireMeetings:
         from datetime import date
         from uuid import uuid4
 
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
         from synthorg.communication.meeting.models import AgentResponse
         from synthorg.core.agent import (
             AgentIdentity,
@@ -367,7 +367,7 @@ class TestAutoWireMeetings:
         provider.complete.assert_awaited_once()
 
     def test_with_agent_registry(self) -> None:
-        from synthorg.api.auto_wire import auto_wire_meetings
+        from synthorg.api.auto_wire_meetings import auto_wire_meetings
 
         config = _default_config()
         registry = MagicMock()
@@ -394,12 +394,12 @@ class TestWireMeetingOrchestratorError:
     """Tests for error propagation in meeting wiring helpers."""
 
     def test_orchestrator_creation_failure_propagates(self) -> None:
-        from synthorg.api.auto_wire import _wire_meeting_orchestrator
+        from synthorg.api.auto_wire_meetings import _wire_meeting_orchestrator
 
         agent_registry, provider_registry = _fake_registries()
         with (
             patch(
-                "synthorg.api.auto_wire._build_protocol_registry",
+                "synthorg.api.auto_wire_meetings._build_protocol_registry",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(RuntimeError, match="boom"),
@@ -410,7 +410,7 @@ class TestWireMeetingOrchestratorError:
             )
 
     def test_scheduler_creation_failure_propagates(self) -> None:
-        from synthorg.api.auto_wire import (
+        from synthorg.api.auto_wire_meetings import (
             _wire_meeting_orchestrator,
             _wire_meeting_scheduler,
         )
@@ -424,7 +424,7 @@ class TestWireMeetingOrchestratorError:
 
         with (
             patch(
-                "synthorg.api.auto_wire._select_participant_resolver",
+                "synthorg.api.auto_wire_meetings._select_participant_resolver",
                 side_effect=RuntimeError("resolver-error"),
             ),
             pytest.raises(RuntimeError, match="resolver-error"),

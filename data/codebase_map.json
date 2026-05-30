@@ -380,9 +380,23 @@
     },
     {
       "kind": "code",
-      "loc": 813,
+      "loc": 184,
       "loc_cap": 500,
       "module": "src/synthorg/api/auto_wire.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 321,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/auto_wire_meetings.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 331,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/auto_wire_phase1.py",
       "owning_feature": "api_core"
     },
     {
