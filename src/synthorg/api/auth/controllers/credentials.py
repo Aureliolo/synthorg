@@ -27,7 +27,7 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.dto import ApiResponse
 from synthorg.api.state import AppState
-from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.auth.models import AuthenticatedUser, User
 from synthorg.core.domain_errors import UnauthorizedError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -35,6 +35,7 @@ from synthorg.observability.events.security import (
     SECURITY_AUTH_PASSWORD_CHANGED,
     SECURITY_SESSION_REVOKED,
 )
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 
 logger = get_logger(__name__)
@@ -42,10 +43,10 @@ logger = get_logger(__name__)
 
 async def _verify_current_password(
     auth_service: AuthService,
-    persistence: Any,
+    persistence: PersistenceBackend,
     auth_user: AuthenticatedUser,
     data: ChangePasswordRequest,
-) -> Any:
+) -> User:
     """Load the user and verify the supplied current password.
 
     Args:
@@ -87,7 +88,7 @@ async def _verify_current_password(
 async def _revoke_old_session(
     app_state: AppState,
     request: Request[Any, Any, Any],
-    updated_user: Any,
+    updated_user: User,
 ) -> None:
     """Revoke the caller's current session before a new one is issued.
 
@@ -115,7 +116,7 @@ async def _rotate_session_and_build_response(
     app_state: AppState,
     request: Request[Any, Any, Any],
     auth_service: AuthService,
-    updated_user: Any,
+    updated_user: User,
 ) -> Response[ApiResponse[UserInfoResponse]]:
     """Mint a fresh session for the rotated password and build the response.
 

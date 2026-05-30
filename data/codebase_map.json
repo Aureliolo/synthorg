@@ -324,7 +324,7 @@
     },
     {
       "kind": "controller",
-      "loc": 207,
+      "loc": 208,
       "loc_cap": 400,
       "module": "src/synthorg/api/auth/controllers/credentials.py",
       "owning_feature": "api_core"
