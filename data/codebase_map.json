@@ -37,7 +37,7 @@
     },
     {
       "kind": "code",
-      "loc": 387,
+      "loc": 388,
       "loc_cap": 500,
       "module": "src/synthorg/a2a/client.py",
       "owning_feature": "a2a"
@@ -72,7 +72,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 729,
+      "loc": 728,
       "loc_cap": 1100,
       "module": "src/synthorg/a2a/gateway.py",
       "owning_feature": "a2a"
@@ -1584,7 +1584,7 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 279,
       "loc_cap": 500,
       "module": "src/synthorg/backup/scheduler.py",
       "owning_feature": "backup"
@@ -1598,7 +1598,7 @@
     },
     {
       "kind": "code",
-      "loc": 478,
+      "loc": 481,
       "loc_cap": 500,
       "module": "src/synthorg/backup/service_archive.py",
       "owning_feature": "backup"
@@ -1780,7 +1780,7 @@
     },
     {
       "kind": "code",
-      "loc": 384,
+      "loc": 388,
       "loc_cap": 500,
       "module": "src/synthorg/budget/degradation.py",
       "owning_feature": "budget"
@@ -7275,7 +7275,7 @@
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 148,
       "loc_cap": 500,
       "module": "src/synthorg/hr/training/_storage.py",
       "owning_feature": "hr"
@@ -11762,7 +11762,7 @@
     },
     {
       "kind": "code",
-      "loc": 215,
+      "loc": 217,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/config.py",
       "owning_feature": "ontology"
@@ -11895,14 +11895,14 @@
     },
     {
       "kind": "code",
-      "loc": 291,
+      "loc": 293,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/memory_wrapper.py",
       "owning_feature": "ontology"
     },
     {
       "kind": "code",
-      "loc": 217,
+      "loc": 219,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/models.py",
       "owning_feature": "ontology"
@@ -14044,7 +14044,7 @@
     },
     {
       "kind": "code",
-      "loc": 156,
+      "loc": 159,
       "loc_cap": 500,
       "module": "src/synthorg/research/synthesis/llm_synthesizer.py",
       "owning_feature": "research"
@@ -15318,7 +15318,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 981,
+      "loc": 980,
       "loc_cap": 1100,
       "module": "src/synthorg/telemetry/collector.py",
       "owning_feature": "telemetry"
@@ -16802,7 +16802,7 @@
     },
     {
       "kind": "code",
-      "loc": 229,
+      "loc": 235,
       "loc_cap": 500,
       "module": "src/synthorg/workers/config.py",
       "owning_feature": "runtime"
