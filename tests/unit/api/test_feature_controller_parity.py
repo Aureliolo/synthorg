@@ -13,6 +13,7 @@ from litestar import Controller
 from litestar.handlers import WebsocketRouteHandler
 
 from synthorg._core.features import ControllerRegistration, discover_features
+from synthorg._demo.controller import DemoController
 from synthorg.a2a.gateway import A2AGatewayController
 from synthorg.a2a.well_known import WellKnownAgentCardController
 from synthorg.api.controllers import ALL_CONTROLLERS, ws_handler
@@ -46,12 +47,21 @@ def _legacy_controllers() -> set[type[Controller]]:
     ``ALL_CONTROLLERS`` already unions ``BASE_CONTROLLERS``,
     ``INTEGRATION_CONTROLLERS``, and the ``OPTIONAL_CONTROLLERS`` classes.
     The two a2a controllers are built inline in ``api.app`` rather than
-    listed there, so they are added explicitly.
+    listed there, so they are added explicitly. ``DemoController`` is the one
+    deliberate post-migration addition (#2049's synthetic discovery guard),
+    so it joins the expected set rather than tripping the extra-controller
+    assertion.
 
     Returns:
-        The full set of controller classes the legacy boot path could mount.
+        The full set of controller classes the legacy boot path could mount,
+        plus the demo discovery guard.
     """
-    return {*ALL_CONTROLLERS, WellKnownAgentCardController, A2AGatewayController}
+    return {
+        *ALL_CONTROLLERS,
+        WellKnownAgentCardController,
+        A2AGatewayController,
+        DemoController,
+    }
 
 
 def test_manifests_claim_exactly_the_legacy_controllers() -> None:

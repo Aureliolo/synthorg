@@ -11,8 +11,10 @@ from typing import TYPE_CHECKING
 
 from synthorg._demo.state import DemoStateSlice
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
-from synthorg.meta.mcp.handlers.common import capability_gap, ok
+from synthorg.meta.mcp.handlers.common import capability_gap, err, ok
+from synthorg.meta.mcp.handlers.common_logging import log_handler_invoke_failed
 from synthorg.meta.mcp.tool_builder import read_tool
 
 if TYPE_CHECKING:
@@ -44,14 +46,20 @@ async def _demo_greet(
         actor: Calling agent identity (unused by the demo).
 
     Returns:
-        A JSON ``ok`` envelope carrying the greeting, or a ``capability_gap``
-        envelope when the demo service is not wired.
+        A JSON ``ok`` envelope carrying the greeting, a ``capability_gap``
+        envelope when the demo service is not wired, or an ``err`` envelope
+        when the service raises.
     """
     del arguments, actor
-    service = app_state.slice(DemoStateSlice).service
-    if service is None:
-        return capability_gap(_GREET_TOOL, "demo service not wired")
-    return ok({"greeting": service.greet().greeting})
+    try:
+        service = app_state.slice(DemoStateSlice).service
+        if service is None:
+            return capability_gap(_GREET_TOOL, "demo service not wired")
+        return ok({"greeting": service.greet().greeting})
+    except Exception as exc:
+        reraise_critical(exc)
+        log_handler_invoke_failed(_GREET_TOOL, exc)
+        return err(exc)
 
 
 DEMO_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType({_GREET_TOOL: _demo_greet})
