@@ -94,7 +94,7 @@ class MemoryEmbedderController(Controller):
                 dims_value: int | None = None
                 if dims_raw:
                     try:
-                        dims_value = int(dims_raw)
+                        parsed_dims = int(dims_raw)
                     except ValueError, TypeError:
                         logger.warning(
                             MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
@@ -102,6 +102,21 @@ class MemoryEmbedderController(Controller):
                             value=dims_raw,
                             reason="invalid integer value",
                         )
+                    else:
+                        # A non-positive embedding dimension ("0" / "-1")
+                        # parses cleanly but is meaningless and would make
+                        # ``ActiveEmbedderResponse`` validation 500 the read
+                        # endpoint; treat corrupt stored dims as unset (None),
+                        # same as unparseable input.
+                        if parsed_dims >= 1:
+                            dims_value = parsed_dims
+                        else:
+                            logger.warning(
+                                MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+                                setting="embedder_dims",
+                                value=dims_raw,
+                                reason="value must be >= 1",
+                            )
                 result = ActiveEmbedderResponse(
                     provider=provider_value,
                     model=model_value,

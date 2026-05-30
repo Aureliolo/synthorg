@@ -81,6 +81,12 @@ class ProviderModelsController(Controller):
     ) -> PaginatedResponse[ProviderModelResponse]:
         """List models for a provider with runtime capabilities, paginated by id.
 
+        Args:
+            state: Application state.
+            name: Provider name.
+            cursor: Opaque cursor for the current page position.
+            limit: Maximum number of models to return.
+
         Raises:
             NotFoundError: If the provider is not found.
 

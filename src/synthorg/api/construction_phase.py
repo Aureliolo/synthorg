@@ -13,7 +13,9 @@ orchestrator (bootstrap -> persistence -> build -> routes -> lifespan -> app).
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+
+from litestar.channels import ChannelsPlugin
+from litestar.types import Middleware
 
 from synthorg.api.app_builders import (
     _build_configured_autonomy_change_strategy,
@@ -73,10 +75,6 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
-
-if TYPE_CHECKING:
-    from litestar.channels import ChannelsPlugin
-    from litestar.types import Middleware
 
 logger = get_logger(__name__)
 

@@ -119,6 +119,8 @@ export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
  * Excluded:
  *   - 'company' and 'providers': have dedicated pages.
  *   - 'settings': service-managed internal knobs.
+ *   - 'demo': synthetic discovery-regression guard, not a real
+ *     product feature, so it stays out of the user-facing UI.
  * Every other namespace the backend registry exposes is surfaced
  * here. Each setting's `restart_required` flag is honoured by
  * RestartBadge. */
@@ -178,6 +180,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   telemetry: 'Telemetry',
   external_api: 'External API',
   cockpit: 'Mission Control',
+  demo: 'Demo',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

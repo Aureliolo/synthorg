@@ -7,19 +7,16 @@ dispatch builders pick it up off the manifest with no central edits.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
 from synthorg._demo.state import DemoStateSlice
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.handlers.common import capability_gap, err, ok
 from synthorg.meta.mcp.handlers.common_logging import log_handler_invoke_failed
+from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.meta.mcp.tool_builder import read_tool
-
-if TYPE_CHECKING:
-    from synthorg.api.state_slices import AppStateSliceMixin
-    from synthorg.meta.mcp.registry import MCPToolDef
 
 _GREET_TOOL = "synthorg_demo_greet"
 

@@ -314,8 +314,12 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
         # The handler invokes two helpers via ``asyncio.to_thread``;
         # patch both so the overall ``TaskGroup`` blocks deterministically.
-        from synthorg.api.controllers import (
-            memory as _memory_mod,
+        # ``run_preflight`` calls the bare names imported into the
+        # ``fine_tune`` controller module, so the patch must target that
+        # module's namespace -- patching the ``memory`` package (where
+        # the names are not bound) would be a silent no-op.
+        from synthorg.api.controllers.memory import (
+            fine_tune as _ft_mod,
         )
 
         # Monkey-patch the inflight opt so the middleware actually
@@ -336,12 +340,12 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
         with (
             patch.object(
-                _memory_mod,
+                _ft_mod,
                 "_run_preflight_checks",
                 _held_preflight_checks,
             ),
             patch.object(
-                _memory_mod,
+                _ft_mod,
                 "_recommend_batch_size",
                 _held_batch_size,
             ),

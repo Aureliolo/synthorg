@@ -6,7 +6,7 @@ endpoints use. No Litestar surface; ``settings.observability`` imports these.
 """
 
 import hashlib
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,9 +27,7 @@ from synthorg.observability.sink_config_builder import (
 from synthorg.settings.definitions.api import SINK_IDENTIFIER_FINGERPRINT_LENGTH
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
+from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 

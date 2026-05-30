@@ -155,7 +155,7 @@ class ProviderConnectionController(Controller):
             state: Application state.
             name: Provider name.
             preset_hint: Optional preset name to guide endpoint
-                selection (e.g. ``"ollama"``).
+                selection (e.g. ``"example-provider"``).
 
         Returns:
             Discovery result with found models.

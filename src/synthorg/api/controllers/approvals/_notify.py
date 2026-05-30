@@ -1,3 +1,4 @@
+# module-kind: code
 """Decision-path helpers for the approvals decision controller.
 
 Pure helper module: actor attribution, pending-state validation,

@@ -1,12 +1,11 @@
 # module-kind: code
 """Service auto-wiring for production startup.
 
-Construction-time wiring (services that do not need a connected persistence
-backend) lives in :mod:`synthorg.api.auto_wire_phase1` and
-:mod:`synthorg.api.auto_wire_meetings`, re-exported here for the historic
-``from synthorg.api.auto_wire import ...`` call sites. This module retains the
-on-startup wiring that runs after persistence connects: ``auto_wire_settings``
-(SettingsService + dispatcher) and ``auto_wire_ontology``.
+Re-exports the construction-time wiring (services that do not need a connected
+persistence backend) from :mod:`synthorg.api.auto_wire_phase1` and
+:mod:`synthorg.api.auto_wire_meetings`, and provides the on-startup wiring that
+runs after persistence connects: ``auto_wire_settings`` (SettingsService +
+dispatcher) and ``auto_wire_ontology``.
 """
 
 from collections.abc import Callable

@@ -2,11 +2,11 @@
 """Construction-time meeting service auto-wiring.
 
 Creates the meeting orchestrator + scheduler + ceremony scheduler, returning
-them in a :class:`MeetingWireResult`. Split out of ``api.auto_wire`` so each
-auto-wire group stays under the module-size budget.
+them in a :class:`MeetingWireResult`.
 """
 
-from typing import TYPE_CHECKING, NamedTuple
+from collections.abc import Mapping
+from typing import NamedTuple
 
 from synthorg.communication.meeting.agent_caller import (
     build_meeting_agent_caller,
@@ -14,26 +14,19 @@ from synthorg.communication.meeting.agent_caller import (
 )
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
+from synthorg.communication.meeting.participant import ParticipantResolver
+from synthorg.communication.meeting.protocol import AgentCaller, MeetingProtocol
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.config.schema import RootConfig
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.communication.meeting.participant import ParticipantResolver
-    from synthorg.communication.meeting.protocol import (
-        AgentCaller,
-        MeetingProtocol,
-    )
-    from synthorg.config.schema import RootConfig
-    from synthorg.hr.registry import AgentRegistryService
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.providers.registry import ProviderRegistry
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 

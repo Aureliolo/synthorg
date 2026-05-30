@@ -7,7 +7,7 @@ counter store; the login-attempt helpers + constant-time dummy hash are
 used by the session controller's login flow.
 """
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Request
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
@@ -31,8 +31,13 @@ _DUMMY_ARGON2_HASH = (
 )
 
 
+# Auth endpoints get a stricter throttle than the global limiter so a
+# brute-force login / setup loop is bounded regardless of the global cap.
+AUTH_RATE_LIMIT_PER_MINUTE: Final[int] = 10
+
+
 _AUTH_RATE_LIMIT = LitestarRateLimitConfig(
-    rate_limit=("minute", 10),
+    rate_limit=("minute", AUTH_RATE_LIMIT_PER_MINUTE),
 )
 """Stricter rate limiter for auth endpoints (10 req/min).
 
@@ -59,9 +64,7 @@ async def _record_failed_login(
 ) -> None:
     """Record a failed login attempt and raise on lockout.
 
-    Extracted from :meth:`AuthSessionController.login` so the parent
-    stays under the McCabe-complexity ceiling. Per the
-    persistence-boundary rule the repo does not log
+    Per the persistence-boundary rule the repo does not log
     ``SECURITY_AUTH_ACCOUNT_LOCKED``; this helper emits the signed audit
     event with the controller-side context (threshold + duration) and
     raises ``AccountLockedError`` so the caller's flow short-circuits

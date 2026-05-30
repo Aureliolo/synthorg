@@ -1,3 +1,4 @@
+# module-kind: code
 """Feature-manifest substrate.
 
 Every feature directory ships a thin ``feature.py`` exposing a module-level

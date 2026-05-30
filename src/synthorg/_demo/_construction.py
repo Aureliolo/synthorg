@@ -1,13 +1,9 @@
 """Demo feature construction-phase state-slice wiring."""
 
-from typing import TYPE_CHECKING
-
 from synthorg._demo.service import DemoService
 from synthorg._demo.state import DemoStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.api.construction_wiring import ConstructionDeps
-    from synthorg.api.state import AppState
+from synthorg.api.construction_wiring import ConstructionDeps
+from synthorg.api.state import AppState
 
 _DEMO_GREETING = "hello from the demo feature"
 
