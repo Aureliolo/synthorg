@@ -30,7 +30,7 @@
     },
     {
       "kind": "code",
-      "loc": 21,
+      "loc": 19,
       "loc_cap": 500,
       "module": "src/synthorg/_demo/_construction.py",
       "owning_feature": "demo"
@@ -51,7 +51,7 @@
     },
     {
       "kind": "code",
-      "loc": 53,
+      "loc": 51,
       "loc_cap": 500,
       "module": "src/synthorg/_demo/mcp.py",
       "owning_feature": "demo"
@@ -219,7 +219,7 @@
     },
     {
       "kind": "code",
-      "loc": 18,
+      "loc": 16,
       "loc_cap": 500,
       "module": "src/synthorg/api/_construction.py",
       "owning_feature": "api_core"
@@ -310,7 +310,7 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/api/auth/controllers/_shared.py",
       "owning_feature": "api_core"
@@ -429,14 +429,14 @@
     },
     {
       "kind": "code",
-      "loc": 184,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/api/auto_wire.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 321,
+      "loc": 316,
       "loc_cap": 500,
       "module": "src/synthorg/api/auto_wire_meetings.py",
       "owning_feature": "api_core"
@@ -499,7 +499,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 338,
+      "loc": 336,
       "loc_cap": 600,
       "module": "src/synthorg/api/construction_phase.py",
       "owning_feature": "api_core"
@@ -856,7 +856,7 @@
     },
     {
       "kind": "controller",
-      "loc": 98,
+      "loc": 108,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/memory/embedder.py",
       "owning_feature": "api_core"
@@ -1003,7 +1003,7 @@
     },
     {
       "kind": "controller",
-      "loc": 223,
+      "loc": 228,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/providers/models.py",
       "owning_feature": "api_core"
@@ -1066,7 +1066,7 @@
     },
     {
       "kind": "code",
-      "loc": 282,
+      "loc": 281,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/settings/_sinks.py",
       "owning_feature": "api_core"
