@@ -155,6 +155,10 @@ def _apply_child_agent(
 
     Updates *parent_entries* and *appended* as a local mutation
     scoped to the enclosing ``_merge_agents`` call.
+
+    Raises:
+        TemplateInheritanceError: When a ``_remove`` directive matches no
+            parent agent.
     """
     key = _agent_key(child_agent)
     is_remove = child_agent.get("_remove", False)
@@ -189,7 +193,11 @@ def _apply_child_agent(
 def _find_unmatched(
     entries: list[_ParentEntry],
 ) -> _ParentEntry | None:
-    """Find first unmatched entry in a parent entries list."""
+    """Find first unmatched entry in a parent entries list.
+
+    Returns:
+        The first entry not yet matched, or ``None`` when all are matched.
+    """
     return next((e for e in entries if not e.matched), None)
 
 
@@ -197,7 +205,12 @@ def _collect_merged_agents(
     parent_entries: dict[tuple[str, str, str], list[_ParentEntry]],
     appended: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Collect surviving parent agents (in order) + appended."""
+    """Collect surviving parent agents (in order) + appended.
+
+    Returns:
+        The surviving parent agents in original order, followed by the
+        appended child agents.
+    """
     all_entries = sorted(
         (entry for entries in parent_entries.values() for entry in entries),
         key=lambda e: e.index,
@@ -316,6 +329,12 @@ def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
 
     Uses ``(role, department, merge_id)`` when ``merge_id`` is present,
     otherwise ``(role, department, "")`` as the default.
+
+    Returns:
+        The ``(role, department, merge_id)`` merge key, lower-cased.
+
+    Raises:
+        TemplateInheritanceError: When the agent dict has no ``role``.
     """
     role = str(agent.get("role", "")).lower()
     if not role:

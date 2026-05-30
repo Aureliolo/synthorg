@@ -16,6 +16,7 @@ from synthorg.backup.handlers.memory import MemoryComponentHandler
 from synthorg.backup.models import BackupComponent
 from synthorg.backup.registry import PERSISTENCE_BACKUP_HANDLER_REGISTRY
 from synthorg.backup.service import BackupService
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
@@ -37,7 +38,12 @@ def _build_persistence_handler(
     config: RootConfig,
     resolved_db_path: Path | None,
 ) -> ComponentHandler:
-    """Dispatch the persistence backup handler by backend discriminator."""
+    """Dispatch the persistence backup handler by backend discriminator.
+
+    Returns:
+        The ``ComponentHandler`` built for the configured persistence
+        backend.
+    """
     return PERSISTENCE_BACKUP_HANDLER_REGISTRY.build(
         config.persistence.backend,
         config,
@@ -131,9 +137,8 @@ def build_backup_service(
             resolved_config_path=resolved_config_path,
         )
         return BackupService(backup_config, handlers)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Failed to build backup service",

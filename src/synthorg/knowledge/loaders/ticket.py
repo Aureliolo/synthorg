@@ -12,11 +12,11 @@ Each ticket comment becomes one :class:`RawUnit` with a
 comment (and char range) the matching chunk came from.
 """
 
-import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.errors import (
@@ -98,12 +98,20 @@ class TicketLoader:
         self._fetcher = fetcher
 
     async def load(self, source: KnowledgeSource) -> RawDocument:
-        """Fetch ``source.uri`` and emit one unit per ticket comment."""
+        """Fetch ``source.uri`` and emit one unit per ticket comment.
+
+        Returns:
+            A ``RawDocument`` with one unit per ticket comment.
+
+        Raises:
+            KnowledgeSourceUnavailableError: When the ticket fetch fails.
+            KnowledgeIngestError: When the fetcher returns a thread for a
+                different ticket than requested.
+        """
         try:
             thread = await self._fetcher.fetch(source.uri)
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to fetch ticket source {source.source_id!r}"
             logger.warning(
                 KNOWLEDGE_LOAD_FAILED,

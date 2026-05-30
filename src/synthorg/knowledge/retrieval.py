@@ -11,9 +11,9 @@ hit from another project leaking into the result.
 """
 
 import asyncio
-import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
@@ -98,9 +98,8 @@ class KnowledgeRetriever:
             entries = await self._fetch_scoped(
                 query=query, project_id=project_id, limit=effective_limit
             )
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Knowledge search failed"
             logger.warning(
                 KNOWLEDGE_SEARCH_FAILED,
@@ -125,7 +124,12 @@ class KnowledgeRetriever:
         project_id: NotBlankStr | None,
         limit: int,
     ) -> tuple[MemoryEntry, ...]:
-        """Run scope-filtered hybrid retrieval and merge by relevance."""
+        """Run scope-filtered hybrid retrieval and merge by relevance.
+
+        Returns:
+            Global-scope entries when ``project_id`` is ``None``, else the
+            project and global entries merged by descending relevance.
+        """
         global_query = self._scoped_query(
             query=query, scope_tag=KNOWLEDGE_GLOBAL_SCOPE_TAG, limit=limit
         )
@@ -159,7 +163,12 @@ class KnowledgeRetriever:
     async def _resolve_citations(
         self, entries: tuple[MemoryEntry, ...]
     ) -> tuple[KnowledgeHit, ...]:
-        """Resolve each entry's chunk id to a full citation."""
+        """Resolve each entry's chunk id to a full citation.
+
+        Returns:
+            One ``KnowledgeHit`` per entry whose provenance and source
+            both resolve; entries that cannot be cited are dropped.
+        """
         chunk_ids = tuple(
             NotBlankStr(cid)
             for entry in entries
@@ -204,7 +213,12 @@ class KnowledgeRetriever:
     async def _load_sources(
         self, source_ids: tuple[str, ...]
     ) -> dict[str, KnowledgeSource]:
-        """Fetch the distinct sources referenced by a hit page."""
+        """Fetch the distinct sources referenced by a hit page.
+
+        Returns:
+            A map from source id to ``KnowledgeSource`` for every id that
+            resolved.
+        """
         result: dict[str, KnowledgeSource] = {}
         async with asyncio.TaskGroup() as tg:
             tasks = {
@@ -219,7 +233,11 @@ class KnowledgeRetriever:
 
 
 def _clamp(score: float | None) -> float:
-    """Clamp a backend relevance score into ``[0.0, 1.0]``."""
+    """Clamp a backend relevance score into ``[0.0, 1.0]``.
+
+    Returns:
+        The score clamped to ``[0.0, 1.0]``, or ``0.0`` when ``None``.
+    """
     if score is None:
         return 0.0
     return max(0.0, min(1.0, score))
@@ -228,7 +246,12 @@ def _clamp(score: float | None) -> float:
 def _merge_by_relevance(
     *result_sets: tuple[MemoryEntry, ...],
 ) -> tuple[MemoryEntry, ...]:
-    """Merge entry sets by descending relevance, deduplicating by id."""
+    """Merge entry sets by descending relevance, deduplicating by id.
+
+    Returns:
+        The entries merged into one tuple, sorted by descending relevance
+        with later duplicates of the same id dropped.
+    """
     seen: set[str] = set()
     merged: list[MemoryEntry] = []
     for entry in sorted(

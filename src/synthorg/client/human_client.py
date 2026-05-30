@@ -73,7 +73,11 @@ class HumanClient:
         self,
         context: GenerationContext,
     ) -> TaskRequirement | None:
-        """Ask a human to supply a requirement."""
+        """Ask a human to supply a requirement.
+
+        Returns:
+            The requirement the human supplied, or ``None`` on timeout.
+        """
         ticket = await self._queue.enqueue_requirement(
             client_id=self._profile.client_id,
             context=context,
@@ -93,7 +97,11 @@ class HumanClient:
         self,
         context: ReviewContext,
     ) -> ClientFeedback:
-        """Ask a human to review a deliverable; rejects on timeout."""
+        """Ask a human to review a deliverable; rejects on timeout.
+
+        Returns:
+            The human's feedback, or a rejection feedback on timeout.
+        """
         ticket = await self._queue.enqueue_review(
             client_id=self._profile.client_id,
             context=context,

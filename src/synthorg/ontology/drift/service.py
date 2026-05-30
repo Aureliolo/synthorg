@@ -3,6 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
@@ -77,9 +78,8 @@ class DriftDetectionService:
 
         try:
             report = await self._strategy.detect(entity_name, agent_ids)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ``exc_info=True`` would attach the full traceback to
             # the log record and bypass ``safe_error_description``,
             # reintroducing secret / PII leakage on this error path.
@@ -103,9 +103,8 @@ class DriftDetectionService:
         if self._store is not None:
             try:
                 await self._store.append(report)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # full traceback on a persistence-error path can
                 # leak backend metadata; stick to the redacted form.
                 log_exception_redacted(
@@ -168,9 +167,8 @@ class DriftDetectionService:
             """
             try:
                 report = await self.check_entity(entity_name, agent_ids)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,

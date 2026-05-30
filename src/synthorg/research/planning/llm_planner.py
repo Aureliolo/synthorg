@@ -85,7 +85,15 @@ class LlmQueryPlanner:
         return plan, cost
 
     def _parse(self, content: str) -> PlannerOutput:
-        """Extract and validate the planner's structured output."""
+        """Extract and validate the planner's structured output.
+
+        Returns:
+            The parsed, validated ``PlannerOutput``.
+
+        Raises:
+            ResearchRunError: When the model output is not parseable into
+                a valid ``PlannerOutput``.
+        """
         try:
             obj = json.loads(extract_json_object(content))
             return parse_typed(_PLAN_BOUNDARY, obj, PlannerOutput)
@@ -109,6 +117,10 @@ class LlmQueryPlanner:
         Falls back to one query per enabled source (using the brief
         question) when the planner emits nothing usable, so the pipeline
         always has at least one sub-query.
+
+        Returns:
+            The enabled, budget-capped sub-queries, re-indexed in order;
+            never empty.
         """
         enabled = set(brief.enabled_source_types)
         kept: list[SubQuery] = []

@@ -221,7 +221,12 @@ class LLMGenerator:
 
 
 def _normalize_criteria(raw: object) -> tuple[str, ...]:
-    """Coerce acceptance_criteria to a string tuple."""
+    """Coerce acceptance_criteria to a string tuple.
+
+    Returns:
+        The criteria as a string tuple: empty for ``None``, a 1-tuple for
+        a bare string, else the coerced sequence.
+    """
     if raw is None:
         return ()
     if isinstance(raw, str):

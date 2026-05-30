@@ -229,7 +229,14 @@ class EntitiesConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_names(self) -> Self:
-        """Ensure entry names are unique."""
+        """Ensure entry names are unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two entries share a name.
+        """
         if self.entries:
             names = tuple(e.name for e in self.entries)
             validate_unique_strings(names, "entries")

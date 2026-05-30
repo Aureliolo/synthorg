@@ -9,8 +9,9 @@ protocol.
 import re
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_similarity import tokenize_words, word_overlap
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_DRIFT_WARNED,
     ONTOLOGY_MEMORY_ENRICHED,
@@ -76,7 +77,11 @@ class OntologyAwareMemoryBackend:
         await self._inner.disconnect()
 
     async def health_check(self) -> bool:
-        """Health check on the inner backend."""
+        """Health check on the inner backend.
+
+        Returns:
+            ``True`` when the inner backend reports healthy.
+        """
         return await self._inner.health_check()
 
     @property
@@ -235,7 +240,11 @@ class OntologyAwareMemoryBackend:
         agent_id: NotBlankStr,
         memory_id: NotBlankStr,
     ) -> MemoryEntry | None:
-        """Get a specific memory entry by ID."""
+        """Get a specific memory entry by ID.
+
+        Returns:
+            The matching ``MemoryEntry``, or ``None`` when absent.
+        """
         return await self._inner.get(agent_id, memory_id)
 
     async def delete(
@@ -243,7 +252,11 @@ class OntologyAwareMemoryBackend:
         agent_id: NotBlankStr,
         memory_id: NotBlankStr,
     ) -> bool:
-        """Delete a specific memory entry."""
+        """Delete a specific memory entry.
+
+        Returns:
+            ``True`` when an entry was deleted, ``False`` otherwise.
+        """
         return await self._inner.delete(agent_id, memory_id)
 
     async def count(
@@ -252,7 +265,12 @@ class OntologyAwareMemoryBackend:
         *,
         category: MemoryCategory | None = None,
     ) -> int:
-        """Count memory entries for an agent."""
+        """Count memory entries for an agent.
+
+        Returns:
+            The number of stored entries for the agent, optionally
+            filtered by ``category``.
+        """
         return await self._inner.count(agent_id, category=category)
 
     # ── Internal helpers ───────────────────────────────────────────
@@ -300,14 +318,15 @@ class OntologyAwareMemoryBackend:
         for name in entities:
             try:
                 entity = await self._ontology.get(name)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     ONTOLOGY_MEMORY_DRIFT_WARNED,
                     agent_id=agent_id,
                     entity_name=name,
                     reason="entity_lookup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
             if entity is None:

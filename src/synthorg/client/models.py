@@ -189,7 +189,14 @@ class GenerationContext(BaseModel):
 
     @model_validator(mode="after")
     def _validate_complexity_range(self) -> Self:
-        """Ensure at least one complexity level is included."""
+        """Ensure at least one complexity level is included.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``complexity_range`` is empty.
+        """
         if not self.complexity_range:
             msg = "complexity_range must not be empty"
             raise ValueError(msg)
@@ -274,7 +281,15 @@ class ClientFeedback(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rejection_has_reason(self) -> Self:
-        """Rejected feedback must include a reason."""
+        """Rejected feedback must include a reason.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``accepted`` is ``False`` but ``reason`` is
+                unset.
+        """
         if not self.accepted and self.reason is None:
             msg = "reason is required when accepted is False"
             raise ValueError(msg)
@@ -282,7 +297,14 @@ class ClientFeedback(BaseModel):
 
     @model_validator(mode="after")
     def _validate_scores_range(self) -> Self:
-        """Ensure all scores are in [0.0, 1.0] range."""
+        """Ensure all scores are in [0.0, 1.0] range.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When any score falls outside ``[0.0, 1.0]``.
+        """
         if self.scores is not None:
             for key, value in self.scores.items():
                 if not (0.0 <= value <= 1.0):
@@ -414,7 +436,14 @@ class PoolConstraints(BaseModel):
 
     @model_validator(mode="after")
     def _validate_strictness_range(self) -> Self:
-        """Ensure min_strictness <= max_strictness."""
+        """Ensure min_strictness <= max_strictness.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``min_strictness`` exceeds ``max_strictness``.
+        """
         if self.min_strictness > self.max_strictness:
             msg = (
                 f"min_strictness ({self.min_strictness}) must be <= "

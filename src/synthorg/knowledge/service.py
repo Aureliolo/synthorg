@@ -62,7 +62,12 @@ def derive_source_id(
     source_type: SourceType,
     uri: NotBlankStr,
 ) -> NotBlankStr:
-    """Deterministic source id from scope + type + uri (stable re-ingest)."""
+    """Deterministic source id from scope + type + uri (stable re-ingest).
+
+    Returns:
+        A stable source id hashed from the scope, source type, and URI, so
+        the same source re-ingests onto the same row.
+    """
     scope = project_id if project_id is not None else "*"
     return NotBlankStr(compute_text_hash(f"{scope}\0{source_type.value}\0{uri}"))
 
@@ -132,7 +137,11 @@ class KnowledgeService:
         title: NotBlankStr,
         project_id: NotBlankStr | None = None,
     ) -> KnowledgeSource:
-        """Ingest (or re-ingest) a source, re-embedding only changed chunks."""
+        """Ingest (or re-ingest) a source, re-embedding only changed chunks.
+
+        Returns:
+            The persisted ``KnowledgeSource`` after ingestion.
+        """
         source_id = derive_source_id(
             project_id=project_id, source_type=source_type, uri=uri
         )
@@ -149,7 +158,11 @@ class KnowledgeService:
             )
 
     async def reindex(self, source_id: NotBlankStr) -> KnowledgeSource:
-        """Force a re-load + re-index of an existing source."""
+        """Force a re-load + re-index of an existing source.
+
+        Returns:
+            The persisted ``KnowledgeSource`` after the forced re-index.
+        """
         async with self._source_lock(source_id):
             logger.debug(KNOWLEDGE_REINDEX_STARTED, source_id=source_id)
             existing = await self._require_source(source_id)
@@ -184,7 +197,12 @@ class KnowledgeService:
         limit: int = KNOWLEDGE_LIST_DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
-        """List registered sources matching the scope / staleness filter."""
+        """List registered sources matching the scope / staleness filter.
+
+        Returns:
+            The matching sources for the requested scope, staleness, and
+            pagination window.
+        """
         logger.debug(
             KNOWLEDGE_LIST_REQUESTED,
             project_id=project_id,
@@ -213,6 +231,9 @@ class KnowledgeService:
         Held under the per-source lock so a concurrent ingest/reindex
         cannot leave orphaned memory entries (delete waits for the
         in-flight index, or vice versa).
+
+        Returns:
+            ``True`` when the source row was deleted.
         """
         async with self._source_lock(source_id):
             await self._require_source(source_id)

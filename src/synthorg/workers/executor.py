@@ -137,7 +137,11 @@ class TaskExecutionExecutor:
         self._clock = clock
 
     async def __call__(self, claim: TaskClaim) -> TaskClaimStatus:
-        """Execute the claim by calling the backend execute endpoint."""
+        """Execute the claim by calling the backend execute endpoint.
+
+        Returns:
+            The claim status mapped from the backend's HTTP response.
+        """
         # URL-encode the task_id segment so reserved characters in the
         # claim identifier cannot produce a malformed path. ``safe=""``
         # forces slashes inside the id to be escaped too.
@@ -195,6 +199,9 @@ class TaskExecutionExecutor:
         The mapping is deterministic and documented in the module
         docstring so operators reading worker logs can predict
         ack/nack behaviour from the status alone.
+
+        Returns:
+            The ``TaskClaimStatus`` mapped from the response status code.
         """
         if response.status_code == httpx.codes.NOT_FOUND:
             logger.warning(

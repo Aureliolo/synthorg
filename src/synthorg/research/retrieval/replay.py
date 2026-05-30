@@ -59,6 +59,10 @@ def build_replay_sources(
     A source is created for every :class:`ResearchSourceType` so the
     service can route any planned sub-query; each source filters *items*
     to its own family and serves an empty result when none were recorded.
+
+    Returns:
+        A map from every ``ResearchSourceType`` to a replay source over
+        ``items``.
     """
     return {
         source_type: ReplayRetrievalSource(source_type=source_type, items=items)

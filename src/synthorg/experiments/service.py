@@ -73,6 +73,10 @@ class ExperimentService:
     ) -> ExperimentVariant:
         """Insert or replace a variant.
 
+        Returns:
+            The persisted ``ExperimentVariant`` record, including its
+            ``created_at`` timestamp.
+
         Raises:
             ValidationError: When ``weight`` is non-positive (mirrors
                 the Pydantic model bound for callers that build a
@@ -116,7 +120,12 @@ class ExperimentService:
         experiment: NotBlankStr,
         variant: NotBlankStr,
     ) -> bool:
-        """Remove a variant; returns ``True`` if a row was deleted."""
+        """Remove a variant.
+
+        Returns:
+            ``True`` when a matching row was deleted, ``False`` when no
+            such variant existed.
+        """
         removed = await self._repo.delete(
             experiment=experiment,
             variant=variant,
@@ -144,9 +153,17 @@ class ExperimentService:
         since shifted; the historical assignment is the authoritative
         record.
 
+        Returns:
+            The subject's ``ExperimentAssignment``: the previously recorded
+            one on replay, or the canonical assignment after computing and
+            persisting a fresh one (re-read so a concurrent writer that
+            landed first stays authoritative).
+
         Raises:
             NotFoundError: When the experiment has no registered
                 variants.
+            ConflictError: When a concurrent writer won the insert race and
+                the canonical assignment cannot be re-read afterwards.
         """
         recorded = await self._repo.get_assignment(
             experiment=experiment,
@@ -234,7 +251,13 @@ class ExperimentService:
         subject_id: NotBlankStr,
         variants: tuple[ExperimentVariant, ...],
     ) -> ExperimentVariant:
-        """Walk the cumulative weight bracket and pick the matching variant."""
+        """Walk the cumulative weight bracket and pick the matching variant.
+
+        Returns:
+            The variant whose cumulative-weight bracket contains the
+            subject's stable bucket; the last variant when rounding leaves
+            the bucket at the top of the range.
+        """
         total = sum(v.weight for v in variants)
         bucket = ExperimentService._stable_bucket(experiment, subject_id, modulus=total)
         cumulative = 0

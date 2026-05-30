@@ -11,6 +11,7 @@ from synthorg.client.protocols import (
     FeedbackStrategy,
     RequirementGenerator,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_SUBMITTED,
@@ -60,15 +61,16 @@ class AIClient:
     ) -> TaskRequirement | None:
         """Delegate to the generator and return the first requirement.
 
-        Returns ``None`` when the generator yields an empty tuple,
-        signalling that this client declines to participate.
+        Returns:
+            The first generated requirement, or ``None`` when the
+            generator yields an empty tuple (this client declines to
+            participate).
         """
         single = context.model_copy(update={"count": 1})
         try:
             produced = await self._generator.generate(single)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CLIENT_REQUEST_SUBMITTED,
@@ -93,7 +95,11 @@ class AIClient:
         self,
         context: ReviewContext,
     ) -> ClientFeedback:
-        """Delegate review to the injected feedback strategy."""
+        """Delegate review to the injected feedback strategy.
+
+        Returns:
+            The client feedback produced by the feedback strategy.
+        """
         logger.info(
             CLIENT_REVIEW_STARTED,
             client_id=self._profile.client_id,
@@ -102,9 +108,8 @@ class AIClient:
         )
         try:
             return await self._feedback.evaluate(context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CLIENT_REVIEW_STARTED,

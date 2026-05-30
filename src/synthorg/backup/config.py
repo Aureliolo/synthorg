@@ -91,7 +91,14 @@ class BackupConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_path_traversal(self) -> Self:
-        """Reject parent-directory traversal to prevent path escapes."""
+        """Reject parent-directory traversal to prevent path escapes.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``path`` contains a ``..`` traversal segment.
+        """
         parts = PureWindowsPath(self.path).parts + PurePosixPath(self.path).parts
         if ".." in parts:
             msg = "Backup path must not contain parent-directory traversal (..)"
@@ -106,7 +113,14 @@ class BackupConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_duplicate_components(self) -> Self:
-        """Reject duplicate entries in the include tuple."""
+        """Reject duplicate entries in the include tuple.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``include`` contains duplicate components.
+        """
         if len(self.include) != len(set(self.include)):
             msg = "Duplicate components in include"
             raise ValueError(msg)

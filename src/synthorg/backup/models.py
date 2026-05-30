@@ -64,7 +64,14 @@ class BackupManifest(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _validate_timestamp(cls, v: str) -> str:
-        """Reject timestamps that are not valid ISO 8601."""
+        """Reject timestamps that are not valid ISO 8601.
+
+        Returns:
+            The validated timestamp string, unchanged.
+
+        Raises:
+            ValueError: When ``v`` is not a valid ISO 8601 timestamp.
+        """
         try:
             datetime.fromisoformat(v)
         except ValueError as exc:
@@ -75,7 +82,14 @@ class BackupManifest(BaseModel):
     @field_validator("checksum")
     @classmethod
     def _validate_checksum(cls, v: str) -> str:
-        """Validate checksum format is ``sha256:<64-hex-chars>``."""
+        """Validate checksum format is ``sha256:<64-hex-chars>``.
+
+        Returns:
+            The validated checksum string, unchanged.
+
+        Raises:
+            ValueError: When ``v`` does not match ``sha256:<64-hex-chars>``.
+        """
         if not _CHECKSUM_RE.match(v):
             msg = f"Checksum must match sha256:<64-hex-chars>, got: {v}"
             raise ValueError(msg)
@@ -144,7 +158,15 @@ class RestoreRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_backup_id_format(self) -> Self:
-        """Reject backup IDs that don't match the expected hex format."""
+        """Reject backup IDs that don't match the expected hex format.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``backup_id`` is not a 12-character hex
+                string.
+        """
         if not _BACKUP_ID_RE.match(self.backup_id):
             msg = (
                 f"backup_id must be a 12-character hex string, got: {self.backup_id!r}"

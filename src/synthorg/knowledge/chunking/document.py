@@ -20,7 +20,15 @@ class OffsetChunker:
     """Paragraph-packed chunker for offset-addressable units."""
 
     def chunk_unit(self, unit: RawUnit) -> tuple[ChunkPiece, ...]:
-        """Split *unit* into char-offset chunk pieces."""
+        """Split *unit* into char-offset chunk pieces.
+
+        Returns:
+            The packed chunk pieces, each carrying its char-offset
+            locator.
+
+        Raises:
+            TypeError: When ``unit.locator`` exposes no char offsets.
+        """
         if not hasattr(unit.locator, "char_start"):
             msg = (
                 "OffsetChunker requires a locator with char offsets; got "

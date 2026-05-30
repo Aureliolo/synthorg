@@ -28,10 +28,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _capability(cap: str, detail: str) -> CapabilityNotSupportedError:
-    return CapabilityNotSupportedError(cap, detail)
-
-
 # ── QualityFacadeService ──────────────────────────────────────────
 
 
@@ -48,7 +44,7 @@ class QualityFacadeService:
             if hasattr(result, "__await__"):
                 result = await result
             return dict(result)
-        raise _capability(
+        raise CapabilityNotSupportedError(
             "quality_summary",
             "PerformanceTracker does not expose get_quality_summary",
         )
@@ -66,7 +62,7 @@ class QualityFacadeService:
             if callable(dump_fn):
                 return cast("Mapping[str, object]", dump_fn(mode="json"))
             return dict(snapshot.__dict__) if snapshot else {}
-        raise _capability(
+        raise CapabilityNotSupportedError(
             "quality_agent",
             "PerformanceTracker does not expose get_snapshot",
         )
@@ -90,8 +86,7 @@ class QualityFacadeService:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
             CapabilityNotSupportedError: If the underlying tracker
-                does not expose ``list_quality_scores`` (raised via
-                the ``_capability`` builder).
+                does not expose ``list_quality_scores``.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -108,7 +103,7 @@ class QualityFacadeService:
             total = len(items)
             end = total if limit is None else offset + limit
             return items[offset:end], total
-        raise _capability(
+        raise CapabilityNotSupportedError(
             "quality_scores",
             "PerformanceTracker does not expose list_quality_scores",
         )
@@ -285,13 +280,13 @@ class EvaluationVersionService:
     async def list_versions(self) -> Sequence[object]:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "evaluation_versions_list",
                 "persistence backend does not expose evaluation_config_versions",
             )
         fn = getattr(repo, "list_versions", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "evaluation_versions_list",
                 "evaluation_config_versions repository does not expose list_versions",
             )
@@ -303,13 +298,13 @@ class EvaluationVersionService:
     ) -> object | None:
         repo = getattr(self._persistence, "evaluation_config_versions", None)
         if repo is None:
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "evaluation_versions_get",
                 "persistence backend does not expose evaluation_config_versions",
             )
         fn = getattr(repo, "get_version", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "evaluation_versions_get",
                 "evaluation_config_versions repository does not expose get_version",
             )

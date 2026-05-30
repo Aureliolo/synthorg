@@ -57,6 +57,9 @@ class DocChunker:
                 prose blocks merge up to this budget.
             max_tokens: Hard cap; oversized single blocks become one
                 chunk regardless (no in-block splitting day one).
+
+        Raises:
+            ValueError: When ``max_tokens`` is less than ``target_tokens``.
         """
         if max_tokens < target_tokens:
             msg = (
@@ -150,7 +153,12 @@ class DocChunker:
         return tuple(chunks)
 
     def _token_count(self, text: str) -> int:
-        """Approximate token count via the chars-per-token proxy."""
+        """Approximate token count via the chars-per-token proxy.
+
+        Returns:
+            ``0`` for empty text, otherwise at least ``1`` token scaled by
+            the chars-per-token proxy.
+        """
         if not text:
             return 0
         return max(1, len(text) // CHUNK_CHAR_PER_TOKEN_PROXY)
@@ -161,7 +169,12 @@ class DocChunker:
         project_id: NotBlankStr,
         doc: LivingDocument,
     ) -> tuple[NotBlankStr, ...]:
-        """Tags carried by every chunk: project, slug, doc_type, doc tags."""
+        """Tags carried by every chunk: project, slug, doc_type, doc tags.
+
+        Returns:
+            The base tag tuple: project, slug, and doc-type prefixed tags
+            followed by the document's own tags.
+        """
         return (
             NotBlankStr(f"{DOCS_PROJECT_TAG_PREFIX}{project_id}"),
             NotBlankStr(f"{DOCS_SLUG_TAG_PREFIX}{doc.slug}"),
@@ -211,12 +224,24 @@ class DocChunker:
 
 
 def _prose_run_text(blocks: Sequence[ProseBlock]) -> str:
-    """Join a run of prose blocks with paragraph separators."""
+    """Join a run of prose blocks with paragraph separators.
+
+    Returns:
+        The block texts joined by blank-line paragraph separators.
+    """
     return "\n\n".join(b.text for b in blocks)
 
 
 def _block_to_text(block: DocBlock) -> str:
-    """Render a single block to embeddable plain text."""
+    """Render a single block to embeddable plain text.
+
+    Returns:
+        The block's plain-text rendering for embedding.
+
+    Raises:
+        ValueError: When ``block`` is an unhandled ``DocBlock`` kind
+            (unreachable today; preserved for future block types).
+    """
     if isinstance(block, HeadingBlock):
         return block.text
     if isinstance(block, ProseBlock):

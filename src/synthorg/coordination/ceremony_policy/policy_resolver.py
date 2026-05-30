@@ -129,7 +129,15 @@ class ActiveCeremonyStrategyResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_strategy_sprint_consistency(self) -> Self:
-        """Ensure strategy and sprint_id are both set or both None."""
+        """Ensure strategy and sprint_id are both set or both None.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``strategy`` / ``sprint_id``
+                is set.
+        """
         if (self.strategy is None) != (self.sprint_id is None):
             msg = "strategy and sprint_id must both be set or both be None"
             raise ValueError(msg)
@@ -140,7 +148,15 @@ class ActiveCeremonyStrategyResponse(BaseModel):
 
 
 def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
-    """Parse a ceremony strategy from its raw setting value."""
+    """Parse a ceremony strategy from its raw setting value.
+
+    Returns:
+        The parsed ``CeremonyStrategyType``, or ``None`` when ``raw`` is empty.
+
+    Raises:
+        ValueError: When ``raw`` is a non-empty value that is not a valid
+            strategy member.
+    """
     if not raw:
         return None
     try:
@@ -155,7 +171,14 @@ def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
 
 
 def _parse_strategy_config(raw: str | None) -> dict[str, Any] | None:
-    """Parse strategy config JSON from its raw setting value."""
+    """Parse strategy config JSON from its raw setting value.
+
+    Returns:
+        The parsed config dict, or ``None`` when ``raw`` is empty or ``"{}"``.
+
+    Raises:
+        json.JSONDecodeError: When ``raw`` is non-empty but not valid JSON.
+    """
     if not raw or raw == "{}":
         return None
     try:
@@ -170,7 +193,15 @@ def _parse_strategy_config(raw: str | None) -> dict[str, Any] | None:
 
 
 def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
-    """Parse a velocity calculator type from its raw setting value."""
+    """Parse a velocity calculator type from its raw setting value.
+
+    Returns:
+        The parsed ``VelocityCalcType``, or ``None`` when ``raw`` is empty.
+
+    Raises:
+        ValueError: When ``raw`` is a non-empty value that is not a valid
+            calculator member.
+    """
     if not raw:
         return None
     try:
@@ -187,9 +218,12 @@ def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
 def _parse_auto_transition(raw: str | None) -> bool | None:
     """Parse auto-transition boolean from its raw setting value.
 
+    Returns:
+        ``True`` / ``False`` for the recognised literals, or ``None``
+        when ``raw`` is empty.
+
     Raises:
-        ValueError: If the value is not ``"true"`` or ``"false"``
-            (case-insensitive).
+        ValueError: If the value is not ``"true"`` or ``"false"`` (case-insensitive).
     """
     if raw is None or raw == "":
         return None
@@ -208,7 +242,14 @@ def _parse_auto_transition(raw: str | None) -> bool | None:
 
 
 def _parse_transition_threshold(raw: str | None) -> float | None:
-    """Parse transition threshold from its raw setting value."""
+    """Parse transition threshold from its raw setting value.
+
+    Returns:
+        The parsed float, or ``None`` when ``raw`` is empty.
+
+    Raises:
+        ValueError: When ``raw`` is non-empty but not a valid float.
+    """
     if not raw:
         return None
     try:
@@ -266,6 +307,10 @@ def _determine_field_origin(
 
     Checks from most specific (department) to least (project),
     falling back to default if neither provides the field.
+
+    Returns:
+        ``DEPARTMENT`` / ``PROJECT`` / ``DEFAULT`` depending on which
+        level first supplies a non-null value for ``field_name``.
     """
     if department is not None and getattr(department, field_name) is not None:
         return PolicyFieldOrigin.DEPARTMENT
@@ -278,7 +323,12 @@ def _build_resolved_response(
     project: CeremonyPolicyConfig,
     department: CeremonyPolicyConfig | None,
 ) -> ResolvedCeremonyPolicyResponse:
-    """Build a resolved response with per-field origins."""
+    """Build a resolved response with per-field origins.
+
+    Returns:
+        A response carrying each resolved field's value alongside the
+        level (project / department / default) it originated from.
+    """
     resolved = resolve_ceremony_policy(
         project=project,
         department=department,
@@ -307,8 +357,10 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
     """Fetch project-level ceremony policy from settings.
 
     Fetches all five ceremony settings concurrently via a TaskGroup.
-    Individual setting-fetch failures are caught and surfaced as a
-    single ``ServiceUnavailableError``.
+
+    Returns:
+        The project-level ``CeremonyPolicyConfig`` built from the five
+        resolved ceremony settings.
 
     Raises:
         ServiceUnavailableError: If the settings service is not
@@ -387,7 +439,16 @@ async def _lookup_dept_override_from_settings(
     app_state: AppState,
     department_name: NotBlankStr,
 ) -> CeremonyPolicyConfig | None | _SettingsLookup:
-    """Try to find a department override in the settings service."""
+    """Try to find a department override in the settings service.
+
+    Returns:
+        The parsed override config, ``None`` when the operator cleared the
+        override, or ``_SETTINGS_NOT_FOUND`` when no override is configured.
+
+    Raises:
+        ServiceUnavailableError: When the settings lookup fails, or the
+            stored override payload is malformed / fails validation.
+    """
     if app_state.slice(SettingsStateSlice).settings_service is None:
         return _SETTINGS_NOT_FOUND
     try:
@@ -479,6 +540,10 @@ async def _fetch_department_policy(
 
     Checks settings-based overrides first, then falls back to the
     config resolver's ``ceremony_policy`` field.
+
+    Returns:
+        The department-level override config, or ``None`` when no
+        override applies at either source.
 
     Raises:
         NotFoundError: If the department does not exist.

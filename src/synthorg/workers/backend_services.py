@@ -20,6 +20,7 @@ component cannot strand the others.
 
 from typing import TYPE_CHECKING, Protocol
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
     WORKERS_BACKEND_BUNDLE_STARTED,
@@ -102,9 +103,8 @@ class DistributedBackendServices:
             for _name, component in reversed(started):
                 try:
                     await component.stop()
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         WORKERS_BACKEND_BUNDLE_STOP_FAILED,
                         component=_name,
@@ -119,9 +119,8 @@ class DistributedBackendServices:
         for name, component in reversed(self._start_order):
             try:
                 await component.stop()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_BACKEND_BUNDLE_STOP_FAILED,
                     component=name,
@@ -149,6 +148,10 @@ def build_distributed_backend_services(
         seen_claims: Durable dedup repository (dead-letter dedup +
             pruning target).
         clock: Optional clock seam forwarded to every component.
+
+    Returns:
+        A ``DistributedBackendServices`` bundle wiring the dead-letter
+        consumer, seen-claims pruner, and heartbeat subscriber.
     """
     dead_letter = DeadLetterConsumer(
         task_queue=task_queue,

@@ -49,7 +49,12 @@ def _validate_inheritance_chain(
     parent_name: str,
     _chain: frozenset[str],
 ) -> None:
-    """Check for circular inheritance and depth overflow."""
+    """Check for circular inheritance and depth overflow.
+
+    Raises:
+        TemplateInheritanceError: When ``parent_name`` is already in the
+            chain (circular) or the chain exceeds the depth limit.
+    """
     if parent_name in _chain:
         logger.error(
             TEMPLATE_INHERIT_CIRCULAR,

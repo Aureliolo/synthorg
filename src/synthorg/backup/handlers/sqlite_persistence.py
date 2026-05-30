@@ -12,6 +12,7 @@ from pathlib import Path
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -75,9 +76,8 @@ class SQLitePersistenceComponentHandler:
                 str(self._db_path),
                 str(target_file),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -126,9 +126,8 @@ class SQLitePersistenceComponentHandler:
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -183,12 +182,20 @@ class SQLitePersistenceComponentHandler:
 
     @staticmethod
     def _vacuum_into(source_path: str, target_path: str) -> int:
-        """Delegate to the persistence-layer backup primitive."""
+        """Delegate to the persistence-layer backup primitive.
+
+        Returns:
+            The number of bytes written by ``VACUUM INTO``.
+        """
         return vacuum_into(source_path, target_path)
 
     @staticmethod
     def _check_integrity(db_path: str) -> bool:
-        """Delegate to the persistence-layer integrity check."""
+        """Delegate to the persistence-layer integrity check.
+
+        Returns:
+            ``True`` when the database passes the integrity check.
+        """
         return integrity_check(db_path)
 
     @staticmethod
@@ -218,6 +225,10 @@ class SQLitePersistenceComponentHandler:
         attach external backup tooling or share the SQLite file across
         processes need their own file-lock around the restore window
         before invoking this helper).
+
+        Raises:
+            ComponentBackupError: When the swap fails and the original
+                database has been rolled back.
         """
         # Move current to .bak (including sidecars)
         if db_path.exists():

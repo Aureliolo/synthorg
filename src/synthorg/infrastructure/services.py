@@ -20,9 +20,10 @@ checks) without fighting protocol-type narrowing when the primitive
 is still evolving.
 
 The file-level ``EM101`` / ``E501`` suppressions are intentional:
-capability-gap messages are string literals wired through
-:func:`_capability_missing`, and the long-form capability descriptions
-read better on one line for grep-ability than broken across multiple.
+capability-gap messages are string literals passed straight to
+:class:`CapabilityNotSupportedError`, and the long-form capability
+descriptions read better on one line for grep-ability than broken
+across multiple.
 """
 
 import asyncio
@@ -72,24 +73,21 @@ logger = get_logger(__name__)
 _DEFAULT_LIMIT: Final[int] = 100
 
 
-def _capability_missing(
-    capability: str,
-    detail: str,
-) -> CapabilityNotSupportedError:
-    """Shared helper for typed capability-gap errors."""
-    return CapabilityNotSupportedError(capability, detail)
-
-
 def _require_callable(
     target: Any,
     method_name: str,
     capability: str,
     detail: str,
 ) -> Any:
-    """Return a callable attribute or raise ``CapabilityNotSupportedError``."""
+    """Return a callable attribute or raise ``CapabilityNotSupportedError``.
+
+    Raises:
+        CapabilityNotSupportedError: When ``method_name`` is absent or not
+            callable on ``target``.
+    """
     fn = getattr(target, method_name, None)
     if not callable(fn):
-        raise _capability_missing(capability, detail)
+        raise CapabilityNotSupportedError(capability, detail)
     return fn
 
 
@@ -101,10 +99,17 @@ def _split_setting_key(key: str) -> tuple[str, str]:
     ``key`` as distinct values.  This helper enforces the boundary and
     surfaces a typed capability error when the caller omits the
     namespace (no dot present).
+
+    Returns:
+        The ``(namespace, key)`` pair parsed from the compound identifier.
+
+    Raises:
+        CapabilityNotSupportedError: When ``key`` has no dot, or an empty
+            namespace or leaf.
     """
     namespace, dot, leaf = key.partition(".")
     if not dot or not namespace or not leaf:
-        raise _capability_missing(
+        raise CapabilityNotSupportedError(
             "settings_key_format",
             f"setting key must be 'namespace.key' (got {key!r})",
         )
@@ -252,7 +257,11 @@ class ProviderReadService:
         self,
         provider_id: NotBlankStr,
     ) -> Mapping[str, object]:
-        """Run a connectivity test against ``provider_id`` and return its result."""
+        """Run a connectivity test against ``provider_id`` and return its result.
+
+        Returns:
+            A mapping of ``provider_id`` to the connectivity test result.
+        """
         fn = _require_callable(
             self._management,
             "test_provider",
@@ -295,7 +304,12 @@ class BackupFacadeService:
         return all_backups[offset:end], total
 
     async def get_backup(self, backup_id: NotBlankStr) -> object:
-        """Fetch a single backup by id."""
+        """Fetch a single backup by id.
+
+        Returns:
+            The backup record for ``backup_id`` as returned by the
+            underlying backup service.
+        """
         return await self._service.get_backup(backup_id)
 
     async def create_backup(
@@ -304,7 +318,11 @@ class BackupFacadeService:
         trigger: object,
         components: object = None,
     ) -> object:
-        """Request a new backup for the given ``trigger``/``components``."""
+        """Request a new backup for the given ``trigger``/``components``.
+
+        Returns:
+            The backup record created by the underlying backup service.
+        """
         return await self._service.create_backup(trigger=trigger, components=components)
 
     async def delete_backup(
@@ -330,7 +348,12 @@ class BackupFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> Mapping[str, object]:
-        """Trigger a restore from ``backup_id`` and emit the audit event."""
+        """Trigger a restore from ``backup_id`` and emit the audit event.
+
+        Returns:
+            A mapping confirming the restore: ``backup_id`` and
+            ``restored=True``.
+        """
         await self._service.restore_from_backup(backup_id)
         logger.info(
             BACKUP_RESTORE_TRIGGERED_VIA_MCP,
@@ -377,8 +400,13 @@ class UserFacadeService:
         role: NotBlankStr,  # noqa: ARG002
         actor_id: NotBlankStr,  # noqa: ARG002
     ) -> None:
-        """Capability gap -- user onboarding flow owns user creation."""
-        raise _capability_missing(
+        """Capability gap -- user onboarding flow owns user creation.
+
+        Raises:
+            CapabilityNotSupportedError: Always; users are provisioned via
+                the onboarding flow, not over MCP.
+        """
+        raise CapabilityNotSupportedError(
             "user_create",
             "users are provisioned via the onboarding flow, not MCP",
         )
@@ -390,8 +418,13 @@ class UserFacadeService:
         updates: Mapping[str, object],  # noqa: ARG002
         actor_id: NotBlankStr,  # noqa: ARG002
     ) -> None:
-        """Capability gap -- auth controller owns user mutations."""
-        raise _capability_missing(
+        """Capability gap -- auth controller owns user mutations.
+
+        Raises:
+            CapabilityNotSupportedError: Always; user mutations go through
+                the auth controller, not over MCP.
+        """
+        raise CapabilityNotSupportedError(
             "user_update",
             "user mutations go through the auth controller, not MCP",
         )
@@ -403,8 +436,13 @@ class UserFacadeService:
         actor_id: NotBlankStr,  # noqa: ARG002
         reason: NotBlankStr,  # noqa: ARG002
     ) -> None:
-        """Capability gap -- deletion flows through the operator workflow."""
-        raise _capability_missing(
+        """Capability gap -- deletion flows through the operator workflow.
+
+        Raises:
+            CapabilityNotSupportedError: Always; user deletion is a
+                protected operator workflow, not an MCP operation.
+        """
+        raise CapabilityNotSupportedError(
             "user_delete",
             "user deletion is a protected operator workflow",
         )
@@ -461,6 +499,10 @@ class ProjectFacadeService:
     ) -> tuple[tuple[_ProjectRecord, ...], int]:
         """Return paginated projects newest-first plus the unfiltered total.
 
+        Returns:
+            A ``(page, total)`` pair: the deep-copied project records for
+            the requested slice, newest-first, and the unfiltered count.
+
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
@@ -481,7 +523,12 @@ class ProjectFacadeService:
         return ordered[offset:end], total
 
     async def get_project(self, project_id: NotBlankStr) -> _ProjectRecord | None:
-        """Fetch a project by UUID or ``None`` if absent."""
+        """Fetch a project by UUID or ``None`` if absent.
+
+        Returns:
+            A deep copy of the stored project, or ``None`` when the id is
+            malformed or no such project exists.
+        """
         try:
             key = UUID(project_id)
         except ValueError:
@@ -498,7 +545,11 @@ class ProjectFacadeService:
         actor_id: NotBlankStr,
         metadata: Mapping[str, str] | None = None,
     ) -> _ProjectRecord:
-        """Create a project, auditing the event on success."""
+        """Create a project, auditing the event on success.
+
+        Returns:
+            A deep copy of the newly created project record.
+        """
         record = _ProjectRecord(
             id=uuid4(),
             name=name,
@@ -524,7 +575,12 @@ class ProjectFacadeService:
         description: NotBlankStr | None = None,
         metadata: Mapping[str, str] | None = None,
     ) -> _ProjectRecord | None:
-        """Apply overrides via copy-on-write; return ``None`` if project missing."""
+        """Apply overrides via copy-on-write; return ``None`` if project missing.
+
+        Returns:
+            A deep copy of the refreshed project, or ``None`` when the id
+            is malformed or no such project exists.
+        """
         try:
             key = UUID(project_id)
         except ValueError:
@@ -565,7 +621,12 @@ class ProjectFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a project; only audit when a row was actually dropped."""
+        """Remove a project; only audit when a row was actually dropped.
+
+        Returns:
+            ``True`` when a project was removed, ``False`` when the id is
+            malformed or no such project exists.
+        """
         try:
             key = UUID(project_id)
         except ValueError:
@@ -633,6 +694,10 @@ class RequestsFacadeService:
     ) -> tuple[tuple[_RequestRecord, ...], int]:
         """Return paginated requests newest-first plus the unfiltered total.
 
+        Returns:
+            A ``(page, total)`` pair: the deep-copied request records for
+            the requested slice, newest-first, and the unfiltered count.
+
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
@@ -653,7 +718,12 @@ class RequestsFacadeService:
         return ordered[offset:end], total
 
     async def get_request(self, request_id: NotBlankStr) -> _RequestRecord | None:
-        """Fetch a request record by UUID or ``None`` if absent."""
+        """Fetch a request record by UUID or ``None`` if absent.
+
+        Returns:
+            A deep copy of the stored request, or ``None`` when the id is
+            malformed or no such request exists.
+        """
         try:
             key = UUID(request_id)
         except ValueError:
@@ -669,7 +739,11 @@ class RequestsFacadeService:
         body: NotBlankStr,
         requested_by: NotBlankStr,
     ) -> _RequestRecord:
-        """Create a ledger request, auditing the event on success."""
+        """Create a ledger request, auditing the event on success.
+
+        Returns:
+            A deep copy of the newly created request record.
+        """
         record = _RequestRecord(
             id=uuid4(),
             title=title,
@@ -712,8 +786,13 @@ class SetupFacadeService:
         *,
         config: Mapping[str, object],  # noqa: ARG002 - part of public contract
     ) -> None:
-        """Capability gap -- setup runs through the controller + CLI wizard."""
-        raise _capability_missing(
+        """Capability gap -- setup runs through the controller + CLI wizard.
+
+        Raises:
+            CapabilityNotSupportedError: Always; initialisation is driven
+                through the setup controller and CLI wizard, not over MCP.
+        """
+        raise CapabilityNotSupportedError(
             "setup_initialize",
             "initialisation is driven through the setup controller + CLI wizard",
         )
@@ -735,6 +814,10 @@ class SimulationFacadeService:
         limit: int | None = None,
     ) -> tuple[tuple[object, ...], int]:
         """Return paginated simulation scenarios plus the unfiltered total.
+
+        Returns:
+            A ``(page, total)`` pair: the scenarios for the requested
+            slice and the unfiltered count.
 
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
@@ -760,7 +843,11 @@ class SimulationFacadeService:
         return all_scenarios[offset:end], total
 
     async def get_simulation(self, simulation_id: NotBlankStr) -> object | None:
-        """Fetch a scenario by id or ``None`` if absent."""
+        """Fetch a scenario by id or ``None`` if absent.
+
+        Returns:
+            The scenario for ``simulation_id``, or ``None`` when absent.
+        """
         fn = _require_callable(
             self._state,
             "get_scenario",
@@ -770,8 +857,13 @@ class SimulationFacadeService:
         return cast("object | None", fn(simulation_id))
 
     async def create_simulation(self) -> None:
-        """Capability gap -- scenarios are loaded from config at start-up."""
-        raise _capability_missing(
+        """Capability gap -- scenarios are loaded from config at start-up.
+
+        Raises:
+            CapabilityNotSupportedError: Always; simulation scenarios are
+                loaded from config at start-up, not created over MCP.
+        """
+        raise CapabilityNotSupportedError(
             "simulation_create",
             "simulation scenarios are loaded from config at start-up",
         )
@@ -824,6 +916,10 @@ class TemplatePackFacadeService:
     ) -> tuple[tuple[_TemplatePackRecord, ...], int]:
         """Return paginated packs newest-first plus the unfiltered total.
 
+        Returns:
+            A ``(page, total)`` pair: the deep-copied pack records for the
+            requested slice, newest-first, and the unfiltered count.
+
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
@@ -844,7 +940,12 @@ class TemplatePackFacadeService:
         return ordered[offset:end], total
 
     async def get_pack(self, pack_id: NotBlankStr) -> _TemplatePackRecord | None:
-        """Fetch an installed pack by UUID or ``None`` if absent."""
+        """Fetch an installed pack by UUID or ``None`` if absent.
+
+        Returns:
+            A deep copy of the stored pack, or ``None`` when the id is
+            malformed or no such pack is installed.
+        """
         try:
             key = UUID(pack_id)
         except ValueError:
@@ -860,7 +961,11 @@ class TemplatePackFacadeService:
         version: NotBlankStr,
         actor_id: NotBlankStr,
     ) -> _TemplatePackRecord:
-        """Install a template pack, auditing the event on success."""
+        """Install a template pack, auditing the event on success.
+
+        Returns:
+            A deep copy of the newly installed pack record.
+        """
         record = _TemplatePackRecord(
             id=uuid4(),
             name=name,
@@ -884,7 +989,12 @@ class TemplatePackFacadeService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a pack; only emit the audit event on actual removal."""
+        """Remove a pack; only emit the audit event on actual removal.
+
+        Returns:
+            ``True`` when a pack was removed, ``False`` when the id is
+            malformed or no such pack is installed.
+        """
         try:
             key = UUID(pack_id)
         except ValueError:
@@ -919,6 +1029,10 @@ class AuditReadService:
     ) -> tuple[tuple[object, ...], int]:
         """Return paginated audit entries plus the unfiltered total.
 
+        Returns:
+            A ``(page, total)`` pair: the audit entries for the requested
+            slice and the unfiltered count.
+
         Raises:
             ValueError: If ``offset`` is negative or ``limit`` < 1.
             CapabilityNotSupportedError: If the underlying
@@ -932,7 +1046,7 @@ class AuditReadService:
             raise ValueError(msg)
         fn = getattr(self._audit, "list_entries", None)
         if not callable(fn):
-            raise _capability_missing(
+            raise CapabilityNotSupportedError(
                 "audit_list",
                 "AuditLog does not expose list_entries",
             )
@@ -963,6 +1077,10 @@ class EventsReadService:
         the true count (not just ``offset + limit``), then slices the
         requested window.
 
+        Returns:
+            A ``(page, total)`` pair: the events for the requested slice
+            and the hub's full retention count.
+
         Raises:
             ValueError: If ``offset`` is negative or ``limit`` < 1.
             CapabilityNotSupportedError: If the underlying
@@ -976,7 +1094,7 @@ class EventsReadService:
             raise ValueError(msg)
         fn = getattr(self._hub, "recent_events", None)
         if not callable(fn):
-            raise _capability_missing(
+            raise CapabilityNotSupportedError(
                 "events_list",
                 "EventStreamHub does not expose recent_events",
             )
@@ -999,10 +1117,15 @@ class IntegrationHealthFacadeService:
         self._prober = cast("Any", prober)
 
     async def get_all(self) -> Mapping[str, object]:
-        """Return the full integration-health snapshot."""
+        """Return the full integration-health snapshot.
+
+        Raises:
+            CapabilityNotSupportedError: When the prober does not expose
+                ``snapshot``.
+        """
         fn = getattr(self._prober, "snapshot", None)
         if not callable(fn):
-            raise _capability_missing(
+            raise CapabilityNotSupportedError(
                 "integration_health_list",
                 "HealthProberService does not expose snapshot",
             )

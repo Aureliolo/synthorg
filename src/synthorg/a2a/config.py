@@ -107,7 +107,15 @@ class A2AAgentCardVerificationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_trust_sources(self) -> Self:
-        """Ensure at least one trust source when signatures required."""
+        """Ensure at least one trust source when signatures required.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``require_signatures`` is set but neither
+                ``trusted_jwks_urls`` nor ``trusted_public_keys`` is given.
+        """
         if (
             self.require_signatures
             and not self.trusted_jwks_urls
@@ -191,7 +199,11 @@ class A2AConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_enabled_has_peers(self) -> Self:
-        """Warn when gateway is enabled but no peers are allowed."""
+        """Warn when gateway is enabled but no peers are allowed.
+
+        Returns:
+            The model instance (``self``), unchanged.
+        """
         if self.enabled and not self.allowed_peers:
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

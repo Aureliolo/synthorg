@@ -49,7 +49,12 @@ class TemplateValidationError(TemplateError):
 
     @override
     def __str__(self) -> str:
-        """Format validation error with per-field details."""
+        """Format validation error with per-field details.
+
+        Returns:
+            The base message when there are no field errors, otherwise a
+            header line plus one indented line per field error.
+        """
         if not self.field_errors:
             return super().__str__()
         parts = [f"{self.message} ({len(self.field_errors)} errors):"]

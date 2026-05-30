@@ -127,7 +127,15 @@ class ClientPoolConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_ratio_sum(self) -> Self:
-        """Ensure ratios sum to approximately 1.0."""
+        """Ensure ratios sum to approximately 1.0.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the AI / human / hybrid ratios do not sum to
+                approximately 1.0.
+        """
         total = self.ai_ratio + self.human_ratio + self.hybrid_ratio
         if not (_RATIO_SUM_TOLERANCE_LOW <= total <= _RATIO_SUM_TOLERANCE_HIGH):
             msg = (

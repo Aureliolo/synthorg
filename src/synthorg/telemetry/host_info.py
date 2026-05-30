@@ -118,7 +118,11 @@ class DockerHostInfo(TypedDict):
 
 
 def _truncate(value: object) -> str:
-    """Coerce to str and truncate to the scrubber's cap."""
+    """Coerce to str and truncate to the scrubber's cap.
+
+    Returns:
+        The string form of ``value``, capped at ``MAX_STRING_LENGTH``.
+    """
     text = str(value)
     return text[:MAX_STRING_LENGTH]
 
@@ -161,6 +165,11 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
     access (the default backend topology). AMD / Intel GPUs do not
     register a Docker runtime, so no equivalent flag exists -- that
     gap is documented at module level.
+
+    Returns:
+        The telemetry-safe subset of daemon ``/info`` with
+        ``docker_info_available=True`` and the allowlisted, truncated
+        fields that were present.
     """
     result: DockerHostInfo = {"docker_info_available": True}
 
@@ -207,9 +216,10 @@ def _extract(info: Mapping[str, object]) -> DockerHostInfo:
 async def _probe_docker_socket() -> DockerHostInfo | None:
     """Check whether the Docker socket is mounted and reachable.
 
-    Returns a marker payload when the socket is absent or the stat
-    call fails; ``None`` when the socket is present (the caller
-    continues to the daemon probe). Never raises.
+    Returns:
+        A marker payload when the socket is absent or the stat call
+        fails; ``None`` when the socket is present (the caller continues
+        to the daemon probe). Never raises.
 
     ``os.path.exists`` is a blocking stat syscall; a wedged FUSE
     mount or dying NFS on ``/var/run`` could stall the loop, so it
@@ -250,6 +260,10 @@ def _import_aiodocker() -> object | None:
     sandbox sidecar). Returning ``None`` on ``ImportError`` lets the
     caller collapse to :data:`_REASON_AIODOCKER_NOT_INSTALLED`
     without a try/except in the orchestrator.
+
+    Returns:
+        The imported ``aiodocker`` module, or ``None`` when it is not
+        installed.
     """
     try:
         import aiodocker  # type: ignore[import-untyped,unused-ignore]  # noqa: PLC0415
@@ -265,9 +279,12 @@ def _import_aiodocker() -> object | None:
 async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
     """Construct a client and fetch raw daemon ``/info``.
 
-    Returns the raw dict on success, ``None`` on any failure
-    (client construction error, timeout, daemon error, non-dict
-    response). Never raises. The :func:`asyncio.timeout` wrapper
+    Returns:
+        The raw daemon ``/info`` dict on success, or ``None`` on any
+        failure (client construction error, timeout, daemon error,
+        non-dict response). Never raises.
+
+    The :func:`asyncio.timeout` wrapper
     caps the probe at :data:`_DOCKER_INFO_TIMEOUT_SECONDS` because
     ``aiodocker`` inherits aiohttp's 300 s ``sock_read`` default;
     a wedged-but-reachable daemon would otherwise stall startup for
@@ -319,13 +336,13 @@ async def _probe_daemon_info(aiodocker_mod: object) -> object | None:
 async def fetch_docker_info() -> DockerHostInfo:
     """Fetch a telemetry-safe snapshot of Docker daemon ``/info``.
 
-    Returns the allowlisted fields with
-    ``docker_info_available=True`` when the daemon responds. On
-    every failure path (socket not bind-mounted, ``aiodocker`` not
-    installed, daemon unreachable, daemon returned an error), the
-    payload collapses to the ``docker_info_available=False`` marker
-    with a categorical reason. The caller merges the result straight
-    into a :class:`TelemetryEvent`'s ``properties``.
+    Returns:
+        The allowlisted fields with ``docker_info_available=True`` when
+        the daemon responds. On every failure path (socket not
+        bind-mounted, ``aiodocker`` not installed, daemon unreachable,
+        daemon returned an error), the ``docker_info_available=False``
+        marker with a categorical reason. The caller merges the result
+        straight into a :class:`TelemetryEvent`'s ``properties``.
 
     Never raises: every failure is caught, logged at the
     appropriate level, and collapsed into the marker payload.

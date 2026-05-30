@@ -1,3 +1,4 @@
+# module-kind: service
 # ruff: noqa: EM101
 """Organization facades for the MCP handler layer.
 
@@ -7,12 +8,12 @@ where it already owns the flow; other paths use in-memory stores until
 durable repositories land.
 
 The file-level ``EM101`` suppression is intentional: every capability
-gap in this module is raised via the :func:`_capability` factory which
-builds a :class:`CapabilityNotSupportedError` from a short identifier
-and operator-readable reason -- both string literals by design so
-capability telemetry (logged via :data:`MCP_HANDLER_CAPABILITY_GAP`)
-has a stable, grep-able message.  Hoisting them to ``msg = ...``
-locals would obscure the one-line intent with no runtime benefit.
+gap in this module raises :class:`CapabilityNotSupportedError` from a
+short identifier and operator-readable reason, both string literals by
+design so capability telemetry (logged via
+:data:`MCP_HANDLER_CAPABILITY_GAP`) has a stable, grep-able message.
+Hoisting them to ``msg = ...`` locals would obscure the one-line intent
+with no runtime benefit.
 """
 
 import asyncio
@@ -71,10 +72,6 @@ class UnsetType:
 UNSET = UnsetType()
 
 
-def _capability(capability: str, detail: str) -> CapabilityNotSupportedError:
-    return CapabilityNotSupportedError(capability, detail)
-
-
 # ── CompanyReadService ──────────────────────────────────────────────
 
 
@@ -85,11 +82,16 @@ class CompanyReadService:
         self._org = cast("Any", org_mutation)
 
     async def get_company(self) -> object:
-        """Return the company snapshot or raise if the capability is missing."""
+        """Return the company snapshot or raise if the capability is missing.
+
+        Raises:
+            CapabilityNotSupportedError: When the wired
+                ``OrgMutationService`` does not expose ``get_company``.
+        """
         fn = getattr(self._org, "get_company", None)
         if callable(fn):
             return await fn()
-        raise _capability(
+        raise CapabilityNotSupportedError(
             "company_get",
             "OrgMutationService does not expose get_company",
         )
@@ -107,10 +109,17 @@ class CompanyReadService:
         service.  The call then matches the target signature
         ``update_company(data, *, saved_by=...)`` -- ``actor_id`` is
         recorded as ``saved_by`` in the persisted snapshot.
+
+        Returns:
+            The updated company snapshot returned by the mutation service.
+
+        Raises:
+            CapabilityNotSupportedError: When ``OrgMutationService`` does
+                not expose ``update_company``.
         """
         fn = getattr(self._org, "update_company", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "company_update",
                 "OrgMutationService does not expose update_company",
             )
@@ -120,10 +129,15 @@ class CompanyReadService:
         return result
 
     async def list_departments(self) -> Sequence[object]:
-        """Return the company's departments."""
+        """Return the company's departments.
+
+        Raises:
+            CapabilityNotSupportedError: When ``OrgMutationService`` does
+                not expose ``list_departments``.
+        """
         fn = getattr(self._org, "list_departments", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "company_list_departments",
                 "OrgMutationService does not expose list_departments",
             )
@@ -135,10 +149,15 @@ class CompanyReadService:
         department_ids: Sequence[str],
         actor_id: NotBlankStr,
     ) -> None:
-        """Apply a new department ordering, auditing the change."""
+        """Apply a new department ordering, auditing the change.
+
+        Raises:
+            CapabilityNotSupportedError: When ``OrgMutationService`` does
+                not expose ``reorder_departments``.
+        """
         fn = getattr(self._org, "reorder_departments", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "company_reorder_departments",
                 "OrgMutationService does not expose reorder_departments",
             )
@@ -150,20 +169,34 @@ class CompanyReadService:
         )
 
     async def list_versions(self) -> Sequence[object]:
-        """Return all company-snapshot versions."""
+        """Return all company-snapshot versions.
+
+        Raises:
+            CapabilityNotSupportedError: When ``OrgMutationService`` does
+                not expose ``list_company_versions``.
+        """
         fn = getattr(self._org, "list_company_versions", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "company_list_versions",
                 "OrgMutationService does not expose list_company_versions",
             )
         return tuple(await fn())
 
     async def get_version(self, version_id: NotBlankStr) -> object | None:
-        """Fetch a single company-snapshot version by id."""
+        """Fetch a single company-snapshot version by id.
+
+        Returns:
+            The matching company-snapshot version, or ``None`` when no
+            version has that id.
+
+        Raises:
+            CapabilityNotSupportedError: When ``OrgMutationService`` does
+                not expose ``get_company_version``.
+        """
         fn = getattr(self._org, "get_company_version", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "company_get_version",
                 "OrgMutationService does not expose get_company_version",
             )
@@ -249,7 +282,12 @@ class DepartmentService:
         self,
         department_id: NotBlankStr,
     ) -> _DepartmentRecord | None:
-        """Fetch a single department by UUID or ``None`` if not found."""
+        """Fetch a single department by UUID or ``None`` if not found.
+
+        Returns:
+            A deep copy of the stored department, or ``None`` when the id
+            is malformed or no such department exists.
+        """
         try:
             key = UUID(department_id)
         except ValueError:
@@ -265,7 +303,11 @@ class DepartmentService:
         description: NotBlankStr,
         actor_id: NotBlankStr,
     ) -> _DepartmentRecord:
-        """Create a department, auditing the event on success."""
+        """Create a department, auditing the event on success.
+
+        Returns:
+            A deep copy of the newly created department record.
+        """
         record = _DepartmentRecord(
             id=uuid4(),
             name=name,
@@ -289,7 +331,12 @@ class DepartmentService:
         name: NotBlankStr | None = None,
         description: NotBlankStr | None = None,
     ) -> _DepartmentRecord | None:
-        """Patch a department's ``name`` / ``description`` in place."""
+        """Patch a department's ``name`` / ``description`` in place.
+
+        Returns:
+            A deep copy of the updated department, or ``None`` when the id
+            is malformed or no such department exists.
+        """
         try:
             key = UUID(department_id)
         except ValueError:
@@ -318,7 +365,12 @@ class DepartmentService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a department; emit the audit event only on real removal."""
+        """Remove a department; emit the audit event only on real removal.
+
+        Returns:
+            ``True`` when a department was removed, ``False`` when the id
+            is malformed or no such department exists.
+        """
         try:
             key = UUID(department_id)
         except ValueError:
@@ -425,7 +477,12 @@ class TeamService:
         return ordered[offset:end], total
 
     async def get_team(self, team_id: NotBlankStr) -> _TeamRecord | None:
-        """Fetch a single team by UUID or ``None`` if not found."""
+        """Fetch a single team by UUID or ``None`` if not found.
+
+        Returns:
+            A deep copy of the stored team, or ``None`` when the id is
+            malformed or no such team exists.
+        """
         try:
             key = UUID(team_id)
         except ValueError:
@@ -441,7 +498,11 @@ class TeamService:
         actor_id: NotBlankStr,
         department_id: NotBlankStr | None = None,
     ) -> _TeamRecord:
-        """Create a team, auditing the event on success."""
+        """Create a team, auditing the event on success.
+
+        Returns:
+            A deep copy of the newly created team record.
+        """
         record = _TeamRecord(
             id=uuid4(),
             name=name,
@@ -470,6 +531,10 @@ class TeamService:
         The default ``department_id=UNSET`` sentinel means "leave
         unchanged"; pass ``department_id=None`` explicitly to clear a
         team's department assignment.
+
+        Returns:
+            A deep copy of the updated team, or ``None`` when the id is
+            malformed or no such team exists.
         """
         try:
             key = UUID(team_id)
@@ -499,7 +564,12 @@ class TeamService:
         actor_id: NotBlankStr,
         reason: NotBlankStr,
     ) -> bool:
-        """Remove a team; emit the audit event only on real removal."""
+        """Remove a team; emit the audit event only on real removal.
+
+        Returns:
+            ``True`` when a team was removed, ``False`` when the id is
+            malformed or no such team exists.
+        """
         try:
             key = UUID(team_id)
         except ValueError:
@@ -535,15 +605,21 @@ class RoleVersionService:
         *,
         role_name: NotBlankStr | None = None,
     ) -> Sequence[object]:
-        """Return role-snapshot versions, optionally filtered by role name."""
+        """Return role-snapshot versions, optionally filtered by role name.
+
+        Raises:
+            CapabilityNotSupportedError: When no ``OrgMutationService`` is
+                wired, or the wired one does not expose
+                ``list_role_versions``.
+        """
         if self._org is None:
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "role_versions_list",
                 "OrgMutationService not wired on app_state",
             )
         fn = getattr(self._org, "list_role_versions", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "role_versions_list",
                 "OrgMutationService does not expose list_role_versions",
             )
@@ -553,15 +629,25 @@ class RoleVersionService:
         self,
         version_id: NotBlankStr,
     ) -> object | None:
-        """Fetch a single role-snapshot version by id."""
+        """Fetch a single role-snapshot version by id.
+
+        Returns:
+            The matching role-snapshot version, or ``None`` when no
+            version has that id.
+
+        Raises:
+            CapabilityNotSupportedError: When no ``OrgMutationService`` is
+                wired, or the wired one does not expose
+                ``get_role_version``.
+        """
         if self._org is None:
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "role_versions_get",
                 "OrgMutationService not wired on app_state",
             )
         fn = getattr(self._org, "get_role_version", None)
         if not callable(fn):
-            raise _capability(
+            raise CapabilityNotSupportedError(
                 "role_versions_get",
                 "OrgMutationService does not expose get_role_version",
             )

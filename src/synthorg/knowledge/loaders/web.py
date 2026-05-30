@@ -9,9 +9,9 @@ unit-testable without real network egress.
 """
 
 import asyncio
-import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.errors import (
@@ -62,12 +62,20 @@ class WebLoader:
         self._guard = guard if guard is not None else HTMLParseGuard()
 
     async def load(self, source: KnowledgeSource) -> RawDocument:
-        """Fetch + sanitise ``source.uri`` into one document unit."""
+        """Fetch + sanitise ``source.uri`` into one document unit.
+
+        Returns:
+            A ``RawDocument`` with a single sanitised document unit (empty
+            of units when the cleaned text is blank).
+
+        Raises:
+            KnowledgeSourceUnavailableError: When the page fetch fails.
+            KnowledgeIngestError: When HTML sanitisation fails.
+        """
         try:
             html = await self._fetcher.fetch(source.uri)
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to fetch web source {source.source_id!r}"
             logger.warning(
                 KNOWLEDGE_LOAD_FAILED,
@@ -78,9 +86,8 @@ class WebLoader:
             raise KnowledgeSourceUnavailableError(msg) from exc
         try:
             cleaned = (await asyncio.to_thread(self._guard.sanitize, html)).cleaned
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to sanitise web source {source.source_id!r}"
             logger.warning(
                 KNOWLEDGE_LOAD_FAILED,

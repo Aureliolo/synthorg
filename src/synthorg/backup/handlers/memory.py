@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -74,9 +75,8 @@ class MemoryComponentHandler:
         target = target_dir / _MEMORY_SUBDIR
         try:
             size = await asyncio.to_thread(self._copy_tree, self._data_dir, target)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -125,9 +125,8 @@ class MemoryComponentHandler:
             )
         except ComponentBackupError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -148,7 +147,11 @@ class MemoryComponentHandler:
 
     @staticmethod
     def _copy_tree(source: Path, target: Path) -> int:
-        """Copy directory tree and return total bytes copied."""
+        """Copy directory tree and return total bytes copied.
+
+        Returns:
+            The total size in bytes of all files copied into the target.
+        """
         shutil.copytree(source, target, symlinks=True)
         total = 0
         for f in target.rglob("*"):

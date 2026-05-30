@@ -161,7 +161,12 @@ class ProjectAwareMemoryFacade:
 
 
 def _project_doc_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
-    """Build the project-doc-scoped sibling query from *base*."""
+    """Build the project-doc-scoped sibling query from *base*.
+
+    Returns:
+        A copy of ``base`` scoped to the ``PROJECT_DOC`` category, docs
+        namespace, and the project tag.
+    """
     project_tag = NotBlankStr(f"{DOCS_PROJECT_TAG_PREFIX}{project_id}")
     return base.model_copy(
         update={
@@ -173,7 +178,12 @@ def _project_doc_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQ
 
 
 def _knowledge_query(*, scope_tag: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
-    """Build a knowledge-scoped sibling query (project or global) from *base*."""
+    """Build a knowledge-scoped sibling query (project or global) from *base*.
+
+    Returns:
+        A copy of ``base`` scoped to the ``KNOWLEDGE`` category, knowledge
+        namespace, and the given ``scope_tag``.
+    """
     return base.model_copy(
         update={
             "categories": frozenset({MemoryCategory.KNOWLEDGE}),
@@ -187,7 +197,12 @@ def _merge_by_score(
     *result_sets: tuple[MemoryEntry, ...],
     limit: int,
 ) -> tuple[MemoryEntry, ...]:
-    """Interleave entries by descending ``relevance_score`` and truncate."""
+    """Combine entries, sort by descending ``relevance_score``, and truncate.
+
+    Returns:
+        The combined entries sorted by descending relevance score and
+        truncated to ``limit``.
+    """
     combined = [entry for result in result_sets for entry in result]
     combined.sort(
         key=lambda entry: (

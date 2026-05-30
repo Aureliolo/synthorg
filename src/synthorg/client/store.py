@@ -143,7 +143,11 @@ class RequestStore:
             )
 
     async def get(self, request_id: str) -> ClientRequest:
-        """Return the request by id or raise ``KeyError``."""
+        """Return the request by id or raise ``KeyError``.
+
+        Raises:
+            KeyError: When no request has ``request_id``.
+        """
         async with self._lock:
             if request_id not in self._requests:
                 logger.warning(
@@ -224,13 +228,14 @@ class SimulationStore:
     async def register_if_absent(self, record: SimulationRecord) -> bool:
         """Atomically insert *record* if no entry exists for its id.
 
-        Returns ``True`` when *record* was inserted (the caller is the
-        "winner" and should spawn the runner), ``False`` when a record
-        for ``record.simulation_id`` already exists (the caller should
-        return HTTP 409 and let the existing runner finish).
-
         The check-and-insert happens under ``self._lock`` so two
         concurrent callers cannot both observe absence and proceed.
+
+        Returns:
+            ``True`` when *record* was inserted (the caller is the
+            "winner" and should spawn the runner), ``False`` when a record
+            for ``record.simulation_id`` already exists (the caller should
+            return HTTP 409 and let the existing runner finish).
         """
         async with self._lock:
             if record.simulation_id in self._runs:
@@ -260,6 +265,10 @@ class SimulationStore:
         is preserved instead of being silently deleted. ``expected=None``
         keeps the old unconditional-delete semantics for callers that
         don't have a snapshot to compare against.
+
+        Returns:
+            ``True`` when the entry was removed, ``False`` when no entry
+            existed or a different record now occupies the slot.
         """
         async with self._lock:
             current = self._runs.get(simulation_id)
@@ -271,7 +280,11 @@ class SimulationStore:
             return True
 
     async def get(self, simulation_id: str) -> SimulationRecord:
-        """Return the record by id or raise ``KeyError``."""
+        """Return the record by id or raise ``KeyError``.
+
+        Raises:
+            KeyError: When no record has ``simulation_id``.
+        """
         async with self._lock:
             if simulation_id not in self._runs:
                 logger.warning(
@@ -322,6 +335,14 @@ class SimulationStore:
         Constructs a new frozen :class:`SimulationRecord` via
         ``model_copy`` rather than mutating in place, honoring the
         project's immutability rule.
+
+        Returns:
+            The updated :class:`SimulationRecord`.
+
+        Raises:
+            KeyError: When no record has ``simulation_id``.
+            ValueError: When the requested status / progress update is
+                invalid for the current record state.
         """
         async with self._lock:
             if simulation_id not in self._runs:

@@ -34,6 +34,9 @@ def _warn_and_raise(msg: str, **ctx: object) -> None:
     Centralised so both rate-limit and concurrency override validators
     emit operator-facing context the same way before propagating the
     failure as ``ValueError`` (Pydantic wraps it as ``ValidationError``).
+
+    Raises:
+        ValueError: Always, carrying ``msg``; this helper never returns.
     """
     logger.warning(API_APP_STARTUP, **ctx, error=msg)
     raise ValueError(msg)
@@ -109,6 +112,10 @@ class PerOpRateLimitConfig(BaseModel):
         runs ``mode="before"`` validators in REVERSE declaration order,
         so this runs LAST -- after the mirror has populated ``overrides``
         from env -- which is what we want.
+
+        Returns:
+            The input ``data`` unchanged once every override passes its
+            shape and non-negative-integer checks.
         """
         if not isinstance(data, dict):
             return data
@@ -221,6 +228,10 @@ class PerOpConcurrencyConfig(BaseModel):
         runs ``mode="before"`` validators in REVERSE declaration order,
         so this runs LAST -- after the mirror has populated ``overrides``
         from env -- which is what we want.
+
+        Returns:
+            The input ``data`` unchanged once every override passes its
+            shape and non-negative-integer checks.
         """
         if not isinstance(data, dict):
             return data

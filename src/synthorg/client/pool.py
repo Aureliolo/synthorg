@@ -65,6 +65,9 @@ class ClientPool:
     async def remove(self, client_id: str) -> ClientProfile:
         """Remove a client by id and return its profile.
 
+        Returns:
+            The removed client's profile.
+
         Raises:
             KeyError: If the client id is not known.
         """
@@ -90,6 +93,9 @@ class ClientPool:
         runner and review stages stop selecting them. Idempotent:
         deactivating an already-inactive client is a no-op.
 
+        Returns:
+            The deactivated client's profile.
+
         Raises:
             KeyError: If the client id is not known.
         """
@@ -110,6 +116,9 @@ class ClientPool:
 
         Idempotent: reactivating an already-active client is a
         no-op that returns the existing profile.
+
+        Returns:
+            The reactivated client's profile.
 
         Raises:
             KeyError: If the client id is not known.
@@ -209,7 +218,12 @@ def _filter_by_constraints(
     pool: tuple[ClientInterface, ...],
     constraints: PoolConstraints,
 ) -> list[ClientInterface]:
-    """Filter clients by strictness and required-domains constraints."""
+    """Filter clients by strictness and required-domains constraints.
+
+    Returns:
+        The clients within the strictness band that cover all required
+        domains.
+    """
     results: list[ClientInterface] = []
     for client in pool:
         profile = _client_profile(client)
@@ -250,7 +264,11 @@ class RoundRobinStrategy:
         pool: tuple[ClientInterface, ...],
         constraints: PoolConstraints,
     ) -> tuple[ClientInterface, ...]:
-        """Select up to ``constraints.max_clients`` via round-robin."""
+        """Select up to ``constraints.max_clients`` via round-robin.
+
+        Returns:
+            The selected clients (empty when none pass the constraints).
+        """
         filtered = _filter_by_constraints(pool, constraints)
         if not filtered:
             return ()
@@ -287,7 +305,12 @@ class WeightedRandomStrategy:
         pool: tuple[ClientInterface, ...],
         constraints: PoolConstraints,
     ) -> tuple[ClientInterface, ...]:
-        """Sample up to ``constraints.max_clients`` weighted by strictness."""
+        """Sample up to ``constraints.max_clients`` weighted by strictness.
+
+        Returns:
+            The sampled clients, weighted by strictness without
+            replacement (empty when none pass the constraints).
+        """
         filtered = _filter_by_constraints(pool, constraints)
         if not filtered:
             return ()
@@ -324,7 +347,12 @@ class DomainMatchedStrategy:
         pool: tuple[ClientInterface, ...],
         constraints: PoolConstraints,
     ) -> tuple[ClientInterface, ...]:
-        """Select clients matching all required domains."""
+        """Select clients matching all required domains.
+
+        Returns:
+            Up to ``max_clients`` clients in insertion order that satisfy
+            the constraints.
+        """
         filtered = _filter_by_constraints(pool, constraints)
         if not filtered:
             return ()

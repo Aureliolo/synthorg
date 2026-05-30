@@ -85,6 +85,14 @@ def _load_parser(language: str) -> Any | None:
     Uses the standard ``tree_sitter.Parser`` + ``get_language`` path
     (well-documented Node API) rather than the language pack's bundled
     fast-binding, whose ``Tree`` / ``Node`` surface differs.
+
+    Returns:
+        A configured ``tree_sitter.Parser``, or ``None`` when the grammar
+        for ``language`` is absent.
+
+    Raises:
+        KnowledgeDependencyError: When the ``tree-sitter`` extras are not
+            installed.
     """
     try:
         from tree_sitter import Parser  # noqa: PLC0415
@@ -106,7 +114,15 @@ class CodeChunker:
     """Tree-sitter chunker that splits code at definition boundaries."""
 
     def chunk_unit(self, unit: RawUnit) -> tuple[ChunkPiece, ...]:
-        """Split a source file into definition / module-level chunks."""
+        """Split a source file into definition / module-level chunks.
+
+        Returns:
+            The chunk pieces for the unit, or an empty tuple for blank
+            text.
+
+        Raises:
+            TypeError: When ``unit.locator`` is not a ``CodeLocator``.
+        """
         if not isinstance(unit.locator, CodeLocator):
             msg = (
                 f"CodeChunker requires a CodeLocator; got {type(unit.locator).__name__}"
@@ -130,7 +146,12 @@ class CodeChunker:
         text: str,
         lines: list[str],
     ) -> tuple[ChunkPiece, ...]:
-        """Walk top-level nodes, emitting definition + module-level chunks."""
+        """Walk top-level nodes, emitting definition + module-level chunks.
+
+        Returns:
+            The chunk pieces for the parsed tree: one per top-level
+            definition plus packed module-level runs.
+        """
         tree = parser.parse(text.encode("utf-8"))
         pieces: list[ChunkPiece] = []
         buffer: list[int] = []  # 0-indexed line numbers of pending module-level run
@@ -278,7 +299,11 @@ class CodeChunker:
             )
 
     def _line_windows(self, *, path: str, lines: list[str]) -> tuple[ChunkPiece, ...]:
-        """Fallback: split into fixed line windows under the char budget."""
+        """Fallback: split into fixed line windows under the char budget.
+
+        Returns:
+            The chunk pieces produced by fixed line-window splitting.
+        """
         pieces: list[ChunkPiece] = []
         self._emit_lines(pieces, path=path, lines=lines, start=0, end=len(lines) - 1)
         return tuple(pieces)
@@ -289,7 +314,12 @@ def _is_definition(node_type: str) -> bool:
 
 
 def _node_symbol(node: Any) -> str | None:
-    """Extract a definition's name via the ``name`` field, if present."""
+    """Extract a definition's name via the ``name`` field, if present.
+
+    Returns:
+        The decoded definition name, or ``None`` when the node has no
+        ``name`` field or it is empty.
+    """
     name_node = node.child_by_field_name("name")
     if name_node is None or name_node.text is None:
         return None

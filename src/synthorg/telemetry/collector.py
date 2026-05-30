@@ -32,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.telemetry import (
     TELEMETRY_CLOSED,
@@ -166,6 +167,11 @@ def _resolve_environment(
     environ: Mapping[str, str] | None = None,
 ) -> str:
     """Pick the effective deployment environment tag.
+
+    Returns:
+        The resolved environment string, trimmed and capped at
+        ``MAX_STRING_LENGTH``, or ``DEFAULT_ENVIRONMENT`` when every
+        source is blank.
 
     Priority order (first match wins):
 
@@ -430,6 +436,10 @@ class TelemetryCollector:
         defence-in-depth try/except so a contract violation in the
         sync helper or a thread-pool timeout never crashes
         ``start()``.
+
+        Raises:
+            RuntimeError: When called after ``shutdown()``; restart of a
+                torn-down collector is not supported.
         """
         async with self._lifecycle_lock:
             if self._closed:
@@ -499,14 +509,8 @@ class TelemetryCollector:
                         timeout_seconds=_DEPLOYMENT_ID_LOAD_TIMEOUT_SECONDS,
                         using_generated_id=True,
                     )
-                except MemoryError, RecursionError:
-                    # System-level errors must propagate so operators
-                    # see the real condition; downgrading them to a
-                    # generated UUID would mask runaway-recursion or
-                    # out-of-memory states behind a healthy-looking
-                    # telemetry boot.
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     # The sync helper is documented to never raise,
                     # but a future regression must not crash start()
                     # and leak the heartbeat task slot. Match the
@@ -698,6 +702,11 @@ class TelemetryCollector:
         """Construct a ``TelemetryEvent`` with runtime metadata.
 
         Only called when telemetry is enabled (deployment ID is set).
+
+        Returns:
+            A ``TelemetryEvent`` stamped with the deployment ID, SynthOrg /
+            Python / OS versions, resolved environment, current UTC
+            timestamp, and the supplied ``properties``.
         """
         assert self._deployment_id is not None  # noqa: S101
         vi = sys.version_info
@@ -812,6 +821,10 @@ class TelemetryCollector:
         Catches and logs non-cancellation exceptions so the loop
         continues on transient failures.  ``CancelledError`` is
         re-raised for graceful shutdown.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the loop task is
+                cancelled, so shutdown can await it cleanly.
         """
         interval = self._config.heartbeat_interval_hours * 3600
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
@@ -853,8 +866,18 @@ class TelemetryCollector:
         on-disk file when the worker outlives the ``asyncio.wait_for``
         deadline.
 
-        Returns a valid UUID string in all cases (never raises).
         Logs warnings on I/O errors.
+
+        Returns:
+            A valid UUID string on the non-critical paths (the loaded
+            ID, the atomically created one, or ``candidate_id`` on any
+            fallback).
+
+        Raises:
+            MemoryError: Propagated unchanged from the critical-error
+                re-raise in the worker's fallback guard.
+            RecursionError: Propagated unchanged from the critical-error
+                re-raise in the worker's fallback guard.
         """
         return await asyncio.to_thread(
             _load_or_create_deployment_id_sync, self._data_dir, candidate_id
@@ -894,6 +917,17 @@ def _load_or_create_deployment_id_sync(
     The whole body is wrapped in a top-level ``try/except Exception``
     so a future contract violation (unexpected exception type) cannot
     bubble out of the ``to_thread`` boundary and crash ``start()``.
+
+    Returns:
+        The loaded deployment ID, the freshly created one, or
+        ``candidate_id`` when the path is untrusted or a non-critical
+        helper failure occurs.
+
+    Raises:
+        MemoryError: Propagated unchanged from the critical-error
+            re-raise in the top-level guard.
+        RecursionError: Propagated unchanged from the critical-error
+            re-raise in the top-level guard.
     """
     try:
         id_path_str = _resolve_telemetry_id_path(data_dir)
@@ -903,13 +937,8 @@ def _load_or_create_deployment_id_sync(
         if existing is not None:
             return existing
         return _atomic_create_or_recover(id_path_str, candidate_id)
-    except MemoryError, RecursionError:
-        # System-level errors must propagate so operators see the
-        # real condition; downgrading them to a generated UUID would
-        # mask out-of-memory or runaway-recursion behind a healthy
-        # telemetry boot.
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Belt-and-suspenders: each helper is documented to never
         # raise, but a future regression must not bubble an exception
         # across the ``to_thread`` boundary. Fall back to the candidate
@@ -928,10 +957,12 @@ def _load_or_create_deployment_id_sync(
 def _resolve_telemetry_id_path(data_dir: Path) -> str | None:
     """Build + validate the on-disk path for the deployment-id file.
 
-    Returns the sanitised path string if it is a strict descendant
-    of a trusted root (``/data`` or the module-cached temp root), or
-    ``None`` (with a structured warning) if not. Implements the OWASP
-    path-injection recipe + symlink resolution:
+    Returns:
+        The sanitised path string when it is a strict descendant of a
+        trusted root (``/data`` or the module-cached temp root), or
+        ``None`` (with a structured warning) when it is not.
+
+    Implements the OWASP path-injection recipe + symlink resolution:
 
     * ``os.path.normpath`` collapses ``..`` and redundant separators
       so a caller cannot smuggle traversal through the ``data_dir``
@@ -1053,9 +1084,10 @@ def _atomic_create_or_recover(id_path_str: str, candidate_id: str) -> str:
     short backoff inside the same ``to_thread`` so the OS-level
     race semantics are preserved end-to-end.
 
-    Returns the successfully-persisted UUID (either ``candidate_id``
-    on the win or the peer's UUID on the loss) or ``candidate_id``
-    if the write failed without producing a peer file we can read.
+    Returns:
+        The successfully-persisted UUID: ``candidate_id`` on the write
+        win, the peer's UUID on a lost race, or ``candidate_id`` when the
+        write failed without producing a readable peer file.
     """
     try:
         os.makedirs(  # noqa: PTH103
@@ -1110,11 +1142,13 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
     backoff of :data:`_PEER_READ_RETRY_DELAY_SECONDS` doubled per
     attempt (5 / 10 / 20 ms) between attempts.
 
-    Returns the peer's UUID on success, ``None`` if all attempts
-    return empty / corrupt / unreadable. Distinguishes the failure
-    modes (file deleted, permission denied, decode error, validation
-    error) in the logs so operators can tell "peer file disappeared"
-    from "peer wrote garbage".
+    Returns:
+        The peer's UUID on success, or ``None`` when all attempts return
+        empty / corrupt / unreadable.
+
+    The distinct failure modes (file deleted, permission denied, decode
+    error, validation error) are logged so operators can tell "peer file
+    disappeared" from "peer wrote garbage".
 
     This is a synchronous helper run via ``to_thread``; the blocking
     ``time.sleep`` backoff is intentional in that context and is hard-

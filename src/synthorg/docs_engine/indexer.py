@@ -15,6 +15,7 @@ import asyncio
 import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -69,9 +70,8 @@ class DocIndexer:
         """
         try:
             await self._delete_prior(project_id=project_id, slug=slug)
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = (
                 f"Failed to clear prior chunks for {project_id!r}/{slug!r} "
                 f"before re-index"
@@ -128,6 +128,11 @@ class DocIndexer:
         Paginates through ``backend.retrieve`` with the slug tag filter
         and issues a ``delete(...)`` for each hit. Idempotent: running
         on a brand-new slug is a no-op.
+
+        Raises:
+            DocIndexError: When deletion does not converge within
+                ``_MAX_DELETE_ITERATIONS`` pages (backend not removing
+                entries).
         """
         project_tag = NotBlankStr(f"{DOCS_PROJECT_TAG_PREFIX}{project_id}")
         slug_tag = NotBlankStr(f"{DOCS_SLUG_TAG_PREFIX}{slug}")
@@ -154,7 +159,12 @@ class DocIndexer:
 
 
 def _chunk_to_request(chunk: DocChunk) -> MemoryStoreRequest:
-    """Translate a :class:`DocChunk` to a :class:`MemoryStoreRequest`."""
+    """Translate a :class:`DocChunk` to a :class:`MemoryStoreRequest`.
+
+    Returns:
+        A ``MemoryStoreRequest`` carrying the chunk text under the
+        ``PROJECT_DOC`` category with the chunk's tags.
+    """
     return MemoryStoreRequest(
         category=MemoryCategory.PROJECT_DOC,
         namespace=DOCS_MEMORY_NAMESPACE,
