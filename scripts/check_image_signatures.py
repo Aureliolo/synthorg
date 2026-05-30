@@ -82,6 +82,34 @@ _IMAGE_NAME_RE = re.compile(r"\A[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 # not as the first character.
 _TAG_RE = re.compile(r"\A[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 
+# Immutable build-identity tags: a tag that pins to exactly ONE build and
+# must never be repointed. Two metadata-action conventions qualify:
+#   - ``sha-<short>`` (commit-pinned; `type=sha,prefix=sha-`)
+#   - full semver ``X.Y.Z`` / ``X.Y.Z-dev.N`` (`type=semver,pattern={{version}}`)
+# Every OTHER tag the workflow pushes is FLOATING (``dev``, ``latest``,
+# ``X.Y``, ``X``): it advances to the newest build by design, so a
+# concurrent later release legitimately repoints it. Convergence is only an
+# invariant ACROSS immutable tags; floating tags are still individually
+# signature-checked by ``_verify_pair``. Keying on these two fixed naming
+# conventions (rather than enumerating floating names) keeps the rule from
+# drifting if the floating-tag policy grows.
+_SHA_TAG_RE = re.compile(r"\Asha-[0-9a-f]{7,}\Z")
+_FULL_SEMVER_TAG_RE = re.compile(
+    r"\A[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z"
+)
+
+
+def _is_immutable_tag(tag: str) -> bool:
+    """Return True for tags that pin to exactly one build.
+
+    ``sha-<short>`` and full ``X.Y.Z[-pre]`` semver tags identify a single
+    build and must agree on its digest, so the convergence check applies to
+    them. Floating tags (``dev``, ``latest``, ``X.Y``, ``X``) advance to the
+    newest build by design and are excluded; they remain signature-checked
+    individually upstream.
+    """
+    return bool(_SHA_TAG_RE.match(tag) or _FULL_SEMVER_TAG_RE.match(tag))
+
 
 @dataclasses.dataclass(frozen=True)
 class ImageTag:
@@ -301,13 +329,23 @@ def _resolve_token() -> tuple[str | None, str]:
 def _check_per_image_convergence(
     pair_to_digest: dict[ImageTag, str],
 ) -> list[str]:
-    """Return failure messages for any image whose tags diverge.
+    """Return failure messages for any image whose IMMUTABLE tags diverge.
 
-    Order-independent: collects every ``(tag, digest)`` per image, then
-    reports the full set of divergent digests if cardinality > 1.
+    Only immutable build-identity tags (``sha-<short>`` + full semver)
+    participate: they pin to one build and must agree on its digest.
+    Floating tags (``dev``, ``latest``, ``X.Y``) are excluded -- a
+    concurrent later release legitimately repoints them to a newer build,
+    so requiring them to converge produced a false-positive failure
+    whenever two dev builds landed close together. Floating tags stay
+    individually signature-checked upstream in ``_verify_pair``.
+
+    Order-independent: collects every immutable ``(tag, digest)`` per image,
+    then reports the full set of divergent digests if cardinality > 1.
     """
     by_image: dict[str, list[tuple[str, str]]] = {}
     for pair, digest in pair_to_digest.items():
+        if not _is_immutable_tag(pair.tag):
+            continue
         by_image.setdefault(pair.image, []).append((pair.tag, digest))
 
     failures: list[str] = []
@@ -322,8 +360,9 @@ def _check_per_image_convergence(
                 for digest, tags in by_digest.items()
             )
             failures.append(
-                f"{image}: divergent digests across tags (concurrent run "
-                f"overwrote a tag after we signed):\n" + "\n".join(variant_lines)
+                f"{image}: divergent digests across immutable tags "
+                f"(concurrent run overwrote a tag after we signed):\n"
+                + "\n".join(variant_lines)
             )
     return failures
 
