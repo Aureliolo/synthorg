@@ -21,7 +21,6 @@ from synthorg.providers.errors import ProviderInternalError
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from synthorg.providers.capabilities import ModelCapabilities
     from synthorg.providers.models import (
         ChatMessage,
         CompletionConfig,
