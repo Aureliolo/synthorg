@@ -48,9 +48,9 @@ def _legacy_controllers() -> set[type[Controller]]:
     ``INTEGRATION_CONTROLLERS``, and the ``OPTIONAL_CONTROLLERS`` classes.
     The two a2a controllers are built inline in ``api.app`` rather than
     listed there, so they are added explicitly. ``DemoController`` is the one
-    deliberate post-migration addition (#2049's synthetic discovery guard),
-    so it joins the expected set rather than tripping the extra-controller
-    assertion.
+    deliberate post-migration addition (the synthetic ``_demo`` feature's
+    discovery guard), so it joins the expected set rather than tripping the
+    extra-controller assertion.
 
     Returns:
         The full set of controller classes the legacy boot path could mount,
