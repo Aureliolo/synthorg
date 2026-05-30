@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/google/go-containerregistry v0.21.6
 	github.com/mattn/go-isatty v0.0.22
-	github.com/mattn/go-runewidth v0.0.23
+	github.com/mattn/go-runewidth v0.0.24
 	github.com/sigstore/protobuf-specs v0.5.1
 	github.com/sigstore/sigstore-go v1.1.4
 	github.com/spf13/cobra v1.10.2

@@ -54,7 +54,7 @@ services:
   #   /nats-data -> 65532 (nats)
   data-init:
     # renovate: datasource=docker depName=busybox
-    image: busybox:1.38-musl@sha256:f36701e0a15a97186ccc59bbe9a6217b649edecb36ce32d07fa31bf5ad15e56d
+    image: busybox:1.38-musl@sha256:8635836765b0c4c43970660219739baa58b0883c2e429e4b8918f7dd1519455c
     volumes:
       - synthorg-data:/data
       - synthorg-pgdata:/pgdata
@@ -173,7 +173,7 @@ services:
   # --max_payload CLI flag, so non-default settings need a config file.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.14-debian13@sha256:5ce86b96c969f5089c65ac6c786556999e39980e3873140e1c5b034d4a8f8a92
+    image: dhi.io/nats:2.14-debian13@sha256:68f09da260966b5d37865f270768a47fede4531974b27abe1bc63e153b0fdd33
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
