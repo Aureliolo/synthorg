@@ -88,14 +88,49 @@ class TestImageTagStr:
 
 
 @pytest.mark.unit
+class TestIsImmutableTag:
+    """_is_immutable_tag distinguishes build-identity tags from floating ones."""
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "sha-abc1234",
+            "sha-bb915d8",
+            "0.8.9",
+            "0.8.9-dev.51",
+            "1.0.0-rc.1",
+            "1.2.3+build.4",
+            "v1.0.0",  # optional v-prefix (future tag-policy hardening)
+            "v0.8.9-dev.51",
+        ],
+    )
+    def test_immutable(self, tag: str) -> None:
+        assert gate._is_immutable_tag(tag) is True
+
+    @pytest.mark.parametrize(
+        "tag",
+        [
+            "dev",
+            "latest",
+            "0.8",  # floating major.minor
+            "0",  # floating major
+            "sha-1",  # too short to be a commit sha
+            "sha-xyz1234",  # non-hex tail
+        ],
+    )
+    def test_floating(self, tag: str) -> None:
+        assert gate._is_immutable_tag(tag) is False
+
+
+@pytest.mark.unit
 class TestPerImageConvergence:
-    """_check_per_image_convergence flags divergent digests order-independently."""
+    """_check_per_image_convergence flags divergence across IMMUTABLE tags only."""
 
     def test_empty_input(self) -> None:
         assert gate._check_per_image_convergence({}) == []
 
-    def test_single_image_single_tag(self) -> None:
-        pairs = {gate.ImageTag(image="backend", tag="dev"): "sha256:aaa"}
+    def test_single_immutable_tag(self) -> None:
+        pairs = {gate.ImageTag(image="backend", tag="sha-abc1234"): "sha256:aaa"}
         assert gate._check_per_image_convergence(pairs) == []
 
     def test_single_image_multiple_tags_same_digest(self) -> None:
@@ -106,10 +141,24 @@ class TestPerImageConvergence:
         }
         assert gate._check_per_image_convergence(pairs) == []
 
-    def test_two_tags_diverge_reports_both_digests(self) -> None:
+    def test_floating_dev_may_diverge_from_immutable_pair(self) -> None:
+        # The dev.51 false positive: the floating `dev` tag advanced to a
+        # newer (signed) build while the immutable version + sha tags stay
+        # converged. This must NOT be reported -- floating tags are allowed
+        # to point elsewhere, and per-pair signature checks still cover them.
         pairs = {
-            gate.ImageTag(image="sandbox", tag="dev"): "sha256:aaa",
-            gate.ImageTag(image="sandbox", tag="0.7.6-dev.9"): "sha256:bbb",
+            gate.ImageTag(image="backend", tag="dev"): "sha256:newer",
+            gate.ImageTag(image="backend", tag="0.8.9-dev.51"): "sha256:aaa",
+            gate.ImageTag(image="backend", tag="sha-bb915d8"): "sha256:aaa",
+        }
+        assert gate._check_per_image_convergence(pairs) == []
+
+    def test_immutable_tags_diverge_reports_both_digests(self) -> None:
+        # The real race the gate exists to catch: the immutable version tag
+        # and its sha tag (both pin THIS build) resolve to different digests.
+        pairs = {
+            gate.ImageTag(image="sandbox", tag="0.7.6-dev.9"): "sha256:aaa",
+            gate.ImageTag(image="sandbox", tag="sha-abc1234"): "sha256:bbb",
         }
         failures = gate._check_per_image_convergence(pairs)
         assert len(failures) == 1
@@ -117,12 +166,14 @@ class TestPerImageConvergence:
         assert "sandbox" in msg
         assert "sha256:aaa" in msg
         assert "sha256:bbb" in msg
-        assert "dev" in msg
         assert "0.7.6-dev.9" in msg
+        assert "sha-abc1234" in msg
 
-    def test_three_tags_two_digests_groups_correctly(self) -> None:
-        # Two tags converge, one diverges; the message should group
-        # the two together and isolate the divergent one.
+    def test_floating_tag_excluded_from_divergent_group(self) -> None:
+        # Two immutable tags converge, a third immutable tag diverges; the
+        # floating `dev` tag is excluded from the report even though it
+        # points at one of the digests. If it were not excluded, the aaa
+        # group would render `[0.7.6-dev.9, dev]` instead of `[0.7.6-dev.9]`.
         pairs = {
             gate.ImageTag(image="sandbox", tag="dev"): "sha256:aaa",
             gate.ImageTag(image="sandbox", tag="0.7.6-dev.9"): "sha256:aaa",
@@ -133,21 +184,19 @@ class TestPerImageConvergence:
         msg = failures[0]
         assert "sha256:aaa" in msg
         assert "sha256:bbb" in msg
-        # The two-tag group must list both tags
-        assert "dev" in msg
-        assert "0.7.6-dev.9" in msg
+        assert "tags [0.7.6-dev.9]" in msg
+        assert "tags [sha-abc1234]" in msg
 
     def test_divergence_is_order_independent(self) -> None:
-        # Construct two dicts with the same content but different
-        # iteration order. Both must produce the same finding count
-        # (1 in either case) and reference both digests.
+        # Same content, different iteration order -> identical result. Use
+        # two immutable tags so the divergence is actually reported.
         first = {
-            gate.ImageTag(image="backend", tag="a"): "sha256:111",
-            gate.ImageTag(image="backend", tag="b"): "sha256:222",
+            gate.ImageTag(image="backend", tag="0.7.6-dev.9"): "sha256:111",
+            gate.ImageTag(image="backend", tag="sha-abc1234"): "sha256:222",
         }
         second = {
-            gate.ImageTag(image="backend", tag="b"): "sha256:222",
-            gate.ImageTag(image="backend", tag="a"): "sha256:111",
+            gate.ImageTag(image="backend", tag="sha-abc1234"): "sha256:222",
+            gate.ImageTag(image="backend", tag="0.7.6-dev.9"): "sha256:111",
         }
         f1 = gate._check_per_image_convergence(first)
         f2 = gate._check_per_image_convergence(second)
@@ -161,10 +210,10 @@ class TestPerImageConvergence:
 
     def test_multiple_images_with_independent_divergence(self) -> None:
         pairs = {
-            gate.ImageTag(image="backend", tag="dev"): "sha256:aaa",
-            gate.ImageTag(image="backend", tag="sha-1"): "sha256:bbb",
-            gate.ImageTag(image="sandbox", tag="dev"): "sha256:ccc",
-            gate.ImageTag(image="sandbox", tag="sha-1"): "sha256:ddd",
+            gate.ImageTag(image="backend", tag="0.7.6-dev.9"): "sha256:aaa",
+            gate.ImageTag(image="backend", tag="sha-abc1234"): "sha256:bbb",
+            gate.ImageTag(image="sandbox", tag="0.7.6-dev.9"): "sha256:ccc",
+            gate.ImageTag(image="sandbox", tag="sha-def5678"): "sha256:ddd",
         }
         failures = gate._check_per_image_convergence(pairs)
         assert len(failures) == 2
