@@ -87,7 +87,7 @@ ENFORCED build_project_brain_service #1996 -- called in api/lifecycle_helpers/fe
 ENFORCED ProjectBrainService #1996 -- constructed by project_brain/factory.py::build_project_brain_service; attached to AppState by _wire_project_brain
 ENFORCED BrainChunker #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; produces field-aware chunks for the indexer
 ENFORCED BrainIndexer #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; stores PROJECT_BRAIN memory entries via MemoryBackend.store
-ENFORCED BrainWriter #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; serializes the entry + commits on synthorg/docs via the configured GitBackend
+ENFORCED BrainWriter #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; serialises the entry + commits on synthorg/docs via the configured GitBackend
 ENFORCED ProjectBrainToolFactory #1996 -- constructed in project_brain/factory.py::build_project_brain_service; per-task source of WriteBrainEntryTool + SearchBrainTool bound to the boot ProjectBrainService
 ENFORCED WriteBrainEntryTool #1996 -- constructed by project_brain/tool_factory.py::ProjectBrainToolFactory.build_tools per task with the agent's project + author binding
 ENFORCED SearchBrainTool #1996 -- constructed by project_brain/tool_factory.py::ProjectBrainToolFactory.build_tools per task with the agent's project binding

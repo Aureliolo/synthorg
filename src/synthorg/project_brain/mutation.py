@@ -16,6 +16,8 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.project_brain import BRAIN_ENTRY_VALIDATION_FAILED
 from synthorg.project_brain.errors import BrainEntryValidationError
 from synthorg.project_brain.models import (
     BrainEntry,
@@ -23,6 +25,8 @@ from synthorg.project_brain.models import (
     BrainPayloadValue,
     Citation,
 )
+
+logger = get_logger(__name__)
 
 
 def build_entry(  # noqa: PLR0913 -- envelope fields are explicit
@@ -87,6 +91,12 @@ def build_entry(  # noqa: PLR0913 -- envelope fields are explicit
             payload=payload,
         )
     except ValidationError as exc:
+        logger.warning(
+            BRAIN_ENTRY_VALIDATION_FAILED,
+            reason="build_validation_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = "brain entry failed validation"
         raise BrainEntryValidationError(msg) from exc
 
@@ -170,5 +180,11 @@ def apply_overrides(  # noqa: PLR0913 -- optional overrides are explicit
     try:
         return BrainEntry.model_validate(candidate.model_dump(mode="json"))
     except ValidationError as exc:
+        logger.warning(
+            BRAIN_ENTRY_VALIDATION_FAILED,
+            reason="revision_validation_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = "revised brain entry failed validation"
         raise BrainEntryValidationError(msg) from exc

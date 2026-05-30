@@ -14261,7 +14261,7 @@
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/project_brain/mutation.py",
       "owning_feature": "project_brain"
@@ -14282,7 +14282,7 @@
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 79,
       "loc_cap": 500,
       "module": "src/synthorg/project_brain/serializer.py",
       "owning_feature": "project_brain"

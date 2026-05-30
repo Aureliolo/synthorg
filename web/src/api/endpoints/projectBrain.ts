@@ -56,10 +56,11 @@ export async function searchProjectBrain(
   projectId: string,
   query: string,
   limit = 8,
+  signal?: AbortSignal,
 ): Promise<readonly BrainSearchHit[]> {
   const response = await apiClient.get<ApiResponse<readonly BrainSearchHit[]>>(
     `/projects/${encodeURIComponent(projectId)}/brain/search`,
-    { params: { q: query, limit } },
+    { params: { q: query, limit }, signal },
   )
   return unwrap(response)
 }

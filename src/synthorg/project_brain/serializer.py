@@ -13,6 +13,8 @@ via :func:`deserialize_entry`. The two functions are exact inverses:
 import json
 from typing import Final
 
+from pydantic import ValidationError
+
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project_brain import BRAIN_ENTRY_VALIDATION_FAILED
 from synthorg.project_brain.errors import BrainEntryValidationError
@@ -83,7 +85,7 @@ def deserialize_entry(raw: bytes) -> BrainEntry:
         raise BrainEntryValidationError(msg) from exc
     try:
         return BrainEntry.model_validate(payload)
-    except ValueError as exc:
+    except ValidationError as exc:
         logger.warning(
             BRAIN_ENTRY_VALIDATION_FAILED,
             reason="schema_validation_failed",

@@ -74,9 +74,7 @@ function useBrainList(projectId: string | undefined): BrainListState {
     if (!projectId) return
     const controller = new AbortController()
     controllerRef.current = controller
-    // Defer state writes to a microtask so the effect body itself stays free
-    // of synchronous setState calls (per @eslint-react/set-state-in-effect).
-    void Promise.resolve().then(async () => {
+    const fetchList = async () => {
       setListLoading(true)
       setHasMore(false)
       try {
@@ -92,16 +90,24 @@ function useBrainList(projectId: string | undefined): BrainListState {
       } finally {
         if (!controller.signal.aborted) setListLoading(false)
       }
-    })
+    }
+    void fetchList()
     return () => {
-      controller.abort()
+      // Abort whichever request is in flight (this load or a loadMore that
+      // reassigned the ref), not just this effect's controller.
+      controllerRef.current?.abort()
     }
   }, [projectId])
 
   const loadMore = useCallback(() => {
     if (!projectId || !hasMore || nextCursor === null) return
+    // Each page request owns a fresh controller (mirroring loadHistory) so it
+    // never rides the list effect's controller, which may already be aborted.
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     setListLoading(true)
-    listProjectBrain(projectId, { cursor: nextCursor }, controllerRef.current?.signal)
+    listProjectBrain(projectId, { cursor: nextCursor }, controller.signal)
       .then((result) => {
         setEntries((prev) => [...prev, ...result.data])
         setNextCursor(result.nextCursor)
