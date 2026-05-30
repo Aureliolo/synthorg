@@ -234,3 +234,31 @@ class TestProjectBrainRepository:
         repo = backend.project_brain
         missing = await repo.get((NotBlankStr("proj-1"), NotBlankStr("nope"), 1))
         assert missing is None
+
+    async def test_mark_indexed_upserts_and_reads_back(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.projects.save(_project())
+        repo = backend.project_brain
+        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 1)
+        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e2"), 1)
+        # Upsert: a later revision of the same entry overwrites, not duplicates.
+        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 3)
+        indexed = await repo.indexed_revisions(NotBlankStr("proj-1"))
+        assert indexed == {NotBlankStr("e1"): 3, NotBlankStr("e2"): 1}
+
+    async def test_indexed_revisions_empty_for_unknown_project(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.projects.save(_project())
+        repo = backend.project_brain
+        assert await repo.indexed_revisions(NotBlankStr("proj-1")) == {}
+
+    async def test_index_state_cascades_on_project_delete(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.projects.save(_project())
+        repo = backend.project_brain
+        await repo.mark_indexed(NotBlankStr("proj-1"), NotBlankStr("e1"), 1)
+        await backend.projects.delete(NotBlankStr("proj-1"))
+        assert await repo.indexed_revisions(NotBlankStr("proj-1")) == {}

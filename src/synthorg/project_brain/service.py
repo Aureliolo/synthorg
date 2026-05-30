@@ -640,13 +640,21 @@ class ProjectBrainService:
             )
 
     async def _index_best_effort(self, entry: BrainEntry) -> None:
-        """Re-index the entry's chunks, logging (not raising) on failure."""
+        """Re-index the entry's chunks, logging (not raising) on failure.
+
+        On success the entry's last-indexed revision is recorded so boot replay
+        can skip it; on failure the index-state row stays behind, marking the
+        entry as a gap for the next boot replay (or the next revision) to heal.
+        """
         chunks = self._chunker.chunk(project_id=entry.project_id, entry=entry)
         try:
             await self._indexer.index(
                 project_id=entry.project_id,
                 entry_id=entry.entry_id,
                 chunks=chunks,
+            )
+            await self._repo.mark_indexed(
+                entry.project_id, entry.entry_id, entry.revision
             )
         except BrainIndexError as exc:
             logger.warning(

@@ -920,6 +920,7 @@ class FakeProjectBrainRepository:
 
     def __init__(self) -> None:
         self._rows: list[BrainEntry] = []
+        self._indexed: dict[tuple[str, str], int] = {}
 
     def _for_entry(self, project_id: str, entry_id: str) -> list[BrainEntry]:
         return [
@@ -927,6 +928,23 @@ class FakeProjectBrainRepository:
             for row in self._rows
             if row.project_id == project_id and row.entry_id == entry_id
         ]
+
+    async def mark_indexed(
+        self,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        revision: int,
+    ) -> None:
+        self._indexed[(project_id, entry_id)] = revision
+
+    async def indexed_revisions(
+        self, project_id: NotBlankStr
+    ) -> dict[NotBlankStr, int]:
+        return {
+            NotBlankStr(entry_id): revision
+            for (pid, entry_id), revision in self._indexed.items()
+            if pid == project_id
+        }
 
     async def append(self, event: BrainEntry) -> None:
         clash = any(

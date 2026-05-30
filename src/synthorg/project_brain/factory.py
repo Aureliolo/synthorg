@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.indexer import BrainIndexer
+from synthorg.project_brain.replay import reindex_unindexed
 from synthorg.project_brain.service import ProjectBrainService
 from synthorg.project_brain.tool_factory import (
     ProjectBrainToolFactory,
@@ -24,6 +25,7 @@ from synthorg.project_brain.writer import BrainWriter
 
 if TYPE_CHECKING:
     from synthorg.core.clock import Clock
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.workspace.git_backend.protocol import GitBackend
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
@@ -38,19 +40,51 @@ class ProjectBrainRuntime:
     Held by the boot wiring; downstream callers reach the service via
     ``app_state.slice(ProjectBrainStateSlice).service`` and the tool factory via
     the per-task tool loader. The retrieval facade is the docs engine's shared
-    one and is not held here.
+    one and is not held here. :meth:`replay_unindexed` is a boot-recovery hook,
+    not a normal-operation surface, so it lives on the runtime rather than the
+    service.
     """
 
-    __slots__ = ("brain_service", "tool_factory")
+    __slots__ = ("_chunker", "_indexer", "_repo", "brain_service", "tool_factory")
 
     def __init__(
         self,
         *,
         brain_service: ProjectBrainService,
         tool_factory: ProjectBrainToolFactory,
+        repo: ProjectBrainRepository,
+        chunker: BrainChunker,
+        indexer: BrainIndexer,
     ) -> None:
         self.brain_service = brain_service
         self.tool_factory = tool_factory
+        self._repo = repo
+        self._chunker = chunker
+        self._indexer = indexer
+
+    async def replay_unindexed(
+        self,
+        *,
+        project_ids: tuple[NotBlankStr, ...],
+    ) -> int:
+        """Re-index entries persisted but missing from (or stale in) the index.
+
+        Boot-time recovery for the transparent re-entry path: diffs each entry's
+        current revision against its last-indexed revision and re-indexes the
+        gap.
+
+        Args:
+            project_ids: Projects to sweep.
+
+        Returns:
+            The number of entries re-indexed across all projects.
+        """
+        return await reindex_unindexed(
+            repo=self._repo,
+            chunker=self._chunker,
+            indexer=self._indexer,
+            project_ids=project_ids,
+        )
 
 
 def build_project_brain_service(
@@ -90,4 +124,10 @@ def build_project_brain_service(
         clock=clock,
     )
     tool_factory = build_project_brain_tool_factory(brain_service=service)
-    return ProjectBrainRuntime(brain_service=service, tool_factory=tool_factory)
+    return ProjectBrainRuntime(
+        brain_service=service,
+        tool_factory=tool_factory,
+        repo=repo,
+        chunker=chunker,
+        indexer=indexer,
+    )

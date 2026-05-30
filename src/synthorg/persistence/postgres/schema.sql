@@ -621,6 +621,24 @@ ON project_brain_entries (project_id, status);
 CREATE INDEX idx_project_brain_recorded
 ON project_brain_entries (project_id, recorded_at DESC);
 
+-- Tracks the highest brain revision per entry confirmed present in the RAG
+-- index. A mutable bookkeeping projection (upsert), distinct from the
+-- append-only entries log: the write path persists the SQL row before the
+-- best-effort index, so a transient index failure leaves a gap. Boot replay
+-- diffs current revision against last_indexed_revision here and re-indexes only
+-- the gap, so a never-revised entry whose index write failed still becomes
+-- searchable. ON DELETE CASCADE: deleting a project drops its index state.
+CREATE TABLE project_brain_index_state (
+    project_id TEXT NOT NULL
+        CHECK (char_length(trim(project_id)) > 0),
+    entry_id TEXT NOT NULL
+        CHECK (char_length(trim(entry_id)) > 0),
+    last_indexed_revision INTEGER NOT NULL
+        CHECK (last_indexed_revision >= 1),
+    PRIMARY KEY (project_id, entry_id),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
 -- ── Knowledge + provenance substrate ─────────────────────────
 -- Registry of ingested corpus sources (PDF / web / repo / ticket /
 -- design doc). project_id is nullable: NULL means a global source

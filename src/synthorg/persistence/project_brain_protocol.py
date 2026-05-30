@@ -218,6 +218,55 @@ class ProjectBrainRepository(
         """
         ...
 
+    async def mark_indexed(
+        self,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        revision: int,
+    ) -> None:
+        """Record that ``entry_id`` is indexed in the RAG store up to ``revision``.
+
+        Upserts the ``(project_id, entry_id)`` row in the mutable
+        ``project_brain_index_state`` bookkeeping table. Called after a
+        successful index write. Bespoke under
+        `ADR-0001 <docs/decisions/0001-repository-protocol-consolidation.md>`_
+        D7: it encodes the re-index recovery invariant (the write path persists
+        the SQL row before the best-effort index, so the gap between the latest
+        revision and the last indexed revision is what boot replay must heal),
+        which the generic surface cannot express.
+
+        Args:
+            project_id: Owning project.
+            entry_id: Logical entry id just indexed.
+            revision: The revision whose chunks are now in the index.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        ...
+
+    async def indexed_revisions(
+        self,
+        project_id: NotBlankStr,
+    ) -> dict[NotBlankStr, int]:
+        """Return the last-indexed revision per entry for a project.
+
+        The map drives boot replay: an entry whose current revision exceeds its
+        last-indexed revision (or that is absent from the map) is re-indexed.
+        Bounded by the project's entry count. Bespoke under ADR-0001 D7 for the
+        same re-index invariant as :meth:`mark_indexed`.
+
+        Args:
+            project_id: Owning project.
+
+        Returns:
+            Mapping of ``entry_id`` to its last-indexed revision.
+
+        Raises:
+            QueryError: If the database operation fails.
+        """
+        ...
+
     @override
     async def append(self, event: BrainEntry) -> None:
         """Append a brain entry revision with a precomputed revision.

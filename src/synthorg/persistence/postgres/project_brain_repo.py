@@ -397,6 +397,75 @@ class PostgresProjectBrainRepository:
             raise QueryError(msg) from exc
         return int(row["n"]) if row is not None else 0
 
+    async def mark_indexed(
+        self,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        revision: int,
+    ) -> None:
+        """Upsert the last-indexed revision for one entry.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        sql = (
+            "INSERT INTO project_brain_index_state "
+            "(project_id, entry_id, last_indexed_revision) VALUES (%s, %s, %s) "
+            "ON CONFLICT (project_id, entry_id) DO UPDATE SET "
+            "last_indexed_revision = EXCLUDED.last_indexed_revision"
+        )
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            try:
+                await cur.execute(sql, (project_id, entry_id, revision))
+                await conn.commit()
+            except psycopg.Error as exc:
+                await self._safe_rollback(conn, event=BRAIN_PERSIST_SAVE_FAILED)
+                msg = f"Failed to mark brain entry {entry_id!r} indexed"
+                logger.warning(
+                    BRAIN_PERSIST_SAVE_FAILED,
+                    entry_id=entry_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def indexed_revisions(
+        self,
+        project_id: NotBlankStr,
+    ) -> dict[NotBlankStr, int]:
+        """Return the last-indexed revision per entry for a project.
+
+        Returns:
+            Mapping of ``entry_id`` to last-indexed revision.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        sql = (
+            "SELECT entry_id, last_indexed_revision FROM project_brain_index_state "
+            "WHERE project_id = %s"
+        )
+        try:
+            async with (
+                self._pool.connection() as conn,
+                conn.cursor(row_factory=dict_row) as cur,
+            ):
+                await cur.execute(sql, (project_id,))
+                rows = await cur.fetchall()
+        except psycopg.Error as exc:
+            msg = f"Failed to read brain index state for {project_id!r}"
+            logger.warning(
+                BRAIN_PERSIST_QUERY_FAILED,
+                project_id=project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return {
+            NotBlankStr(row["entry_id"]): int(row["last_indexed_revision"])
+            for row in rows
+        }
+
     async def purge_before(self, threshold: datetime) -> int:
         """Purge superseded revisions older than ``threshold`` (retention).
 

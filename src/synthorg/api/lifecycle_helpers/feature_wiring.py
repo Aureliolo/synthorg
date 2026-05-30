@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.project_brain.factory import ProjectBrainRuntime
     from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -143,6 +144,42 @@ async def _wire_project_brain(app_state: AppState) -> None:
         )
     )
     logger.info(API_APP_STARTUP, service="project_brain", note="wired")
+    await _replay_project_brain_index(app_state, runtime)
+
+
+async def _replay_project_brain_index(
+    app_state: AppState,
+    runtime: ProjectBrainRuntime,
+) -> None:
+    """Best-effort boot replay of the brain RAG index gap.
+
+    Re-indexes brain entries that were persisted but whose index write failed
+    (so they are invisible to transparent re-entry retrieval). Never poisons
+    startup: a failure is logged and swallowed.
+    """
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    try:
+        projects = await persistence_of(app_state).projects.list_items(limit=10_000)
+        project_ids = tuple(project.id for project in projects)
+        if not project_ids:
+            return
+        reindexed = await runtime.replay_unindexed(project_ids=project_ids)
+        logger.info(
+            API_APP_STARTUP,
+            service="project_brain",
+            note="index replay complete",
+            reindexed=reindexed,
+        )
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="project_brain",
+            note="index replay skipped",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 async def _wire_knowledge_engine(app_state: AppState) -> None:

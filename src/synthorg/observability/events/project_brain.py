@@ -25,6 +25,9 @@ BRAIN_SEARCH_FAILED: Final[str] = "project_brain.search.failed"
 BRAIN_HISTORY_READ: Final[str] = "project_brain.history.read"
 BRAIN_FACADE_FANOUT: Final[str] = "project_brain.facade.fanout"
 BRAIN_FACADE_FANOUT_FAILED: Final[str] = "project_brain.facade.fanout_failed"
+BRAIN_REPLAY_START: Final[str] = "project_brain.replay.start"
+BRAIN_REPLAY_COMPLETE: Final[str] = "project_brain.replay.complete"
+BRAIN_REPLAY_FAILED: Final[str] = "project_brain.replay.failed"
 
 # Persistence-layer events. These live in this domain module rather than
 # observability/events/persistence.py because that module is a net-shrink
