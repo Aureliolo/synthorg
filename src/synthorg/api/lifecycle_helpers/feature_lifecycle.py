@@ -23,7 +23,7 @@ that hangs past its budget never wedges the shutdown window.
 import asyncio
 from collections.abc import Sequence
 
-from synthorg._core.features import ServiceLifecycleHook
+from synthorg._core.features import ServiceLifecycleHook, discover_features
 from synthorg.api.lifecycle import _try_stop
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
@@ -101,3 +101,24 @@ class FeatureLifecycleRunner:
                 service=hook.name,
             )
         self._started.clear()
+
+
+def build_feature_lifecycle_runner() -> FeatureLifecycleRunner:
+    """Collect every discovered feature's service hooks into one runner.
+
+    The ``lifecycle_hooks`` analogue of the composition root's
+    ``collect_route_handlers`` (controllers), ``build_handler_map`` (MCP), and
+    ``run_construction_wiring`` (state slices): walks the dependency-ordered
+    feature manifests, flattens their ``lifecycle_hooks`` in that order, and
+    hands them to a single :class:`FeatureLifecycleRunner` so every manifest
+    slot is reachable from the composition root. The assembly starts the runner
+    last and stops it first so feature services come up after their dependencies
+    and tear down before them.
+
+    Returns:
+        A runner carrying every feature hook in feature-dependency order.
+    """
+    hooks: tuple[ServiceLifecycleHook, ...] = tuple(
+        hook for feature in discover_features() for hook in feature.lifecycle_hooks
+    )
+    return FeatureLifecycleRunner(hooks)

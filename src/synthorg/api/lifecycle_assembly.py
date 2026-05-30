@@ -23,6 +23,9 @@ from synthorg.api.app_builders import _build_telemetry_collector
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.feature_composition import compose_feature_slices
 from synthorg.api.lifecycle_builder import _build_lifecycle
+from synthorg.api.lifecycle_helpers.feature_lifecycle import (
+    build_feature_lifecycle_runner,
+)
 from synthorg.api.lifecycle_helpers.feature_wiring import wire_features_on_startup
 from synthorg.api.lifecycle_helpers.startup_steps import (
     install_runtime_services,
@@ -201,5 +204,18 @@ def assemble_lifespan_hooks(  # noqa: PLR0913
         await resolve_runtime_security_settings(app_state)
 
     startup = [*startup, _resolve_runtime_security_settings]
+
+    # Feature-owned service hooks: a single runner started LAST (after every
+    # feature slice is composed and wired, so a hook can reference its own
+    # feature's services) and stopped FIRST on shutdown (reverse order, before
+    # the core teardown disconnects persistence / the message bus the hooks
+    # depend on). One runner instance spans both phases so ``stop_all`` tears
+    # down exactly the hooks ``start_all`` started. ``build_feature_lifecycle_runner``
+    # is the ``lifecycle_hooks`` analogue of ``collect_route_handlers``
+    # (controllers), ``build_handler_map`` (MCP), and ``run_construction_wiring``
+    # (slices): every manifest slot is now reachable from the composition root.
+    feature_lifecycle_runner = build_feature_lifecycle_runner()
+    startup = [*startup, feature_lifecycle_runner.start_all]
+    shutdown = [feature_lifecycle_runner.stop_all, *shutdown]
 
     return startup, shutdown

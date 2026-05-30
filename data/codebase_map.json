@@ -1164,7 +1164,7 @@
     },
     {
       "kind": "code",
-      "loc": 169,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_personality.py",
       "owning_feature": "api_core"
@@ -1444,7 +1444,7 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_assembly.py",
       "owning_feature": "api_core"
@@ -1500,7 +1500,7 @@
     },
     {
       "kind": "code",
-      "loc": 88,
+      "loc": 105,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/feature_lifecycle.py",
       "owning_feature": "api_core"

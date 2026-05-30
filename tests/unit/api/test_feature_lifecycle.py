@@ -10,7 +10,11 @@ import asyncio
 
 import pytest
 
-from synthorg.api.lifecycle_helpers.feature_lifecycle import FeatureLifecycleRunner
+from synthorg._core.features import FeatureManifest
+from synthorg.api.lifecycle_helpers.feature_lifecycle import (
+    FeatureLifecycleRunner,
+    build_feature_lifecycle_runner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -122,3 +126,44 @@ async def test_hanging_stop_is_abandoned_at_budget() -> None:
     # b's stop hangs but is abandoned at its 0.01s budget; a still stops.
     await runner.stop_all()
     assert log == ["start:a", "start:b", "stop:a"]
+
+
+# ``build_feature_lifecycle_runner`` is the collector that makes the
+# ``lifecycle_hooks`` manifest slot reachable from the composition root. These
+# guard the regression where ``FeatureLifecycleRunner`` existed but no runner
+# was ever built, so a feature's ``lifecycle_hooks`` were silently dropped at
+# boot (the slot had no collector, unlike ``controllers`` / ``mcp_handlers`` /
+# ``construction_wirer``).
+
+
+async def test_build_runner_flattens_hooks_in_feature_dependency_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log: list[str] = []
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_helpers.feature_lifecycle.discover_features",
+        lambda: (
+            FeatureManifest(name="a", lifecycle_hooks=(_RecordingHook("a", log),)),
+            FeatureManifest(name="b", lifecycle_hooks=(_RecordingHook("b", log),)),
+        ),
+    )
+    runner = build_feature_lifecycle_runner()
+    await runner.start_all()
+    await runner.stop_all()
+    # Discovery returns dependency-ordered manifests; the collector flattens in
+    # that order, so start follows it and stop reverses it.
+    assert log == ["start:a", "start:b", "stop:b", "stop:a"]
+
+
+async def test_build_runner_no_hooks_when_no_feature_declares_any(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "synthorg.api.lifecycle_helpers.feature_lifecycle.discover_features",
+        lambda: (FeatureManifest(name="a"), FeatureManifest(name="b")),
+    )
+    runner = build_feature_lifecycle_runner()
+    # Mirrors today's real state: every feature declares ``lifecycle_hooks=()``,
+    # so the runner is empty but still constructed and wired (no-op, no error).
+    await runner.start_all()
+    await runner.stop_all()

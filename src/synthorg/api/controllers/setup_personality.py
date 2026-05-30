@@ -16,6 +16,9 @@ from synthorg.api.controllers.setup.agent_helpers import (
     AGENT_LOCK as _AGENT_LOCK,
 )
 from synthorg.api.controllers.setup.agent_helpers import (
+    COMPLETE_LOCK as _COMPLETE_LOCK,
+)
+from synthorg.api.controllers.setup.agent_helpers import (
     validate_agent_index as _validate_agent_index,
 )
 from synthorg.api.controllers.setup.company_helpers import (
@@ -86,7 +89,6 @@ class SetupPersonalityController(Controller):
         """
         app_state: AppState = state.app_state
         settings_svc = settings_service_of(app_state)
-        await _check_setup_not_complete(settings_svc)
 
         from synthorg.templates.preset_service import (  # noqa: PLC0415
             fetch_custom_presets_map,
@@ -114,7 +116,11 @@ class SetupPersonalityController(Controller):
             msg = f"Unknown personality preset {data.personality_preset!r}"
             raise ValidationError(msg) from None
 
-        async with _AGENT_LOCK:
+        # Hold both locks and re-check setup-not-complete INSIDE them so a
+        # concurrent ``/setup/complete`` cannot slip between the check and the
+        # ``company.agents`` read-modify-write (matches ``SetupAgentsController``).
+        async with _COMPLETE_LOCK, _AGENT_LOCK:
+            await _check_setup_not_complete(settings_svc)
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
             updated_agent = {
