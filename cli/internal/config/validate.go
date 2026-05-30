@@ -53,8 +53,9 @@ func checkEnumOptional(name, value string, valid func(string) bool, options stri
 
 func validateBackends(s State) error {
 	// docker_sock_gid is a Linux GID: -1 disables the override, the upper
-	// bound is uint32 max.
-	if s.DockerSockGID < -1 || s.DockerSockGID > 4294967295 {
+	// bound is uint32 max. Widen to int64 first so the untyped 4294967295
+	// constant is representable where int is 32-bit.
+	if gid := int64(s.DockerSockGID); gid < -1 || gid > 4294967295 {
 		return fmt.Errorf("invalid docker_sock_gid %d: must be -1 to 4294967295", s.DockerSockGID)
 	}
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {

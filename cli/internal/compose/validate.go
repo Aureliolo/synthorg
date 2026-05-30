@@ -103,8 +103,9 @@ func validateSandbox(p Params) error {
 		return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 	}
 	// docker_sock_gid is a Linux GID: -1 disables the override, the upper
-	// bound is uint32 max.
-	if p.DockerSockGID < -1 || p.DockerSockGID > 4294967295 {
+	// bound is uint32 max. Widen to int64 first so the untyped 4294967295
+	// constant is representable where int is 32-bit.
+	if gid := int64(p.DockerSockGID); gid < -1 || gid > 4294967295 {
 		return fmt.Errorf("invalid docker socket gid %d: must be -1 to 4294967295", p.DockerSockGID)
 	}
 	return nil
