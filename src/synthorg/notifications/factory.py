@@ -224,8 +224,6 @@ def _create_slack_sink(
             webhook_url=webhook_url,
             webhook_timeout_seconds=bridge_config.slack_webhook_timeout_seconds,
         )
-    except MemoryError, RecursionError:
-        raise
     except ValueError as exc:
         logger.warning(
             NOTIFICATION_SINK_CONFIG_INVALID,

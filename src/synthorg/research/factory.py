@@ -50,7 +50,12 @@ def _build_triage(
     model: str,
     clock: Clock | None,
 ) -> CredibilityTriage:
-    """Select the credibility-triage strategy per the config discriminator."""
+    """Select the credibility-triage strategy per the config discriminator.
+
+    Returns:
+        The heuristic, LLM, or hybrid triage strategy per
+        ``config.credibility_triage``.
+    """
     heuristic = HeuristicCredibilityTriage(clock=clock)
     if config.credibility_triage == "heuristic":
         return heuristic
@@ -65,7 +70,16 @@ def _build_deduplicator(
     *,
     embedder: Embedder | None,
 ) -> Deduplicator:
-    """Select the deduplication strategy per the config discriminator."""
+    """Select the deduplication strategy per the config discriminator.
+
+    Returns:
+        The embedding deduplicator when configured (and an embedder is
+        present), otherwise the lexical deduplicator.
+
+    Raises:
+        ResearchUnavailableError: When the embedding deduplicator is
+            selected but no embedder is injected.
+    """
     if config.deduplicator == "embedding":
         if embedder is None:
             msg = "embedding deduplicator requires an embedder to be injected"
@@ -82,7 +96,12 @@ def _build_sources(
     code_provider: CodeSearchProvider | None,
     clock: Clock | None,
 ) -> dict[ResearchSourceType, RetrievalSource]:
-    """Build the retrieval-source map from whatever providers are present."""
+    """Build the retrieval-source map from whatever providers are present.
+
+    Returns:
+        A map from ``ResearchSourceType`` to retrieval source for every
+        provider that was injected.
+    """
     sources: dict[ResearchSourceType, RetrievalSource] = {}
     if knowledge_service is not None:
         sources[ResearchSourceType.KNOWLEDGE] = KnowledgeRetrievalSource(
@@ -115,6 +134,9 @@ def build_research_service(  # noqa: PLR0913 -- injected boot collaborators
     clock: Clock | None = None,
 ) -> ResearchService:
     """Wire a :class:`ResearchService` from the config + injected providers.
+
+    Returns:
+        A fully wired :class:`ResearchService`.
 
     Raises:
         ResearchUnavailableError: If research mode is disabled in *config*

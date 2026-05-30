@@ -304,6 +304,9 @@ def _classify_tiers(
     Models are sorted by ``cost_per_1k_input`` ascending.  The bottom
     third is ``small``, middle third is ``medium``, top third is
     ``large``.  With fewer than 3 models, all tiers map to all models.
+
+    Returns:
+        A map from each ``ModelTier`` to its cost-banded models.
     """
     if len(models) < _MIN_TIER_SIZE:
         # Too few to meaningfully tier -- every tier gets all models.
@@ -404,6 +407,10 @@ class ModelMatcherConfig(BaseModel):
         ``model_matcher`` free of a top-level dependency on
         ``settings.bridge_configs`` (which already imports several engine
         types).
+
+        Returns:
+            A ``ModelMatcherConfig`` carrying the matcher-relevant fields
+            projected from ``bridge``.
         """
         return cls(
             tier_base_score=bridge.matcher_tier_base_score,
@@ -423,6 +430,10 @@ def _build_default_matcher_config() -> ModelMatcherConfig:
     cheap and ensures the no-config path always tracks the registered
     defaults rather than relying on the matcher's own ``Field``
     defaults drifting with ``settings/definitions/engine.py``.
+
+    Returns:
+        A ``ModelMatcherConfig`` projected from a default
+        ``EngineBridgeConfig``.
     """
     from synthorg.settings.bridge_configs import EngineBridgeConfig  # noqa: PLC0415
 
@@ -438,7 +449,12 @@ def _compute_score(
     tier_candidates: list[ProviderModelConfig],
     matcher_config: ModelMatcherConfig,
 ) -> float:
-    """Compute a 0-1 quality score for a match."""
+    """Compute a 0-1 quality score for a match.
+
+    Returns:
+        A score in ``[0, 1]`` combining the tier base score with context
+        headroom and priority bonuses.
+    """
     score = matcher_config.tier_base_score
 
     # Context headroom bonus.

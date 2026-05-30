@@ -41,6 +41,10 @@ def _canonical_url(uri: str) -> str:
     Only the host is case-folded (hosts are case-insensitive); the path is
     preserved verbatim because path segments are case-sensitive and distinct
     resources must not collapse into one another.
+
+    Returns:
+        The lower-cased host plus path with scheme, query, fragment, and
+        trailing slash dropped.
     """
     raw = uri.strip()
     parts = urlsplit(raw)
@@ -91,6 +95,10 @@ def _keep_representatives(
     Items are considered in descending relevance so the representative kept
     for each cluster is its strongest member; the kept items are then
     returned in their original input order.
+
+    Returns:
+        One representative (the highest-relevance member) per duplicate
+        cluster, in original input order.
     """
     order = sorted(
         range(len(items)),

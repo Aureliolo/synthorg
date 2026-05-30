@@ -17,6 +17,7 @@ import threading
 from collections import deque
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.signal_models import OrgTelemetrySummary
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.telemetry import (
@@ -99,9 +100,8 @@ class InMemoryTelemetryEventCounter:
                     TELEMETRY_COUNTER_EVICTED,
                     max_events=self._max_events,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TELEMETRY_COUNTER_RECORD_FAILED,
                 event_type=getattr(event, "event_type", "<unknown>"),
@@ -116,7 +116,17 @@ class InMemoryTelemetryEventCounter:
         until: datetime,
         max_top: int = _DEFAULT_MAX_TOP,
     ) -> OrgTelemetrySummary:
-        """Roll recorded events into an :class:`OrgTelemetrySummary`."""
+        """Roll recorded events into an :class:`OrgTelemetrySummary`.
+
+        Returns:
+            A summary of events in ``[since, until)``: total count, the
+            top event types (up to ``max_top``), and the error-event
+            count. An empty summary when no events fall in the window.
+
+        Raises:
+            ValueError: When the window is naive or inverted, or
+                ``max_top`` is non-positive.
+        """
         _validate_window(since, until)
         if max_top < 1:
             msg = f"max_top must be >= 1, got {max_top}"
@@ -155,7 +165,12 @@ class InMemoryTelemetryEventCounter:
 
 
 def _validate_window(since: datetime, until: datetime) -> None:
-    """Reject inverted or naive windows before any scan."""
+    """Reject inverted or naive windows before any scan.
+
+    Raises:
+        ValueError: When either bound is naive (no tzinfo) or ``since``
+            is not strictly earlier than ``until``.
+    """
     if since.tzinfo is None or until.tzinfo is None:
         msg = "since/until must be timezone-aware"
         raise ValueError(msg)

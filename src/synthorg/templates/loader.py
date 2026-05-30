@@ -116,7 +116,11 @@ def _template_info_from_loaded(
     loaded: LoadedTemplate,
     source: Literal["builtin", "user"],
 ) -> TemplateInfo:
-    """Build a :class:`TemplateInfo` from a loaded template."""
+    """Build a :class:`TemplateInfo` from a loaded template.
+
+    Returns:
+        A ``TemplateInfo`` describing the loaded template and its source.
+    """
     meta = loaded.template.metadata
     tmpl = loaded.template
     raw_level = str(tmpl.autonomy.get("level", "semi"))
@@ -293,7 +297,16 @@ def load_template_file(path: Path | str) -> LoadedTemplate:
 
 
 def _load_builtin(name: str) -> LoadedTemplate:
-    """Load a built-in template by name."""
+    """Load a built-in template by name.
+
+    Returns:
+        The validated :class:`LoadedTemplate` for the built-in template.
+
+    Raises:
+        TemplateNotFoundError: When ``name`` is not a known built-in
+            template.
+        TemplateRenderError: When the packaged resource cannot be read.
+    """
     filename = BUILTIN_TEMPLATES.get(name)
     if filename is None:
         msg = f"Unknown built-in template: {name!r}"
@@ -328,6 +341,9 @@ def _load_builtin(name: str) -> LoadedTemplate:
 
 def _load_from_file(path: Path) -> LoadedTemplate:
     """Load a template from a file path.
+
+    Returns:
+        The validated :class:`LoadedTemplate` parsed from the file.
 
     Raises:
         TemplateRenderError: If the file cannot be read or YAML
@@ -451,6 +467,9 @@ def _validate_template_structure(
 ) -> dict[str, Any]:
     """Validate top-level YAML structure has a dict 'template' key.
 
+    Returns:
+        The dict under the top-level ``template`` key.
+
     Raises:
         TemplateValidationError: If structure is invalid.
     """
@@ -483,6 +502,10 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         Dict suitable for ``CompanyTemplate(**result)``.
+
+    Raises:
+        TypeError: When a nested section has an unexpected type during
+            normalisation.
     """
     company = data.get("company")
     if company is None:

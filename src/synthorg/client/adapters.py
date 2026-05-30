@@ -21,7 +21,12 @@ class DirectAdapter:
     """
 
     async def route(self, request: ClientRequest) -> ClientRequest:
-        """Stamp entry-point metadata and return the request."""
+        """Stamp entry-point metadata and return the request.
+
+        Returns:
+            A copy of the request with ``metadata["entry_point"]`` set to
+            ``"direct"``.
+        """
         metadata = dict(request.metadata)
         metadata["entry_point"] = "direct"
         return request.model_copy(update={"metadata": metadata})
@@ -40,7 +45,12 @@ class ProjectAdapter:
         self._project_id = project_id
 
     async def route(self, request: ClientRequest) -> ClientRequest:
-        """Attach project context and return the updated request."""
+        """Attach project context and return the updated request.
+
+        Returns:
+            A copy of the request with ``project_id`` and a ``"project"``
+            entry-point stamped into metadata.
+        """
         metadata = dict(request.metadata)
         metadata["entry_point"] = "project"
         metadata["project_id"] = self._project_id
@@ -57,7 +67,12 @@ class IntakeAdapter:
     """
 
     async def route(self, request: ClientRequest) -> ClientRequest:
-        """Mark the request for full intake processing."""
+        """Mark the request for full intake processing.
+
+        Returns:
+            A copy of the request with ``metadata["entry_point"]`` set to
+            ``"intake"``.
+        """
         metadata = dict(request.metadata)
         metadata["entry_point"] = "intake"
         return request.model_copy(update={"metadata": metadata})

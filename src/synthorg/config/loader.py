@@ -443,7 +443,11 @@ def _load_and_merge_overrides(
     merged: dict[str, Any],
     override_paths: tuple[Path | str, ...],
 ) -> dict[str, Any]:
-    """Apply override config files onto the merged dict."""
+    """Apply override config files onto the merged dict.
+
+    Returns:
+        The merged dict with each override deep-merged on top, in order.
+    """
     for override_path in override_paths:
         override = _parse_yaml_file(Path(override_path))
         merged = deep_merge(merged, override)
@@ -460,7 +464,11 @@ def _finalize_config(
     config_path: Path,
     override_paths: tuple[Path | str, ...],
 ) -> RootConfig:
-    """Validate merged config and log success."""
+    """Validate merged config and log success.
+
+    Returns:
+        The validated :class:`RootConfig` built from the merged dict.
+    """
     line_map = _build_line_map(yaml_text)
     result = _validate_config_dict(
         merged,

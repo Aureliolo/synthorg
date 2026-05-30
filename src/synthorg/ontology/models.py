@@ -177,7 +177,14 @@ class EntityDefinition(BaseModel):
     @field_validator("created_at", "updated_at")
     @classmethod
     def _validate_utc(cls, v: AwareDatetime) -> AwareDatetime:
-        """Reject non-UTC timestamps."""
+        """Reject non-UTC timestamps.
+
+        Returns:
+            The validated timestamp, unchanged.
+
+        Raises:
+            ValueError: When the timestamp's UTC offset is non-zero.
+        """
         if v.utcoffset() != timedelta(0):
             msg = "must be UTC"
             raise ValueError(msg)
@@ -185,7 +192,14 @@ class EntityDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_field_names(self) -> Self:
-        """Ensure field names are unique within the definition."""
+        """Ensure field names are unique within the definition.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two fields share a name.
+        """
         if self.fields:
             names = tuple(f.name for f in self.fields)
             validate_unique_strings(names, "fields")
@@ -193,7 +207,15 @@ class EntityDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_relationships(self) -> Self:
-        """Ensure (target, relation) pairs are unique."""
+        """Ensure (target, relation) pairs are unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two relationships share the same
+                ``(target, relation)`` pair.
+        """
         if self.relationships:
             pairs: list[tuple[str, str]] = []
             for r in self.relationships:

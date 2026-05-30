@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -59,9 +60,8 @@ class RetentionManager:
         """
         try:
             manifests = await asyncio.to_thread(self._load_manifests)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, BACKUP_RETENTION_FAILED, exc)
             msg = f"Failed to load manifests: {safe_error_description(exc)}"
             raise RetentionError(msg) from exc
@@ -78,7 +78,12 @@ class RetentionManager:
         self,
         manifests: list[BackupManifest],
     ) -> list[BackupManifest]:
-        """Identify manifests eligible for pruning."""
+        """Identify manifests eligible for pruning.
+
+        Returns:
+            The manifests eligible for pruning (excludes the newest and
+            any pre-migration backups).
+        """
         now = datetime.now(UTC)
         max_age = timedelta(days=self._config.max_age_days)
         candidates: list[BackupManifest] = []
@@ -100,7 +105,12 @@ class RetentionManager:
         now: datetime,
         max_age: timedelta,
     ) -> bool:
-        """Determine if a single manifest should be pruned."""
+        """Determine if a single manifest should be pruned.
+
+        Returns:
+            ``True`` when the backup exceeds the count cap or is older
+            than ``max_age``.
+        """
         if index >= self._config.max_count:
             return True
         try:
@@ -120,7 +130,11 @@ class RetentionManager:
         self,
         candidates: list[BackupManifest],
     ) -> tuple[str, ...]:
-        """Delete candidate backups and return pruned IDs."""
+        """Delete candidate backups and return pruned IDs.
+
+        Returns:
+            The IDs of the backups that were actually deleted.
+        """
         pruned: list[str] = []
         for manifest in candidates:
             try:
@@ -139,16 +153,20 @@ class RetentionManager:
                         backup_id=manifest.backup_id,
                         error="Backup not found for deletion",
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, BACKUP_RETENTION_FAILED, exc, backup_id=manifest.backup_id
                 )
         return tuple(pruned)
 
     def _load_manifests(self) -> list[BackupManifest]:
-        """Load all manifest.json files from the backup directory."""
+        """Load all manifest.json files from the backup directory.
+
+        Returns:
+            The parsed manifests for every directory and ``.tar.gz``
+            archive under the backup path (empty when the path is absent).
+        """
         if not self._backup_path.exists():
             return []
 
@@ -167,7 +185,12 @@ class RetentionManager:
 
     @staticmethod
     def _load_dir_manifest(entry: Path) -> BackupManifest | None:
-        """Load a manifest from a backup directory."""
+        """Load a manifest from a backup directory.
+
+        Returns:
+            The parsed ``BackupManifest``, or ``None`` when the manifest
+            is absent, unreadable, or invalid.
+        """
         manifest_path = entry / "manifest.json"
         if not manifest_path.exists():
             return None
@@ -204,7 +227,12 @@ class RetentionManager:
 
     @staticmethod
     def _load_archive_manifest(entry: Path) -> BackupManifest | None:
-        """Load a manifest from a compressed tar.gz archive."""
+        """Load a manifest from a compressed tar.gz archive.
+
+        Returns:
+            The parsed ``BackupManifest``, or ``None`` when the archive
+            has no manifest, is corrupt, or fails validation.
+        """
         try:
             with tarfile.open(entry, "r:gz") as tar:
                 try:
@@ -218,8 +246,6 @@ class RetentionManager:
                     raw = f.read()
                 data = json.loads(raw)
                 return BackupManifest.model_validate(data)
-        except MemoryError, RecursionError:
-            raise
         except tarfile.TarError as exc:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
@@ -287,9 +313,8 @@ class RetentionManager:
                 if data.get("backup_id") == backup_id:
                     shutil.rmtree(entry)
                     return True
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(manifest_path),

@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
@@ -175,6 +176,9 @@ class Worker:
         Pulls one claim at a time, invokes the executor, and acks or
         nacks the JetStream message based on the executor's returned
         status.
+
+        Raises:
+            RuntimeError: When the worker is already running.
         """
         async with self._lifecycle_lock:
             if self._running:
@@ -277,9 +281,8 @@ class Worker:
         """
         try:
             await self._task_queue.publish_dead(claim)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 WORKERS_DEAD_LETTER_PUBLISH_FAILED,
@@ -374,6 +377,9 @@ class Worker:
         the agent a second time concurrently, since dedup only marks
         AFTER a terminal outcome). The extender is cancelled the moment
         the executor returns.
+
+        Returns:
+            The terminal claim status returned by the executor.
         """
         logger.info(
             WORKERS_CLAIM_RECEIVED,
@@ -389,12 +395,16 @@ class Worker:
                 await extender
 
     async def _invoke_executor(self, claim: TaskClaim) -> TaskClaimStatus:
-        """Run the injected executor, translating exceptions into RETRY."""
+        """Run the injected executor, translating exceptions into RETRY.
+
+        Returns:
+            The executor's claim status, or ``RETRY`` when it raises a
+            non-critical exception.
+        """
         try:
             return await self._executor(claim)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 WORKERS_EXECUTOR_FAILED,
@@ -422,9 +432,8 @@ class Worker:
             await self._clock.sleep(self._ack_extend_interval)
             try:
                 await JetStreamTaskQueue.in_progress(raw)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_ACK_EXTEND_FAILED,
                     worker_id=self._worker_id,
@@ -459,9 +468,8 @@ class Worker:
                 subject,
                 beat.model_dump_json().encode("utf-8"),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKERS_HEARTBEAT_FAILED,
                 worker_id=self._worker_id,
@@ -495,9 +503,8 @@ class Worker:
                 await JetStreamTaskQueue.ack(raw)
             else:
                 await JetStreamTaskQueue.nack(raw)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 WORKERS_FINALIZE_FAILED,

@@ -117,6 +117,10 @@ class SeenClaimsPruner:
         A transient ``QueryError`` is logged and swallowed: the next
         pass retries, and an unbounded-growth risk is strictly better
         than a crashed pruner that stops reclaiming space entirely.
+
+        Returns:
+            The number of expired rows removed (``0`` on a swallowed
+            transient query error).
         """
         try:
             removed = await self._seen_claims.prune_expired(self._clock.now())

@@ -230,7 +230,7 @@ class TestTransitionMilestoneOnly:
 
 
 class TestAdditionalEdgeCases:
-    """Additional edge case tests for review findings."""
+    """Edge cases for milestone-driven strategy with absent or minimal config."""
 
     @pytest.mark.unit
     async def test_on_sprint_activated_with_strategy_config_none(

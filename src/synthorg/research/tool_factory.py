@@ -52,7 +52,11 @@ class ResearchToolFactory:
         )
 
     def tool_names(self) -> Iterable[str]:
-        """Inventory of tool names produced by this factory."""
+        """Inventory of tool names produced by this factory.
+
+        Returns:
+            The static tuple of research tool names this factory emits.
+        """
         return RESEARCH_TOOL_NAMES
 
 
@@ -61,7 +65,11 @@ def build_research_tool_factory(
     service: ResearchService,
     clock: Clock | None = None,
 ) -> ResearchToolFactory:
-    """Construct the default :class:`ResearchToolFactory` (boot wiring)."""
+    """Construct the default :class:`ResearchToolFactory` (boot wiring).
+
+    Returns:
+        A ``ResearchToolFactory`` bound to ``service``.
+    """
     return ResearchToolFactory(service=service, clock=clock)
 
 

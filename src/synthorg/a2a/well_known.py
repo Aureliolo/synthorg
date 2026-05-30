@@ -21,6 +21,7 @@ from synthorg._core.features import require_service
 from synthorg.a2a.agent_card import AgentCardBuilder
 from synthorg.a2a.state import A2aStateSlice
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import (
@@ -128,16 +129,20 @@ async def _resolve_company_name(app_state: Any) -> str:
     key. The broader ``Exception`` catch logs WARNING with safe error
     description; ``MemoryError`` and ``RecursionError`` propagate per
     the surrounding controller's convention.
+
+    Returns:
+        The resolver-supplied company name, or the boot-time
+        ``app_state.config.company_name`` snapshot on any resolver miss
+        or failure.
     """
     try:
         resolved = await config_resolver_of(app_state).get_str(
             "company", "company_name"
         )
-    except MemoryError, RecursionError:
-        raise
     except SettingNotFoundError:
         return str(app_state.config.company_name)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             A2A_AGENT_CARD_SERVED,
             card_type="company",
@@ -150,7 +155,12 @@ async def _resolve_company_name(app_state: Any) -> str:
 
 
 def _card_response(card_data: dict[str, Any], ttl: int) -> Response[dict[str, Any]]:
-    """Build the success JSON response with the public cache header."""
+    """Build the success JSON response with the public cache header.
+
+    Returns:
+        A JSON ``Response`` carrying ``card_data`` with a
+        ``Cache-Control: public, max-age=<ttl>`` header.
+    """
     return Response(
         content=card_data,
         media_type="application/json",
@@ -159,7 +169,11 @@ def _card_response(card_data: dict[str, Any], ttl: int) -> Response[dict[str, An
 
 
 def _service_unavailable_response() -> Response[dict[str, Any]]:
-    """Build the 503 response served when card assembly fails."""
+    """Build the 503 response served when card assembly fails.
+
+    Returns:
+        A 503 JSON ``Response`` with a generic unavailable message.
+    """
     return Response(
         content={"error": "Service temporarily unavailable"},
         media_type="application/json",
@@ -174,8 +188,10 @@ async def _assemble_company_card(
 ) -> tuple[dict[str, Any], int]:
     """Build the company card payload for an already-resolved name.
 
-    Returns ``(card_data, agent_count)``. Raises on any failure; the
-    caller maps that to a 503.
+    Returns:
+        A ``(card_data, agent_count)`` pair: the serialised company card
+        and the number of active agents it aggregates. Raises on any
+        failure; the caller maps that to a 503.
     """
     builder: AgentCardBuilder = require_service(
         app_state.slice(A2aStateSlice).card_builder, "A2A Card Builder"
@@ -193,9 +209,10 @@ async def _assemble_company_card(
 async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
     """Resolve an agent identity by id, then by name.
 
-    Returns the identity, or ``None`` when no agent matches
-    ``agent_id`` (caller maps that to 404). Raises on registry
-    failure; the caller maps that to a 503.
+    Returns:
+        The matching agent identity, or ``None`` when no agent matches
+        ``agent_id`` (caller maps that to 404). Raises on registry
+        failure; the caller maps that to a 503.
     """
     registry = agent_registry_of(app_state)
     identity = await registry.get(agent_id)
@@ -210,6 +227,10 @@ def _agent_fingerprint(identity: Any) -> str:
     Derived from name + role + skills so a rename, role change, or
     skill edit invalidates a cached card before TTL expiry instead
     of serving a stale document.
+
+    Returns:
+        A 16-character hex fingerprint over the identity's name, role,
+        and skills.
     """
     return hashlib.sha256(
         f"{identity.name}:{identity.role}:{identity.skills}".encode(),
@@ -221,7 +242,11 @@ def _build_agent_card_payload(
     identity: Any,
     host_base: str,
 ) -> dict[str, Any]:
-    """Build the card payload for an already-resolved identity."""
+    """Build the card payload for an already-resolved identity.
+
+    Returns:
+        The serialised per-agent card payload.
+    """
     builder: AgentCardBuilder = require_service(
         app_state.slice(A2aStateSlice).card_builder, "A2A Card Builder"
     )
@@ -251,7 +276,12 @@ class WellKnownAgentCardController(Controller):
         state: State,
         request: Request[Any, Any, Any],
     ) -> Response[dict[str, Any]]:
-        """Serve the company-level Agent Card."""
+        """Serve the company-level Agent Card.
+
+        Returns:
+            A JSON ``Response`` with the aggregated company Agent Card,
+            or a 503 response when card assembly fails.
+        """
         app_state = state["app_state"]
         ttl = app_state.config.a2a.agent_card_cache_ttl_seconds
 
@@ -279,9 +309,8 @@ class WellKnownAgentCardController(Controller):
                 base_url,
                 company_name,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 A2A_AGENT_CARD_SERVED,
@@ -317,7 +346,16 @@ class WellKnownAgentCardController(Controller):
         request: Request[Any, Any, Any],
         agent_id: str,
     ) -> Response[dict[str, Any]]:
-        """Serve a per-agent Agent Card."""
+        """Serve a per-agent Agent Card.
+
+        Returns:
+            A JSON ``Response`` with the agent's Agent Card, or a 503
+            response when identity resolution or card assembly fails.
+
+        Raises:
+            NotFoundError: When no agent matches ``agent_id`` (mapped to
+                a 404 by the framework).
+        """
         from synthorg.core.domain_errors import NotFoundError  # noqa: PLC0415
 
         app_state = state["app_state"]
@@ -328,9 +366,8 @@ class WellKnownAgentCardController(Controller):
 
         try:
             identity = await _resolve_agent_for_card(app_state, agent_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 A2A_AGENT_CARD_SERVED,
@@ -359,9 +396,8 @@ class WellKnownAgentCardController(Controller):
 
         try:
             card_data = _build_agent_card_payload(app_state, identity, host_base)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 A2A_AGENT_CARD_SERVED,

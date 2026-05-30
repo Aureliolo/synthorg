@@ -75,6 +75,10 @@ def _with_tier_marker(
     Ensures the emitted A2A ``tags`` tuple carries exactly one tier marker
     (``"primary"`` or ``"secondary"``) regardless of what the internal Skill
     stored, keeping the external contract unambiguous and duplicate-free.
+
+    Returns:
+        The tags with any prior tier markers stripped and exactly one
+        ``marker`` appended.
     """
     cleaned = tuple(t for t in tags if t not in ("primary", "secondary"))
     return (*cleaned, marker)

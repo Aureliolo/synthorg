@@ -46,7 +46,11 @@ TitleText = Annotated[str, StringConstraints(min_length=1, max_length=1024)]
 
 
 def _check_char_range(char_start: int, char_end: int) -> None:
-    """Raise ``ValueError`` when an end offset precedes its start."""
+    """Raise ``ValueError`` when an end offset precedes its start.
+
+    Raises:
+        ValueError: When ``char_end`` is less than ``char_start``.
+    """
     if char_end < char_start:
         msg = f"char_end ({char_end}) must be >= char_start ({char_start})"
         raise ValueError(msg)
@@ -282,6 +286,13 @@ class KnowledgeSource(BaseModel):
         A row claiming ``INDEXED`` must carry a ``last_indexed_at``; an
         adversarial or partially-migrated backend row that violates this
         would otherwise propagate inconsistency into citation resolution.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``status`` is ``INDEXED`` but
+                ``last_indexed_at`` is unset.
         """
         if self.status is SourceStatus.INDEXED and self.last_indexed_at is None:
             msg = "status=INDEXED requires last_indexed_at to be set"

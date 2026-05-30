@@ -14,6 +14,7 @@ reacts to successful mutations and publishes the enqueue signal.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.observability import (
     get_logger,
@@ -78,6 +79,10 @@ def _default_workers_bridge() -> WorkersBridgeConfig:
     observer events (e.g. on engine restart). The cap bounds a single
     inter-attempt delay so a future operator bump to ``max_attempts``
     cannot silently push the publish path into multi-second sleeps.
+
+    Returns:
+        A ``WorkersBridgeConfig`` with the registered default retry
+        budget.
     """
     return WorkersBridgeConfig()
 
@@ -138,6 +143,10 @@ class DistributedDispatcher:
         (a cheap object) so a hot-reloaded retry budget applies without
         subscriber-to-consumer plumbing, mirroring how controllers read
         ``app_state.api_bridge_config`` per request.
+
+        Returns:
+            A ``GeneralRetryHandler`` configured from the current workers
+            bridge snapshot.
         """
         cfg = self._workers_bridge_provider()
         return GeneralRetryHandler(
@@ -185,13 +194,16 @@ class DistributedDispatcher:
     ) -> bool:
         """Publish a claim with bounded exponential backoff.
 
-        Returns ``True`` on success and ``False`` once retries are
-        exhausted. A failed publish can orphan a task in ``ASSIGNED``
+        A failed publish can orphan a task in ``ASSIGNED``
         because the dispatcher is a passive observer and cannot roll
         task state back itself (workers are the only writers via the
         HTTP API). Retries cover transient NATS hiccups; persistent
         failures surface via ``WORKERS_DISPATCHER_PUBLISH_EXHAUSTED``
         so operators can re-drive the task through an engine replay.
+
+        Returns:
+            ``True`` on a successful publish, ``False`` once retries are
+            exhausted.
         """
 
         async def publish() -> None:
@@ -201,12 +213,8 @@ class DistributedDispatcher:
         max_attempts = retry.max_attempts
         try:
             await retry.execute(publish, task_id=task_id)
-        except MemoryError, RecursionError:
-            # System-fatal exceptions must propagate so the process can
-            # crash deliberately rather than silently turning into a
-            # ``False`` retry-exhaustion result that hides the cause.
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Preserve the original, less-severe event on the final
             # failure so downstream monitoring that still filters on
             # ``WORKERS_DISPATCHER_PUBLISH_FAILED`` does not silently
@@ -261,7 +269,12 @@ class DistributedDispatcher:
 
     @staticmethod
     def _build_claim(event: TaskStateChanged) -> TaskClaim:
-        """Build a :class:`TaskClaim` from a state-change event."""
+        """Build a :class:`TaskClaim` from a state-change event.
+
+        Returns:
+            A ``TaskClaim`` carrying the task id, project, and status
+            transition from the event.
+        """
         project_id: str | None = None
         if event.task is not None and event.task.project is not None:
             project_id = str(event.task.project)

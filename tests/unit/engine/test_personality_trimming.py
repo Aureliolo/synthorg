@@ -584,7 +584,7 @@ class TestPersonalityTrimInfoValidation:
 
 @pytest.mark.unit
 class TestAdditionalEdgeCases:
-    """Additional edge case tests from review findings."""
+    """Edge cases for over-budget trimming fallback paths."""
 
     def test_full_mode_tier1_fail_tier2_succeed(self) -> None:
         """Full mode over budget: tier 1 fails, tier 2 truncation succeeds."""

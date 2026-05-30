@@ -73,6 +73,13 @@ class ActiveCeremonyStrategy(BaseModel):
         (no sprint is running). Constructing a snapshot with one set
         and the other ``None`` would hand callers an ambiguous state
         the scheduler never produces.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When exactly one of ``strategy`` / ``sprint_id``
+                is set.
         """
         if (self.strategy is None) != (self.sprint_id is None):
             msg = (

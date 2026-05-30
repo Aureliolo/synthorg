@@ -55,6 +55,10 @@ async def _placeholder_executor(claim: TaskClaim) -> TaskClaimStatus:
     operator explicitly passes ``--executor placeholder``. A missing
     backend URL is handled by ``_resolve_executor()`` exiting with
     ``SystemExit`` rather than silently falling back to this executor.
+
+    Returns:
+        ``TaskClaimStatus.SUCCESS`` unconditionally (the claim is acked
+        without running any task logic).
     """
     logger.info(
         WORKERS_MAIN_PLACEHOLDER_EXECUTOR_INVOKED,
@@ -141,9 +145,12 @@ def _resolve_worker_count(explicit: int | None) -> int | None:
     """Resolve the effective worker count from flag + env var.
 
     Precedence: explicit ``--workers`` > ``SYNTHORG_WORKERS`` env var
-    > registered ``workers.count`` default. Returns ``None`` when the
-    env var is set but not a valid integer so the caller can surface a
-    structured usage error instead of silently masking operator intent.
+    > registered ``workers.count`` default.
+
+    Returns:
+        The resolved worker count, or ``None`` when the env var is set
+        but not a valid integer (so the caller can surface a usage
+        error rather than silently masking operator intent).
     """
     if explicit is not None:
         return explicit
@@ -171,6 +178,10 @@ def _resolve_http_timeout(explicit: float | None) -> float | None:
     operator intent (mirrors :func:`_resolve_worker_count`). The worker
     subprocess has no settings backend, so this is a Cat-2 boot knob
     (env > registered default), not a DB-backed bridge config.
+
+    Returns:
+        The resolved HTTP timeout in seconds, or ``None`` when the env
+        var is set but not a valid float.
     """
     if explicit is not None:
         return explicit
@@ -188,7 +199,12 @@ def _resolve_http_timeout(explicit: float | None) -> float | None:
 
 
 async def _async_main(argv: list[str]) -> int:
-    """Parse arguments, start the queue, and run the worker pool."""
+    """Parse arguments, start the queue, and run the worker pool.
+
+    Returns:
+        The process exit code (``0`` on clean shutdown, non-zero on a
+        usage or startup error).
+    """
     args = _build_parser().parse_args(argv)
     resolved = _resolve_worker_count(args.workers)
     if resolved is None or resolved <= 0:
@@ -246,6 +262,16 @@ def _resolve_executor(
     lifetime of the worker pool so connection pooling persists
     across claims. The caller closes the client in the ``finally``
     block to drain in-flight requests at shutdown.
+
+    Returns:
+        A ``(executor, http_client)`` pair; the client is ``None`` for
+        the placeholder executor and an owned ``AsyncClient`` for the
+        HTTP executor.
+
+    Raises:
+        SystemExit: When the HTTP executor is selected but its required
+            base URL / auth token / timeout configuration is missing or
+            invalid.
     """
     if args.executor == "placeholder":
         return _placeholder_executor, None
@@ -299,7 +325,11 @@ def _resolve_executor(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Synchronous entry point that delegates to the asyncio runner."""
+    """Synchronous entry point that delegates to the asyncio runner.
+
+    Returns:
+        The process exit code from the asyncio worker runner.
+    """
     effective = sys.argv[1:] if argv is None else argv
     return asyncio.run(_async_main(effective))
 

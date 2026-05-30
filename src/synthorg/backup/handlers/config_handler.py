@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -75,9 +76,8 @@ class ConfigComponentHandler:
                 self._config_path,
                 config_dir,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -133,9 +133,8 @@ class ConfigComponentHandler:
                 source_file,
                 self._config_path,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
@@ -156,7 +155,12 @@ class ConfigComponentHandler:
 
     @staticmethod
     def _check_source(source_dir: Path) -> bool:
-        """Synchronous check for config backup validity."""
+        """Synchronous check for config backup validity.
+
+        Returns:
+            ``True`` when the config backup subdirectory exists and holds
+            at least one file.
+        """
         config_dir = source_dir / _CONFIG_SUBDIR
         if not config_dir.exists():
             return False
@@ -164,7 +168,11 @@ class ConfigComponentHandler:
 
     @staticmethod
     def _copy_config(config_path: Path, target_dir: Path) -> int:
-        """Copy config file and return bytes written."""
+        """Copy config file and return bytes written.
+
+        Returns:
+            The number of bytes written to the destination file.
+        """
         target_dir.mkdir(parents=True, exist_ok=True)
         dest = target_dir / config_path.name
         shutil.copy2(config_path, dest)

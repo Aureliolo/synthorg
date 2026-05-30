@@ -35,6 +35,10 @@ def default_router(
     Strict personas lean on humans, lenient personas lean on the
     AI delegate. This is a sensible baseline; callers can inject a
     different router at construction time.
+
+    Returns:
+        ``"human"`` when ``strictness_level`` meets the threshold, else
+        ``"ai"``.
     """
     del context
     if profile.strictness_level >= _HUMAN_ROUTING_THRESHOLD:
@@ -91,7 +95,11 @@ class HybridClient:
         self,
         context: GenerationContext,
     ) -> TaskRequirement | None:
-        """Route submission through AI or human per the router."""
+        """Route submission through AI or human per the router.
+
+        Returns:
+            The requirement produced by the routed delegate, or ``None``.
+        """
         delegate = self._resolve_delegate(context)
         return await delegate.submit_requirement(context)
 
@@ -99,6 +107,10 @@ class HybridClient:
         self,
         context: ReviewContext,
     ) -> ClientFeedback:
-        """Route review through AI or human per the router."""
+        """Route review through AI or human per the router.
+
+        Returns:
+            The feedback produced by the routed delegate.
+        """
         delegate = self._resolve_delegate(context)
         return await delegate.review_deliverable(context)

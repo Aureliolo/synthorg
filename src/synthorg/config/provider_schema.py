@@ -208,7 +208,15 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_auth_fields(self) -> Self:
-        """Validate auth fields based on auth_type."""
+        """Validate auth fields based on auth_type.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When a non-connection auth type is missing one of
+                its required credential fields.
+        """
         if self.connection_name is not None:
             return self
         required = self._AUTH_REQUIRED_FIELDS.get(self.auth_type)
@@ -228,7 +236,11 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _warn_embedded_api_key(self) -> Self:
-        """Log deprecation when api_key is used without connection_name."""
+        """Log deprecation when api_key is used without connection_name.
+
+        Returns:
+            The model instance (``self``), unchanged.
+        """
         if self.api_key is not None and self.connection_name is None:
             logger.debug(
                 CONFIG_DEPRECATION_NOTICE,
@@ -243,7 +255,15 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_model_identifiers(self) -> Self:
-        """Ensure model IDs and aliases are each unique."""
+        """Ensure model IDs and aliases are each unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two models share an id, or two models share
+                a non-null alias.
+        """
         ids = [m.id for m in self.models]
         if len(ids) != len(set(ids)):
             dupes = sorted(i for i, c in Counter(ids).items() if c > 1)

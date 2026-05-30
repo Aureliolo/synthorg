@@ -35,6 +35,7 @@ Three implementations live here:
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     ConflictError,
@@ -194,6 +195,13 @@ class LifecycleAdvancingExecutionService:
         is the canonical happy path. Tasks in any other status are
         returned unchanged; the worker maps that into a retry so the
         next dispatch picks up the new state.
+
+        Returns:
+            The task after one lifecycle step (unchanged when it is
+            outside the executable window).
+
+        Raises:
+            NotFoundError: When no task has ``task_id``.
         """
         task = await self._task_engine.get_task(task_id)
         if task is None:
@@ -269,6 +277,10 @@ class LifecycleAdvancingExecutionService:
         and parked, so reaching this baseline with one is a
         misconfiguration (the runtime service was never installed).
         Fail loudly rather than silently dropping the resume.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: Always; the lifecycle
+                baseline has no agent engine to resume into.
         """
         logger.error(
             APPROVAL_GATE_RESUME_FAILED,
@@ -358,10 +370,13 @@ class AgentEngineExecutionService:
     ) -> ActiveSandboxEnvironment | None:
         """Provision the project's environment; return the active sandbox env.
 
-        Returns ``None`` (no override) when no environment service is
-        wired, the task has no project, or the workspace was not
-        provisioned.  Fail-loud: a provisioning failure is logged and
-        re-raised so a broken environment never runs silently.
+        Fail-loud: a provisioning failure is logged and re-raised so a
+        broken environment never runs silently.
+
+        Returns:
+            The active sandbox environment (image + env additions), or
+            ``None`` when no environment service is wired, the task has no
+            project, or the workspace was not provisioned.
         """
         if (
             self._environment_service is None
@@ -393,9 +408,8 @@ class AgentEngineExecutionService:
                 runner=runner,
                 sandbox_kind=self._environment_runner_backend.get_backend_type(),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 WORKERS_EXECUTION_SERVICE_FAILED,
@@ -419,7 +433,16 @@ class AgentEngineExecutionService:
         idempotency_key: str,
         requested_by: str,
     ) -> Task:
-        """Run the assigned agent against the task and return its state."""
+        """Run the assigned agent against the task and return its state.
+
+        Returns:
+            The authoritative post-run task state re-read from the task
+            engine.
+
+        Raises:
+            NotFoundError: When the task is missing before or after the
+                agent run.
+        """
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
@@ -447,9 +470,8 @@ class AgentEngineExecutionService:
                     task.project
                 )
                 workspace_path = Path(workspace.workspace_path)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Best-effort: workspace provisioning failure should not
                 # block agent execution (the workspace may not be needed
                 # by every tool). Log and continue.
@@ -491,9 +513,8 @@ class AgentEngineExecutionService:
                     task=task,
                     effective_autonomy=effective_autonomy,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 WORKERS_EXECUTION_SERVICE_FAILED,
@@ -547,7 +568,16 @@ class AgentEngineExecutionService:
         *,
         task_id: str,
     ) -> AgentIdentity:
-        """Resolve the task's assigned agent identity, or raise."""
+        """Resolve the task's assigned agent identity, or raise.
+
+        Returns:
+            The resolved :class:`AgentIdentity` for the task.
+
+        Raises:
+            ConflictError: When the task is unassigned.
+            AgentRuntimeNotConfiguredError: When the assigned agent is not
+                registered in the runtime.
+        """
         if not assigned_to:
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_NO_OP,
@@ -621,9 +651,8 @@ class AgentEngineExecutionService:
             await backend.release_owner(
                 owner_id, project_id=project_id, image_override=image_override
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
                 task_id=task_id,
@@ -653,6 +682,10 @@ class AgentEngineExecutionService:
         tool action (credential / destructive / path-traversal
         detectors plus the approval queue); only the autonomy-tier
         routing layer is skipped.
+
+        Returns:
+            The resolved effective autonomy, or ``None`` when no resolver
+            is wired or resolution fails (degraded mode).
         """
         if self._autonomy_resolver is None:
             return None
@@ -661,8 +694,6 @@ class AgentEngineExecutionService:
                 agent_level=identity.autonomy_level,
                 seniority=identity.level,
             )
-        except MemoryError, RecursionError:
-            raise
         except ValueError as exc:
             logger.warning(
                 WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
@@ -726,6 +757,10 @@ class AgentEngineExecutionService:
         funnelled through the engine's fatal/budget handlers which sync
         an authoritative terminal task state, leaving the task
         re-runnable by a normal dispatch rather than wedged.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: When the engine has no
+                approval gate to resume the parked context with.
         """
         gate = self._engine._approval_gate  # noqa: SLF001
         if gate is None:
@@ -785,9 +820,8 @@ class AgentEngineExecutionService:
                     project_id
                 )
                 workspace_path = Path(workspace.workspace_path)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKERS_EXECUTION_SERVICE_FAILED,
                     task_id=task_id,
@@ -851,7 +885,12 @@ class NoProviderExecutionService:
         idempotency_key: str,
         requested_by: str,
     ) -> Task:
-        """Reject execution: the company has no provider configured."""
+        """Reject execution: the company has no provider configured.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: Always; no LLM provider is
+                configured (empty-company mode).
+        """
         logger.warning(
             WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
             task_id=task_id,
@@ -881,6 +920,10 @@ class NoProviderExecutionService:
         provider was removed; surfacing this loudly tells the operator
         the deployment is misconfigured rather than silently dropping
         an approved resume.
+
+        Raises:
+            AgentRuntimeNotConfiguredError: Always; no provider means no
+                agent engine to resume into.
         """
         logger.error(
             APPROVAL_GATE_RESUME_FAILED,

@@ -28,6 +28,13 @@ def _reject_nats_tokens(value: str, field_name: str) -> str:
     prefixes (dot-separated, non-empty tokens, no wildcards). Raises
     ``ValueError`` with a concrete diagnostic so config load fails fast
     at the system boundary instead of at ``pull_subscribe`` time.
+
+    Returns:
+        The validated value, unchanged.
+
+    Raises:
+        ValueError: When the value has surrounding whitespace or contains
+            a NATS-forbidden character (``*``, ``>``, whitespace).
     """
     stripped = value.strip()
     if stripped != value:
@@ -45,7 +52,15 @@ def _reject_nats_tokens(value: str, field_name: str) -> str:
 
 
 def _reject_nats_subject(value: str, field_name: str) -> str:
-    """Validate a dot-separated NATS subject prefix."""
+    """Validate a dot-separated NATS subject prefix.
+
+    Returns:
+        The validated subject prefix, unchanged.
+
+    Raises:
+        ValueError: When the prefix has a forbidden character or an empty
+            dot-separated token.
+    """
     _reject_nats_tokens(value, field_name)
     tokens = value.split(".")
     if any(token == "" for token in tokens):
@@ -172,6 +187,13 @@ class QueueConfig(BaseModel):
         JetStream stream names are a single token (no dots), so reuse
         the shared token validator but additionally reject ``.`` to
         prevent config drift between "stream name" and "subject prefix".
+
+        Returns:
+            The validated stream name, unchanged.
+
+        Raises:
+            ValueError: When the name has a forbidden character or a
+                ``.``.
         """
         _reject_nats_tokens(value, "stream_name")
         if "." in value:
@@ -185,18 +207,42 @@ class QueueConfig(BaseModel):
     @field_validator("ready_subject_prefix")
     @classmethod
     def _validate_ready_subject_prefix(cls, value: str) -> str:
-        """Reject wildcards/whitespace/empty tokens in the ready subject."""
+        """Reject wildcards/whitespace/empty tokens in the ready subject.
+
+        Returns:
+            The validated ready-subject prefix, unchanged.
+
+        Raises:
+            ValueError: When the prefix has a forbidden character or an
+                empty dot-separated token.
+        """
         return _reject_nats_subject(value, "ready_subject_prefix")
 
     @field_validator("dead_subject_prefix")
     @classmethod
     def _validate_dead_subject_prefix(cls, value: str) -> str:
-        """Reject wildcards/whitespace/empty tokens in the dead-letter subject."""
+        """Reject wildcards/whitespace/empty tokens in the dead-letter subject.
+
+        Returns:
+            The validated dead-subject prefix, unchanged.
+
+        Raises:
+            ValueError: When the prefix has a forbidden character or an
+                empty dot-separated token.
+        """
         return _reject_nats_subject(value, "dead_subject_prefix")
 
     @model_validator(mode="after")
     def _validate_subjects(self) -> Self:
-        """Ensure ready and dead subjects do not overlap."""
+        """Ensure ready and dead subjects do not overlap.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the ready and dead subject prefixes are
+                equal.
+        """
         if self.ready_subject_prefix == self.dead_subject_prefix:
             msg = "ready_subject_prefix and dead_subject_prefix must differ"
             raise ValueError(msg)
@@ -210,6 +256,13 @@ class QueueConfig(BaseModel):
         the worker calls ``in_progress`` while executing. If it were
         >= ``ack_wait_seconds`` the deadline could lapse before the
         first extension fires, defeating the no-duplication guarantee.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``heartbeat_interval_seconds`` is not less
+                than ``ack_wait_seconds``.
         """
         if self.heartbeat_interval_seconds >= self.ack_wait_seconds:
             msg = (

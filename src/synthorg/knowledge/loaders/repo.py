@@ -97,7 +97,12 @@ class RepoLoader:
         self._max_file_bytes = max_file_bytes
 
     async def load(self, source: KnowledgeSource) -> RawDocument:
-        """Walk ``source.uri`` and emit one unit per eligible text file."""
+        """Walk ``source.uri`` and emit one unit per eligible text file.
+
+        Returns:
+            A ``RawDocument`` with one unit per eligible text file under
+            the source path.
+        """
         document = await asyncio.to_thread(self._load_sync, source)
         logger.debug(
             KNOWLEDGE_SOURCE_LOADED,

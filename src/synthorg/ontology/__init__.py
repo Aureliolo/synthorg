@@ -71,6 +71,12 @@ def __getattr__(name: str) -> object:
     first-access from multiple threads cannot double-import the heavy
     submodule or overwrite the cached object mid-write (mirrors
     :mod:`synthorg.tools.mcp`).
+
+    Returns:
+        The resolved (and now cached) export object for ``name``.
+
+    Raises:
+        AttributeError: When ``name`` is not a known lazy export.
     """
     if name not in _LAZY_EXPORTS:
         msg = f"module {__name__!r} has no attribute {name!r}"
@@ -87,7 +93,11 @@ def __getattr__(name: str) -> object:
 
 
 def __dir__() -> list[str]:
-    """Include the lazily-exported names in ``dir()`` / autocomplete."""
+    """Include the lazily-exported names in ``dir()`` / autocomplete.
+
+    Returns:
+        The sorted list of public export names.
+    """
     return sorted(__all__)
 
 

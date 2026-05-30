@@ -112,6 +112,10 @@ class ContinuousMode:
 
         Returns:
             Ordered list of per-run :class:`SimulationMetrics`.
+
+        Raises:
+            RuntimeError: When the runner is already running (concurrent
+                ``start()`` on the same instance).
         """
         if not self._config.enabled:
             logger.debug(CONTINUOUS_MODE_DISABLED)

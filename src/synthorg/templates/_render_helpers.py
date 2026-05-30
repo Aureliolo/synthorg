@@ -30,6 +30,9 @@ logger = get_logger(__name__)
 def _parse_budget(dept: dict[str, Any]) -> float:
     """Parse and validate a department's budget_percent value.
 
+    Returns:
+        The parsed ``budget_percent`` as a float.
+
     Raises:
         TemplateRenderError: If the value cannot be converted to float.
     """
@@ -146,6 +149,10 @@ def _handle_dept_remove(
     has_extends: bool,
 ) -> dict[str, Any]:
     """Validate and return a ``_remove`` marker for a department.
+
+    Returns:
+        A marker dict containing the department name and remove flag:
+        ``{"name": <name>, "_remove": True}``.
 
     Raises:
         TemplateRenderError: If ``_remove`` is used without ``extends``.

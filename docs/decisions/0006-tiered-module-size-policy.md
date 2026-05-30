@@ -158,9 +158,10 @@ max-nested-blocks = 4
 max-complexity = 8
 ```
 
-New selects: `BLE`, `G`, `ERA`, `INP`, `DOC`. `DOC201/202/501` carry a
-broad per-file-ignore on `src/synthorg/**` while later docstring PRs
-catch up.
+New selects: `BLE`, `G`, `ERA`, `INP`, `DOC`. `DOC201/202/501` were
+introduced under a broad per-file-ignore on `src/synthorg/**`, since
+drained so they enforce across all of `src/synthorg/` (Exemption Ledger
+Section F).
 
 ### Mypy strict++
 
@@ -251,7 +252,8 @@ British dictionary).
 - Mypy `[[tool.mypy.overrides]]` block list creates explicit
   technical debt that later typing PRs must drain.
 - DOC per-file-ignore creates implicit technical debt that later
-  docstring PRs must drain.
+  docstring PRs must drain (RESOLVED by #2065: the brace-expansion
+  ignore is deleted and `DOC201/202/501` enforced across `src/synthorg/`).
 - New typeguard instrumentation adds runtime checks during the test
   suite. All current type/runtime mismatches must be fixed in PR 1
   (no `@pytest.mark.no_typeguard` escape hatch; no follow-up issues).
@@ -333,7 +335,7 @@ under its cap). See ADR-0008.
 |-----------|-----------|------------------------------|
 | Mypy override for `synthorg.api.*` (`disallow_any_explicit`, `unused-awaitable`) | PR 3 decomposes 8 multi-controllers + `api/app.py` into per-sub-domain packages; new files written strict-clean | Remove or narrow the `synthorg.api.*` override block to only `synthorg.api.lifecycle*` / `synthorg.api.dto*` |
 | `_module_size_baseline.json` entries for the 14 PR-3-named files (named multi-controllers + `api/auth/controller.py`, `meta/mcp/handlers/{infrastructure,communication}.py`, `api/app.py`, `api/auto_wire.py`, `api/lifecycle*.py`) | PR 3 shrinks each below tier cap | Drop those 14 entries from the baseline. The remaining ~93 `src/synthorg/api/**`, `meta/mcp/**` entries in the baseline are covered by EPIC #2077 (Section F), not PR 3. |
-| Ruff `BLE001/C901/PLR0911-15/DOC*` per-file-ignore for `src/synthorg/**` (partial drain for decomposed packages) | New small files pass strict | Tighten the per-file-ignore from `src/synthorg/**` to only the residual god-modules / undecomposed packages |
+| Ruff `BLE001/C901/PLR0911-15/DOC*` per-file-ignore for `src/synthorg/**` (partial drain for decomposed packages) | New small files pass strict | Tighten the per-file-ignore from `src/synthorg/**` to only the residual god-modules / undecomposed packages. (`DOC*` already lifted by #2065; `BLE001/C901/PLR0911-15` remain.) |
 | `check_no_growth_in_god_modules.py` allowlist | PR 3 shrinks `api/app.py` to <200 LOC and `api/state.py` to <150 LOC | Gate flips from "must net-shrink" to "must remain at tier cap"; allowlist drained (mostly empty) |
 
 ### C. Lifted naturally by PR 4 (#2050)
@@ -374,8 +376,8 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
 | Mypy strict++ overrides on `tests.*` | Issue #2061 partially landed; remaining work tracked under sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the full breakdown by lifted error code) | Small to Very Large per sub-issue (see F.1) |
 | Ruff `ERA001` (13 sites, all false positives) | Issue #2063: "Remove commented-out code (ERA001)" (RESOLVED: per-file-ignore dropped, code-shaped comments reworded) | Small |
-| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
-| Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
+| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" (RESOLVED: brace-expansion per-file-ignore deleted; `DOC201/202/501` now enforced across all of `src/synthorg/` except `tests/`, `scripts/`, and the five api god modules pending #2077) | Large |
+| Interrogate `fail_under` 90 -> 95 | Same as DOC backfill (RESOLVED: `[tool.interrogate] fail-under` flipped to 95) | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components", sliced into 4 sub-issues: #2092 (Foundation: utils + hooks + lib), #2093 (Stores incl. websocket), #2094 (Components + API types/endpoints), #2095 (Pages + override deletion). The override block at `web/eslint.config.js:146-217` grows an `ignores:` list per sub-issue; PR D deletes the block. (RESOLVED: all sub-issues landed; the Pages tranche shipped as #2095 (D1) → D2a → #2141 (D2b), which deleted the `src/**/*.{ts,tsx}` override block entirely. The four caps now apply globally across `web/src/**`; the only surviving exemptions are `components/ui/**` (disables `max-lines-per-function` for cva variants) and the test/bench globs (disable all four).) | Large (4 PRs filed) |
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
 | Typeguard infrastructure landed by issue #2068; activation deferred to #2050 | Infrastructure in place: typeguard==4.5.2 in `[dependency-groups.test]`, ruff TC001/2/3 disabled project-wide (the convention shift), early `typeguard.install_import_hook(["synthorg"])` in `tests/conftest.py`, and `@suppress_type_checks` on `api.app.create_app` for the highest-cascade boundary. The pytest activation flags `--typeguard-packages=synthorg` and `--typeguard-forward-ref-policy=ERROR` are present-but-commented in `pyproject.toml`; turning them on fans out ~530 unit-test failures through the source-side cycles `api.config <-> api.rate_limits.config`, `communication.config <-> engine.workflow.ceremony_bridge`, and `engine.context <-> engine.compaction.protocol` that #2050 eliminates structurally via `_circular_imports_baseline.txt -> 0`. Re-activation in #2050: re-enable the activation flags, drop the `@suppress_type_checks` decorator, address the residual non-cycle category fixes (Pydantic `JsonValue` forward-ref filter, `SessionRepository._revoked` Protocol-attribute design, ~12 test mocks that don't structurally satisfy `MemoryService`, ~10 small real type-mismatch findings), and confirm `pytest -m unit` exits 0 with typeguard active. | Medium |

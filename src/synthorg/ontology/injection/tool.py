@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
@@ -104,11 +105,10 @@ class LookupEntityTool(BaseTool):
         """
         try:
             entity = await self._backend.get(name)
-        except MemoryError, RecursionError:
-            raise
         except OntologyNotFoundError:
             entity = None
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
                 name=name,
@@ -149,9 +149,8 @@ class LookupEntityTool(BaseTool):
         """
         try:
             results = await self._backend.search(query)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_TOOL_LOOKUP,
                 query=query,

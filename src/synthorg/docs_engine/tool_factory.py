@@ -67,7 +67,11 @@ class DocsToolFactory:
         )
 
     def tool_names(self) -> Iterable[str]:
-        """Inventory of tool names produced by this factory."""
+        """Inventory of tool names produced by this factory.
+
+        Returns:
+            The static tuple of docs tool names this factory emits.
+        """
         return DOCS_TOOL_NAMES
 
 
@@ -78,6 +82,9 @@ def build_docs_tool_factory(*, docs_service: DocsService) -> DocsToolFactory:
     in a named factory function lets the ghost-wiring gate enforce
     that the tool surface is reachable from the shipped boot path,
     even though the tools themselves are instantiated per-task.
+
+    Returns:
+        A ``DocsToolFactory`` bound to ``docs_service``.
     """
     return DocsToolFactory(docs_service=docs_service)
 

@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Template schema: Pydantic models for company templates."""
 
 from collections import Counter
@@ -63,7 +64,14 @@ class TemplateVariable(BaseModel):
 
     @model_validator(mode="after")
     def _validate_required_has_no_default(self) -> Self:
-        """Required variables must not define a default."""
+        """Required variables must not define a default.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When a required variable also defines a default.
+        """
         if self.required and self.default is not None:
             msg = f"Variable {self.name!r} is required but defines a default"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
@@ -72,7 +80,15 @@ class TemplateVariable(BaseModel):
 
     @model_validator(mode="after")
     def _validate_default_matches_var_type(self) -> Self:
-        """Default value type must match ``var_type`` when provided."""
+        """Default value type must match ``var_type`` when provided.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the default value's type is incompatible with
+                ``var_type``.
+        """
         if self.default is None:
             return self
         # Reject bools explicitly for numeric types because
@@ -154,7 +170,15 @@ class TemplateAgentConfig(BaseModel):
         cls,
         value: NotBlankStr | dict[str, Any],
     ) -> NotBlankStr | dict[str, Any]:
-        """Validate model value: tier string or ModelRequirement dict."""
+        """Validate model value: tier string or ModelRequirement dict.
+
+        Returns:
+            The validated value, unchanged.
+
+        Raises:
+            ValueError: When the value is neither a valid tier string nor
+                a parseable model-requirement dict.
+        """
         from synthorg.templates.model_requirements import (  # noqa: PLC0415
             parse_model_requirement,
         )
@@ -193,7 +217,15 @@ class TemplateAgentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_personality_mutual_exclusion(self) -> Self:
-        """Reject specifying both personality_preset and inline personality."""
+        """Reject specifying both personality_preset and inline personality.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When both ``personality_preset`` and
+                ``personality`` are set.
+        """
         if self.personality_preset is not None and self.personality is not None:
             msg = (
                 "Cannot specify both 'personality_preset' and 'personality'. "
@@ -263,7 +295,15 @@ class TemplateDepartmentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_head_merge_id_requires_head_role(self) -> Self:
-        """Reject head_merge_id without a corresponding head_role."""
+        """Reject head_merge_id without a corresponding head_role.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``head_merge_id`` is set but ``head_role`` is
+                missing.
+        """
         if self.head_merge_id is not None and self.head_role is None:
             msg = (
                 f"Department {self.name!r}: head_merge_id is set "
@@ -312,7 +352,14 @@ class TemplateMetadata(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agent_range(self) -> Self:
-        """Ensure min_agents <= max_agents."""
+        """Ensure min_agents <= max_agents.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``min_agents`` exceeds ``max_agents``.
+        """
         if self.min_agents > self.max_agents:
             msg = f"min_agents ({self.min_agents}) > max_agents ({self.max_agents})"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
@@ -321,7 +368,14 @@ class TemplateMetadata(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_skill_patterns(self) -> Self:
-        """Reject duplicate skill_patterns entries."""
+        """Reject duplicate skill_patterns entries.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``skill_patterns`` contains duplicates.
+        """
         counts = Counter(self.skill_patterns)
         if len(counts) != len(self.skill_patterns):
             dupes = sorted(sp.value for sp, c in counts.items() if c > 1)
@@ -437,7 +491,12 @@ class CompanyTemplate(BaseModel):
     @field_validator("extends", mode="before")
     @classmethod
     def _normalize_extends(cls, value: Any) -> Any:
-        """Normalize extends to lowercase stripped form."""
+        """Normalize extends to lowercase stripped form.
+
+        Returns:
+            The lower-cased value, ``None`` unchanged, or non-string input
+            unchanged (left for Pydantic's type validation to reject).
+        """
         if value is None:
             return None
         if not isinstance(value, str):
@@ -451,6 +510,13 @@ class CompanyTemplate(BaseModel):
         Skipped when ``extends`` is set because the child may define
         zero agents (inheriting all from parent).  The final merged
         result is validated separately.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When the agent count falls outside the metadata's
+                ``min_agents`` / ``max_agents`` range.
         """
         if self.extends is not None or self.uses_packs:
             return self
@@ -473,7 +539,14 @@ class CompanyTemplate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_variable_names(self) -> Self:
-        """Variable names must be unique."""
+        """Variable names must be unique.
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two variables share a name.
+        """
         names = [v.name for v in self.variables]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -484,7 +557,15 @@ class CompanyTemplate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
-        """Department names must be unique (case-insensitive)."""
+        """Department names must be unique (case-insensitive).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two departments share a name
+                (case-insensitively).
+        """
         names = [normalize_identifier(d.name) for d in self.departments]
         if len(names) != len(set(names)):
             dup_keys = {n for n, c in Counter(names).items() if c > 1}
@@ -500,7 +581,15 @@ class CompanyTemplate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_pack_names(self) -> Self:
-        """Pack names in uses_packs must be unique (case-insensitive)."""
+        """Pack names in uses_packs must be unique (case-insensitive).
+
+        Returns:
+            The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When ``uses_packs`` contains duplicate pack names
+                (case-insensitively).
+        """
         normalized = [normalize_identifier(p) for p in self.uses_packs]
         if len(normalized) != len(set(normalized)):
             dup_keys = {n for n, c in Counter(normalized).items() if c > 1}
