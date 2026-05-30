@@ -171,9 +171,9 @@ export const router = createBrowserRouter([
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
               { path: 'projects/:projectId/docs', element: <ProjectDocsPage /> },
               { path: 'projects/:projectId/docs/:slug', element: <ProjectDocsPage /> },
-              { path: 'projects/:projectId/brain', element: <ProjectBrainPage /> },
+              { path: ROUTES.PROJECT_BRAIN.slice(1), element: <ProjectBrainPage /> },
               {
-                path: 'projects/:projectId/brain/:entryId',
+                path: ROUTES.PROJECT_BRAIN_DETAIL.slice(1),
                 element: <ProjectBrainPage />,
               },
               { path: 'artifacts', element: <ArtifactsPage /> },

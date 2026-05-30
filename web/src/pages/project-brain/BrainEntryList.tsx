@@ -208,7 +208,7 @@ function BrainEntryButton({ entry, selected, onSelect }: BrainEntryButtonProps) 
         <span className="block text-sm font-medium">{entry.title}</span>
         <span className="text-muted-foreground block text-xs">
           {BRAIN_STATUS_LABEL[entry.status]}
-          {` ${'·'} r${entry.revision}`}
+          {` · r${entry.revision}`}
         </span>
       </button>
     </li>
