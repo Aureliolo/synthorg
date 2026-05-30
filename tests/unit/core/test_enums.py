@@ -89,12 +89,13 @@ class TestEnumMemberCounts:
     def test_conflict_approach_has_5_members(self) -> None:
         assert len(ConflictApproach) == 5
 
-    def test_memory_category_has_7_members(self) -> None:
-        # 5 agent categories + PROJECT_DOC + KNOWLEDGE.
-        assert len(MemoryCategory) == 7
+    def test_memory_category_has_8_members(self) -> None:
+        # 5 agent categories + PROJECT_DOC + KNOWLEDGE + PROJECT_BRAIN.
+        assert len(MemoryCategory) == 8
         assert MemoryCategory.PROJECT_DOC in set(MemoryCategory)
         assert MemoryCategory.PROJECT_DOC.value == "project_doc"
         assert MemoryCategory.KNOWLEDGE.value == "knowledge"
+        assert MemoryCategory.PROJECT_BRAIN.value == "project_brain"
 
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4

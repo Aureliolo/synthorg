@@ -358,6 +358,9 @@ class TestEventConstants:
             "cockpit",
             # Brownfield codebase intake: import / seed / scan / index events.
             "brownfield",
+            # Long-horizon project brain: append / index / snapshot / search /
+            # history / facade-fanout / replay events.
+            "project_brain",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

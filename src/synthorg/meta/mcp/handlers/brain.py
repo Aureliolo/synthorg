@@ -351,13 +351,13 @@ async def _brain_history(
 
 BRAIN_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
     {
-        _TOOL_APPEND: _brain_append,
-        _TOOL_RESOLVE: _brain_resolve,
-        _TOOL_SUPERSEDE: _brain_supersede,
-        _TOOL_CLEAR_BLOCKER: _brain_clear_blocker,
-        _TOOL_GET: _brain_get,
-        _TOOL_LIST: _brain_list,
-        _TOOL_QUERY: _brain_query,
-        _TOOL_HISTORY: _brain_history,
+        "synthorg_brain_append": _brain_append,
+        "synthorg_brain_resolve": _brain_resolve,
+        "synthorg_brain_supersede": _brain_supersede,
+        "synthorg_brain_clear_blocker": _brain_clear_blocker,
+        "synthorg_brain_get": _brain_get,
+        "synthorg_brain_list": _brain_list,
+        "synthorg_brain_query": _brain_query,
+        "synthorg_brain_history": _brain_history,
     },
 )

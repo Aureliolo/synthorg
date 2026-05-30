@@ -17,10 +17,7 @@ from synthorg.project_brain.chunker import BrainChunker
 from synthorg.project_brain.indexer import BrainIndexer
 from synthorg.project_brain.replay import reindex_unindexed
 from synthorg.project_brain.service import ProjectBrainService
-from synthorg.project_brain.tool_factory import (
-    ProjectBrainToolFactory,
-    build_project_brain_tool_factory,
-)
+from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.project_brain.writer import BrainWriter
 
 if TYPE_CHECKING:
@@ -123,7 +120,7 @@ def build_project_brain_service(
         backend=memory_backend,
         clock=clock,
     )
-    tool_factory = build_project_brain_tool_factory(brain_service=service)
+    tool_factory = ProjectBrainToolFactory(brain_service=service)
     return ProjectBrainRuntime(
         brain_service=service,
         tool_factory=tool_factory,

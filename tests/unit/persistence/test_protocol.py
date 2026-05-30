@@ -1202,6 +1202,12 @@ class _FakeBackend:
         return object()
 
     @property
+    def project_brain(self) -> object:
+        # Long-horizon project-brain repo; attribute presence is all the
+        # runtime_checkable protocol verifies.
+        return object()
+
+    @property
     def knowledge_sources(self) -> _FakeKnowledgeSourceRepository:
         # Concrete fake (not ``object()``) so backend-routed type checks
         # actually exercise the protocol contract and catch drift between

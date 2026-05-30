@@ -245,7 +245,7 @@ class ProjectBrainRepository(
 
 `AppendOnlyRepository` is the right base because every change is an append (a new
 revision), never an in-place update. The protocol adds bespoke methods under
-[ADR-0001](decisions/0001-repository-protocol-consolidation.md) D7 (a real
+[ADR-0001](../decisions/0001-repository-protocol-consolidation.md) D7 (a real
 domain invariant the generic surface cannot express), exactly as
 `DecisionRepository` does:
 

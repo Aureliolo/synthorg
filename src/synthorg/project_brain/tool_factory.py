@@ -74,25 +74,7 @@ class ProjectBrainToolFactory:
         return BRAIN_TOOL_NAMES
 
 
-def build_project_brain_tool_factory(
-    *,
-    brain_service: ProjectBrainService,
-) -> ProjectBrainToolFactory:
-    """Construct the default :class:`ProjectBrainToolFactory`.
-
-    Called once at boot by the brain wiring. Keeping construction in a named
-    factory lets the ghost-wiring gate enforce that the tool surface is
-    reachable from the shipped boot path, even though the tools are instantiated
-    per-task.
-
-    Returns:
-        A ``ProjectBrainToolFactory`` bound to ``brain_service``.
-    """
-    return ProjectBrainToolFactory(brain_service=brain_service)
-
-
 __all__ = [
     "BRAIN_TOOL_NAMES",
     "ProjectBrainToolFactory",
-    "build_project_brain_tool_factory",
 ]
