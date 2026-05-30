@@ -35,6 +35,8 @@ export const ROUTES = {
   PROJECT_DETAIL: '/projects/:projectId',
   PROJECT_DOCS: '/projects/:projectId/docs',
   PROJECT_DOC_DETAIL: '/projects/:projectId/docs/:slug',
+  PROJECT_BRAIN: '/projects/:projectId/brain',
+  PROJECT_BRAIN_DETAIL: '/projects/:projectId/brain/:entryId',
   ARTIFACTS: '/artifacts',
   ARTIFACT_DETAIL: '/artifacts/:artifactId',
   WORKFLOWS: '/workflows',

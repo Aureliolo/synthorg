@@ -35,6 +35,7 @@ const UsersPage = lazy(() => import('@/pages/UsersPage'))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
 const ProjectDocsPage = lazy(() => import('@/pages/ProjectDocsPage'))
+const ProjectBrainPage = lazy(() => import('@/pages/ProjectBrainPage'))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
@@ -170,6 +171,11 @@ export const router = createBrowserRouter([
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
               { path: 'projects/:projectId/docs', element: <ProjectDocsPage /> },
               { path: 'projects/:projectId/docs/:slug', element: <ProjectDocsPage /> },
+              { path: 'projects/:projectId/brain', element: <ProjectBrainPage /> },
+              {
+                path: 'projects/:projectId/brain/:entryId',
+                element: <ProjectBrainPage />,
+              },
               { path: 'artifacts', element: <ArtifactsPage /> },
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },
