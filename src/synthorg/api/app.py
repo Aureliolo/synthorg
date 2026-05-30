@@ -22,6 +22,7 @@ from synthorg.api.feature_composition import (
 from synthorg.api.lifecycle_assembly import assemble_lifespan_hooks
 from synthorg.api.litestar_assembly import build_litestar
 from synthorg.config.schema import RootConfig
+from synthorg.core.clock import Clock
 from synthorg.observability import (
     get_logger,
     safe_error_description,
@@ -41,6 +42,7 @@ logger = get_logger(__name__)
 def create_app(
     *,
     config: RootConfig | None = None,
+    clock: Clock | None = None,
     overrides: AppOverrides | None = None,
     _skip_lifecycle_shutdown: bool = False,
 ) -> Litestar:
@@ -48,6 +50,9 @@ def create_app(
 
     Args:
         config: Root company configuration.
+        clock: Optional clock seam threaded into the construction phase so a
+            test can drive a deterministic boot (``app_state.clock`` +
+            ``startup_time``); defaults to ``SystemClock`` when not supplied.
         overrides: Optional dependency injections (chiefly tests / bespoke
             wiring); any field left unset is auto-wired from config and the
             environment. An injected double always wins over the auto-wired one.
@@ -97,6 +102,7 @@ def create_app(
         api_config=api_config,
         overrides=ov,
         boot=boot,
+        clock=clock,
     )
     app_state = result.app_state
 

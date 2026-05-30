@@ -233,7 +233,7 @@
     },
     {
       "kind": "code",
-      "loc": 108,
+      "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/api/app.py",
       "owning_feature": "api_core"
@@ -317,14 +317,14 @@
     },
     {
       "kind": "controller",
-      "loc": 135,
+      "loc": 148,
       "loc_cap": 400,
       "module": "src/synthorg/api/auth/controllers/bootstrap.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "controller",
-      "loc": 152,
+      "loc": 207,
       "loc_cap": 400,
       "module": "src/synthorg/api/auth/controllers/credentials.py",
       "owning_feature": "api_core"
@@ -429,7 +429,7 @@
     },
     {
       "kind": "code",
-      "loc": 183,
+      "loc": 181,
       "loc_cap": 500,
       "module": "src/synthorg/api/auto_wire.py",
       "owning_feature": "api_core"
@@ -499,7 +499,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 336,
+      "loc": 373,
       "loc_cap": 600,
       "module": "src/synthorg/api/construction_phase.py",
       "owning_feature": "api_core"
@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 305,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/approvals/_notify.py",
       "owning_feature": "api_core"
@@ -1087,7 +1087,7 @@
     },
     {
       "kind": "controller",
-      "loc": 177,
+      "loc": 176,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/settings/security.py",
       "owning_feature": "api_core"

@@ -208,6 +208,75 @@ _try_review_gate_transition = try_review_gate_transition
 _signal_resume_intent = signal_resume_intent
 
 
+async def _run_review_gate_preflight(
+    app_state: AppState,
+    approval_id: str,
+    updated: ApprovalItem,
+    *,
+    decided_by: str,
+) -> None:
+    """Run the review-gate preflight before the decision is persisted.
+
+    Runs BEFORE persistence so a rejected preflight never leaves a decided
+    approval row or a broadcast WebSocket event behind. No-op when the review
+    gate is unwired or the approval has no associated task.
+
+    Args:
+        app_state: Application state (source of the review-gate slice).
+        approval_id: Approval identifier.
+        updated: The approval item about to be persisted.
+        decided_by: Who is making the decision.
+
+    Raises:
+        ForbiddenError: If the decider is the original executing agent
+            (self-review preflight fails).
+    """
+    review_gate = app_state.slice(ApprovalStateSlice).review_gate
+    if review_gate is not None and updated.task_id is not None:
+        await _preflight_review_gate(
+            review_gate,
+            approval_id,
+            updated.task_id,
+            decided_by=decided_by,
+        )
+
+
+def _log_state_transition_and_metrics(
+    approval_id: str,
+    *,
+    previous_status: ApprovalStatus,
+    saved: ApprovalItem,
+    approved: bool,
+    decided_by_user_id: str,
+) -> None:
+    """Emit the state-transition log and decision metric after persistence.
+
+    Fires immediately after the persistence write succeeds so a downstream
+    notification or resume-signalling failure cannot strand the approval row
+    in a decided state without a corresponding transition entry in the audit
+    stream.
+
+    Args:
+        approval_id: Approval identifier.
+        previous_status: Status the approval was in BEFORE this decision.
+        saved: The persisted approval item.
+        approved: Whether the action was approved.
+        decided_by_user_id: Immutable user id for the PII-free log channel.
+    """
+    logger.info(
+        APPROVAL_STATUS_TRANSITIONED,
+        approval_id=approval_id,
+        from_status=previous_status.value,
+        to_status=saved.status.value,
+        # Distinct field name from the audit-trail
+        # ``decided_by=<username>`` so downstream consumers can
+        # disambiguate the PII-free user-id channel from the
+        # operator-facing display channel without re-parsing.
+        decided_by_user_id=decided_by_user_id,
+    )
+    record_approval_decision(outcome="approved" if approved else "rejected")
+
+
 async def _save_decision_and_notify(  # noqa: PLR0913
     app_state: AppState,
     request: Request[Any, Any, Any],
@@ -249,20 +318,14 @@ async def _save_decision_and_notify(  # noqa: PLR0913
             (self-review preflight fails).
         NotFoundError: If the associated task no longer exists.
     """
-    # Run the review-gate preflight BEFORE persisting the decision so
-    # a rejected preflight never leaves a decided approval row or a
-    # broadcast WebSocket event behind.
-    approval = app_state.slice(ApprovalStateSlice)
-    review_gate = approval.review_gate
-    if review_gate is not None and updated.task_id is not None:
-        await _preflight_review_gate(
-            review_gate,
-            approval_id,
-            updated.task_id,
-            decided_by=decided_by,
-        )
+    await _run_review_gate_preflight(
+        app_state,
+        approval_id,
+        updated,
+        decided_by=decided_by,
+    )
 
-    store = require_service(approval.store, "Approval Store")
+    store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
     saved = await store.save_if_pending(updated)
     if saved is None:
         msg = "Approval is no longer pending (already decided or expired)"
@@ -273,22 +336,13 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         )
         raise ConflictError(msg)
 
-    # State-transition log fires immediately after the persistence
-    # write succeeds; downstream notification or resume-signaling
-    # failures cannot strand the approval row in a decided state
-    # without a corresponding transition entry in the audit stream.
-    logger.info(
-        APPROVAL_STATUS_TRANSITIONED,
-        approval_id=approval_id,
-        from_status=previous_status.value,
-        to_status=saved.status.value,
-        # Distinct field name from the audit-trail
-        # ``decided_by=<username>`` so downstream consumers can
-        # disambiguate the PII-free user-id channel from the
-        # operator-facing display channel without re-parsing.
+    _log_state_transition_and_metrics(
+        approval_id,
+        previous_status=previous_status,
+        saved=saved,
+        approved=approved,
         decided_by_user_id=decided_by_user_id,
     )
-    record_approval_decision(outcome="approved" if approved else "rejected")
 
     _publish_approval_event(request, ws_event, saved)
     _log_approval_decision(

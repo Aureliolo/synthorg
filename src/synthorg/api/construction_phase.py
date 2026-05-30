@@ -60,9 +60,10 @@ from synthorg.communication.conflict_resolution.escalation import (
 )
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
-from synthorg.core.clock import SystemClock
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -71,10 +72,12 @@ from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_AUTO_WIRED
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -106,12 +109,84 @@ class ConstructionResult:
     should_auto_wire_settings: bool
 
 
+def _wire_communication_services(
+    app_state: AppState,
+    *,
+    effective_config: RootConfig,
+    message_bus: MessageBus | None,
+    persistence: PersistenceBackend | None,
+    meeting_orchestrator: MeetingOrchestrator | None,
+) -> ConfigResolver | None:
+    """Wire the communication-domain + human-escalation services onto AppState.
+
+    Runs AFTER ``compose_settings_dependent_services`` so the escalation notify
+    subscriber can read the settings config resolver it composes. Mutates the
+    ``CommunicationStateSlice`` in place (the established wiring pattern) and
+    returns the resolver so the caller can thread it into the message-bus bridge.
+
+    Args:
+        app_state: The slice-populated application state to wire onto.
+        effective_config: The resolved root configuration.
+        message_bus: The auto-wired message bus, or ``None``.
+        persistence: The persistence backend (may be ``None``).
+        meeting_orchestrator: The auto-wired meeting orchestrator, or ``None``.
+
+    Returns:
+        The settings ``config_resolver`` for the bridge and later consumers.
+    """
+    from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+    if message_bus is not None and persistence is not None:
+        from synthorg.communication.messages.service import (  # noqa: PLC0415
+            MessageService,
+        )
+
+        app_state.wire(
+            CommunicationStateSlice,
+            message_service=MessageService(bus=message_bus, persistence=persistence),
+        )
+    if meeting_orchestrator is not None:
+        from synthorg.communication.meetings.service import (  # noqa: PLC0415
+            MeetingService,
+        )
+
+        app_state.wire(
+            CommunicationStateSlice,
+            meeting_service=MeetingService(orchestrator=meeting_orchestrator),
+        )
+
+    escalation_config = effective_config.communication.conflict_resolution.escalation
+    escalation_store = build_escalation_queue_store(escalation_config, persistence)
+    escalation_registry = PendingFuturesRegistry()
+    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
+    app_state.wire(
+        CommunicationStateSlice,
+        escalation_store=escalation_store,
+        escalation_processor=build_decision_processor(escalation_config),
+        escalation_registry=escalation_registry,
+        escalation_sweeper=EscalationExpirationSweeper(
+            escalation_store,
+            interval_seconds=escalation_config.sweeper_interval_seconds,
+        ),
+        escalation_notify_subscriber=build_escalation_notify_subscriber(
+            escalation_config,
+            escalation_store,
+            escalation_registry,
+            reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
+            config_resolver=config_resolver,
+        ),
+    )
+    return config_resolver
+
+
 def build_construction_services(
     *,
     effective_config: RootConfig,
     api_config: ApiConfig,
     overrides: AppOverrides,
     boot: BootPersistence,
+    clock: Clock | None = None,
 ) -> ConstructionResult:
     """Build the persistence-independent services and the populated AppState.
 
@@ -120,6 +195,9 @@ def build_construction_services(
         api_config: The resolved API configuration.
         overrides: Caller-injected dependency doubles (``None`` -> auto-wire).
         boot: The resolved persistence backend, artifact storage, and paths.
+        clock: Optional clock seam backing both ``app_state.clock`` and the
+            ``startup_time`` baseline so a test can drive a deterministic boot;
+            defaults to ``SystemClock``.
 
     Returns:
         The construction result the composition root threads into route
@@ -215,9 +293,10 @@ def build_construction_services(
     )
 
     # One boot clock shared between the uptime baseline and AppState so
-    # ``app_state.clock`` and ``startup_time`` cannot diverge, and a FakeClock
-    # injected via AppState in tests governs both.
-    boot_clock = SystemClock()
+    # ``app_state.clock`` and ``startup_time`` cannot diverge. The optional
+    # ``clock`` seam lets a caller inject a FakeClock for a deterministic boot
+    # (tests); it defaults to ``SystemClock`` when not supplied.
+    boot_clock = clock if clock is not None else SystemClock()
     app_state = AppState(
         clock=boot_clock,
         config=effective_config,
@@ -227,8 +306,6 @@ def build_construction_services(
     # construction-phase wiring below has a slice to ``model_copy`` from. The
     # startup hook re-runs this idempotently (skips already-composed slices).
     compose_feature_slices(app_state)
-    from synthorg.communication.state import CommunicationStateSlice  # noqa: PLC0415
-    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     # Opaque pagination cursor HMAC secret. Rolling with a random per-process
     # key silently invalidates every client cursor on every restart, so the
@@ -292,45 +369,12 @@ def build_construction_services(
     # Communication-domain services + human-escalation queue. The escalation
     # notify subscriber reads the settings config resolver composed just above,
     # so this runs after ``compose_settings_dependent_services``.
-    if message_bus is not None and persistence is not None:
-        from synthorg.communication.messages.service import (  # noqa: PLC0415
-            MessageService,
-        )
-
-        app_state.wire(
-            CommunicationStateSlice,
-            message_service=MessageService(bus=message_bus, persistence=persistence),
-        )
-    if meeting_orchestrator is not None:
-        from synthorg.communication.meetings.service import (  # noqa: PLC0415
-            MeetingService,
-        )
-
-        app_state.wire(
-            CommunicationStateSlice,
-            meeting_service=MeetingService(orchestrator=meeting_orchestrator),
-        )
-
-    escalation_config = effective_config.communication.conflict_resolution.escalation
-    escalation_store = build_escalation_queue_store(escalation_config, persistence)
-    escalation_registry = PendingFuturesRegistry()
-    config_resolver = app_state.slice(SettingsStateSlice).config_resolver
-    app_state.wire(
-        CommunicationStateSlice,
-        escalation_store=escalation_store,
-        escalation_processor=build_decision_processor(escalation_config),
-        escalation_registry=escalation_registry,
-        escalation_sweeper=EscalationExpirationSweeper(
-            escalation_store,
-            interval_seconds=escalation_config.sweeper_interval_seconds,
-        ),
-        escalation_notify_subscriber=build_escalation_notify_subscriber(
-            escalation_config,
-            escalation_store,
-            escalation_registry,
-            reconnect_delay_seconds=escalation_config.reconnect_delay_seconds,
-            config_resolver=config_resolver,
-        ),
+    config_resolver = _wire_communication_services(
+        app_state,
+        effective_config=effective_config,
+        message_bus=message_bus,
+        persistence=persistence,
+        meeting_orchestrator=meeting_orchestrator,
     )
 
     bridge = (

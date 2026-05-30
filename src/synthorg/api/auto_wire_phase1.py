@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.budget.tracker import CostTracker
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.communication.config import NatsConfig
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability import (
@@ -23,15 +26,17 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.cassette import CassetteConfig
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.config import NatsConfig
-    from synthorg.config.schema import RootConfig
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.providers.cassette import CassetteConfig
+    # The distributed task-queue stack lives behind the optional
+    # ``synthorg[distributed]`` extra and is imported lazily (with
+    # ``ImportError`` handling) inside ``_register_distributed_dispatcher``;
+    # ``workers.config`` additionally sits in a genuine import cycle. These
+    # stay type-only so the module imports without the extra installed.
     from synthorg.workers.backend_services import DistributedBackendServices
     from synthorg.workers.claim import JetStreamTaskQueue
     from synthorg.workers.config import QueueConfig

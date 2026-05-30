@@ -9,10 +9,13 @@ dispatcher) and ``auto_wire_ontology``.
 """
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from synthorg.api.auto_wire_meetings import MeetingWireResult, auto_wire_meetings
 from synthorg.api.auto_wire_phase1 import Phase1Result, auto_wire_phase1
+from synthorg.api.state import AppState
+from synthorg.backup.service import BackupService
+from synthorg.communication.bus_protocol import MessageBus
+from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
@@ -23,17 +26,11 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.api.state import AppState
-    from synthorg.backup.service import BackupService
-    from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.config.schema import RootConfig
-    from synthorg.ontology.service import OntologyService
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
-    from synthorg.settings.dispatcher import SettingsChangeDispatcher
-    from synthorg.settings.service import SettingsService
+from synthorg.ontology.service import OntologyService
+from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.service import SettingsService
 
 __all__ = [
     "MeetingWireResult",

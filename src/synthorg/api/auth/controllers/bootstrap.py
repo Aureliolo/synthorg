@@ -28,13 +28,19 @@ from synthorg.api.dto import ApiResponse
 from synthorg.core.auth.models import User
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import ConflictError
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_SETUP_COMPLETE,
     SECURITY_SESSION_LIMIT_ENFORCED,
 )
+from synthorg.persistence.constraint_tokens import (
+    IDX_SINGLE_CEO,
+    USERS_USERNAME_UNIQUE,
+)
 from synthorg.persistence.state import persistence_of
+from synthorg.persistence.user_protocol import UserFilterSpec
 
 logger = get_logger(__name__)
 
@@ -66,7 +72,10 @@ class AuthBootstrapController(Controller):
             Result matching the declared return annotation.
 
         Raises:
-            ConflictError: Raised on the corresponding failure path.
+            ConflictError: Setup is already complete (a user exists, or a
+                concurrent racer won the single-CEO / unique-username guard).
+            ConstraintViolationError: A persistence constraint unrelated to
+                the single-CEO / unique-username guards was violated.
         """
         app_state = request.app.state["app_state"]
         auth_service: AuthService = auth_service_of(app_state)
@@ -81,8 +90,13 @@ class AuthBootstrapController(Controller):
             msg = "Username 'system' is reserved"
             raise ConflictError(msg)
 
-        ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
-        if ceo_count > 0:
+        # Block setup once ANY human user exists, not just a CEO: the
+        # ``count`` query already excludes the SYSTEM user, so a non-zero
+        # result means a real operator has been provisioned and first-run
+        # setup must stay closed even if (hypothetically) no CEO row
+        # remained. This is the fast-path pre-check; the atomic guarantee
+        # below covers the concurrent race.
+        if await persistence.users.count(UserFilterSpec()) > 0:
             logger.warning(SECURITY_AUTH_FAILED, reason="setup_already_completed")
             msg = "Setup already completed"
             raise ConflictError(msg)
@@ -98,15 +112,25 @@ class AuthBootstrapController(Controller):
             created_at=now,
             updated_at=now,
         )
-        await persistence.users.save(user)
-
-        # Race guard: undo if another setup completed concurrently
-        post_ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
-        if post_ceo_count > 1:
-            await persistence.users.delete(user.id)
-            logger.warning(SECURITY_AUTH_FAILED, reason="setup_race_detected")
-            msg = "Setup already completed"
-            raise ConflictError(msg)
+        # Atomic race guard: the ``idx_single_ceo`` partial-unique index
+        # (and the username-unique index) make a concurrent second setup
+        # fail at the persistence layer rather than via a best-effort
+        # post-write count + compensating delete, which could leave zero
+        # CEOs if two requests deleted each other's row. A losing racer
+        # surfaces the same "already completed" conflict the pre-check
+        # raises.
+        try:
+            await persistence.users.save(user)
+        except ConstraintViolationError as exc:
+            if exc.constraint in (IDX_SINGLE_CEO, USERS_USERNAME_UNIQUE):
+                logger.warning(
+                    SECURITY_AUTH_FAILED,
+                    reason="setup_race_detected",
+                    constraint=exc.constraint,
+                )
+                msg = "Setup already completed"
+                raise ConflictError(msg) from exc
+            raise
 
         token, expires_in, session_id = auth_service.create_token(user)
 

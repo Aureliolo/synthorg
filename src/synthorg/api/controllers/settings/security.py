@@ -2,7 +2,7 @@
 """Security-configuration export / import settings endpoints."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from litestar import Controller, get, post
 from litestar.datastructures import State
@@ -25,10 +25,8 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.settings import SETTINGS_NOT_FOUND
 from synthorg.security.config import SecurityConfig
 from synthorg.settings.enums import SettingNamespace, SettingsImportSource
+from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
-
-if TYPE_CHECKING:
-    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
