@@ -845,10 +845,10 @@ repos:
 
       # Allowlisted god-modules must net-shrink on every PR.
       - id: no-growth-in-god-modules
-        name: god-modules must net-shrink (api/app.py, api/state.py, ...)
+        name: god-modules must net-shrink (core/enums.py, events/persistence.py)
         entry: uv run python scripts/check_no_growth_in_god_modules.py
         language: system
-        files: ^(src/synthorg/(api/(app|state|auto_wire|lifecycle|lifecycle_builder)\.py|core/enums\.py|observability/events/persistence\.py)|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/(core/enums\.py|observability/events/persistence\.py)|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
 

@@ -70,13 +70,14 @@ below its recorded LOC; growth past the baseline fails. New files may
 not exceed their tier cap regardless of baseline. Baselines shrink
 monotonically (enforced by `check_baseline_growth.py`).
 
-In addition, an explicit god-module allowlist (`api/app.py`,
-`api/state.py`, `api/auto_wire.py`, `api/lifecycle.py`,
-`api/lifecycle_builder.py`, `core/enums.py`,
+In addition, an explicit god-module allowlist (`core/enums.py`,
 `observability/events/persistence.py`) must net-shrink on every PR.
 This gate (`check_no_growth_in_god_modules.py`) prevents the central
-files from absorbing more responsibility while PR 2 / PR 3 / PR 4
-decompose them.
+files from absorbing more responsibility while PR 4 decomposes them.
+The five `api/` entries (`app.py`, `state.py`, `auto_wire.py`,
+`lifecycle.py`, `lifecycle_builder.py`) drained from the allowlist in
+PR 3 (#2049) once the controller decomposition brought each under its
+tier cap; they are now governed by `check_module_size_budget.py`.
 
 ### Complex-service tier
 
@@ -308,6 +309,19 @@ follow-ups below is the contract for "100% enforced".**
 | Typeguard wiring | PR 2's manifest substrate eliminates most `TYPE_CHECKING`-only imports by re-organising imports through `feature.py` runtime modules | New follow-up issue: "Wire typeguard after PR 2" (filed below) |
 
 ### B. Lifted naturally by PR 3 (#2049)
+
+**Status: LIFTED in PR 3 (#2049).** `api/app.py` is a <200-LOC
+discovery-based composition root (147 LOC); the eight multi-controllers,
+`api/auth/controller.py`, and the two MCP-handler god-modules decomposed
+into per-sub-domain packages; `api/auto_wire.py`, `api/lifecycle.py`, and
+`api/lifecycle_builder.py` reduced to under-cap dispatchers/runners. The
+five `api/` entries (`app.py`, `state.py`, `auto_wire.py`, `lifecycle.py`,
+`lifecycle_builder.py`) drained from the `check_no_growth_in_god_modules.py`
+allowlist and are now governed at their tier cap by
+`check_module_size_budget.py`; `core/enums.py` +
+`observability/events/persistence.py` remain net-shrink until #2051.
+`api/state.py` (354 LOC) is governed by the code-tier 500 cap (the EPIC's
+`<150` figure was descriptive, not a #2049 gate). See ADR-0008.
 
 | Exemption | Mechanism | Acceptance criterion in PR 3 |
 |-----------|-----------|------------------------------|

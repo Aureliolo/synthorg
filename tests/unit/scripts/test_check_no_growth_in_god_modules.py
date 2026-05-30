@@ -37,13 +37,14 @@ _GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]
 
 
 def test_allowlist_contains_expected_modules() -> None:
-    """All seven allowlisted god-modules (api/app.py, api/state.py, ...) are present."""
+    """Only the two remaining god-modules (core/enums, events/persistence) stay.
+
+    The five api entries drained when the controller decomposition brought
+    ``app.py``/``state.py``/``auto_wire.py``/``lifecycle.py``/
+    ``lifecycle_builder.py`` under their tier caps; they are now governed by
+    ``check_module_size_budget.py``.
+    """
     expected = {
-        "src/synthorg/api/app.py",
-        "src/synthorg/api/state.py",
-        "src/synthorg/api/auto_wire.py",
-        "src/synthorg/api/lifecycle.py",
-        "src/synthorg/api/lifecycle_builder.py",
         "src/synthorg/core/enums.py",
         "src/synthorg/observability/events/persistence.py",
     }
@@ -55,32 +56,34 @@ def test_allowlist_contains_expected_modules() -> None:
 
 def test_net_shrink_passes() -> None:
     result = _GATE.classify_change(
-        path="src/synthorg/api/app.py", head_loc=2152, staged_loc=2100
+        path="src/synthorg/core/enums.py", head_loc=2152, staged_loc=2100
     )
     assert result is None
 
 
 def test_no_change_passes() -> None:
     result = _GATE.classify_change(
-        path="src/synthorg/api/app.py", head_loc=2152, staged_loc=2152
+        path="src/synthorg/core/enums.py", head_loc=2152, staged_loc=2152
     )
     assert result is None
 
 
 def test_net_grow_fails() -> None:
     result = _GATE.classify_change(
-        path="src/synthorg/api/app.py", head_loc=2152, staged_loc=2200
+        path="src/synthorg/core/enums.py", head_loc=2152, staged_loc=2200
     )
     assert result is not None
     rendered = result.render()
-    assert "src/synthorg/api/app.py" in rendered
+    assert "src/synthorg/core/enums.py" in rendered
     assert "2152" in rendered
     assert "2200" in rendered
 
 
 def test_one_loc_grow_fails() -> None:
     result = _GATE.classify_change(
-        path="src/synthorg/api/state.py", head_loc=2313, staged_loc=2314
+        path="src/synthorg/observability/events/persistence.py",
+        head_loc=2313,
+        staged_loc=2314,
     )
     assert result is not None
 
@@ -101,7 +104,7 @@ def test_non_allowlisted_returns_none() -> None:
 def test_new_allowlisted_file_passes() -> None:
     """An allowlisted file that did not exist in HEAD is allowed (creation)."""
     result = _GATE.classify_change(
-        path="src/synthorg/api/app.py", head_loc=None, staged_loc=10
+        path="src/synthorg/core/enums.py", head_loc=None, staged_loc=10
     )
     assert result is None
 
@@ -111,13 +114,13 @@ def test_new_allowlisted_file_passes() -> None:
 
 def test_classify_paths_aggregates() -> None:
     def staged(path: str) -> int | None:
-        return {"src/synthorg/api/app.py": 2200}.get(path)
+        return {"src/synthorg/core/enums.py": 2200}.get(path)
 
     def head(path: str) -> int | None:
-        return {"src/synthorg/api/app.py": 2152}.get(path)
+        return {"src/synthorg/core/enums.py": 2152}.get(path)
 
     violations = _GATE.classify_paths(
-        paths=("src/synthorg/api/app.py",),
+        paths=("src/synthorg/core/enums.py",),
         read_staged_loc=staged,
         read_head_loc=head,
     )
@@ -126,13 +129,13 @@ def test_classify_paths_aggregates() -> None:
 
 def test_classify_paths_returns_empty_when_no_growth() -> None:
     def staged(path: str) -> int | None:
-        return {"src/synthorg/api/app.py": 2100}.get(path)
+        return {"src/synthorg/core/enums.py": 2100}.get(path)
 
     def head(path: str) -> int | None:
-        return {"src/synthorg/api/app.py": 2152}.get(path)
+        return {"src/synthorg/core/enums.py": 2152}.get(path)
 
     violations = _GATE.classify_paths(
-        paths=("src/synthorg/api/app.py",),
+        paths=("src/synthorg/core/enums.py",),
         read_staged_loc=staged,
         read_head_loc=head,
     )
@@ -149,7 +152,7 @@ def test_classify_paths_skips_unstaged() -> None:
         return None
 
     violations = _GATE.classify_paths(
-        paths=("src/synthorg/api/app.py",),
+        paths=("src/synthorg/core/enums.py",),
         read_staged_loc=staged,
         read_head_loc=head,
     )

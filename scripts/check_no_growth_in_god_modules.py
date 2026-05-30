@@ -32,11 +32,6 @@ from typing import Final
 _REPO_ROOT_DEFAULT = Path(__file__).resolve().parent.parent
 
 GOD_MODULE_ALLOWLIST: Final[tuple[str, ...]] = (
-    "src/synthorg/api/app.py",
-    "src/synthorg/api/state.py",
-    "src/synthorg/api/auto_wire.py",
-    "src/synthorg/api/lifecycle.py",
-    "src/synthorg/api/lifecycle_builder.py",
     "src/synthorg/core/enums.py",
     "src/synthorg/observability/events/persistence.py",
 )
