@@ -666,6 +666,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'research',
     'cockpit',
     'charter',
+    'demo',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 

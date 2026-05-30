@@ -320,6 +320,23 @@
     },
     {
       "controllers": [
+        "DemoController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/_demo",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [
+        "synthorg_demo_greet"
+      ],
+      "name": "demo",
+      "protocol_exports": [],
+      "settings_namespace": "demo",
+      "state_slice_fields": [
+        "service"
+      ]
+    },
+    {
+      "controllers": [
         "ProjectDocsController"
       ],
       "depends_on": [],
@@ -1125,6 +1142,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-30T08:14:58.833784Z",
+  "generated_at": "2026-05-30T09:17:05.632447Z",
   "schema_version": 1
 }

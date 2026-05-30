@@ -23,6 +23,55 @@
     },
     {
       "kind": "code",
+      "loc": 7,
+      "loc_cap": 500,
+      "module": "src/synthorg/_demo/__init__.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "code",
+      "loc": 21,
+      "loc_cap": 500,
+      "module": "src/synthorg/_demo/_construction.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "controller",
+      "loc": 21,
+      "loc_cap": 400,
+      "module": "src/synthorg/_demo/controller.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "feature",
+      "loc": 39,
+      "loc_cap": 100,
+      "module": "src/synthorg/_demo/feature.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "code",
+      "loc": 45,
+      "loc_cap": 500,
+      "module": "src/synthorg/_demo/mcp.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "code",
+      "loc": 24,
+      "loc_cap": 500,
+      "module": "src/synthorg/_demo/service.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "code",
+      "loc": 23,
+      "loc_cap": 500,
+      "module": "src/synthorg/_demo/state.py",
+      "owning_feature": "demo"
+    },
+    {
+      "kind": "code",
       "loc": 8,
       "loc_cap": 500,
       "module": "src/synthorg/a2a/__init__.py",
@@ -1402,7 +1451,7 @@
     },
     {
       "kind": "code",
-      "loc": 840,
+      "loc": 146,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_builder.py",
       "owning_feature": "api_core"
@@ -1503,6 +1552,27 @@
       "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 221,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_runner_shutdown.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 479,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/lifecycle_runner_startup.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 187,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_runner_support.py",
       "owning_feature": "api_core"
     },
     {
@@ -15556,7 +15626,7 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 64,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/__init__.py",
       "owning_feature": "settings"
@@ -15629,6 +15699,13 @@
       "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/coordination.py",
+      "owning_feature": "settings"
+    },
+    {
+      "kind": "code",
+      "loc": 25,
+      "loc_cap": 500,
+      "module": "src/synthorg/settings/definitions/demo.py",
       "owning_feature": "settings"
     },
     {
@@ -15766,7 +15843,7 @@
     },
     {
       "kind": "code",
-      "loc": 73,
+      "loc": 74,
       "loc_cap": 500,
       "module": "src/synthorg/settings/enums.py",
       "owning_feature": "settings"
