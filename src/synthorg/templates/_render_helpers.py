@@ -151,8 +151,8 @@ def _handle_dept_remove(
     """Validate and return a ``_remove`` marker for a department.
 
     Returns:
-        A single-key ``{"_remove": <name>}`` marker dict for the
-        department.
+        A marker dict containing the department name and remove flag:
+        ``{"name": <name>, "_remove": True}``.
 
     Raises:
         TemplateRenderError: If ``_remove`` is used without ``extends``.

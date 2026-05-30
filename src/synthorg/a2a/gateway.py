@@ -393,9 +393,15 @@ async def _dispatch_method(
         peer_name: Authenticated peer name.
 
     Returns:
-        JSON-RPC response wrapped in an HTTP response. Handler failures
-        are converted to JSON-RPC error responses in-function (including
-        the unreachable ``case _`` guard), never propagated to the caller.
+        JSON-RPC response wrapped in an HTTP response. Non-critical
+        handler failures are converted to JSON-RPC error responses
+        in-function (including the unreachable ``case _`` guard).
+
+    Raises:
+        MemoryError: Propagated unchanged from the critical-error
+            re-raise in the unhandled-exception guard.
+        RecursionError: Propagated unchanged from the critical-error
+            re-raise in the unhandled-exception guard.
     """  # noqa: DOC501 -- AssertionError guard is caught in-function and surfaces as a JSON-RPC 500
     request_id = rpc_request.id
     method = str(rpc_request.method)

@@ -163,8 +163,6 @@ def load_pack(name: str) -> LoadedTemplate:
         TemplateRenderError: If the pack YAML cannot be read or parsed.
         TemplateValidationError: If the parsed pack fails schema
             validation.
-        OSError: If reading a user-directory pack file fails and no
-            built-in pack of the same name exists to fall back to.
     """
     name_clean = _validate_pack_name(name)
     logger.debug(TEMPLATE_PACK_LOAD_START, pack_name=name_clean)
@@ -178,7 +176,6 @@ def load_pack(name: str) -> LoadedTemplate:
             except (
                 TemplateRenderError,
                 TemplateValidationError,
-                OSError,
             ) as exc:
                 if name_clean in BUILTIN_PACKS:
                     logger.warning(

@@ -72,7 +72,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 728,
+      "loc": 733,
       "loc_cap": 1100,
       "module": "src/synthorg/a2a/gateway.py",
       "owning_feature": "a2a"
@@ -10509,7 +10509,7 @@
     },
     {
       "kind": "code",
-      "loc": 209,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/notifications/adapters/ntfy.py",
       "owning_feature": "notifications"
@@ -15318,7 +15318,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 980,
+      "loc": 991,
       "loc_cap": 1100,
       "module": "src/synthorg/telemetry/collector.py",
       "owning_feature": "telemetry"
@@ -15500,7 +15500,7 @@
     },
     {
       "kind": "code",
-      "loc": 323,
+      "loc": 320,
       "loc_cap": 500,
       "module": "src/synthorg/templates/pack_loader.py",
       "owning_feature": null

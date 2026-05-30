@@ -869,9 +869,15 @@ class TelemetryCollector:
         Logs warnings on I/O errors.
 
         Returns:
-            A valid UUID string in all cases (the loaded ID, the
-            atomically created one, or ``candidate_id`` on any fallback);
-            never raises.
+            A valid UUID string on the non-critical paths (the loaded
+            ID, the atomically created one, or ``candidate_id`` on any
+            fallback).
+
+        Raises:
+            MemoryError: Propagated unchanged from the critical-error
+                re-raise in the worker's fallback guard.
+            RecursionError: Propagated unchanged from the critical-error
+                re-raise in the worker's fallback guard.
         """
         return await asyncio.to_thread(
             _load_or_create_deployment_id_sync, self._data_dir, candidate_id
@@ -914,7 +920,14 @@ def _load_or_create_deployment_id_sync(
 
     Returns:
         The loaded deployment ID, the freshly created one, or
-        ``candidate_id`` when the path is untrusted or any helper fails.
+        ``candidate_id`` when the path is untrusted or a non-critical
+        helper failure occurs.
+
+    Raises:
+        MemoryError: Propagated unchanged from the critical-error
+            re-raise in the top-level guard.
+        RecursionError: Propagated unchanged from the critical-error
+            re-raise in the top-level guard.
     """
     try:
         id_path_str = _resolve_telemetry_id_path(data_dir)

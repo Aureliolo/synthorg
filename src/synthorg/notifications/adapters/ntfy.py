@@ -43,8 +43,10 @@ def _validate_outbound_url(url: str, field: str) -> None:
     """Reject URLs that target internal/loopback hosts or non-HTTP schemes.
 
     Raises:
-        ValueError: When ``url`` uses a non-HTTP(S) scheme, or targets a
-            loopback / private / link-local host.
+        ValueError: When ``url`` uses a non-HTTP(S) scheme, targets an
+            exact loopback hostname, or is a literal private /
+            link-local / loopback IP. Hostnames are not DNS-resolved,
+            so names that resolve to internal addresses are not blocked.
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:

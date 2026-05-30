@@ -197,7 +197,7 @@ def _merge_by_score(
     *result_sets: tuple[MemoryEntry, ...],
     limit: int,
 ) -> tuple[MemoryEntry, ...]:
-    """Interleave entries by descending ``relevance_score`` and truncate.
+    """Combine entries, sort by descending ``relevance_score``, and truncate.
 
     Returns:
         The combined entries sorted by descending relevance score and

@@ -576,8 +576,8 @@ def _extract_numeric_config(
     is returned to prevent mutation of the original rendered data.
 
     Returns:
-        A ``(autonomy_dict, budget_monthly)`` pair, the autonomy dict
-        deep-copied from the rendered data.
+        A ``(autonomy_dict, budget_monthly)`` pair, where ``autonomy_dict``
+        is a shallow copy of the rendered autonomy mapping.
 
     Raises:
         TemplateRenderError: When ``autonomy`` is present but not a
