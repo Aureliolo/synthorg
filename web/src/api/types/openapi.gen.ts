@@ -9070,7 +9070,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -10350,19 +10350,16 @@ export type components = {
          * @description Memory type categories for agent memory (§7.2).
          *
          *     ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
-         *     by the living-documentation engine. Entries are stored under a
-         *     system docs agent_id in the docs namespace and scoped to a project
-         *     via the ``project:<project_id>`` tag, then surfaced transparently
-         *     via ``ProjectAwareMemoryFacade``.
-         *
-         *     ``KNOWLEDGE`` is a corpus-scoped (not agent-scoped) category used by
-         *     the knowledge + provenance substrate. Ingested external sources
-         *     (PDFs, web pages, repos, tickets) are chunked and stored under a
-         *     system knowledge agent_id in the knowledge namespace, scoped to a
-         *     project or globally via tags, and carry provenance for citations.
+         *     by the living-documentation engine: entries stored under a system docs
+         *     agent_id, scoped via the ``project:<id>`` tag, surfaced via
+         *     ``ProjectAwareMemoryFacade``. ``KNOWLEDGE`` is the corpus-scoped
+         *     knowledge + provenance substrate (ingested external sources, scoped
+         *     via tags, carrying provenance). ``PROJECT_BRAIN`` is the project-scoped
+         *     structured-state store: brain entries under a system brain agent_id,
+         *     scoped via ``project:<id>``, surfaced via the same facade.
          * @enum {string}
          */
-        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc" | "knowledge";
+        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc" | "knowledge" | "project_brain";
         /**
          * MemoryConfig
          * @description Memory configuration

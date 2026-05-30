@@ -122,16 +122,13 @@ class MemoryCategory(StrEnum):
     """Memory type categories for agent memory (§7.2).
 
     ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
-    by the living-documentation engine. Entries are stored under a
-    system docs agent_id in the docs namespace and scoped to a project
-    via the ``project:<project_id>`` tag, then surfaced transparently
-    via ``ProjectAwareMemoryFacade``.
-
-    ``KNOWLEDGE`` is a corpus-scoped (not agent-scoped) category used by
-    the knowledge + provenance substrate. Ingested external sources
-    (PDFs, web pages, repos, tickets) are chunked and stored under a
-    system knowledge agent_id in the knowledge namespace, scoped to a
-    project or globally via tags, and carry provenance for citations.
+    by the living-documentation engine: entries stored under a system docs
+    agent_id, scoped via the ``project:<id>`` tag, surfaced via
+    ``ProjectAwareMemoryFacade``. ``KNOWLEDGE`` is the corpus-scoped
+    knowledge + provenance substrate (ingested external sources, scoped
+    via tags, carrying provenance). ``PROJECT_BRAIN`` is the project-scoped
+    structured-state store: brain entries under a system brain agent_id,
+    scoped via ``project:<id>``, surfaced via the same facade.
     """
 
     WORKING = "working"
@@ -141,6 +138,7 @@ class MemoryCategory(StrEnum):
     SOCIAL = "social"
     PROJECT_DOC = "project_doc"
     KNOWLEDGE = "knowledge"
+    PROJECT_BRAIN = "project_brain"
 
 
 class DocType(StrEnum):

@@ -457,6 +457,7 @@ export const MEMORY_CATEGORY_VALUES = [
     'social',
     'project_doc',
     'knowledge',
+    'project_brain',
 ] as const
 export type MemoryCategory = (typeof MEMORY_CATEGORY_VALUES)[number]
 
