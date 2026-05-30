@@ -178,12 +178,12 @@ async def _resolve_fallback(
     """Walk the fallback provider list and return the first available.
 
     Returns:
-        Result of type ``DegradationResult``.
+        A ``DegradationResult`` naming the first fallback provider that
+        still has quota.
 
     Raises:
-        QuotaExhaustedError: When no providers are configured or all
-            fallbacks are exhausted (raised via ``_no_fallback_error`` /
-            ``_all_fallbacks_exhausted_error``).
+        QuotaExhaustedError: When no fallback providers are configured,
+            or every configured fallback is itself out of quota.
     """
     fallbacks = degradation_config.fallback_providers
     if not fallbacks:
@@ -257,7 +257,8 @@ def _build_fallback_result(
     """Build a FALLBACK result and log the resolution.
 
     Returns:
-        Result of type ``DegradationResult``.
+        A FALLBACK-action ``DegradationResult`` mapping the original
+        provider to its resolved fallback.
     """
     logger.info(
         DEGRADATION_FALLBACK_RESOLVED,
@@ -285,7 +286,8 @@ async def _resolve_queue(
     """Wait for the shortest quota window to reset, then re-check.
 
     Returns:
-        Result of type ``DegradationResult``.
+        A QUEUE-action ``DegradationResult`` once the post-wait re-check
+        confirms quota is available again.
 
     Raises:
         QuotaExhaustedError: When wait exceeds max, no reset time,
@@ -330,7 +332,8 @@ async def _recheck_after_wait(
     """Re-check quota after waiting; raise if still exhausted.
 
     Returns:
-        Result of type ``DegradationResult``.
+        A QUEUE-action ``DegradationResult`` recording the wait, once the
+        re-check confirms quota is available.
 
     Raises:
         QuotaExhaustedError: If the relevant budget or quota is exhausted.
@@ -374,14 +377,13 @@ async def _compute_queue_delay(
 ) -> float:
     """Compute delay until the soonest window reset.
 
-    Returns 0.0 when the window has already rotated.
-
     Returns:
-        Result of type ``float``.
+        Seconds to wait until the soonest exhausted-window reset, or
+        ``0.0`` when that window has already rotated.
 
     Raises:
-        QuotaExhaustedError: When no reset time is available or the
-            delay exceeds ``max_wait`` (raised via ``_queue_exhausted_error``).
+        QuotaExhaustedError: When no reset time is available, or the
+            computed delay exceeds ``max_wait``.
     """
     snapshots = await quota_tracker.get_snapshot(provider_name)
     reset_times = _extract_reset_times(snapshots, exhausted_windows)
@@ -427,7 +429,8 @@ def _extract_reset_times(
     """Filter snapshots to exhausted windows with reset times.
 
     Returns:
-        List of ``datetime``.
+        The reset timestamps of the exhausted windows that carry one, in
+        snapshot order.
     """
     return [
         snap.window_resets_at

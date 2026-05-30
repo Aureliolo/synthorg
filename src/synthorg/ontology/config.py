@@ -233,6 +233,9 @@ class EntitiesConfig(BaseModel):
 
         Returns:
             The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two entries share a name.
         """
         if self.entries:
             names = tuple(e.name for e in self.entries)

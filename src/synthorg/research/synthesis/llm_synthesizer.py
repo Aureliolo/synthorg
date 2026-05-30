@@ -80,7 +80,11 @@ class LlmSynthesizer:
         *,
         sources_consulted: int,
     ) -> tuple[ResearchReport, float]:
-        """Return a cited report and the USD cost of producing it.
+        """Return a cited report and the cost of producing it.
+
+        Returns:
+            A tuple of the cited ``ResearchReport`` and the cost of
+            producing it.
 
         Raises:
             ResearchSynthesisError: When no sources remain after triage,

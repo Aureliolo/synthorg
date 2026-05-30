@@ -192,6 +192,10 @@ class BackupServiceArchiveMixin:
 
         Returns:
             The full ``BackupManifest`` for ``backup_id``.
+
+        Raises:
+            BackupNotFoundError: When ``backup_id`` is malformed, or no
+                backup with that id exists.
         """
         from synthorg.backup.service import _validate_backup_id  # noqa: PLC0415
 

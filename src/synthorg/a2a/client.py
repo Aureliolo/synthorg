@@ -292,6 +292,7 @@ class A2AClient:
         try:
             return A2ATask.model_validate(result)
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Peer '{peer_name}' returned invalid task payload"
             logger.warning(
                 A2A_OUTBOUND_RESPONSE_INVALID,

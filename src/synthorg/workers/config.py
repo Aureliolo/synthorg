@@ -211,6 +211,10 @@ class QueueConfig(BaseModel):
 
         Returns:
             The validated ready-subject prefix, unchanged.
+
+        Raises:
+            ValueError: When the prefix has a forbidden character or an
+                empty dot-separated token.
         """
         return _reject_nats_subject(value, "ready_subject_prefix")
 
@@ -221,6 +225,10 @@ class QueueConfig(BaseModel):
 
         Returns:
             The validated dead-subject prefix, unchanged.
+
+        Raises:
+            ValueError: When the prefix has a forbidden character or an
+                empty dot-separated token.
         """
         return _reject_nats_subject(value, "dead_subject_prefix")
 

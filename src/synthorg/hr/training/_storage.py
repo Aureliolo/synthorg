@@ -13,7 +13,6 @@ the full :class:`TrainingService` graph.
 """
 
 import asyncio
-import builtins
 import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -181,8 +180,6 @@ async def _store_one_item(  # noqa: PLR0913
     # a partial-store outcome instead of failing the whole pipeline.
     try:
         await memory_backend.store(plan.new_agent_id, request)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(

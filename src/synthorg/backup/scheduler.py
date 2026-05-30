@@ -57,14 +57,12 @@ class BackupScheduler:
 
         Returns:
             ``True`` when a live task exists and is bound to the running
-            loop; ``False`` otherwise.
-
-        Returns ``True`` (i.e. "do not drop state") when the task or
-        loop cannot be introspected -- typically a ``MagicMock(spec=
-        asyncio.Task)`` in tests where ``get_loop()`` returns a mock.
-        Erring on the side of "same loop" prevents spurious task drops
-        in unit tests; the genuine cross-loop scenario in production
-        always returns a real ``AbstractEventLoop``.
+            loop, or when the task or loop cannot be introspected (e.g. a
+            ``MagicMock(spec=asyncio.Task)`` in tests whose ``get_loop()``
+            returns a mock). Erring towards "same loop" prevents spurious
+            task drops in unit tests; production always sees a real
+            ``AbstractEventLoop`` on the genuine cross-loop path. ``False``
+            when no live task exists or it is confirmed on a different loop.
         """
         if self._task is None or self._task.done():
             return False

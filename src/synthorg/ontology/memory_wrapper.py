@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_similarity import tokenize_words, word_overlap
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.ontology import (
     ONTOLOGY_MEMORY_DRIFT_WARNED,
     ONTOLOGY_MEMORY_ENRICHED,
@@ -325,6 +325,8 @@ class OntologyAwareMemoryBackend:
                     agent_id=agent_id,
                     entity_name=name,
                     reason="entity_lookup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 continue
             if entity is None:

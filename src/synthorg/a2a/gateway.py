@@ -393,12 +393,10 @@ async def _dispatch_method(
         peer_name: Authenticated peer name.
 
     Returns:
-        JSON-RPC response wrapped in an HTTP response.
-
-    Raises:
-        AssertionError: Defensive guard when a typed params variant is
-            not wired in the dispatch ``match`` (unreachable in practice).
-    """
+        JSON-RPC response wrapped in an HTTP response. Handler failures
+        are converted to JSON-RPC error responses in-function (including
+        the unreachable ``case _`` guard), never propagated to the caller.
+    """  # noqa: DOC501 -- AssertionError guard is caught in-function and surfaces as a JSON-RPC 500
     request_id = rpc_request.id
     method = str(rpc_request.method)
 

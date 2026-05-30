@@ -196,6 +196,9 @@ class EntityDefinition(BaseModel):
 
         Returns:
             The validated model instance (``self``), unchanged.
+
+        Raises:
+            ValueError: When two fields share a name.
         """
         if self.fields:
             names = tuple(f.name for f in self.fields)

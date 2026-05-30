@@ -1133,10 +1133,9 @@ def _read_peer_deployment_id(id_path_str: str) -> str | None:
         The peer's UUID on success, or ``None`` when all attempts return
         empty / corrupt / unreadable.
 
-    Distinguishes the failure
-    modes (file deleted, permission denied, decode error, validation
-    error) in the logs so operators can tell "peer file disappeared"
-    from "peer wrote garbage".
+    The distinct failure modes (file deleted, permission denied, decode
+    error, validation error) are logged so operators can tell "peer file
+    disappeared" from "peer wrote garbage".
 
     This is a synchronous helper run via ``to_thread``; the blocking
     ``time.sleep`` backoff is intentional in that context and is hard-
