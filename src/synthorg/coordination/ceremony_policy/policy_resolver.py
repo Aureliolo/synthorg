@@ -151,8 +151,7 @@ def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
     """Parse a ceremony strategy from its raw setting value.
 
     Returns:
-        The parsed ``CeremonyStrategyType``, or ``None`` when ``raw`` is
-        empty.
+        The parsed ``CeremonyStrategyType``, or ``None`` when ``raw`` is empty.
 
     Raises:
         ValueError: When ``raw`` is a non-empty value that is not a valid
@@ -175,12 +174,10 @@ def _parse_strategy_config(raw: str | None) -> dict[str, Any] | None:
     """Parse strategy config JSON from its raw setting value.
 
     Returns:
-        The parsed config dict, or ``None`` when ``raw`` is empty or
-        ``"{}"``.
+        The parsed config dict, or ``None`` when ``raw`` is empty or ``"{}"``.
 
     Raises:
-        json.JSONDecodeError: When ``raw`` is non-empty but not valid
-            JSON.
+        json.JSONDecodeError: When ``raw`` is non-empty but not valid JSON.
     """
     if not raw or raw == "{}":
         return None
@@ -199,8 +196,7 @@ def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
     """Parse a velocity calculator type from its raw setting value.
 
     Returns:
-        The parsed ``VelocityCalcType``, or ``None`` when ``raw`` is
-        empty.
+        The parsed ``VelocityCalcType``, or ``None`` when ``raw`` is empty.
 
     Raises:
         ValueError: When ``raw`` is a non-empty value that is not a valid
@@ -227,8 +223,7 @@ def _parse_auto_transition(raw: str | None) -> bool | None:
         when ``raw`` is empty.
 
     Raises:
-        ValueError: If the value is not ``"true"`` or ``"false"``
-            (case-insensitive).
+        ValueError: If the value is not ``"true"`` or ``"false"`` (case-insensitive).
     """
     if raw is None or raw == "":
         return None
@@ -362,8 +357,6 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
     """Fetch project-level ceremony policy from settings.
 
     Fetches all five ceremony settings concurrently via a TaskGroup.
-    Individual setting-fetch failures are caught and surfaced as a
-    single ``ServiceUnavailableError``.
 
     Returns:
         The project-level ``CeremonyPolicyConfig`` built from the five
@@ -449,9 +442,8 @@ async def _lookup_dept_override_from_settings(
     """Try to find a department override in the settings service.
 
     Returns:
-        The parsed override config, ``None`` when the operator explicitly
-        cleared the override, or ``_SETTINGS_NOT_FOUND`` when no
-        settings-based override is configured at all.
+        The parsed override config, ``None`` when the operator cleared the
+        override, or ``_SETTINGS_NOT_FOUND`` when no override is configured.
 
     Raises:
         ServiceUnavailableError: When the settings lookup fails, or the

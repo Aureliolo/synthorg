@@ -1,3 +1,4 @@
+# module-kind: service
 # ruff: noqa: EM101
 """Organization facades for the MCP handler layer.
 

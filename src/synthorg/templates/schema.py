@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Template schema: Pydantic models for company templates."""
 
 from collections import Counter
