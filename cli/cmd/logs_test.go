@@ -58,6 +58,13 @@ func TestValidateLogsInput(t *testing.T) {
 		{name: "service with slash rejected", tail: "100", services: []string{"back/end"}, wantErr: true},
 		{name: "service with command substitution rejected", tail: "100", services: []string{"back$(x)"}, wantErr: true},
 		{name: "service with bang rejected", tail: "100", services: []string{"svc!"}, wantErr: true},
+		// Control characters and remaining shell metacharacters. The
+		// pattern is non-multiline, so `$` anchors end-of-string and a
+		// trailing newline cannot smuggle a second token past the gate.
+		{name: "service with newline rejected", tail: "100", services: []string{"back\nend"}, wantErr: true},
+		{name: "service with null byte rejected", tail: "100", services: []string{"back\x00end"}, wantErr: true},
+		{name: "service with backtick rejected", tail: "100", services: []string{"back`cmd`"}, wantErr: true},
+		{name: "service with pipe rejected", tail: "100", services: []string{"back|end"}, wantErr: true},
 		{name: "second service invalid is rejected", tail: "100", services: []string{"backend", "bad;svc"}, wantErr: true},
 
 		// Current-behaviour documentation: a flag-shaped service name
