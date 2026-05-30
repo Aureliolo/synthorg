@@ -23,7 +23,6 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.ai_client import AIClient
 from synthorg.client.config import SimulationRunnerConfig
@@ -41,6 +40,7 @@ from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,

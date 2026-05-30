@@ -1,7 +1,10 @@
 {
   "features": [
     {
-      "controllers": [],
+      "controllers": [
+        "WellKnownAgentCardController",
+        "A2AGatewayController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/a2a",
       "ghost_wired_symbols": [],
@@ -16,7 +19,23 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "LivenessController",
+        "ReadinessController",
+        "CapabilitiesController",
+        "AuthBootstrapController",
+        "AuthSessionController",
+        "AuthCredentialsController",
+        "AuthIdentityController",
+        "AuthSessionsController",
+        "UserController",
+        "SetupStatusController",
+        "SetupCompanyController",
+        "SetupAgentsController",
+        "SetupLocalesController",
+        "SetupCompletionController",
+        "SetupPersonalityController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/api",
       "ghost_wired_symbols": [
@@ -41,7 +60,9 @@
     },
     {
       "controllers": [
-        "ApprovalsController"
+        "ApprovalsQueryController",
+        "ApprovalsDecisionsController",
+        "ReviewController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/approval",
@@ -83,7 +104,12 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "BudgetController",
+        "ForecastBudgetController",
+        "BudgetConfigVersionController",
+        "ReportsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/budget",
       "ghost_wired_symbols": [
@@ -93,7 +119,13 @@
         "ParetoAnalyzer",
         "StubBenchmarkScoreProvider"
       ],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_budget_get_config",
+        "synthorg_budget_list_records",
+        "synthorg_budget_get_agent_spending",
+        "synthorg_budget_versions_list",
+        "synthorg_budget_versions_get"
+      ],
       "name": "budget",
       "protocol_exports": [
         "CallClassificationStrategy",
@@ -139,8 +171,16 @@
       ]
     },
     {
-      "controllers": [],
-      "depends_on": [],
+      "controllers": [
+        "ClientController",
+        "SimulationController",
+        "RequestController"
+      ],
+      "depends_on": [
+        "budget",
+        "engine",
+        "providers"
+      ],
       "directory": "src/synthorg/client",
       "ghost_wired_symbols": [],
       "mcp_tool_names": [],
@@ -190,11 +230,40 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MessageController",
+        "MeetingController",
+        "CeremonyPolicyController",
+        "EventStreamController",
+        "InterruptController",
+        "EscalationsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/communication",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_messages_list",
+        "synthorg_messages_get",
+        "synthorg_messages_send",
+        "synthorg_messages_delete",
+        "synthorg_meetings_list",
+        "synthorg_meetings_get",
+        "synthorg_meetings_create",
+        "synthorg_meetings_update",
+        "synthorg_meetings_delete",
+        "synthorg_connections_list",
+        "synthorg_connections_get",
+        "synthorg_connections_create",
+        "synthorg_connections_delete",
+        "synthorg_connections_check_health",
+        "synthorg_webhooks_list",
+        "synthorg_webhooks_get",
+        "synthorg_webhooks_create",
+        "synthorg_webhooks_update",
+        "synthorg_webhooks_delete",
+        "synthorg_tunnel_get_status",
+        "synthorg_tunnel_connect"
+      ],
       "name": "communication",
       "protocol_exports": [
         "ConflictDetector",
@@ -223,12 +292,23 @@
     },
     {
       "controllers": [
+        "CoordinationController",
         "CoordinationMetricsController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/coordination",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_coordination_get_task_metrics",
+        "synthorg_coordination_metrics_list",
+        "synthorg_scaling_list_decisions",
+        "synthorg_scaling_get_decision",
+        "synthorg_scaling_get_config",
+        "synthorg_scaling_trigger",
+        "synthorg_ceremony_policy_get",
+        "synthorg_ceremony_policy_get_resolved",
+        "synthorg_ceremony_policy_get_active_strategy"
+      ],
       "name": "coordination",
       "protocol_exports": [],
       "settings_namespace": "coordination",
@@ -236,6 +316,23 @@
         "metrics_store",
         "coordination_service",
         "ceremony_policy_service"
+      ]
+    },
+    {
+      "controllers": [
+        "DemoController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/_demo",
+      "ghost_wired_symbols": [],
+      "mcp_tool_names": [
+        "synthorg_demo_greet"
+      ],
+      "name": "demo",
+      "protocol_exports": [],
+      "settings_namespace": "demo",
+      "state_slice_fields": [
+        "service"
       ]
     },
     {
@@ -272,7 +369,17 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ProjectController",
+        "TaskController",
+        "WorkflowController",
+        "WorkflowVersionController",
+        "WorkflowExecutionController",
+        "SubworkflowController",
+        "EvaluationConfigVersionController",
+        "ObjectiveController",
+        "BrownfieldController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine",
       "ghost_wired_symbols": [
@@ -296,7 +403,32 @@
         "build_work_pipeline",
         "ForecastGate"
       ],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_tasks_list",
+        "synthorg_tasks_get",
+        "synthorg_tasks_create",
+        "synthorg_tasks_update",
+        "synthorg_tasks_delete",
+        "synthorg_tasks_transition",
+        "synthorg_tasks_cancel",
+        "synthorg_activities_list",
+        "synthorg_workflows_list",
+        "synthorg_workflows_get",
+        "synthorg_workflows_create",
+        "synthorg_workflows_update",
+        "synthorg_workflows_delete",
+        "synthorg_workflows_validate",
+        "synthorg_subworkflows_list",
+        "synthorg_subworkflows_get",
+        "synthorg_subworkflows_create",
+        "synthorg_subworkflows_delete",
+        "synthorg_workflow_executions_list",
+        "synthorg_workflow_executions_get",
+        "synthorg_workflow_executions_start",
+        "synthorg_workflow_executions_cancel",
+        "synthorg_workflow_versions_list",
+        "synthorg_workflow_versions_get"
+      ],
       "name": "engine",
       "protocol_exports": [
         "AgentMiddleware",
@@ -336,7 +468,48 @@
       "depends_on": [],
       "directory": "src/synthorg/infrastructure",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_health_check",
+        "synthorg_settings_list",
+        "synthorg_settings_get",
+        "synthorg_settings_update",
+        "synthorg_settings_delete",
+        "synthorg_providers_list",
+        "synthorg_providers_get",
+        "synthorg_providers_get_health",
+        "synthorg_providers_test_connection",
+        "synthorg_backup_create",
+        "synthorg_backup_list",
+        "synthorg_backup_get",
+        "synthorg_backup_delete",
+        "synthorg_backup_restore",
+        "synthorg_audit_list",
+        "synthorg_events_list",
+        "synthorg_users_list",
+        "synthorg_users_get",
+        "synthorg_users_create",
+        "synthorg_users_update",
+        "synthorg_users_delete",
+        "synthorg_projects_list",
+        "synthorg_projects_get",
+        "synthorg_projects_create",
+        "synthorg_projects_update",
+        "synthorg_projects_delete",
+        "synthorg_requests_list",
+        "synthorg_requests_get",
+        "synthorg_requests_create",
+        "synthorg_setup_get_status",
+        "synthorg_setup_initialize",
+        "synthorg_simulations_list",
+        "synthorg_simulations_get",
+        "synthorg_simulations_create",
+        "synthorg_template_packs_list",
+        "synthorg_template_packs_get",
+        "synthorg_template_packs_install",
+        "synthorg_template_packs_uninstall",
+        "synthorg_integration_health_get_all",
+        "synthorg_integration_health_get"
+      ],
       "name": "facades",
       "protocol_exports": [],
       "settings_namespace": null,
@@ -363,11 +536,48 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "AgentController",
+        "AgentIdentityVersionController",
+        "ActivityController",
+        "PersonalityPresetController",
+        "ScalingController",
+        "TrainingController",
+        "QualityController",
+        "CollaborationController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/hr",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_agents_list",
+        "synthorg_agents_get",
+        "synthorg_agents_create",
+        "synthorg_agents_update",
+        "synthorg_agents_delete",
+        "synthorg_agents_get_performance",
+        "synthorg_agents_get_activity",
+        "synthorg_agents_get_history",
+        "synthorg_agents_get_health",
+        "synthorg_personalities_list",
+        "synthorg_personalities_get",
+        "synthorg_training_list_sessions",
+        "synthorg_training_get_session",
+        "synthorg_training_start_session",
+        "synthorg_autonomy_get",
+        "synthorg_autonomy_update",
+        "synthorg_collaboration_get_score",
+        "synthorg_collaboration_get_calibration",
+        "synthorg_quality_get_summary",
+        "synthorg_quality_get_agent_quality",
+        "synthorg_quality_list_scores",
+        "synthorg_reviews_list",
+        "synthorg_reviews_get",
+        "synthorg_reviews_create",
+        "synthorg_reviews_update",
+        "synthorg_evaluation_versions_list",
+        "synthorg_evaluation_versions_get"
+      ],
       "name": "hr",
       "protocol_exports": [],
       "settings_namespace": "hr",
@@ -385,11 +595,42 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ConnectionsController",
+        "IntegrationHealthController",
+        "OAuthController",
+        "WebhooksIngestController",
+        "WebhooksActivityController",
+        "WebhooksRetryController",
+        "MCPCatalogController",
+        "TunnelController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/integrations",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_mcp_catalog_list",
+        "synthorg_mcp_catalog_search",
+        "synthorg_mcp_catalog_get",
+        "synthorg_mcp_catalog_install",
+        "synthorg_mcp_catalog_uninstall",
+        "synthorg_oauth_list_providers",
+        "synthorg_oauth_configure_provider",
+        "synthorg_oauth_remove_provider",
+        "synthorg_clients_list",
+        "synthorg_clients_get",
+        "synthorg_clients_create",
+        "synthorg_clients_deactivate",
+        "synthorg_clients_get_satisfaction",
+        "synthorg_artifacts_list",
+        "synthorg_artifacts_get",
+        "synthorg_artifacts_create",
+        "synthorg_artifacts_delete",
+        "synthorg_ontology_list_entities",
+        "synthorg_ontology_get_entity",
+        "synthorg_ontology_get_relationships",
+        "synthorg_ontology_search"
+      ],
       "name": "integrations",
       "protocol_exports": [],
       "settings_namespace": "integrations",
@@ -441,12 +682,28 @@
     },
     {
       "controllers": [
-        "MemoryAdminController"
+        "MemoryFineTuneController",
+        "MemoryCheckpointsController",
+        "MemoryEntriesController",
+        "MemoryEmbedderController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/memory",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_memory_start_fine_tune",
+        "synthorg_memory_resume_fine_tune",
+        "synthorg_memory_get_fine_tune_status",
+        "synthorg_memory_cancel_fine_tune",
+        "synthorg_memory_run_preflight",
+        "synthorg_memory_list_checkpoints",
+        "synthorg_memory_deploy_checkpoint",
+        "synthorg_memory_rollback_checkpoint",
+        "synthorg_memory_delete_checkpoint",
+        "synthorg_memory_list_runs",
+        "synthorg_memory_get_active_embedder",
+        "synthorg_memory_delete_entry"
+      ],
       "name": "memory",
       "protocol_exports": [
         "ArchivalStore",
@@ -469,11 +726,41 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MetaController",
+        "MetaAnalyticsController",
+        "AnalyticsController",
+        "ExperimentsController",
+        "CustomRuleController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/meta",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_meta_get_config",
+        "synthorg_meta_list_rules",
+        "synthorg_meta_list_mcp_tools",
+        "synthorg_meta_get_mcp_server_config",
+        "synthorg_meta_trigger_cycle",
+        "synthorg_meta_query_feature_map",
+        "synthorg_analytics_get_overview",
+        "synthorg_analytics_get_trends",
+        "synthorg_analytics_get_forecast",
+        "synthorg_metrics_get_current",
+        "synthorg_metrics_get_history",
+        "synthorg_reports_list",
+        "synthorg_reports_get",
+        "synthorg_reports_generate",
+        "synthorg_signals_get_org_snapshot",
+        "synthorg_signals_get_performance",
+        "synthorg_signals_get_budget",
+        "synthorg_signals_get_coordination",
+        "synthorg_signals_get_scaling_history",
+        "synthorg_signals_get_error_patterns",
+        "synthorg_signals_get_evolution_outcomes",
+        "synthorg_signals_get_proposals",
+        "synthorg_signals_submit_proposal"
+      ],
       "name": "meta",
       "protocol_exports": [],
       "settings_namespace": "meta",
@@ -504,7 +791,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "MetricsController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/observability",
       "ghost_wired_symbols": [],
@@ -538,11 +827,38 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "CompanyController",
+        "CompanyVersionController",
+        "DepartmentController",
+        "TeamController",
+        "RoleVersionController",
+        "TemplatePackController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/organization",
       "ghost_wired_symbols": [],
-      "mcp_tool_names": [],
+      "mcp_tool_names": [
+        "synthorg_company_get",
+        "synthorg_company_update",
+        "synthorg_company_list_departments",
+        "synthorg_company_reorder_departments",
+        "synthorg_company_versions_list",
+        "synthorg_company_versions_get",
+        "synthorg_departments_list",
+        "synthorg_departments_get",
+        "synthorg_departments_create",
+        "synthorg_departments_update",
+        "synthorg_departments_delete",
+        "synthorg_departments_get_health",
+        "synthorg_teams_list",
+        "synthorg_teams_get",
+        "synthorg_teams_create",
+        "synthorg_teams_update",
+        "synthorg_teams_delete",
+        "synthorg_role_versions_list",
+        "synthorg_role_versions_get"
+      ],
       "name": "organization",
       "protocol_exports": [],
       "settings_namespace": null,
@@ -600,7 +916,14 @@
     },
     {
       "controllers": [
-        "ProviderController"
+        "ProviderCrudController",
+        "ProviderConnectionController",
+        "ProviderModelsController",
+        "ProviderLocalModelsController",
+        "ProviderPresetsController",
+        "ProviderCapabilitiesController",
+        "ProviderAllowlistsController",
+        "ProviderAuditController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/providers",
@@ -708,7 +1031,11 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "SettingsCoreController",
+        "SettingsObservabilityController",
+        "SettingsSecurityController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/settings",
       "ghost_wired_symbols": [],
@@ -787,7 +1114,9 @@
       ]
     },
     {
-      "controllers": [],
+      "controllers": [
+        "ArtifactController"
+      ],
       "depends_on": [],
       "directory": "src/synthorg/engine/workspace",
       "ghost_wired_symbols": [
@@ -813,6 +1142,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-30T11:05:15.014434Z",
+  "generated_at": "2026-05-30T19:12:18.518531Z",
   "schema_version": 1
 }

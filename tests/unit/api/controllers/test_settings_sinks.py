@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from synthorg.api.controllers.settings import _sink_identifier
+from synthorg.api.controllers.settings._sinks import _sink_identifier
 from synthorg.observability.config import DEFAULT_SINKS
 from synthorg.observability.sink_config_builder import CONSOLE_SINK_ID
 from tests._shared import LoopAsyncClient

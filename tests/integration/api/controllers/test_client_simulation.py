@@ -10,7 +10,6 @@ from typing import Any, override
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.adapters import DirectAdapter
 from synthorg.client.pool import RoundRobinStrategy
@@ -30,6 +29,7 @@ from synthorg.engine.pipeline.models import (
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from tests._shared import LoopAsyncClient
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,

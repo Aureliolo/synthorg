@@ -1,19 +1,31 @@
 # module-kind: feature
 """Research subsystem feature manifest.
 
-Declares the research feature's surface: its state slice, MCP tools, and the
-boot-constructed symbols the ghost-wiring gate tracks. Research has no REST
-controller (its surface is the agent tool + MCP handlers).
+Declares the research feature's surface: its state slice, the research MCP
+domain, and the boot-constructed symbols the ghost-wiring gate tracks.
+Research has no REST controller (its surface is the agent tool + MCP
+handlers).
 """
 
-from synthorg._core.features import (
-    FeatureManifest,
-    FeatureModule,
-    McpHandlerDescriptor,
-)
+from collections.abc import Mapping
+
+from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.meta.mcp.domains.research import RESEARCH_TOOLS
+from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
 from synthorg.research.state import ResearchStateSlice
 from synthorg.settings.enums import SettingNamespace
+
+
+def _research_mcp_handlers() -> Mapping[str, object]:
+    """Deferred loader for the research MCP handler map.
+
+    Returns:
+        The research ``{tool_name: ToolHandler}`` map.
+    """
+    from synthorg.meta.mcp.handlers.research import RESEARCH_HANDLERS  # noqa: PLC0415
+
+    return RESEARCH_HANDLERS
+
 
 FEATURE: FeatureModule = FeatureManifest(
     name="research",
@@ -21,9 +33,10 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=ResearchStateSlice,
     controllers=(),
     mcp_handlers=(
-        McpHandlerDescriptor(
+        mcp_descriptor(
             domain="research",
-            tool_names=tuple(tool.name for tool in RESEARCH_TOOLS),
+            tool_defs=RESEARCH_TOOLS,
+            handlers=_research_mcp_handlers,
         ),
     ),
     lifecycle_hooks=(),

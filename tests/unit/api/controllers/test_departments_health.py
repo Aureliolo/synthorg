@@ -107,8 +107,8 @@ def _build_dept_client(
     consumers) into the config-resolver lookup, which surfaces as
     spurious 404s on departments the test config explicitly declares.
     """
-    from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
+    from tests._shared import build_test_app as create_app
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     fake_persistence = FakePersistenceBackend()

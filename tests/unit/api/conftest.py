@@ -18,7 +18,6 @@ from typeguard import suppress_type_checks
 import synthorg.api.app as _app_mod
 import synthorg.api.auth.service as _auth_mod
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
-from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.service import AuthService
 from synthorg.api.config import ApiConfig, RateLimitConfig
@@ -56,7 +55,13 @@ from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
-from tests._shared import LoopAsyncClient, mock_of
+from tests._shared import (
+    LoopAsyncClient,
+    mock_of,
+)
+from tests._shared import (
+    build_test_app as create_app,
+)
 from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.api.fakes import (
     FakeArtifactStorage,
@@ -148,7 +153,7 @@ def _no_backup_service() -> Iterator[None]:
     from unittest.mock import patch
 
     with patch(
-        "synthorg.api.app.build_backup_service",
+        "synthorg.api.construction_phase.build_backup_service",
         return_value=None,
     ):
         yield

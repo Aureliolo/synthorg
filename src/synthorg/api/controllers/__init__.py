@@ -4,14 +4,19 @@ from typing import TYPE_CHECKING
 
 from litestar import Controller
 
-from synthorg.api.auth.controller import AuthController
+from synthorg.api.auth.controllers.bootstrap import AuthBootstrapController
+from synthorg.api.auth.controllers.credentials import AuthCredentialsController
+from synthorg.api.auth.controllers.identity import AuthIdentityController
+from synthorg.api.auth.controllers.session import AuthSessionController
+from synthorg.api.auth.controllers.sessions_mgmt import AuthSessionsController
 from synthorg.api.controllers.activities import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
-from synthorg.api.controllers.approvals import ApprovalsController
+from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
+from synthorg.api.controllers.approvals.query import ApprovalsQueryController
 from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
@@ -59,7 +64,12 @@ from synthorg.api.controllers.integration_health import (
 )
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
-from synthorg.api.controllers.memory import MemoryAdminController
+from synthorg.api.controllers.memory.checkpoints import (
+    MemoryCheckpointsController,
+)
+from synthorg.api.controllers.memory.embedder import MemoryEmbedderController
+from synthorg.api.controllers.memory.entries import MemoryEntriesController
+from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
@@ -76,15 +86,38 @@ from synthorg.api.controllers.project_knowledge import (
     ProjectKnowledgeController,
 )
 from synthorg.api.controllers.projects import ProjectController
-from synthorg.api.controllers.providers import ProviderController
+from synthorg.api.controllers.providers.allowlists import (
+    ProviderAllowlistsController,
+)
+from synthorg.api.controllers.providers.audit import ProviderAuditController
+from synthorg.api.controllers.providers.capabilities import (
+    ProviderCapabilitiesController,
+)
+from synthorg.api.controllers.providers.connection import (
+    ProviderConnectionController,
+)
+from synthorg.api.controllers.providers.crud import ProviderCrudController
+from synthorg.api.controllers.providers.local_models import (
+    ProviderLocalModelsController,
+)
+from synthorg.api.controllers.providers.models import ProviderModelsController
+from synthorg.api.controllers.providers.presets import ProviderPresetsController
 from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.reports import ReportsController
 from synthorg.api.controllers.requests import RequestController
 from synthorg.api.controllers.reviews import ReviewController
 from synthorg.api.controllers.role_versions import RoleVersionController
 from synthorg.api.controllers.scaling import ScalingController
-from synthorg.api.controllers.settings import SettingsController
-from synthorg.api.controllers.setup_controller import SetupController
+from synthorg.api.controllers.settings.core import SettingsCoreController
+from synthorg.api.controllers.settings.observability import (
+    SettingsObservabilityController,
+)
+from synthorg.api.controllers.settings.security import SettingsSecurityController
+from synthorg.api.controllers.setup.agents import SetupAgentsController
+from synthorg.api.controllers.setup.company import SetupCompanyController
+from synthorg.api.controllers.setup.completion import SetupCompletionController
+from synthorg.api.controllers.setup.locales import SetupLocalesController
+from synthorg.api.controllers.setup.status import SetupStatusController
 from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
@@ -96,7 +129,9 @@ from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.training import TrainingController
 from synthorg.api.controllers.tunnel import TunnelController
 from synthorg.api.controllers.users import UserController
-from synthorg.api.controllers.webhooks import WebhooksController
+from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
+from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
+from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
 from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
 )
@@ -136,11 +171,23 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     BudgetController,
     ForecastBudgetController,
     AnalyticsController,
-    ProviderController,
-    ApprovalsController,
+    ProviderCrudController,
+    ProviderConnectionController,
+    ProviderModelsController,
+    ProviderLocalModelsController,
+    ProviderPresetsController,
+    ProviderCapabilitiesController,
+    ProviderAllowlistsController,
+    ProviderAuditController,
+    ApprovalsQueryController,
+    ApprovalsDecisionsController,
     EscalationsController,
     AutonomyController,
-    AuthController,
+    AuthBootstrapController,
+    AuthSessionController,
+    AuthCredentialsController,
+    AuthIdentityController,
+    AuthSessionsController,
     CollaborationController,
     CeremonyPolicyController,
     CoordinationController,
@@ -148,12 +195,21 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     InterruptController,
     AuditController,
     CoordinationMetricsController,
-    SettingsController,
-    SetupController,
+    SettingsCoreController,
+    SettingsObservabilityController,
+    SettingsSecurityController,
+    SetupStatusController,
+    SetupCompanyController,
+    SetupAgentsController,
+    SetupLocalesController,
+    SetupCompletionController,
     SetupPersonalityController,
     PersonalityPresetController,
     BackupController,
-    MemoryAdminController,
+    MemoryFineTuneController,
+    MemoryCheckpointsController,
+    MemoryEntriesController,
+    MemoryEmbedderController,
     TeamController,
     TemplatePackController,
     UserController,
@@ -233,7 +289,9 @@ INTEGRATION_CONTROLLERS: tuple[type[Controller], ...] = (
     ConnectionsController,
     IntegrationHealthController,
     OAuthController,
-    WebhooksController,
+    WebhooksIngestController,
+    WebhooksActivityController,
+    WebhooksRetryController,
     MCPCatalogController,
     TunnelController,
 )
@@ -253,10 +311,15 @@ __all__ = [
     "AgentController",
     "AgentIdentityVersionController",
     "AnalyticsController",
-    "ApprovalsController",
+    "ApprovalsDecisionsController",
+    "ApprovalsQueryController",
     "ArtifactController",
     "AuditController",
-    "AuthController",
+    "AuthBootstrapController",
+    "AuthCredentialsController",
+    "AuthIdentityController",
+    "AuthSessionController",
+    "AuthSessionsController",
     "AutonomyController",
     "BackupController",
     "BrownfieldController",
@@ -285,7 +348,10 @@ __all__ = [
     "LivenessController",
     "MCPCatalogController",
     "MeetingController",
-    "MemoryAdminController",
+    "MemoryCheckpointsController",
+    "MemoryEmbedderController",
+    "MemoryEntriesController",
+    "MemoryFineTuneController",
     "MessageController",
     "MetaAnalyticsController",
     "MetaController",
@@ -296,7 +362,14 @@ __all__ = [
     "ProjectController",
     "ProjectDocsController",
     "ProjectKnowledgeController",
-    "ProviderController",
+    "ProviderAllowlistsController",
+    "ProviderAuditController",
+    "ProviderCapabilitiesController",
+    "ProviderConnectionController",
+    "ProviderCrudController",
+    "ProviderLocalModelsController",
+    "ProviderModelsController",
+    "ProviderPresetsController",
     "QualityController",
     "ReadinessController",
     "ReportsController",
@@ -304,9 +377,15 @@ __all__ = [
     "ReviewController",
     "RoleVersionController",
     "ScalingController",
-    "SettingsController",
-    "SetupController",
+    "SettingsCoreController",
+    "SettingsObservabilityController",
+    "SettingsSecurityController",
+    "SetupAgentsController",
+    "SetupCompanyController",
+    "SetupCompletionController",
+    "SetupLocalesController",
     "SetupPersonalityController",
+    "SetupStatusController",
     "SimulationController",
     "SubworkflowController",
     "TaskController",
@@ -315,7 +394,9 @@ __all__ = [
     "TrainingController",
     "TunnelController",
     "UserController",
-    "WebhooksController",
+    "WebhooksActivityController",
+    "WebhooksIngestController",
+    "WebhooksRetryController",
     "WorkflowController",
     "WorkflowExecutionController",
     "WorkflowVersionController",

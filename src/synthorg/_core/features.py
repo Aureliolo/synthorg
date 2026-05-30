@@ -1,3 +1,4 @@
+# module-kind: code
 """Feature-manifest substrate.
 
 Every feature directory ships a thin ``feature.py`` exposing a module-level
@@ -24,14 +25,17 @@ optional extras); a malformed or unimportable ``feature.py`` fails loudly.
 import heapq
 import importlib
 from collections.abc import (
+    Callable,
     Iterable,
+    Mapping,
 )
 from pathlib import Path
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Literal, Protocol, runtime_checkable
 
 from litestar import (
     Controller,
 )
+from litestar.handlers import WebsocketRouteHandler
 from pydantic import BaseModel, ConfigDict
 
 import synthorg
@@ -48,12 +52,14 @@ from synthorg.settings.enums import (
 
 __all__ = [
     "BaseFeatureStateSlice",
+    "ConstructionWirer",
+    "ControllerRegistration",
     "FeatureDependencyError",
     "FeatureManifest",
     "FeatureModule",
-    "LifecycleHook",
     "McpHandlerDescriptor",
     "McpHandlerModule",
+    "ServiceLifecycleHook",
     "discover_features",
     "feature_directories",
     "require_service",
@@ -61,6 +67,13 @@ __all__ = [
 ]
 
 logger = get_logger(__name__)
+
+# A feature's construction-phase wiring callback. The composition root passes
+# ``(app_state, deps)`` -- the live ``AppState`` and the construction-time
+# service bundle -- so the feature can swap its populated state slice in at
+# build time. Typed ``Callable[..., None]`` (like ``ControllerRegistration``'s
+# predicate) so the low-level substrate does not import ``api`` types.
+type ConstructionWirer = Callable[..., None]
 
 
 class FeatureDependencyError(DomainError):
@@ -119,19 +132,42 @@ class BaseFeatureStateSlice(BaseModel):
 
 
 @runtime_checkable
-class LifecycleHook(Protocol):
-    """A named async startup/shutdown hook a feature contributes.
+class ServiceLifecycleHook(Protocol):
+    """A feature's named start/stop hook, ordered by feature dependency.
 
-    Declarative this PR: ``api.app`` keeps appending its own hooks. The field
-    feeds the navigation index and is consumed by the Part-3 composition root.
+    The composition root collects every feature's hooks, starts them in
+    dependency order, and stops the ones that started in reverse order. The
+    timeout + fatal metadata lets the dispatcher reproduce the historic
+    ``_safe_startup`` / ``_safe_shutdown`` per-service budgets and
+    fail-fast-vs-best-effort distinctions:
 
-    Members are read-only so frozen concrete descriptors satisfy the Protocol.
+    - ``start_timeout_seconds`` / ``stop_timeout_seconds``: per-phase budget
+      (``None`` means no explicit budget). A stop that exceeds its budget is
+      logged and abandoned, never allowed to wedge shutdown.
+    - ``fatal_on_start_error``: when ``True`` a failed ``start`` aborts boot
+      (after rolling back already-started hooks); when ``False`` the failure
+      is logged best-effort and boot continues.
+
+    A pure wiring hook with nothing to tear down implements ``stop`` as a
+    no-op. Members are read-only so frozen concrete descriptors satisfy the
+    Protocol.
     """
 
     @property
     def name(self) -> str: ...
 
-    async def __call__(self) -> None: ...
+    @property
+    def start_timeout_seconds(self) -> float | None: ...
+
+    @property
+    def stop_timeout_seconds(self) -> float | None: ...
+
+    @property
+    def fatal_on_start_error(self) -> bool: ...
+
+    async def start(self) -> None: ...
+
+    async def stop(self) -> None: ...
 
 
 @runtime_checkable
@@ -150,6 +186,12 @@ class McpHandlerModule(Protocol):
 
     @property
     def tool_names(self) -> tuple[str, ...]: ...
+
+    @property
+    def tool_defs(self) -> tuple[object, ...]: ...
+
+    @property
+    def handlers_factory(self) -> Callable[[], Mapping[str, object]] | None: ...
 
 
 @runtime_checkable
@@ -173,13 +215,19 @@ class FeatureModule(Protocol):
     def state_slice(self) -> type[BaseFeatureStateSlice] | None: ...
 
     @property
-    def controllers(self) -> tuple[type[Controller], ...]: ...
+    def controllers(self) -> tuple[type[Controller] | ControllerRegistration, ...]: ...
+
+    @property
+    def websocket_handlers(self) -> tuple[WebsocketRouteHandler, ...]: ...
 
     @property
     def mcp_handlers(self) -> tuple[McpHandlerModule, ...]: ...
 
     @property
-    def lifecycle_hooks(self) -> tuple[LifecycleHook, ...]: ...
+    def lifecycle_hooks(self) -> tuple[ServiceLifecycleHook, ...]: ...
+
+    @property
+    def construction_wirer(self) -> ConstructionWirer | None: ...
 
     @property
     def ghost_wired_symbols(self) -> tuple[str, ...]: ...
@@ -188,18 +236,57 @@ class FeatureModule(Protocol):
     def depends_on(self) -> tuple[str, ...]: ...
 
 
+class ControllerRegistration(BaseModel):
+    """A controller plus the metadata the composition root mounts it with.
+
+    Lets a feature register a controller conditionally and choose its mount
+    point. A bare ``type[Controller]`` in a manifest's ``controllers`` tuple
+    is equivalent to ``ControllerRegistration(controller=cls)`` (always
+    mounted, api-prefixed).
+
+    - ``predicate``: when set, the controller mounts only if the predicate
+      returns ``True`` against the live ``AppState`` at route-assembly time.
+      ``None`` mounts unconditionally. This preserves the historic
+      404-when-unwired behaviour for integration / optional controllers (an
+      unmounted route 404s rather than 503-ing every dashboard poll). Typed
+      ``Callable[..., bool]`` so existing ``(AppState) -> bool`` readiness
+      predicates assign without forcing the substrate to import
+      ``api.state.AppState``; the composition root passes the ``AppState``.
+    - ``mount``: ``"api"`` mounts under the API prefix (the default);
+      ``"root"`` mounts at the application root (e.g. a2a ``/.well-known``).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+
+    controller: type[Controller]
+    predicate: Callable[..., bool] | None = None
+    mount: Literal["api", "root"] = "api"
+
+
 class McpHandlerDescriptor(BaseModel):
     """Concrete, frozen :class:`McpHandlerModule` a feature declares.
 
-    Names the MCP domain and the fully-qualified tool names the feature
-    contributes; the navigation index reads these. The actual tool definitions
-    and handler mapping continue to live in ``meta/mcp/{domains,handlers}``.
+    Names the MCP domain and tool names the navigation index reads, and
+    carries the feature's tool definitions + handler map so the composition
+    root can build the MCP registry and dispatch table from discovery rather
+    than a hand-maintained central list.
+
+    - ``tool_defs``: the feature's ``MCPToolDef`` instances (typed ``object``
+      here so the low-level substrate does not import the ``meta.mcp`` domain;
+      the registry builder casts them back).
+    - ``handlers_factory``: a deferred factory returning the feature's
+      ``{tool_name: ToolHandler}`` map. Deferred (a callable, not an eager
+      map) so importing a ``feature.py`` during discovery does not pull the
+      handler graph at import time. Values are ``ToolHandler`` instances,
+      typed ``object`` here for the same layering reason.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
 
     domain: str
     tool_names: tuple[str, ...]
+    tool_defs: tuple[object, ...] = ()
+    handlers_factory: Callable[[], Mapping[str, object]] | None = None
 
 
 class FeatureManifest(BaseModel):
@@ -215,9 +302,11 @@ class FeatureManifest(BaseModel):
     name: NotBlankStr
     settings_namespace: SettingNamespace | None = None
     state_slice: type[BaseFeatureStateSlice] | None = None
-    controllers: tuple[type[Controller], ...] = ()
+    controllers: tuple[type[Controller] | ControllerRegistration, ...] = ()
+    websocket_handlers: tuple[WebsocketRouteHandler, ...] = ()
     mcp_handlers: tuple[McpHandlerModule, ...] = ()
-    lifecycle_hooks: tuple[LifecycleHook, ...] = ()
+    lifecycle_hooks: tuple[ServiceLifecycleHook, ...] = ()
+    construction_wirer: ConstructionWirer | None = None
     ghost_wired_symbols: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
 

@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from litestar import Litestar
 
-from synthorg.api.app import create_app
 from synthorg.api.app_builders import _bootstrap_app_logging
 from synthorg.api.app_helpers import _resolve_artifact_dir_env
 from synthorg.api.middleware import _SECURITY_HEADERS
@@ -23,7 +22,13 @@ from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import (
+    LoopAsyncClient,
+    make_app_state,
+)
+from tests._shared import (
+    build_test_app as create_app,
+)
 
 
 def _build_startup_with_failing_settings_autowire(
@@ -75,7 +80,7 @@ def _build_startup_with_failing_settings_autowire(
     # Mock _safe_startup so on_startup gets past the early stage.
     safe_startup_mock = AsyncMock()
     monkeypatch.setattr(
-        "synthorg.api.lifecycle_builder._safe_startup",
+        "synthorg.api.lifecycle_runner_startup._safe_startup",
         safe_startup_mock,
     )
     return startup[0]
@@ -149,7 +154,7 @@ class TestCreateApp:
         Moving the registry build after auto_wire_meetings made the meeting
         orchestrator receive `None`, which then 500s on the first request.
         """
-        import synthorg.api.app as app_module
+        import synthorg.api.construction_phase as construction_module
         from synthorg.api.auto_wire import auto_wire_meetings as _original_auto_wire
 
         captured: dict[str, Any] = {}
@@ -158,7 +163,7 @@ class TestCreateApp:
             captured["agent_registry"] = kwargs.get("agent_registry")
             return _original_auto_wire(**kwargs)
 
-        monkeypatch.setattr(app_module, "auto_wire_meetings", _capturing)
+        monkeypatch.setattr(construction_module, "auto_wire_meetings", _capturing)
 
         create_app(
             config=root_config,

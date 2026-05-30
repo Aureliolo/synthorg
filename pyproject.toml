@@ -415,16 +415,6 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
-"src/synthorg/api/{app,state,auto_wire,lifecycle,lifecycle_builder}.py" = [
-    # The 5 god modules on the ``check_no_growth_in_god_modules``
-    # allowlist stay exempt from DOC201/202/501: each docstring addition
-    # ratchets LOC and would conflict with the per-PR net-shrink rule.
-    # EPIC #2077 dissolves these files via decomposition; the successor
-    # modules are subject to the standard DOC enforcement.
-    "DOC201",  # missing return docstring
-    "DOC202",  # extraneous return docstring
-    "DOC501",  # missing raises docstring
-]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
     # execute() boundary and emits a structured ToolExecutionResult.
@@ -585,10 +575,57 @@ warn_unused_ignores = false
 module = "synthorg.a2a.*"
 disallow_any_explicit = false
 
+# The broad api exemption covers the ~70 still-undecomposed controllers and
+# the decomposed controllers that inherited explicit-Any (drained by #2056,
+# not this PR). The two narrower blocks below re-enable the bar for the
+# modules #2049 wrote/reduced.
 [[tool.mypy.overrides]]
 module = "synthorg.api.*"
 disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
+
+# #2049 composition root + lifecycle runners + the Any-clean decomposed
+# controller packages hit the FULL strict++ bar (a more-specific override
+# beats the synthorg.api.* wildcard; verified against state.py's Any).
+[[tool.mypy.overrides]]
+module = [
+    "synthorg.api.app",
+    "synthorg.api.auto_wire",
+    "synthorg.api.auto_wire_meetings",
+    "synthorg.api.auto_wire_phase1",
+    "synthorg.api.boot_persistence",
+    "synthorg.api.construction_phase",
+    "synthorg.api.lifecycle",
+    "synthorg.api.lifecycle_assembly",
+    "synthorg.api.lifecycle_builder",
+    "synthorg.api.lifecycle_runner_shutdown",
+    "synthorg.api.lifecycle_runner_startup",
+    "synthorg.api.lifecycle_runner_support",
+    "synthorg.api.lifecycle_shared",
+    "synthorg.api.lifecycle_startup",
+    "synthorg.api.litestar_assembly",
+    "synthorg.api.controllers.providers.*",
+    "synthorg.api.controllers.memory.*",
+]
+disallow_any_explicit = true
+disable_error_code = []
+
+# #2049 modules that inherited the work-pipeline ``WorkEntryAdapter[Any]``
+# boundary (same as api/state.py) or decomposed controllers that inherited
+# explicit-Any keep the disallow_any_explicit exemption (residual, #2056) but
+# re-enable the in-scope unused-awaitable check that the broad block disabled.
+[[tool.mypy.overrides]]
+module = [
+    "synthorg.api.app_overrides",
+    "synthorg.api.construction_wiring",
+    "synthorg.api.controllers.approvals.*",
+    "synthorg.api.controllers.settings.*",
+    "synthorg.api.controllers.setup.*",
+    "synthorg.api.controllers.webhooks.*",
+    "synthorg.api.auth.controllers.*",
+]
+disallow_any_explicit = false
+disable_error_code = []
 
 [[tool.mypy.overrides]]
 module = "synthorg.budget.*"
@@ -684,6 +721,7 @@ disable_error_code = ["unused-awaitable"]
 # the broader typing PRs.
 [[tool.mypy.overrides]]
 module = [
+    "synthorg._core.*",
     "synthorg.backup.*",
     "synthorg.coordination.*",
     "synthorg.docs_engine.*",

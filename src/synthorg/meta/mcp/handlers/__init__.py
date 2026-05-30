@@ -1,32 +1,15 @@
-"""MCP tool handler aggregator.
+"""MCP tool handler dispatch table, assembled from feature discovery.
 
-Imports all domain handler modules and builds a unified handler map
-keyed by tool name (matching ``MCPToolDef.handler_key``).
+``build_handler_map`` walks ``discover_features()`` and merges each
+feature's deferred ``handlers_factory()`` map into a single dispatch
+table keyed by tool name (matching ``MCPToolDef.handler_key``). A
+duplicate key across features is a wiring error and raises.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
-from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
-from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
-from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
-from synthorg.meta.mcp.handlers.charter import CHARTER_HANDLERS
-from synthorg.meta.mcp.handlers.cockpit import COCKPIT_HANDLERS
-from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
-from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
-from synthorg.meta.mcp.handlers.docs import DOCS_HANDLERS
-from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
-from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
-from synthorg.meta.mcp.handlers.knowledge import KNOWLEDGE_HANDLERS
-from synthorg.meta.mcp.handlers.memory import MEMORY_HANDLERS
-from synthorg.meta.mcp.handlers.meta import META_HANDLERS
-from synthorg.meta.mcp.handlers.organization import ORGANIZATION_HANDLERS
-from synthorg.meta.mcp.handlers.quality import QUALITY_HANDLERS
-from synthorg.meta.mcp.handlers.research import RESEARCH_HANDLERS
-from synthorg.meta.mcp.handlers.signals import SIGNAL_HANDLERS
-from synthorg.meta.mcp.handlers.tasks import TASK_HANDLERS
-from synthorg.meta.mcp.handlers.workflows import WORKFLOW_HANDLERS
+from synthorg._core.features import discover_features
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLERS_BUILT
 
@@ -37,32 +20,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ALL_HANDLER_MAPS: tuple[Mapping[str, ToolHandler], ...] = (
-    SIGNAL_HANDLERS,
-    AGENT_HANDLERS,
-    TASK_HANDLERS,
-    WORKFLOW_HANDLERS,
-    APPROVAL_HANDLERS,
-    CHARTER_HANDLERS,
-    BUDGET_HANDLERS,
-    ORGANIZATION_HANDLERS,
-    COORDINATION_HANDLERS,
-    ANALYTICS_HANDLERS,
-    COCKPIT_HANDLERS,
-    MEMORY_HANDLERS,
-    QUALITY_HANDLERS,
-    META_HANDLERS,
-    COMMUNICATION_HANDLERS,
-    INTEGRATION_HANDLERS,
-    INFRASTRUCTURE_HANDLERS,
-    DOCS_HANDLERS,
-    KNOWLEDGE_HANDLERS,
-    RESEARCH_HANDLERS,
-)
-
 
 def build_handler_map() -> Mapping[str, ToolHandler]:
-    """Build a unified handler map from all domain handler modules.
+    """Build a unified handler map from every feature's MCP descriptor.
 
     Returns:
         Read-only mapping of handler keys to handler functions.
@@ -71,20 +31,24 @@ def build_handler_map() -> Mapping[str, ToolHandler]:
         ValueError: If duplicate handler keys are found.
     """
     handlers: dict[str, ToolHandler] = {}
-    for handler_map in _ALL_HANDLER_MAPS:
-        for key, handler in handler_map.items():
-            if key in handlers:
-                msg = (
-                    f"Duplicate handler key {key!r} -- check domain "
-                    f"handler modules for conflicting registrations"
-                )
-                logger.error(
-                    MCP_HANDLERS_BUILT,
-                    error=msg,
-                    duplicate_key=key,
-                )
-                raise ValueError(msg)
-            handlers[key] = handler
+    for feature in discover_features():
+        for descriptor in feature.mcp_handlers:
+            factory = descriptor.handlers_factory
+            if factory is None:
+                continue
+            for key, handler in factory().items():
+                if key in handlers:
+                    msg = (
+                        f"Duplicate handler key {key!r} -- check feature "
+                        f"manifests for conflicting MCP registrations"
+                    )
+                    logger.error(
+                        MCP_HANDLERS_BUILT,
+                        error=msg,
+                        duplicate_key=key,
+                    )
+                    raise ValueError(msg)
+                handlers[key] = cast("ToolHandler", handler)
     logger.debug(
         MCP_HANDLERS_BUILT,
         handler_count=len(handlers),

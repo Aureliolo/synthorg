@@ -19,6 +19,7 @@ import importlib
 from pathlib import Path
 from typing import Self
 
+from litestar import Controller
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -27,7 +28,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg._core.features import FeatureModule
+from synthorg._core.features import ControllerRegistration, FeatureModule
 from synthorg.core.codebase_structure_map import RelPath
 from synthorg.core.types import NotBlankStr
 
@@ -159,6 +160,26 @@ def protocol_exports(directory: str) -> tuple[str, ...]:
     )
 
 
+def _controller_class(
+    entry: type[Controller] | ControllerRegistration,
+) -> type[Controller]:
+    """Return the controller class from a manifest ``controllers`` entry.
+
+    A manifest may list a bare ``type[Controller]`` or a
+    :class:`ControllerRegistration` wrapping one with mount / predicate
+    metadata; both resolve to the underlying class.
+
+    Args:
+        entry: A bare controller class or a registration wrapping one.
+
+    Returns:
+        The underlying controller class.
+    """
+    if isinstance(entry, ControllerRegistration):
+        return entry.controller
+    return entry
+
+
 def build_feature_map(feature: FeatureModule, directory: str) -> FeatureMap:
     """Assemble a :class:`FeatureMap` from one discovered manifest.
 
@@ -190,7 +211,9 @@ def build_feature_map(feature: FeatureModule, directory: str) -> FeatureMap:
         directory=directory,
         settings_namespace=namespace.value if namespace is not None else None,
         protocol_exports=protocol_exports(directory),
-        controllers=tuple(controller.__name__ for controller in feature.controllers),
+        controllers=tuple(
+            _controller_class(entry).__name__ for entry in feature.controllers
+        ),
         mcp_tool_names=mcp_tool_names,
         ghost_wired_symbols=feature.ghost_wired_symbols,
         state_slice_fields=state_slice_fields,

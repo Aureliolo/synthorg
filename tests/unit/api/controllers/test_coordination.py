@@ -8,7 +8,6 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
@@ -28,7 +27,13 @@ from synthorg.engine.coordination.models import (
 from synthorg.engine.errors import CoordinationPhaseError
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
-from tests._shared import LoopAsyncClient, make_app_state
+from tests._shared import (
+    LoopAsyncClient,
+    make_app_state,
+)
+from tests._shared import (
+    build_test_app as create_app,
+)
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,

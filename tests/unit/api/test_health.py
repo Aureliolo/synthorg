@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.api.controllers.health import (
     TelemetryStatus,
     _resolve_telemetry_status,
@@ -18,6 +17,7 @@ from synthorg.providers.health import (
     ProviderHealthTracker,
 )
 from tests._shared import LoopAsyncClient
+from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 

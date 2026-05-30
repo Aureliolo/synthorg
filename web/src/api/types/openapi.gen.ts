@@ -1633,6 +1633,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/demo": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetGreeting */
+        readonly get: operations["ApiV1DemoGetGreeting"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/departments": {
         readonly parameters: {
             readonly query?: never;
@@ -5572,6 +5589,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[DemoGreeting] */
+        readonly ApiResponse_DemoGreeting_: {
+            readonly data: components["schemas"]["DemoGreeting"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[Department] */
         readonly ApiResponse_Department_: {
             readonly data: components["schemas"]["Department"] | null;
@@ -8674,6 +8704,10 @@ export type components = {
          * @enum {string}
          */
         readonly DecisionMakingStyle: "analytical" | "intuitive" | "consultative" | "directive";
+        /** DemoGreeting */
+        readonly DemoGreeting: {
+            readonly greeting: string;
+        };
         /** DenyOnTimeoutConfig */
         readonly DenyOnTimeoutConfig: {
             /**
@@ -12326,10 +12360,7 @@ export type components = {
              */
             readonly total_tokens_24h: number;
         };
-        /**
-         * ProviderModelConfig
-         * @description Model spec to add
-         */
+        /** ProviderModelConfig */
         readonly ProviderModelConfig: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
@@ -13195,7 +13226,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter" | "demo";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -18805,6 +18836,30 @@ export interface operations {
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1DemoGetGreeting: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DemoGreeting_"];
+                };
+            };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

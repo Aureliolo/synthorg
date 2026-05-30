@@ -38,7 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _REGISTERED_BOUNDARIES: tuple[tuple[str, str, str], ...] = (
     ("src/synthorg/api/auth/service.py", "decode_token", "jwt"),
     (
-        "src/synthorg/api/controllers/settings.py",
+        "src/synthorg/api/controllers/settings/security.py",
         "import_security_config",
         "settings.security",
     ),

@@ -17,7 +17,6 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
@@ -26,6 +25,7 @@ from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from tests._shared import LoopAsyncClient
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import (
     _make_test_auth_service,
     _seed_test_users,

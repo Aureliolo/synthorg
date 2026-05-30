@@ -2,19 +2,30 @@
 """Charter feature manifest.
 
 Declares the charter feature's surface for the feature-manifest substrate:
-its settings namespace, state slice, REST controller, MCP tools, and the
-boot-constructed symbols the ghost-wiring gate tracks.
+its settings namespace, state slice, REST controller, the charter MCP
+domain, and the boot-constructed symbols the ghost-wiring gate tracks.
 """
 
-from synthorg._core.features import (
-    FeatureManifest,
-    FeatureModule,
-    McpHandlerDescriptor,
-)
+from collections.abc import Mapping
+
+from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.charter import CharterController
 from synthorg.meta.charter.state import CharterStateSlice
 from synthorg.meta.mcp.domains.charter import CHARTER_TOOLS
+from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
 from synthorg.settings.enums import SettingNamespace
+
+
+def _charter_mcp_handlers() -> Mapping[str, object]:
+    """Deferred loader for the charter MCP handler map.
+
+    Returns:
+        The charter ``{tool_name: ToolHandler}`` map.
+    """
+    from synthorg.meta.mcp.handlers.charter import CHARTER_HANDLERS  # noqa: PLC0415
+
+    return CHARTER_HANDLERS
+
 
 FEATURE: FeatureModule = FeatureManifest(
     name="charter",
@@ -22,9 +33,10 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=CharterStateSlice,
     controllers=(CharterController,),
     mcp_handlers=(
-        McpHandlerDescriptor(
+        mcp_descriptor(
             domain="charter",
-            tool_names=tuple(tool.name for tool in CHARTER_TOOLS),
+            tool_defs=CHARTER_TOOLS,
+            handlers=_charter_mcp_handlers,
         ),
     ),
     lifecycle_hooks=(),

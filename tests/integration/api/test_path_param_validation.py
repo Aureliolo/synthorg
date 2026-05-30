@@ -124,7 +124,9 @@ def _build_client(
     from synthorg.api.controllers.connections import ConnectionsController
     from synthorg.api.controllers.mcp_catalog import MCPCatalogController
     from synthorg.api.controllers.oauth import OAuthController
-    from synthorg.api.controllers.webhooks import WebhooksController
+    from synthorg.api.controllers.webhooks.activity import WebhooksActivityController
+    from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
+    from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
 
     app_state_stub = _build_path_param_app_state(catalog, mcp_service, persistence)
 
@@ -134,10 +136,12 @@ def _build_client(
             ConnectionsController,
             MCPCatalogController,
             OAuthController,
-            WebhooksController,
+            WebhooksIngestController,
+            WebhooksActivityController,
+            WebhooksRetryController,
         ],
     )
-    # ``WebhooksController`` mounts ``per_op_rate_limit_from_policy``
+    # ``WebhooksIngestController`` mounts ``per_op_rate_limit_from_policy``
     # guards that read the live config + store from Litestar state
     # under the canonical keys (set by ``app.py`` in production).
     # Without these the guard fails 503 BEFORE Litestar runs path-param

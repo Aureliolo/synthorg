@@ -15,7 +15,10 @@ from colliding on a shared dedup row.
 
 import pytest
 
-from synthorg.api.controllers.webhooks import _build_idem_key, _build_idem_scope
+from synthorg.api.controllers._webhooks_wiring import (
+    _build_idem_key,
+    _build_idem_scope,
+)
 
 pytestmark = pytest.mark.unit
 

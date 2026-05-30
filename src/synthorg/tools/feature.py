@@ -10,6 +10,7 @@ exposes no controller or MCP domain.
 
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.settings.enums import SettingNamespace
+from synthorg.tools._construction import wire_construction
 from synthorg.tools.state import ToolsStateSlice
 
 FEATURE: FeatureModule = FeatureManifest(
@@ -19,6 +20,7 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(),
     mcp_handlers=(),
     lifecycle_hooks=(),
+    construction_wirer=wire_construction,
     ghost_wired_symbols=(
         "BrowserTool",
         "SSIMDiffer",

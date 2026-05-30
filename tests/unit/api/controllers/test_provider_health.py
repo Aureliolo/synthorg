@@ -49,8 +49,8 @@ def _build_provider_client(
     cost_tracker: CostTracker | None = None,
 ) -> LoopAsyncClient:
     """Build a LoopAsyncClient with a provider configured."""
-    from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
+    from tests._shared import build_test_app as create_app
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     config = RootConfig(

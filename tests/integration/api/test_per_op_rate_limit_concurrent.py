@@ -27,7 +27,6 @@ import pytest
 from litestar.testing import TestClient
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
-from synthorg.api.app import create_app
 from synthorg.api.auth.service import AuthService
 from synthorg.api.rate_limits.inflight_config import PerOpConcurrencyConfig
 from synthorg.budget.tracker import CostTracker
@@ -37,6 +36,7 @@ from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import build_test_app as create_app
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 pytestmark = pytest.mark.integration
@@ -314,8 +314,12 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
         # The handler invokes two helpers via ``asyncio.to_thread``;
         # patch both so the overall ``TaskGroup`` blocks deterministically.
-        from synthorg.api.controllers import (
-            memory as _memory_mod,
+        # ``run_preflight`` calls the bare names imported into the
+        # ``fine_tune`` controller module, so the patch must target that
+        # module's namespace -- patching the ``memory`` package (where
+        # the names are not bound) would be a silent no-op.
+        from synthorg.api.controllers.memory import (
+            fine_tune as _ft_mod,
         )
 
         # Monkey-patch the inflight opt so the middleware actually
@@ -336,12 +340,12 @@ class TestConcurrencyGuardAgainstFinetunePreflight:
 
         with (
             patch.object(
-                _memory_mod,
+                _ft_mod,
                 "_run_preflight_checks",
                 _held_preflight_checks,
             ),
             patch.object(
-                _memory_mod,
+                _ft_mod,
                 "_recommend_batch_size",
                 _held_batch_size,
             ),

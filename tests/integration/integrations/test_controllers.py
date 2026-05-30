@@ -3,7 +3,7 @@
 Covers:
 - ``ConnectionsController`` -- list/get/create/update/delete/health
 - ``OAuthController`` -- initiate, callback, status
-- ``WebhooksController`` -- receive (signature verify, replay, bus publish)
+- ``WebhooksIngestController`` -- receive (signature verify, replay, bus publish)
 - ``IntegrationHealthController`` -- aggregate + single
 - ``MCPCatalogController`` -- browse/search/get
 - ``TunnelController`` -- start/stop/status
@@ -449,7 +449,7 @@ class TestConnectionAuditEvents:
 @pytest.mark.integration
 class TestWebhooksController:
     async def test_missing_signing_secret_fails_closed(self) -> None:
-        from synthorg.api.controllers.webhooks import WebhooksController
+        from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 
         catalog = MagicMock()
         catalog.get = AsyncMock(return_value=_make_conn())
@@ -474,7 +474,7 @@ class TestWebhooksController:
         request.stream = _stream_empty
         request.headers = {}
 
-        ctrl = WebhooksController(owner=WebhooksController)  # type: ignore[arg-type]
+        ctrl = WebhooksIngestController(owner=WebhooksIngestController)  # type: ignore[arg-type]
         with pytest.raises(UnauthorizedError):
             await ctrl.receive_webhook.fn(
                 ctrl,
@@ -488,7 +488,7 @@ class TestWebhooksController:
         import hashlib
         import hmac
 
-        from synthorg.api.controllers.webhooks import WebhooksController
+        from synthorg.api.controllers.webhooks.ingest import WebhooksIngestController
 
         # Use generic_http so the generic HMAC verifier kicks in.
         conn = Connection(
@@ -525,7 +525,7 @@ class TestWebhooksController:
             "X-Timestamp": "not-a-number",
         }
 
-        ctrl = WebhooksController(owner=WebhooksController)  # type: ignore[arg-type]
+        ctrl = WebhooksIngestController(owner=WebhooksIngestController)  # type: ignore[arg-type]
         with pytest.raises(ValidationError):
             await ctrl.receive_webhook.fn(
                 ctrl,

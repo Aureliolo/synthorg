@@ -43,6 +43,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   telemetry: true,
   external_api: true,
   cockpit: true,
+  demo: true,
 }
 
 /**

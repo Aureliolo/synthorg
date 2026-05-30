@@ -550,7 +550,7 @@ class TestSetupComplete:
             app_state.swap_provider_registry(fresh_registry)
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.setup_controller._post_setup_reinit",
+            "synthorg.api.controllers.setup.completion._post_setup_reinit",
             _fake_reinit,
         )
 
@@ -610,7 +610,7 @@ class TestSetupComplete:
             raise RuntimeError(msg)
 
         monkeypatch.setattr(
-            "synthorg.api.controllers.setup_controller._post_setup_reinit",
+            "synthorg.api.controllers.setup.completion._post_setup_reinit",
             _failing_reinit,
         )
 

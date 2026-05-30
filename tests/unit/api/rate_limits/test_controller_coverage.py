@@ -19,14 +19,20 @@ pytestmark = pytest.mark.unit
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _CONTROLLERS_DIR = _REPO_ROOT / "src" / "synthorg" / "api" / "controllers"
 _A2A_GATEWAY_FILE = _REPO_ROOT / "src" / "synthorg" / "a2a" / "gateway.py"
-_AUTH_CONTROLLER_FILE = (
-    _REPO_ROOT / "src" / "synthorg" / "api" / "auth" / "controller.py"
-)
+_AUTH_CONTROLLERS_DIR = _REPO_ROOT / "src" / "synthorg" / "api" / "auth" / "controllers"
+_AUTH_IDENTITY_FILE = _AUTH_CONTROLLERS_DIR / "identity.py"
 
 
 def _controller_files() -> list[Path]:
     """Every ``*.py`` directly inside ``src/synthorg/api/controllers``."""
     return sorted(p for p in _CONTROLLERS_DIR.glob("*.py") if p.name != "__init__.py")
+
+
+def _auth_controller_files() -> list[Path]:
+    """Every sub-controller ``*.py`` inside ``api/auth/controllers``."""
+    return sorted(
+        p for p in _AUTH_CONTROLLERS_DIR.glob("*.py") if p.name != "__init__.py"
+    )
 
 
 def _guarded_source_files() -> list[Path]:
@@ -42,8 +48,8 @@ def _guarded_source_files() -> list[Path]:
     return sorted(
         {
             *_controller_files(),
+            *_auth_controller_files(),
             _A2A_GATEWAY_FILE,
-            _AUTH_CONTROLLER_FILE,
         }
     )
 
@@ -186,7 +192,7 @@ _GUARDED_ENDPOINTS: tuple[tuple[Path, str, str], ...] = (
         "meta.ingest_events",
     ),
     (_A2A_GATEWAY_FILE, "handle_jsonrpc", "a2a.gateway"),
-    (_AUTH_CONTROLLER_FILE, "ws_ticket", "auth.ws_ticket"),
+    (_AUTH_IDENTITY_FILE, "ws_ticket", "auth.ws_ticket"),
     # admin / analytics / messages mutations carry per-op rate limits
     # so a deletion or analytics-fanout storm cannot exhaust resources
     # unbounded.

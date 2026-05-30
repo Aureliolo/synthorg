@@ -1,72 +1,45 @@
-"""Domain tool definition aggregator.
+"""Domain tool-definition registry, assembled from feature discovery.
 
-Imports all domain modules and builds a unified ``DomainToolRegistry``
-containing every MCP tool definition.
+``build_full_registry`` walks ``discover_features()`` and registers each
+feature's MCP ``tool_defs`` so the registry is composed from the feature
+manifests rather than a hand-maintained central list.
 """
 
-from synthorg.meta.mcp.domains.agents import AGENT_TOOLS
-from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
-from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
-from synthorg.meta.mcp.domains.budget import BUDGET_TOOLS
-from synthorg.meta.mcp.domains.charter import CHARTER_TOOLS
-from synthorg.meta.mcp.domains.cockpit import COCKPIT_TOOLS
-from synthorg.meta.mcp.domains.communication import COMMUNICATION_TOOLS
-from synthorg.meta.mcp.domains.coordination import COORDINATION_TOOLS
-from synthorg.meta.mcp.domains.docs import DOCS_TOOLS
-from synthorg.meta.mcp.domains.infrastructure import INFRASTRUCTURE_TOOLS
-from synthorg.meta.mcp.domains.integrations import INTEGRATION_TOOLS
-from synthorg.meta.mcp.domains.knowledge import KNOWLEDGE_TOOLS
-from synthorg.meta.mcp.domains.memory import MEMORY_TOOLS
-from synthorg.meta.mcp.domains.meta import META_TOOLS
-from synthorg.meta.mcp.domains.organization import ORGANIZATION_TOOLS
-from synthorg.meta.mcp.domains.quality import QUALITY_TOOLS
-from synthorg.meta.mcp.domains.research import RESEARCH_TOOLS
-from synthorg.meta.mcp.domains.signals import SIGNAL_MCP_TOOLS
-from synthorg.meta.mcp.domains.tasks import TASK_TOOLS
-from synthorg.meta.mcp.domains.workflows import WORKFLOW_TOOLS
-from synthorg.meta.mcp.registry import DomainToolRegistry, MCPToolDef
+from typing import TYPE_CHECKING, cast
+
+from synthorg._core.features import discover_features
+from synthorg.meta.mcp.registry import DomainToolRegistry
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_REGISTRY_BUILT
 
-logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from synthorg.meta.mcp.registry import MCPToolDef
 
-ALL_DOMAIN_TOOLS: tuple[tuple[MCPToolDef, ...], ...] = (
-    SIGNAL_MCP_TOOLS,
-    AGENT_TOOLS,
-    TASK_TOOLS,
-    WORKFLOW_TOOLS,
-    APPROVAL_TOOLS,
-    CHARTER_TOOLS,
-    BUDGET_TOOLS,
-    ORGANIZATION_TOOLS,
-    COORDINATION_TOOLS,
-    ANALYTICS_TOOLS,
-    COCKPIT_TOOLS,
-    MEMORY_TOOLS,
-    QUALITY_TOOLS,
-    META_TOOLS,
-    COMMUNICATION_TOOLS,
-    INTEGRATION_TOOLS,
-    INFRASTRUCTURE_TOOLS,
-    DOCS_TOOLS,
-    KNOWLEDGE_TOOLS,
-    RESEARCH_TOOLS,
-)
+logger = get_logger(__name__)
 
 
 def build_full_registry() -> DomainToolRegistry:
-    """Build and freeze a registry containing all domain tools.
+    """Build and freeze a registry containing every feature's MCP tools.
+
+    Iterates discovered features and registers each MCP descriptor's
+    ``tool_defs``; the registry's own duplicate-name guard rejects a
+    tool claimed by two features.
 
     Returns:
         Frozen ``DomainToolRegistry`` with every tool registered.
     """
     registry = DomainToolRegistry()
-    for domain_tools in ALL_DOMAIN_TOOLS:
-        registry.register_many(domain_tools)
+    domain_count = 0
+    for feature in discover_features():
+        for descriptor in feature.mcp_handlers:
+            registry.register_many(
+                cast("tuple[MCPToolDef, ...]", descriptor.tool_defs),
+            )
+            domain_count += 1
     registry.freeze()
     logger.debug(
         MCP_REGISTRY_BUILT,
         tool_count=registry.tool_count,
-        domain_count=len(ALL_DOMAIN_TOOLS),
+        domain_count=domain_count,
     )
     return registry

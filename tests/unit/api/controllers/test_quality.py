@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.service import AuthService
 from synthorg.core.auth.config import AuthConfig
@@ -16,6 +15,7 @@ from synthorg.hr.performance.quality_override_store import (
 )
 from synthorg.hr.performance.tracker import PerformanceTracker
 from tests._shared import LoopAsyncClient
+from tests._shared import build_test_app as create_app
 from tests.unit.api.conftest import _seed_test_users, make_auth_headers
 from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 

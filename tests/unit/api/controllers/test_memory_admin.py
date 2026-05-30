@@ -5,12 +5,17 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.controllers.memory import (
+from synthorg.api.controllers.memory._preflight import (
     _BATCH_SIZE_BY_VRAM_GB,
-    ActiveEmbedderResponse,
-    MemoryAdminController,
     _recommend_batch_size,
 )
+from synthorg.api.controllers.memory.checkpoints import MemoryCheckpointsController
+from synthorg.api.controllers.memory.embedder import (
+    ActiveEmbedderResponse,
+    MemoryEmbedderController,
+)
+from synthorg.api.controllers.memory.entries import MemoryEntriesController
+from synthorg.api.controllers.memory.fine_tune import MemoryFineTuneController
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
@@ -18,6 +23,27 @@ from synthorg.memory.embedding.fine_tune_models import (
 )
 from synthorg.settings.definitions.memory import FINE_TUNE_DEFAULT_BATCH_SIZE
 from tests._shared import make_app_state
+
+
+class _AllMemoryControllers(
+    MemoryFineTuneController,
+    MemoryCheckpointsController,
+    MemoryEntriesController,
+    MemoryEmbedderController,
+):
+    """Test-only composite exposing every memory-admin route handler.
+
+    The decomposed sub-controllers each own a slice of the
+    ``/admin/memory`` surface; this composite gives the direct-method
+    tests one instance from which every handler resolves, mirroring the
+    pre-decomposition single-controller shape.
+    """
+
+
+# Back-compat alias for the direct-method tests below: the handlers the
+# tests exercise via ``.fn`` do not use ``self``, so the composite stands
+# in for the former single ``MemoryAdminController``.
+MemoryAdminController = _AllMemoryControllers
 
 
 @pytest.mark.unit
@@ -240,7 +266,7 @@ class TestRecommendBatchSize:
         Guards the generic ``except Exception`` branch that reports via
         :data:`MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED`.
         """
-        from synthorg.api.controllers import memory as memory_module
+        from synthorg.api.controllers.memory import _preflight as memory_module
         from synthorg.observability.events.memory import (
             MEMORY_FINE_TUNE_BATCH_SIZE_RECOMMENDATION_FAILED,
         )
@@ -326,7 +352,9 @@ class TestCheckFineTuneSidecarHealth:
         """A 200 OK response flips the probe to ``True``."""
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
             return _FakeHttpResponse(status=200)
@@ -341,7 +369,9 @@ class TestCheckFineTuneSidecarHealth:
         """A 503 Service Unavailable response stays at ``False``."""
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def fake_urlopen(*_args: object, **_kwargs: object) -> _FakeHttpResponse:
             return _FakeHttpResponse(status=503)
@@ -357,7 +387,9 @@ class TestCheckFineTuneSidecarHealth:
         import urllib.error
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def raise_url_error(*_args: object, **_kwargs: object) -> object:
             msg = "connection refused"
@@ -373,7 +405,9 @@ class TestCheckFineTuneSidecarHealth:
         """A request that times out returns ``False`` rather than raising."""
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def raise_timeout(*_args: object, **_kwargs: object) -> object:
             msg = "probe timed out"
@@ -389,7 +423,9 @@ class TestCheckFineTuneSidecarHealth:
         """Any other exception lands in the catch-all, returning ``False``."""
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def raise_runtime(*_args: object, **_kwargs: object) -> object:
             msg = "unexpected probe failure"
@@ -410,7 +446,9 @@ class TestCheckFineTuneSidecarHealth:
         """
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def raise_memory_error(*_args: object, **_kwargs: object) -> object:
             raise MemoryError
@@ -426,7 +464,9 @@ class TestCheckFineTuneSidecarHealth:
         """``RecursionError`` propagates rather than being swallowed."""
         import urllib.request
 
-        from synthorg.api.controllers.memory import _check_fine_tune_sidecar_health
+        from synthorg.api.controllers.memory._preflight import (
+            _check_fine_tune_sidecar_health,
+        )
 
         def raise_recursion_error(*_args: object, **_kwargs: object) -> object:
             raise RecursionError
@@ -446,8 +486,7 @@ class TestDeleteMemoryEntryEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
 
         # Stub MemoryService to avoid the full _build_memory_service path.
         async def _delete_stub(agent_id: str, memory_id: str) -> bool:
@@ -466,8 +505,8 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             response = await controller.delete_memory_entry.fn(
                 controller,
@@ -476,7 +515,7 @@ class TestDeleteMemoryEntryEndpoint:
                 memory_id="mem-1",
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
         assert response.data is None
         fake_service.delete_memory_entry.assert_awaited_once_with(
@@ -490,8 +529,7 @@ class TestDeleteMemoryEntryEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.core.domain_errors import NotFoundError
 
         async def _delete_stub(agent_id: str, memory_id: str) -> bool:
@@ -510,8 +548,8 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             with pytest.raises(NotFoundError):
                 await controller.delete_memory_entry.fn(
@@ -525,7 +563,7 @@ class TestDeleteMemoryEntryEndpoint:
                 "missing",
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
     async def test_raises_501_when_backend_unsupported(self) -> None:
         from types import SimpleNamespace
@@ -533,8 +571,7 @@ class TestDeleteMemoryEntryEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.core.domain_errors import FeatureNotImplementedError
         from synthorg.memory.fine_tune_plan import MemoryBackendUnsupportedError
 
@@ -557,8 +594,8 @@ class TestDeleteMemoryEntryEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             with pytest.raises(FeatureNotImplementedError) as exc_info:
                 await controller.delete_memory_entry.fn(
@@ -572,7 +609,7 @@ class TestDeleteMemoryEntryEndpoint:
                 "mem-1",
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
         assert exc_info.value.status_code == 501
 
 
@@ -584,7 +621,9 @@ class TestResolveFineTuneThresholds:
         self,
     ) -> None:
         """A ``None`` service path returns the imported defaults verbatim."""
-        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.api.controllers.memory._preflight import (
+            _resolve_fine_tune_thresholds,
+        )
         from synthorg.settings.definitions.memory import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
             FINE_TUNE_MIN_DOCS_RECOMMENDED,
@@ -600,7 +639,9 @@ class TestResolveFineTuneThresholds:
         """SettingsService values override the imported defaults."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.api.controllers.memory._preflight import (
+            _resolve_fine_tune_thresholds,
+        )
         from synthorg.core.types import NotBlankStr
         from synthorg.settings.enums import SettingNamespace, SettingSource
         from synthorg.settings.models import SettingValue
@@ -635,7 +676,9 @@ class TestResolveFineTuneThresholds:
         """A non-integer setting value drops to the imported fallback."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.api.controllers.memory._preflight import (
+            _resolve_fine_tune_thresholds,
+        )
         from synthorg.core.types import NotBlankStr
         from synthorg.settings.definitions.memory import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
@@ -666,7 +709,9 @@ class TestResolveFineTuneThresholds:
         """SettingNotFoundError on lookup drops to the imported fallback."""
         from unittest.mock import AsyncMock
 
-        from synthorg.api.controllers.memory import _resolve_fine_tune_thresholds
+        from synthorg.api.controllers.memory._preflight import (
+            _resolve_fine_tune_thresholds,
+        )
         from synthorg.settings.definitions.memory import (
             FINE_TUNE_DEFAULT_BATCH_SIZE,
             FINE_TUNE_MIN_DOCS_RECOMMENDED,
@@ -696,7 +741,7 @@ class TestCheckDocumentsBoundaries:
         """
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         src = Path(str(tmp_path))
         for i in range(50):
@@ -712,7 +757,7 @@ class TestCheckDocumentsBoundaries:
         """One document above the recommended threshold flips to pass."""
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         src = Path(str(tmp_path))
         for i in range(51):
@@ -728,7 +773,7 @@ class TestCheckDocumentsBoundaries:
         """A corpus below the hard floor fails."""
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         src = Path(str(tmp_path))
         for i in range(5):
@@ -752,7 +797,7 @@ class TestCheckDocumentsBoundaries:
         """
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         src = Path(str(tmp_path))
         for i in range(10):
@@ -776,7 +821,7 @@ class TestCheckDocumentsBoundaries:
         """
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         root = Path(str(tmp_path))
         deep = root
@@ -808,7 +853,7 @@ class TestCheckDocumentsBoundaries:
         import time as _time_mod
         from pathlib import Path
 
-        from synthorg.api.controllers.memory import _check_documents
+        from synthorg.api.controllers.memory._preflight import _check_documents
 
         src = Path(str(tmp_path))
         for i in range(30):
@@ -848,8 +893,7 @@ class TestListCheckpointsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.api.cursor import CursorSecret
 
         async def _list_stub(
@@ -871,8 +915,8 @@ class TestListCheckpointsEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
             response = await controller.list_checkpoints.fn(
@@ -882,7 +926,7 @@ class TestListCheckpointsEndpoint:
                 limit=50,
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
         assert response.data == ()
         list_mock.assert_awaited_once_with(limit=50, offset=0)
@@ -893,8 +937,7 @@ class TestListCheckpointsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.api.cursor import CursorSecret, encode_cursor
 
         async def _list_stub(
@@ -918,8 +961,8 @@ class TestListCheckpointsEndpoint:
         secret = CursorSecret.ephemeral()
         cursor = encode_cursor(10, secret=secret)
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             await controller.list_checkpoints.fn(
                 controller,
@@ -928,7 +971,7 @@ class TestListCheckpointsEndpoint:
                 limit=50,
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
         list_mock.assert_awaited_once_with(limit=50, offset=10)
 
@@ -936,7 +979,6 @@ class TestListCheckpointsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers.memory import MemoryAdminController
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
@@ -960,8 +1002,7 @@ class TestListRunsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.api.cursor import CursorSecret
 
         async def _list_stub(
@@ -983,8 +1024,8 @@ class TestListRunsEndpoint:
             return fake_service
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             app_state = make_app_state(cursor_secret=CursorSecret.ephemeral())
             response = await controller.list_runs.fn(
@@ -994,7 +1035,7 @@ class TestListRunsEndpoint:
                 limit=50,
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
         assert response.data == ()
         list_mock.assert_awaited_once_with(limit=50, offset=0)
@@ -1005,8 +1046,7 @@ class TestListRunsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers import memory as memory_module
-        from synthorg.api.controllers.memory import MemoryAdminController
+        from synthorg.api.controllers.memory import _shared as memory_module
         from synthorg.api.cursor import CursorSecret, encode_cursor
 
         async def _list_stub(
@@ -1030,8 +1070,8 @@ class TestListRunsEndpoint:
         secret = CursorSecret.ephemeral()
         cursor = encode_cursor(15, secret=secret)
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
-        original_build = memory_module._build_memory_service
-        memory_module._build_memory_service = _fake_build  # type: ignore[assignment]
+        original_build = memory_module.build_memory_service
+        memory_module.build_memory_service = _fake_build  # type: ignore[assignment]
         try:
             await controller.list_runs.fn(
                 controller,
@@ -1040,7 +1080,7 @@ class TestListRunsEndpoint:
                 limit=50,
             )
         finally:
-            memory_module._build_memory_service = original_build
+            memory_module.build_memory_service = original_build
 
         list_mock.assert_awaited_once_with(limit=50, offset=15)
 
@@ -1048,7 +1088,6 @@ class TestListRunsEndpoint:
 
         from litestar.datastructures import State
 
-        from synthorg.api.controllers.memory import MemoryAdminController
         from synthorg.api.cursor import CursorSecret, InvalidCursorError
 
         controller = MemoryAdminController(owner=None)  # type: ignore[arg-type]
