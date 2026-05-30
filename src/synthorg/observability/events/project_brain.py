@@ -10,6 +10,9 @@ from typing import Final
 
 BRAIN_ENTRY_APPENDED: Final[str] = "project_brain.entry.appended"
 BRAIN_ENTRY_APPEND_FAILED: Final[str] = "project_brain.entry.append_failed"
+BRAIN_ENTRY_REVISED: Final[str] = "project_brain.entry.revised"
+BRAIN_SNAPSHOT_WRITTEN: Final[str] = "project_brain.snapshot.written"
+BRAIN_SNAPSHOT_FAILED: Final[str] = "project_brain.snapshot.failed"
 BRAIN_ENTRY_INDEXED: Final[str] = "project_brain.entry.indexed"
 BRAIN_ENTRY_INDEX_FAILED: Final[str] = "project_brain.entry.index_failed"
 BRAIN_ENTRY_RETRIEVED: Final[str] = "project_brain.entry.retrieved"

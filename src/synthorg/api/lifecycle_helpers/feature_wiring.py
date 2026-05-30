@@ -88,6 +88,63 @@ async def _wire_docs_engine(app_state: AppState) -> None:
     logger.info(API_APP_STARTUP, service="docs_engine", note="wired")
 
 
+async def _wire_project_brain(app_state: AppState) -> None:
+    """Wire the long-horizon project brain once persistence + workspace exist.
+
+    Best-effort and gated on a connected persistence backend, a project
+    workspace, and a memory backend (the brain indexes entries for RAG re-entry
+    and commits snapshots through the workspace). The shared
+    :class:`ProjectAwareMemoryFacade` already fans out to the brain leg (the docs
+    factory builds it with ``brain_enabled=True``); this hook builds the service
+    and the per-task tool factory and parks them on the state slice. A missing
+    collaborator leaves the brain controllers + MCP handlers to 503 rather than
+    poisoning startup.
+    """
+    from synthorg.engine.workspace.state import WorkspaceStateSlice  # noqa: PLC0415
+    from synthorg.memory.state import (  # noqa: PLC0415
+        MemoryStateSlice,
+        memory_backend_of,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+    from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        return
+    workspace_service = app_state.slice(WorkspaceStateSlice).project_workspace_service
+    if workspace_service is None:
+        return
+    if app_state.slice(ProjectBrainStateSlice).service is not None:
+        return
+    if app_state.slice(MemoryStateSlice).backend is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="project_brain",
+            note="memory backend not wired; project brain wiring skipped",
+        )
+        return
+    from synthorg.project_brain.factory import (  # noqa: PLC0415
+        build_project_brain_service,
+    )
+
+    runtime = build_project_brain_service(
+        repo=persistence_of(app_state).project_brain,
+        workspace_service=workspace_service,
+        git_backend=workspace_service.git_backend,
+        memory_backend=memory_backend_of(app_state),
+        clock=app_state.clock,
+    )
+    app_state.swap_slice(
+        ProjectBrainStateSlice(
+            service=runtime.brain_service,
+            tool_factory=runtime.tool_factory,
+        )
+    )
+    logger.info(API_APP_STARTUP, service="project_brain", note="wired")
+
+
 async def _wire_knowledge_engine(app_state: AppState) -> None:
     """Wire the knowledge + provenance substrate once persistence + memory exist."""
     from synthorg.knowledge.state import KnowledgeStateSlice  # noqa: PLC0415
@@ -463,6 +520,7 @@ async def wire_features_on_startup(
 ) -> None:
     """Run every optional feature-engine wire in dependency order."""
     await _wire_docs_engine(app_state)
+    await _wire_project_brain(app_state)
     await _wire_knowledge_engine(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)
     await _wire_charter_engine(

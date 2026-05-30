@@ -272,16 +272,18 @@ class PlanRevisionPayload(BaseModel):
     )
 
 
-BrainPayload = Annotated[
+BrainPayloadValue = (
     DecisionPayload
     | OpenQuestionPayload
     | BlockerPayload
     | RiskPayload
     | DependencyPayload
-    | PlanRevisionPayload,
-    Field(discriminator="entry_kind"),
-]
-"""Discriminated union over every concrete payload kind."""
+    | PlanRevisionPayload
+)
+"""Bare union over every concrete payload kind (for annotations and isinstance)."""
+
+BrainPayload = Annotated[BrainPayloadValue, Field(discriminator="entry_kind")]
+"""Discriminated union over every concrete payload kind (the envelope field)."""
 
 
 # ── Envelope ─────────────────────────────────────────────────────────

@@ -109,6 +109,37 @@ export const BACKUP_TRIGGER_VALUES = [
 ] as const
 export type BackupTrigger = (typeof BACKUP_TRIGGER_VALUES)[number]
 
+export const BLOCKER_SEVERITY_VALUES = [
+    'low',
+    'medium',
+    'high',
+    'critical',
+] as const
+export type BlockerSeverity = (typeof BLOCKER_SEVERITY_VALUES)[number]
+
+export const BRAIN_ENTRY_KIND_VALUES = [
+    'decision',
+    'open_question',
+    'blocker',
+    'risk',
+    'dependency',
+    'plan_revision',
+] as const
+export type BrainEntryKind = (typeof BRAIN_ENTRY_KIND_VALUES)[number]
+
+export const BRAIN_ENTRY_STATUS_VALUES = [
+    'open',
+    'resolved',
+    'accepted',
+    'superseded',
+    'blocked',
+    'cleared',
+    'active',
+    'mitigated',
+    'retired',
+] as const
+export type BrainEntryStatus = (typeof BRAIN_ENTRY_STATUS_VALUES)[number]
+
 export const BUCKET_SIZE_VALUES = [
     'hour',
     'day',
@@ -140,6 +171,15 @@ export const CHARTER_STATUS_VALUES = [
     'cancelled',
 ] as const
 export type CharterStatus = (typeof CHARTER_STATUS_VALUES)[number]
+
+export const CITATION_KIND_VALUES = [
+    'task',
+    'doc_slug',
+    'knowledge_source',
+    'entry',
+    'external_url',
+] as const
+export type CitationKind = (typeof CITATION_KIND_VALUES)[number]
 
 export const CODE_EXECUTION_ISOLATION_VALUES = [
     'containerized',
@@ -277,6 +317,14 @@ export const DEPARTMENT_NAME_VALUES = [
     'security',
 ] as const
 export type DepartmentName = (typeof DEPARTMENT_NAME_VALUES)[number]
+
+export const DEPENDENCY_KIND_VALUES = [
+    'task',
+    'external',
+    'decision',
+    'resource',
+] as const
+export type DependencyKind = (typeof DEPENDENCY_KIND_VALUES)[number]
 
 export const DOC_TYPE_VALUES = [
     'status_report',
@@ -606,6 +654,13 @@ export const RISK_CLASSIFIER_TYPE_VALUES = [
     'time_based',
 ] as const
 export type RiskClassifierType = (typeof RISK_CLASSIFIER_TYPE_VALUES)[number]
+
+export const RISK_LEVEL_VALUES = [
+    'low',
+    'medium',
+    'high',
+] as const
+export type RiskLevel = (typeof RISK_LEVEL_VALUES)[number]
 
 export const RISK_TOLERANCE_VALUES = [
     'low',

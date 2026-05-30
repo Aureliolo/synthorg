@@ -83,6 +83,14 @@ ENFORCED KnowledgeRetriever #1988 -- constructed inside knowledge/factory.py::bu
 ENFORCED build_knowledge_tool_factory #1988 -- called in api/app.py::_wire_knowledge_engine; per-task source of SearchKnowledgeTool + IngestKnowledgeTool
 ENFORCED SearchKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
 ENFORCED IngestKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
+ENFORCED build_project_brain_service #1996 -- called in api/lifecycle_helpers/feature_wiring.py::_wire_project_brain; assembles chunker + indexer + writer + service + tool factory
+ENFORCED ProjectBrainService #1996 -- constructed by project_brain/factory.py::build_project_brain_service; attached to AppState by _wire_project_brain
+ENFORCED BrainChunker #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; produces field-aware chunks for the indexer
+ENFORCED BrainIndexer #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; stores PROJECT_BRAIN memory entries via MemoryBackend.store
+ENFORCED BrainWriter #1996 -- constructed inside project_brain/factory.py::build_project_brain_service; serializes the entry + commits on synthorg/docs via the configured GitBackend
+ENFORCED ProjectBrainToolFactory #1996 -- constructed in project_brain/factory.py::build_project_brain_service; per-task source of WriteBrainEntryTool + SearchBrainTool bound to the boot ProjectBrainService
+ENFORCED WriteBrainEntryTool #1996 -- constructed by project_brain/tool_factory.py::ProjectBrainToolFactory.build_tools per task with the agent's project + author binding
+ENFORCED SearchBrainTool #1996 -- constructed by project_brain/tool_factory.py::ProjectBrainToolFactory.build_tools per task with the agent's project binding
 ENFORCED build_research_service #1989 -- called in api/app.py::_wire_research_engine; assembles planner + sources + triage + dedup + synthesiser into the ResearchService
 ENFORCED ResearchService #1989 -- constructed by research/factory.py::build_research_service; attached to AppState by _wire_research_engine
 ENFORCED LlmQueryPlanner #1989 -- constructed inside research/factory.py::build_research_service; decomposes a brief into source-targeted sub-queries

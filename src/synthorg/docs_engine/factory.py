@@ -82,8 +82,13 @@ def build_docs_service(
         backend=memory_backend,
         clock=clock,
     )
-    # knowledge_enabled lets the same facade transparently surface the
-    # knowledge corpus alongside project docs; harmless when no
-    # knowledge has been ingested (the extra branch returns empty).
-    facade = ProjectAwareMemoryFacade(backend=memory_backend, knowledge_enabled=True)
+    # knowledge_enabled and brain_enabled let the same facade transparently
+    # surface the knowledge corpus and the project brain alongside project
+    # docs; harmless when neither has content yet (the extra legs return
+    # empty). Brain content is fenced under TAG_BRAIN_STATE in the facade.
+    facade = ProjectAwareMemoryFacade(
+        backend=memory_backend,
+        knowledge_enabled=True,
+        brain_enabled=True,
+    )
     return DocsRuntime(docs_service=service, memory_facade=facade)

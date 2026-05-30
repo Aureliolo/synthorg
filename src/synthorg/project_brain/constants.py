@@ -78,3 +78,9 @@ queries narrow by kind at the backend level."""
 BRAIN_FIRST_REVISION: Final[int] = 1
 """Revision number assigned to the first version of a logical entry. Revisions
 are monotonic per ``entry_id`` and server-assigned."""
+
+BRAIN_WRITE_ACTION_TYPE: Final[NotBlankStr] = NotBlankStr("brain:write")
+"""Action-type string for the brain write tool, routed through the trust and
+capability system as a write action. Defined here rather than as a
+``core.enums.ActionType`` member because that module is a net-shrink-only
+god-module; the ``ActionType`` taxonomy accepts custom action-type strings."""

@@ -49,9 +49,12 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.preset_protocol import Preset
+from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.persistence.user_protocol import ApiKeyFilterSpec
+from synthorg.project_brain.errors import BrainEntryRevisionConflictError
+from synthorg.project_brain.models import BrainEntry
 from synthorg.security.models import AuditEntry
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -905,6 +908,169 @@ class FakeDocsRepository:
         if filter_spec.updated_since is not None:
             rows = [r for r in rows if r.updated_at >= filter_spec.updated_since]
         return len(rows)
+
+
+class FakeProjectBrainRepository:
+    """In-memory append-only project-brain repository for tests.
+
+    Stores every revision; current state is the latest revision per
+    ``entry_id``. Mirrors the SQLite/Postgres repositories' observable
+    behaviour for the API-fixture wiring and brain controller tests.
+    """
+
+    def __init__(self) -> None:
+        self._rows: list[BrainEntry] = []
+
+    def _for_entry(self, project_id: str, entry_id: str) -> list[BrainEntry]:
+        return [
+            row
+            for row in self._rows
+            if row.project_id == project_id and row.entry_id == entry_id
+        ]
+
+    async def append(self, event: BrainEntry) -> None:
+        clash = any(
+            row.entry_id == event.entry_id and row.revision == event.revision
+            for row in self._rows
+        )
+        if clash:
+            msg = f"Brain revision conflict for {event.entry_id!r} r{event.revision}"
+            raise BrainEntryRevisionConflictError(msg)
+        self._rows.append(event)
+
+    async def append_with_next_revision(self, entry: BrainEntry) -> BrainEntry:
+        existing = self._for_entry(entry.project_id, entry.entry_id)
+        next_rev = max((row.revision for row in existing), default=0) + 1
+        stored = entry.model_copy(update={"revision": next_rev})
+        self._rows.append(stored)
+        return stored
+
+    async def get(
+        self, entity_id: tuple[NotBlankStr, NotBlankStr, int]
+    ) -> BrainEntry | None:
+        project_id, entry_id, revision = entity_id
+        for row in self._rows:
+            if (
+                row.project_id == project_id
+                and row.entry_id == entry_id
+                and row.revision == revision
+            ):
+                return row
+        return None
+
+    async def get_current(
+        self, project_id: NotBlankStr, entry_id: NotBlankStr
+    ) -> BrainEntry | None:
+        rows = self._for_entry(project_id, entry_id)
+        if not rows:
+            return None
+        return max(rows, key=lambda r: r.revision)
+
+    def _current_rows(self, filter_spec: BrainFilterSpec) -> list[BrainEntry]:
+        latest: dict[str, BrainEntry] = {}
+        for row in self._rows:
+            if row.project_id != filter_spec.project_id:
+                continue
+            prior = latest.get(row.entry_id)
+            if prior is None or row.revision > prior.revision:
+                latest[row.entry_id] = row
+        rows = [row for row in latest.values() if _brain_matches(row, filter_spec)]
+        rows.sort(key=lambda r: (r.recorded_at, r.entry_id), reverse=True)
+        return rows
+
+    async def list_current(
+        self,
+        filter_spec: BrainFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[BrainEntry, ...]:
+        rows = self._current_rows(filter_spec)
+        return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: BrainFilterSpec) -> int:
+        return len(self._current_rows(filter_spec))
+
+    async def history(
+        self,
+        project_id: NotBlankStr,
+        entry_id: NotBlankStr,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[BrainEntry, ...]:
+        rows = sorted(self._for_entry(project_id, entry_id), key=lambda r: r.revision)
+        return tuple(rows[offset : offset + limit])
+
+    async def query(
+        self,
+        filter_spec: BrainFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[BrainEntry, ...]:
+        rows = [
+            row
+            for row in self._rows
+            if row.project_id == filter_spec.project_id
+            and _brain_matches(row, filter_spec)
+        ]
+        rows.sort(key=lambda r: (r.recorded_at, r.revision), reverse=True)
+        return tuple(rows[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        current_keys = {
+            (row.project_id, row.entry_id, row.revision)
+            for row in (
+                max(group, key=lambda r: r.revision)
+                for group in _group_by_entry(self._rows)
+            )
+        }
+        before = len(self._rows)
+        self._rows = [
+            row
+            for row in self._rows
+            if (row.project_id, row.entry_id, row.revision) in current_keys
+            or row.recorded_at >= threshold
+        ]
+        return before - len(self._rows)
+
+
+def _brain_matches(row: BrainEntry, filter_spec: BrainFilterSpec) -> bool:
+    """Return whether *row* satisfies the non-project filter dimensions.
+
+    Returns:
+        ``True`` when every set filter field matches the row.
+    """
+    if filter_spec.entry_kind is not None and row.entry_kind != filter_spec.entry_kind:
+        return False
+    if filter_spec.status is not None and row.status != filter_spec.status:
+        return False
+    if filter_spec.author is not None and row.author != filter_spec.author:
+        return False
+    if filter_spec.tag is not None and filter_spec.tag not in row.tags:
+        return False
+    if (
+        filter_spec.related_task_id is not None
+        and filter_spec.related_task_id not in row.related_task_ids
+    ):
+        return False
+    return not (
+        filter_spec.updated_since is not None
+        and row.recorded_at < filter_spec.updated_since
+    )
+
+
+def _group_by_entry(rows: list[BrainEntry]) -> list[list[BrainEntry]]:
+    """Group brain rows by ``(project_id, entry_id)``.
+
+    Returns:
+        A list of per-entry revision groups.
+    """
+    groups: dict[tuple[str, str], list[BrainEntry]] = {}
+    for row in rows:
+        groups.setdefault((row.project_id, row.entry_id), []).append(row)
+    return list(groups.values())
 
 
 class FakeProjectRepository:

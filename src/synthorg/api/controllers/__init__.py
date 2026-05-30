@@ -80,6 +80,7 @@ from synthorg.api.controllers.ontology import OntologyController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
+from synthorg.api.controllers.project_brain import ProjectBrainController
 from synthorg.api.controllers.project_docs import ProjectDocsController
 from synthorg.api.controllers.project_knowledge import (
     GlobalKnowledgeController,
@@ -159,6 +160,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ActivityController,
     DepartmentController,
     ProjectController,
+    ProjectBrainController,
     ProjectDocsController,
     ProjectKnowledgeController,
     GlobalKnowledgeController,
@@ -359,6 +361,7 @@ __all__ = [
     "OAuthController",
     "OntologyController",
     "PersonalityPresetController",
+    "ProjectBrainController",
     "ProjectController",
     "ProjectDocsController",
     "ProjectKnowledgeController",

@@ -33,6 +33,7 @@ from synthorg.docs_engine.constants import (
     DOCS_PROJECT_TAG_PREFIX,
     SYSTEM_DOCS_AGENT_ID,
 )
+from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
 from synthorg.knowledge.constants import (
     KNOWLEDGE_GLOBAL_SCOPE_TAG,
     KNOWLEDGE_MEMORY_NAMESPACE,
@@ -44,6 +45,11 @@ from synthorg.observability.events.docs import (
     DOC_FACADE_FANOUT,
     DOC_FACADE_FANOUT_FAILED,
 )
+from synthorg.project_brain.constants import (
+    BRAIN_MEMORY_NAMESPACE,
+    BRAIN_PROJECT_TAG_PREFIX,
+    SYSTEM_BRAIN_AGENT_ID,
+)
 
 if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry, MemoryQuery
@@ -53,18 +59,20 @@ logger = get_logger(__name__)
 
 
 class ProjectAwareMemoryFacade:
-    """Merges agent + project-doc (+ knowledge) retrieval results."""
+    """Merges agent + project-doc (+ knowledge + brain) retrieval results."""
 
-    __slots__ = ("_backend", "_knowledge_enabled")
+    __slots__ = ("_backend", "_brain_enabled", "_knowledge_enabled")
 
     def __init__(
         self,
         *,
         backend: MemoryBackend,
         knowledge_enabled: bool = False,
+        brain_enabled: bool = False,
     ) -> None:
         self._backend = backend
         self._knowledge_enabled = knowledge_enabled
+        self._brain_enabled = brain_enabled
 
     async def retrieve(
         self,
@@ -115,6 +123,13 @@ class ProjectAwareMemoryFacade:
                     _knowledge_query(scope_tag=KNOWLEDGE_GLOBAL_SCOPE_TAG, base=query),
                 )
             )
+        if self._brain_enabled:
+            targets.append(
+                (
+                    SYSTEM_BRAIN_AGENT_ID,
+                    _brain_query(project_id=project_id, base=query),
+                )
+            )
         tasks: list[asyncio.Task[tuple[MemoryEntry, ...]]] = []
         try:
             async with asyncio.TaskGroup() as tg:
@@ -150,14 +165,15 @@ class ProjectAwareMemoryFacade:
             return await self._backend.retrieve(agent_id, query)
         results = tuple(task.result() for task in tasks)
         merged = _merge_by_score(*results, limit=query.limit)
+        wrapped = tuple(_wrap_brain_state(entry) for entry in merged)
         logger.debug(
             DOC_FACADE_FANOUT,
             agent_id=agent_id,
             project_id=project_id,
             branches=len(results),
-            merged=len(merged),
+            merged=len(wrapped),
         )
-        return merged
+        return wrapped
 
 
 def _project_doc_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
@@ -190,6 +206,43 @@ def _knowledge_query(*, scope_tag: NotBlankStr, base: MemoryQuery) -> MemoryQuer
             "namespaces": frozenset({KNOWLEDGE_MEMORY_NAMESPACE}),
             "tags": (*base.tags, scope_tag),
         }
+    )
+
+
+def _brain_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
+    """Build the project-brain-scoped sibling query from *base*.
+
+    Returns:
+        A copy of ``base`` scoped to the ``PROJECT_BRAIN`` category, brain
+        namespace, and the project tag.
+    """
+    project_tag = NotBlankStr(f"{BRAIN_PROJECT_TAG_PREFIX}{project_id}")
+    return base.model_copy(
+        update={
+            "categories": frozenset({MemoryCategory.PROJECT_BRAIN}),
+            "namespaces": frozenset({BRAIN_MEMORY_NAMESPACE}),
+            "tags": (*base.tags, project_tag),
+        }
+    )
+
+
+def _wrap_brain_state(entry: MemoryEntry) -> MemoryEntry:
+    """Fence a project-brain entry's content under ``TAG_BRAIN_STATE``.
+
+    Brain entries are authored by agents and the operator, so on re-entry they
+    are attacker-controllable; wrapping the content at this retrieval boundary
+    (never on storage) keeps the resuming agent from following instructions an
+    upstream writer may have embedded. Entries of any other category pass
+    through unchanged.
+
+    Returns:
+        The entry with its content fenced when it is a ``PROJECT_BRAIN`` entry,
+        otherwise the entry unchanged.
+    """
+    if entry.category is not MemoryCategory.PROJECT_BRAIN:
+        return entry
+    return entry.model_copy(
+        update={"content": wrap_untrusted(TAG_BRAIN_STATE, entry.content)}
     )
 
 
