@@ -264,8 +264,11 @@ jobs:
           postgres_count=0
           for rev in "${new_revs[@]}"; do
             case "$rev" in
-              src/synthorg/persistence/sqlite/revisions/*.sql) ((sqlite_count++)) ;;
-              src/synthorg/persistence/postgres/revisions/*.sql) ((postgres_count++)) ;;
+              # Assignment form (not ``((c++))``): post-increment from 0 evaluates
+              # to 0, which makes the arithmetic command exit 1 and trips
+              # ``set -e`` on the first revision per backend.
+              src/synthorg/persistence/sqlite/revisions/*.sql) sqlite_count=$((sqlite_count + 1)) ;;
+              src/synthorg/persistence/postgres/revisions/*.sql) postgres_count=$((postgres_count + 1)) ;;
             esac
           done
           if [ "$sqlite_count" -gt 1 ] || [ "$postgres_count" -gt 1 ]; then

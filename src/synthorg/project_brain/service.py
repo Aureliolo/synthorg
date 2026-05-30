@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger, safe_error_description
@@ -43,10 +43,8 @@ from synthorg.project_brain.constants import (
     SYSTEM_BRAIN_AGENT_ID,
 )
 from synthorg.project_brain.errors import (
-    BrainCommitError,
     BrainEntryNotFoundError,
     BrainEntryValidationError,
-    BrainIndexError,
 )
 from synthorg.project_brain.models import (
     BlockerPayload,
@@ -197,13 +195,14 @@ class ProjectBrainService:
         supersedes_entry_id: NotBlankStr | None = None,
         tags: tuple[NotBlankStr, ...] | None = None,
         citations: tuple[Citation, ...] | None = None,
+        confidence: float | None = None,
     ) -> BrainEntry:
         """Append the next revision of an existing entry.
 
         Every supplied override replaces the corresponding field; omitted fields
-        inherit the current revision's value (including ``confidence``). The
-        kind never changes. The revised envelope is re-validated, so an illegal
-        status-for-kind transition is rejected.
+        inherit the current revision's value. The kind never changes. The
+        revised envelope is re-validated, so an illegal status-for-kind
+        transition is rejected.
 
         Args:
             project_id: Owning project.
@@ -218,6 +217,8 @@ class ProjectBrainService:
             supersedes_entry_id: New supersession link, or ``None`` to keep.
             tags: Replacement tags, or ``None`` to keep.
             citations: Replacement citations, or ``None`` to keep.
+            confidence: New confidence in ``[0, 1]``, or ``None`` to keep the
+                current value.
 
         Returns:
             The persisted new revision.
@@ -242,6 +243,7 @@ class ProjectBrainService:
                 supersedes_entry_id=supersedes_entry_id,
                 tags=tags,
                 citations=citations,
+                confidence=confidence,
             )
             return await self._append_revision(revised, event=BRAIN_ENTRY_REVISED)
 
@@ -615,10 +617,15 @@ class ProjectBrainService:
         return persisted
 
     async def _snapshot_best_effort(self, entry: BrainEntry) -> None:
-        """Commit the workspace snapshot, logging (not raising) on failure."""
+        """Commit the workspace snapshot, logging (not raising) on failure.
+
+        The durable SQL append already happened, so a snapshot failure must
+        never fail the call; only interpreter-critical errors are re-raised.
+        """
         try:
             await self._writer.write(project_id=entry.project_id, entry=entry)
-        except BrainCommitError as exc:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BRAIN_SNAPSHOT_FAILED,
                 project_id=entry.project_id,
@@ -635,7 +642,8 @@ class ProjectBrainService:
         can skip it; on failure the index-state row stays behind as a gap for the
         next boot replay (or revision) to heal. Index and bookkeeping failures
         are swallowed because the durable append already happened: a retry would
-        duplicate the revision.
+        duplicate the revision. Catching broadly keeps an unexpected chunker or
+        bookkeeping error from failing it; only criticals are re-raised.
         """
         try:
             chunks = self._chunker.chunk(project_id=entry.project_id, entry=entry)
@@ -647,7 +655,8 @@ class ProjectBrainService:
             await self._repo.mark_indexed(
                 entry.project_id, entry.entry_id, entry.revision
             )
-        except (BrainIndexError, QueryError) as exc:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BRAIN_ENTRY_INDEX_FAILED,
                 project_id=entry.project_id,

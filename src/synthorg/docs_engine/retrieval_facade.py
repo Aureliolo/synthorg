@@ -130,24 +130,21 @@ class ProjectAwareMemoryFacade:
                     _brain_query(project_id=project_id, base=query),
                 )
             )
-        outcomes = await asyncio.gather(
-            *(
-                self._backend.retrieve(target_id, target_query)
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._safe_retrieve(target_id, target_query))
                 for target_id, target_query in targets
-            ),
-            return_exceptions=True,
-        )
+            ]
         # Keep every leg that succeeded so one backend failure does not discard
-        # the other legs' hits. Interpreter-critical errors and a genuine
-        # cancellation still propagate; ordinary per-leg failures are logged
-        # and dropped.
+        # the other legs' hits. ``_safe_retrieve`` returns the exception for an
+        # ordinary per-leg failure -- so the TaskGroup never cancels the sibling
+        # legs -- and re-raises interpreter-critical errors, which propagate out
+        # of the group as a ``BaseExceptionGroup``.
         results: list[tuple[MemoryEntry, ...]] = []
         failures: list[BaseException] = []
-        for outcome in outcomes:
+        for task in tasks:
+            outcome = task.result()
             if isinstance(outcome, BaseException):
-                reraise_critical(outcome)
-                if isinstance(outcome, asyncio.CancelledError):
-                    raise outcome
                 failures.append(outcome)
             else:
                 results.append(outcome)
@@ -173,6 +170,29 @@ class ProjectAwareMemoryFacade:
             merged=len(wrapped),
         )
         return wrapped
+
+    async def _safe_retrieve(
+        self, agent_id: NotBlankStr, query: MemoryQuery
+    ) -> tuple[MemoryEntry, ...] | BaseException:
+        """Retrieve one fan-out leg, returning (not raising) ordinary failures.
+
+        Wrapping each leg this way keeps the :class:`asyncio.TaskGroup` from
+        cancelling the sibling legs when one backend call fails: an ordinary
+        exception is captured and returned so the caller can log and drop it,
+        while interpreter-critical errors (``MemoryError`` / ``RecursionError``)
+        and ``KeyboardInterrupt`` / ``SystemExit`` are re-raised and propagate
+        out of the group. A ``CancelledError`` is a ``BaseException`` (not
+        ``Exception``), so it also propagates rather than being swallowed.
+
+        Returns:
+            The leg's entries on success, or the exception it raised when that
+            failure is an ordinary, non-critical one.
+        """
+        try:
+            return await self._backend.retrieve(agent_id, query)
+        except Exception as exc:
+            reraise_critical(exc)
+            return exc
 
 
 def _project_doc_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:

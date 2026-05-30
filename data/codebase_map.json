@@ -3957,7 +3957,7 @@
     },
     {
       "kind": "code",
-      "loc": 227,
+      "loc": 243,
       "loc_cap": 500,
       "module": "src/synthorg/docs_engine/retrieval_facade.py",
       "owning_feature": "docs"
@@ -10278,7 +10278,7 @@
     },
     {
       "kind": "code",
-      "loc": 329,
+      "loc": 330,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/brain.py",
       "owning_feature": "meta"
@@ -14261,7 +14261,7 @@
     },
     {
       "kind": "code",
-      "loc": 151,
+      "loc": 157,
       "loc_cap": 500,
       "module": "src/synthorg/project_brain/mutation.py",
       "owning_feature": "project_brain"
@@ -14289,7 +14289,7 @@
     },
     {
       "kind": "service",
-      "loc": 590,
+      "loc": 598,
       "loc_cap": 600,
       "module": "src/synthorg/project_brain/service.py",
       "owning_feature": "project_brain"
@@ -16564,7 +16564,7 @@
     },
     {
       "kind": "code",
-      "loc": 187,
+      "loc": 188,
       "loc_cap": 500,
       "module": "src/synthorg/tools/brain/write_brain_entry.py",
       "owning_feature": "tools"

@@ -105,15 +105,15 @@ def apply_overrides(  # noqa: PLR0913 -- optional overrides are explicit
     supersedes_entry_id: NotBlankStr | None = None,
     tags: tuple[NotBlankStr, ...] | None = None,
     citations: tuple[Citation, ...] | None = None,
+    confidence: float | None = None,
 ) -> BrainEntry:
     """Apply overrides to *current*, re-stamp, and re-validate.
 
     Every supplied override replaces the corresponding field; omitted fields
-    inherit the current revision's value (including ``confidence``). The
-    ``revision`` placeholder is reset to the default so the repository assigns
-    the next value. The candidate is round-tripped through ``model_validate`` so
-    an illegal status-for-kind transition is rejected (``model_copy`` alone does
-    not re-run validators).
+    inherit the current revision's value. The ``revision`` placeholder is reset
+    to the default so the repository assigns the next value. The candidate is
+    round-tripped through ``model_validate`` so an illegal status-for-kind
+    transition is rejected (``model_copy`` alone does not re-run validators).
 
     Args:
         current: The latest revision being revised.
@@ -130,6 +130,10 @@ def apply_overrides(  # noqa: PLR0913 -- optional overrides are explicit
             supersession is historical fact).
         tags: Replacement tags; ``None`` keeps, ``()`` clears.
         citations: Replacement citations; ``None`` keeps, ``()`` clears.
+        confidence: New confidence in ``[0, 1]``, or ``None`` to keep the
+            current value. Once set it cannot be cleared back to ``None`` on a
+            revision; this matches the keep-on-omit semantics of the other
+            optional overrides.
 
     Returns:
         The validated next-revision envelope.
@@ -160,6 +164,8 @@ def apply_overrides(  # noqa: PLR0913 -- optional overrides are explicit
         updates["tags"] = tags
     if citations is not None:
         updates["citations"] = citations
+    if confidence is not None:
+        updates["confidence"] = confidence
     candidate = current.model_copy(update=updates)
     try:
         return BrainEntry.model_validate(candidate.model_dump(mode="json"))

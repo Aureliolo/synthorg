@@ -205,6 +205,7 @@ class WriteBrainEntryTool(BaseTool):
             supersedes_entry_id=parsed.supersedes_entry_id,
             tags=parsed.tags,
             citations=parsed.citations,
+            confidence=parsed.confidence,
         )
 
 

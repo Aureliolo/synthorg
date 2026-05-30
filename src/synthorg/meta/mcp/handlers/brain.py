@@ -121,6 +121,7 @@ async def _append_entry(svc: ProjectBrainService, args: BrainAppendArgs) -> Brai
         supersedes_entry_id=args.supersedes_entry_id,
         tags=args.tags,
         citations=args.citations,
+        confidence=args.confidence,
     )
 
 

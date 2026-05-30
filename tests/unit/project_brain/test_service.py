@@ -156,6 +156,37 @@ async def test_revise_entry_increments_revision(
     assert revised.rationale == "Updated reasoning."
 
 
+async def test_revise_entry_updates_confidence(
+    brain_service: ProjectBrainService,
+) -> None:
+    """Confidence is not frozen at creation: a revision can update it, and a
+    later revision that omits it keeps the most recent value."""
+    entry = await brain_service.append_entry(
+        project_id=_PROJECT,
+        title=NotBlankStr("Adopt append-only storage"),
+        rationale=NotBlankStr("History matters."),
+        status=BrainEntryStatus.ACCEPTED,
+        author=_AUTHOR,
+        payload=DecisionPayload(decision_outcome=NotBlankStr("append-only")),
+        confidence=0.4,
+    )
+    revised = await brain_service.revise_entry(
+        project_id=_PROJECT,
+        entry_id=entry.entry_id,
+        author=_AUTHOR,
+        confidence=0.85,
+    )
+    assert revised.confidence == pytest.approx(0.85)
+
+    kept = await brain_service.revise_entry(
+        project_id=_PROJECT,
+        entry_id=entry.entry_id,
+        author=_AUTHOR,
+        rationale=NotBlankStr("Tighten wording."),
+    )
+    assert kept.confidence == pytest.approx(0.85)
+
+
 async def test_resolve_open_question_records_answer(
     brain_service: ProjectBrainService,
 ) -> None:

@@ -102,6 +102,17 @@ def test_apply_overrides_inherits_unset_fields() -> None:
     assert revised.entry_kind is BrainEntryKind.DECISION
 
 
+def test_apply_overrides_updates_confidence() -> None:
+    """An explicit confidence replaces the inherited value on revision."""
+    revised = apply_overrides(
+        _current(),  # current confidence is 0.9
+        now=_later(),
+        author=NotBlankStr("bob"),
+        confidence=0.5,
+    )
+    assert revised.confidence == pytest.approx(0.5)
+
+
 def test_apply_overrides_rejects_illegal_status_transition() -> None:
     with pytest.raises(BrainEntryValidationError):
         apply_overrides(
