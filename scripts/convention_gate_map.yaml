@@ -124,6 +124,21 @@ mandatory_rules:
     #     - data/feature_index.json + data/codebase_map.json are
     #       regenerated from the feature manifests on every commit.
 
+  - id: claude-md::import-layering-architecture-drift
+    file: CLAUDE.md
+    header: Import Layering + Architecture Drift
+    gate: .importlinter
+    # Primary artifact: the declarative layering contracts in
+    # .importlinter, enforced by `lint-imports` (pre-push + CI).
+    # Sibling gates (one primary tracked per paragraph; the rest live
+    # in docs/reference/convention-gates.md + import-layering.md):
+    #   scripts/check_architecture_drift.py
+    #     - fan-in / LCOM4 / budget-pressure drift vs the committed
+    #       data/architecture_report.json baseline (ADR-0011).
+    #   scripts/check_persistence_boundary.py     -- raw-SQL / driver boundary
+    #   scripts/check_no_api_dto_in_persistence_or_service.py -- DTO leak
+    #   scripts/check_dependency_inversion.py     -- concrete-class DI rule
+
   # ---------------------------------------------------------------
   # web/CLAUDE.md
   # ---------------------------------------------------------------

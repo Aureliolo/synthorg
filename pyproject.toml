@@ -935,17 +935,17 @@ addopts = [
     "-p",
     "no:unraisableexception",
     # Runtime type-check every call in ``synthorg.*`` against its annotations.
-    # ``forward-ref-policy=ERROR`` (typeguard default is WARN) makes an
-    # unresolvable ``TYPE_CHECKING``-guarded annotation a hard test failure
-    # rather than a silently-skipped check. The activation lines are kept
-    # COMMENTED until the source-side cycle breaks land in the import-
-    # layering follow-up PR (see ADR-0006 Section F); the cycles fan out
-    # ~530 unit-test failures through ~5 boundary functions. Wiring,
-    # dependency pin, conftest hook, ruff TC001/2/3 disable, and the
-    # ``@suppress_type_checks`` on ``api.app.create_app`` all ship now so
-    # the activation is a one-line uncomment once the cycles drop.
+    # Kept COMMENTED: activation is NOT a one-line uncomment. An authoritative
+    # full ``pytest -m unit`` with the hook live (WARN) surfaced 1,949 failures
+    # across 231 test files -- ~1,500 resolved-type ``TypeCheckError``s that
+    # ``forward_ref_policy`` does NOT skip (AwareDatetime-vs-datetime, test
+    # doubles failing Protocol/isinstance checks, DTO generics), plus the
+    # ~1,055-module ``TYPE_CHECKING``-guarded-signature class. Activation is a
+    # dedicated multi-PR programme: #2182 (WARN) + #2183 (ERROR). See ADR-0006
+    # Section F. The wiring, dependency pin, conftest hook, and ruff TC001/2/3
+    # disable all ship now so #2182 starts from a clean base.
     # "--typeguard-packages=synthorg",
-    # "--typeguard-forward-ref-policy=ERROR",
+    # "--typeguard-forward-ref-policy=WARN",
 ]
 filterwarnings = [
     "error",
