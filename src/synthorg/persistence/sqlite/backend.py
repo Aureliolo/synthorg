@@ -24,8 +24,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
 )
-from synthorg.persistence import migrations
 from synthorg.persistence._shared import format_iso_utc
+from synthorg.persistence.migrations import migrate_apply, to_sqlite_url
 from synthorg.persistence.sqlite._repository_wiring import (
     _SQLiteRepositoryWiring,
 )
@@ -253,9 +253,9 @@ class SQLitePersistenceBackend(_SQLiteRepositoryWiring):
                 msg = "Cannot migrate: not connected"
                 logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
                 raise PersistenceConnectionError(msg)
-            db_url = migrations.to_sqlite_url(self._config.path)
+            db_url = to_sqlite_url(self._config.path)
             try:
-                await migrations.migrate_apply(db_url)
+                await migrate_apply(db_url)
             except BaseException:
                 db = self._db
                 if db is not None:
