@@ -46,6 +46,14 @@ STEERABLE_KINDS: Final[frozenset[InterventionKind]] = frozenset(
     {InterventionKind.HINT, InterventionKind.REDIRECT},
 )
 
+#: Metadata keys a ``CONVERSATIONAL_INTAKE`` approval carries when the Chief of
+#: Staff parks a steering directive. The approval-gate Flow 0 reads them to
+#: route an approved directive to ``SteeringService.issue``; the presence of
+#: :data:`STEERING_INTAKE_KIND_KEY` marks an approval as a steering directive.
+STEERING_INTAKE_KIND_KEY: Final[str] = "steering_kind"
+STEERING_INTAKE_PROJECT_KEY: Final[str] = "steering_project"
+STEERING_INTAKE_TEXT_KEY: Final[str] = "steering_text"
+
 
 def steering_kind_tag(kind: InterventionKind) -> NotBlankStr:
     """Return the per-kind steering tag, e.g. ``steering:redirect``.

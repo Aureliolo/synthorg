@@ -41,7 +41,6 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
     APPROVAL_GATE_CONVERSATIONAL_FAILED,
     APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
-    APPROVAL_GATE_CONVERSATIONAL_REJECTED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -266,42 +265,6 @@ async def _load_conversational_proposal(
     return True, proposals[0]
 
 
-async def _reject_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-    proposal: object,
-) -> None:
-    """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
-    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
-
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
-    proposal_id = proposal.id  # type: ignore[attr-defined]
-    transitioned = await repo.transition_if(
-        proposal_id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.REJECTED,
-    )
-    if transitioned:
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-        )
-        return
-    # Concurrent decision already transitioned this proposal (e.g.
-    # duplicate approval-decision request). Surface the no-op so the
-    # log doesn't claim a success we didn't make.
-    logger.warning(
-        APPROVAL_GATE_CONVERSATIONAL_FAILED,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-        note="proposal already transitioned (reject path)",
-    )
-
-
 async def _execute_conversational_proposal(
     app_state: AppState,
     approval_id: str,
@@ -449,6 +412,16 @@ async def try_conversational_intake_resume(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
+    from synthorg.meta.chief_of_staff._intake_parking import (  # noqa: PLC0415
+        reject_conversational_proposal,
+        resume_conversational_steering,
+    )
+
+    # A steering directive rides in the approval metadata, not a proposal row.
+    item = await _reread_approval_item(app_state, approval_id)
+    if await resume_conversational_steering(app_state, item, approved=approved):
+        return True
+
     owns_decision, proposal = await _load_conversational_proposal(
         app_state, approval_id
     )
@@ -457,7 +430,7 @@ async def try_conversational_intake_resume(
     if proposal is None:
         return True
     if not approved:
-        await _reject_conversational_proposal(app_state, approval_id, proposal)
+        await reject_conversational_proposal(app_state, approval_id, proposal)
         return True
     await _execute_conversational_proposal(app_state, approval_id, proposal)
     return True

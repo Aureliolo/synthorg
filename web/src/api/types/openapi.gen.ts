@@ -12702,6 +12702,8 @@ export type components = {
             readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
             /** @enum {string} */
             readonly status: "needs_clarification" | "proposed";
+            /** @default [] */
+            readonly steering: readonly components["schemas"]["SteeringProposalSummary"][];
         };
         /** ProseBlock */
         readonly ProseBlock: {
@@ -14031,6 +14033,13 @@ export type components = {
              * @default []
              */
             readonly superseded_task_ids: readonly string[];
+        };
+        /** SteeringProposalSummary */
+        readonly SteeringProposalSummary: {
+            readonly approval_id: string;
+            readonly kind: components["schemas"]["InterventionKind"];
+            readonly project: string;
+            readonly text: string;
         };
         /** SteeringSupersessionProposal */
         readonly SteeringSupersessionProposal: {
