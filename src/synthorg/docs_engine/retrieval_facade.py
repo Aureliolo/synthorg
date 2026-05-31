@@ -23,9 +23,9 @@ Construction is via :func:`synthorg.docs_engine.factory.build_docs_service`.
 """
 
 import asyncio
-import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -33,6 +33,7 @@ from synthorg.docs_engine.constants import (
     DOCS_PROJECT_TAG_PREFIX,
     SYSTEM_DOCS_AGENT_ID,
 )
+from synthorg.engine.prompt_safety import TAG_BRAIN_STATE, wrap_untrusted
 from synthorg.knowledge.constants import (
     KNOWLEDGE_GLOBAL_SCOPE_TAG,
     KNOWLEDGE_MEMORY_NAMESPACE,
@@ -44,6 +45,11 @@ from synthorg.observability.events.docs import (
     DOC_FACADE_FANOUT,
     DOC_FACADE_FANOUT_FAILED,
 )
+from synthorg.project_brain.constants import (
+    BRAIN_MEMORY_NAMESPACE,
+    BRAIN_PROJECT_TAG_PREFIX,
+    SYSTEM_BRAIN_AGENT_ID,
+)
 
 if TYPE_CHECKING:
     from synthorg.memory.models import MemoryEntry, MemoryQuery
@@ -53,18 +59,20 @@ logger = get_logger(__name__)
 
 
 class ProjectAwareMemoryFacade:
-    """Merges agent + project-doc (+ knowledge) retrieval results."""
+    """Merges agent + project-doc (+ knowledge + brain) retrieval results."""
 
-    __slots__ = ("_backend", "_knowledge_enabled")
+    __slots__ = ("_backend", "_brain_enabled", "_knowledge_enabled")
 
     def __init__(
         self,
         *,
         backend: MemoryBackend,
         knowledge_enabled: bool = False,
+        brain_enabled: bool = False,
     ) -> None:
         self._backend = backend
         self._knowledge_enabled = knowledge_enabled
+        self._brain_enabled = brain_enabled
 
     async def retrieve(
         self,
@@ -115,49 +123,76 @@ class ProjectAwareMemoryFacade:
                     _knowledge_query(scope_tag=KNOWLEDGE_GLOBAL_SCOPE_TAG, base=query),
                 )
             )
-        tasks: list[asyncio.Task[tuple[MemoryEntry, ...]]] = []
-        try:
-            async with asyncio.TaskGroup() as tg:
-                tasks = [
-                    tg.create_task(self._backend.retrieve(target_id, target_query))
-                    for target_id, target_query in targets
-                ]
-        except builtins.BaseExceptionGroup as group:
-            if group.subgroup(asyncio.CancelledError) is not None:
-                raise
-            if (
-                group.subgroup(builtins.MemoryError) is not None
-                or group.subgroup(builtins.RecursionError) is not None
-            ):
-                raise
+        if self._brain_enabled:
+            targets.append(
+                (
+                    SYSTEM_BRAIN_AGENT_ID,
+                    _brain_query(project_id=project_id, base=query),
+                )
+            )
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._safe_retrieve(target_id, target_query))
+                for target_id, target_query in targets
+            ]
+        # Keep every leg that succeeded so one backend failure does not discard
+        # the other legs' hits. ``_safe_retrieve`` returns the exception for an
+        # ordinary per-leg failure -- so the TaskGroup never cancels the sibling
+        # legs -- and re-raises interpreter-critical errors, which propagate out
+        # of the group as a ``BaseExceptionGroup``.
+        results: list[tuple[MemoryEntry, ...]] = []
+        failures: list[BaseException] = []
+        for task in tasks:
+            outcome = task.result()
+            if isinstance(outcome, BaseException):
+                failures.append(outcome)
+            else:
+                results.append(outcome)
+        if failures:
             logger.warning(
                 DOC_FACADE_FANOUT_FAILED,
                 agent_id=agent_id,
                 project_id=project_id,
-                exceptions=tuple(type(exc).__name__ for exc in group.exceptions),
-                error=safe_error_description(group.exceptions[0])
-                if group.exceptions
-                else "no exceptions",
+                exceptions=tuple(type(exc).__name__ for exc in failures),
+                error=safe_error_description(failures[0]),
             )
-            agent_task = tasks[0] if tasks else None
-            if (
-                agent_task is not None
-                and agent_task.done()
-                and not agent_task.cancelled()
-                and agent_task.exception() is None
-            ):
-                return agent_task.result()
+        if not results:
+            # Every leg failed; fall back to an agent-only retrieve so a total
+            # fan-out failure still returns the agent's own memories.
             return await self._backend.retrieve(agent_id, query)
-        results = tuple(task.result() for task in tasks)
         merged = _merge_by_score(*results, limit=query.limit)
+        wrapped = tuple(_wrap_brain_state(entry) for entry in merged)
         logger.debug(
             DOC_FACADE_FANOUT,
             agent_id=agent_id,
             project_id=project_id,
             branches=len(results),
-            merged=len(merged),
+            merged=len(wrapped),
         )
-        return merged
+        return wrapped
+
+    async def _safe_retrieve(
+        self, agent_id: NotBlankStr, query: MemoryQuery
+    ) -> tuple[MemoryEntry, ...] | BaseException:
+        """Retrieve one fan-out leg, returning (not raising) ordinary failures.
+
+        Wrapping each leg this way keeps the :class:`asyncio.TaskGroup` from
+        cancelling the sibling legs when one backend call fails: an ordinary
+        exception is captured and returned so the caller can log and drop it,
+        while interpreter-critical errors (``MemoryError`` / ``RecursionError``)
+        and ``KeyboardInterrupt`` / ``SystemExit`` are re-raised and propagate
+        out of the group. A ``CancelledError`` is a ``BaseException`` (not
+        ``Exception``), so it also propagates rather than being swallowed.
+
+        Returns:
+            The leg's entries on success, or the exception it raised when that
+            failure is an ordinary, non-critical one.
+        """
+        try:
+            return await self._backend.retrieve(agent_id, query)
+        except Exception as exc:
+            reraise_critical(exc)
+            return exc
 
 
 def _project_doc_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
@@ -190,6 +225,43 @@ def _knowledge_query(*, scope_tag: NotBlankStr, base: MemoryQuery) -> MemoryQuer
             "namespaces": frozenset({KNOWLEDGE_MEMORY_NAMESPACE}),
             "tags": (*base.tags, scope_tag),
         }
+    )
+
+
+def _brain_query(*, project_id: NotBlankStr, base: MemoryQuery) -> MemoryQuery:
+    """Build the project-brain-scoped sibling query from *base*.
+
+    Returns:
+        A copy of ``base`` scoped to the ``PROJECT_BRAIN`` category, brain
+        namespace, and the project tag.
+    """
+    project_tag = NotBlankStr(f"{BRAIN_PROJECT_TAG_PREFIX}{project_id}")
+    return base.model_copy(
+        update={
+            "categories": frozenset({MemoryCategory.PROJECT_BRAIN}),
+            "namespaces": frozenset({BRAIN_MEMORY_NAMESPACE}),
+            "tags": (*base.tags, project_tag),
+        }
+    )
+
+
+def _wrap_brain_state(entry: MemoryEntry) -> MemoryEntry:
+    """Fence a project-brain entry's content under ``TAG_BRAIN_STATE``.
+
+    Brain entries are authored by agents and the operator, so on re-entry they
+    are attacker-controllable; wrapping the content at this retrieval boundary
+    (never on storage) keeps the resuming agent from following instructions an
+    upstream writer may have embedded. Entries of any other category pass
+    through unchanged.
+
+    Returns:
+        The entry with its content fenced when it is a ``PROJECT_BRAIN`` entry,
+        otherwise the entry unchanged.
+    """
+    if entry.category is not MemoryCategory.PROJECT_BRAIN:
+        return entry
+    return entry.model_copy(
+        update={"content": wrap_untrusted(TAG_BRAIN_STATE, entry.content)}
     )
 
 

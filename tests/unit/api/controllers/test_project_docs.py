@@ -81,6 +81,22 @@ class _FakeDocsService:
         )
 
 
+class _PaginatingDocsService:
+    """Respects ``offset`` / ``limit`` so page-2 truncation is observable.
+
+    A controller that drops the decoded cursor offset re-reads the first page
+    on every request, so this fake (which honours the offset) surfaces the bug.
+    """
+
+    def __init__(self, items: tuple[DocSummary, ...]) -> None:
+        self._items = items
+
+    async def list_docs(
+        self, *, limit: int, offset: int = 0, **_: Any
+    ) -> tuple[DocSummary, ...]:
+        return self._items[offset : offset + limit]
+
+
 @contextmanager
 def _with_docs_service(async_test_client: LoopAsyncClient, svc: Any) -> Iterator[None]:
     app_state = async_test_client.app.state.app_state
@@ -143,3 +159,36 @@ class TestProjectDocsController:
             )
         assert resp.status_code == 200
         assert resp.json()["data"][0]["commit_sha"] == "b" * 40
+
+    async def test_pagination_reaches_second_page(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        """Following the cursor returns the next page, not the overflow row."""
+        items = tuple(
+            DocSummary(
+                project_id=NotBlankStr("proj-1"),
+                slug=NotBlankStr(f"doc-{i}"),
+                title=NotBlankStr(f"Doc {i}"),
+                doc_type=DocType.STATUS_REPORT,
+                updated_at=_NOW,
+            )
+            for i in range(5)
+        )
+        with _with_docs_service(async_test_client, _PaginatingDocsService(items)):
+            first = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs", params={"limit": 2}
+            )
+            assert first.status_code == 200
+            first_body = first.json()
+            assert [d["slug"] for d in first_body["data"]] == ["doc-0", "doc-1"]
+            assert first_body["pagination"]["has_more"] is True
+            cursor = first_body["pagination"]["next_cursor"]
+            assert cursor is not None
+            second = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs",
+                params={"limit": 2, "cursor": cursor},
+            )
+        assert second.status_code == 200
+        second_body = second.json()
+        assert [d["slug"] for d in second_body["data"]] == ["doc-2", "doc-3"]
+        assert second_body["pagination"]["has_more"] is True

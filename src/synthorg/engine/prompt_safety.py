@@ -104,6 +104,21 @@ retrieval hits presented to the synthesiser as the evidence corpus, not
 the raw output of a single tool call.
 """
 
+TAG_BRAIN_STATE: Final[str] = "brain-state"
+"""Wrap a long-horizon project-brain entry flowing into an LLM call.
+
+The project brain stores decisions, open questions, blockers, risks,
+dependencies, and plan revisions authored by agents and the operator. When an
+agent retrieves brain state on re-entry, each entry is attacker-controllable
+(an upstream agent may have been prompt-injected when it wrote the entry), so
+the retrieval facade wraps brain content under this tag before it reaches the
+resuming agent's context.
+
+Distinct from :data:`TAG_MEMORY_ENTRY`: brain entries are first-class
+structured project state surfaced as a dedicated retrieval leg, not consolidated
+agent-memory snippets.
+"""
+
 _TAG_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 """Valid tag names: lower-case ASCII, starts with letter, ``[a-z0-9-]``, max 32 chars.
 

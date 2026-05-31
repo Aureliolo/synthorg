@@ -3013,6 +3013,74 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/brain": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListEntries */
+        readonly get: operations["ApiV1ProjectsProjectIdBrainListEntries"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/brain/{entry_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetEntry */
+        readonly get: operations["ApiV1ProjectsProjectIdBrainEntryIdGetEntry"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/brain/{entry_id}/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetHistory */
+        readonly get: operations["ApiV1ProjectsProjectIdBrainEntryIdHistoryGetHistory"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/brain/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** SearchEntries */
+        readonly get: operations["ApiV1ProjectsProjectIdBrainSearchSearchEntries"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects/{project_id}/docs": {
         readonly parameters: {
             readonly query?: never;
@@ -5433,6 +5501,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[BrainEntry] */
+        readonly ApiResponse_BrainEntry_: {
+            readonly data: components["schemas"]["BrainEntry"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[BudgetConfig] */
         readonly ApiResponse_BudgetConfig_: {
             readonly data: components["schemas"]["BudgetConfig"] | null;
@@ -6550,6 +6631,32 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[BrainEntryVersion, ...]] */
+        readonly "ApiResponse_tuple_BrainEntryVersion_..._": {
+            readonly data: readonly components["schemas"]["BrainEntryVersion"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[tuple[BrainSearchHit, ...]] */
+        readonly "ApiResponse_tuple_BrainSearchHit_..._": {
+            readonly data: readonly components["schemas"]["BrainSearchHit"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[CareerEvent, ...]] */
         readonly "ApiResponse_tuple_CareerEvent_..._": {
             readonly data: readonly components["schemas"]["CareerEvent"][] | null;
@@ -7376,6 +7483,23 @@ export type components = {
          * @enum {string}
          */
         readonly BackupTrigger: "scheduled" | "manual" | "shutdown" | "startup" | "pre_migration";
+        /** BlockerPayload */
+        readonly BlockerPayload: {
+            /**
+             * @default blocker
+             * @constant
+             */
+            readonly entry_kind: "blocker";
+            /** @description How the blocker was cleared, present once cleared */
+            readonly resolution: string | null;
+            readonly severity: components["schemas"]["BlockerSeverity"];
+        };
+        /**
+         * BlockerSeverity
+         * @description How hard a blocker halts progress.
+         * @enum {string}
+         */
+        readonly BlockerSeverity: "low" | "medium" | "high" | "critical";
         /** BlueprintInfoResponse */
         readonly BlueprintInfoResponse: {
             /**
@@ -7402,6 +7526,128 @@ export type components = {
              */
             readonly tags: readonly string[];
             readonly workflow_type: components["schemas"]["WorkflowType"];
+        };
+        /** BrainEntry */
+        readonly BrainEntry: {
+            /** @description Agent id or operator id of the writer */
+            readonly author: string;
+            /**
+             * @description Provenance pointers backing this entry
+             * @default []
+             */
+            readonly citations: readonly components["schemas"]["project_brain_models_Citation"][];
+            /** @description Optional confidence in the entry, 0..1 */
+            readonly confidence: number | null;
+            /** @description Stable logical identity, constant across revisions */
+            readonly entry_id: string;
+            readonly entry_kind: components["schemas"]["BrainEntryKind"];
+            /** @description Kind-specific payload */
+            readonly payload: components["schemas"]["DecisionPayload"] | components["schemas"]["OpenQuestionPayload"] | components["schemas"]["BlockerPayload"] | components["schemas"]["RiskPayload"] | components["schemas"]["DependencyPayload"] | components["schemas"]["PlanRevisionPayload"];
+            /** @description Owning project */
+            readonly project_id: string;
+            /** @description Why this entry holds (the why) */
+            readonly rationale: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            /**
+             * @description Other brain entry IDs this entry references
+             * @default []
+             */
+            readonly related_entry_ids: readonly string[];
+            /**
+             * @description Task IDs this entry references
+             * @default []
+             */
+            readonly related_task_ids: readonly string[];
+            /**
+             * @description Monotonic version per entry_id; server-assigned by the repository on append. The default is a placeholder for not-yet-persisted entries; append_with_next_revision overrides it.
+             * @default 1
+             */
+            readonly revision: number;
+            readonly status: components["schemas"]["BrainEntryStatus"];
+            /** @description entry_id this entry supersedes (decision/resolution chain) */
+            readonly supersedes_entry_id: string | null;
+            /**
+             * @description Free-form classification tags (unique)
+             * @default []
+             */
+            readonly tags: readonly string[];
+            /** @description Human-readable title */
+            readonly title: string;
+        };
+        /**
+         * BrainEntryKind
+         * @description Discriminator over the six project-brain record kinds.
+         *
+         *     ``DECISION`` records a choice made and why. ``OPEN_QUESTION`` records an
+         *     unresolved question. ``BLOCKER`` records something halting progress.
+         *     ``RISK`` records a standing risk. ``DEPENDENCY`` records a cross-task or
+         *     external dependency. ``PLAN_REVISION`` records how the plan has evolved.
+         * @enum {string}
+         */
+        readonly BrainEntryKind: "decision" | "open_question" | "blocker" | "risk" | "dependency" | "plan_revision";
+        /**
+         * BrainEntryStatus
+         * @description Lifecycle status shared across kinds.
+         *
+         *     A single enum keeps the envelope uniform; each payload validates which
+         *     subset of statuses is legal for its kind, so an open question can never be
+         *     ``MITIGATED`` and a risk can never be ``RESOLVED``.
+         * @enum {string}
+         */
+        readonly BrainEntryStatus: "open" | "resolved" | "accepted" | "superseded" | "blocked" | "cleared" | "active" | "mitigated" | "retired";
+        /** BrainEntryVersion */
+        readonly BrainEntryVersion: {
+            /** @description Writer of the revision */
+            readonly author: string;
+            /** @description Commit identifier */
+            readonly commit_hash: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly committed_at: string;
+            /** @description Revision committed */
+            readonly revision: number;
+            /** @description Commit subject line */
+            readonly summary: string;
+        };
+        /** BrainSearchHit */
+        readonly BrainSearchHit: {
+            /** @description Matching chunk content */
+            readonly chunk_text: string;
+            /** @description Matched entry id */
+            readonly entry_id: string;
+            readonly entry_kind: components["schemas"]["BrainEntryKind"];
+            /** @description Owning project */
+            readonly project_id: string;
+            /** @description Backend-assigned relevance */
+            readonly relevance_score: number;
+        };
+        /** BrainSummary */
+        readonly BrainSummary: {
+            /** @description Writer of this revision */
+            readonly author: string;
+            /** @description Logical entry id */
+            readonly entry_id: string;
+            readonly entry_kind: components["schemas"]["BrainEntryKind"];
+            /** @description Owning project */
+            readonly project_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            /** @description Latest revision shown */
+            readonly revision: number;
+            readonly status: components["schemas"]["BrainEntryStatus"];
+            /** @default [] */
+            readonly tags: readonly string[];
+            /** @description Display title */
+            readonly title: string;
         };
         /**
          * BucketSize
@@ -7718,24 +7964,15 @@ export type components = {
             readonly size_bytes: number;
         };
         /**
-         * Citation
-         * @description Resolvable provenance handle
+         * CitationKind
+         * @description What a citation points at.
+         *
+         *     ``TASK`` is a task id; ``DOC_SLUG`` is a living-doc slug;
+         *     ``KNOWLEDGE_SOURCE`` is a knowledge-substrate source id; ``ENTRY`` is
+         *     another brain entry; ``EXTERNAL_URL`` is an outside link.
+         * @enum {string}
          */
-        readonly Citation: {
-            /** @description Resolved chunk identifier */
-            readonly chunk_id: string;
-            /** @description Chunk content hash at index time */
-            readonly content_hash: string;
-            /** @description Exact source region */
-            readonly locator: components["schemas"]["PdfLocator"] | components["schemas"]["WebLocator"] | components["schemas"]["CodeLocator"] | components["schemas"]["TicketLocator"];
-            /** @description Owning source identifier */
-            readonly source_id: string;
-            readonly source_type: components["schemas"]["SourceType"];
-            /** @description Source title */
-            readonly title: string;
-            /** @description Source URI */
-            readonly uri: string;
-        };
+        readonly CitationKind: "task" | "doc_slug" | "knowledge_source" | "entry" | "external_url";
         /**
          * ClarificationGateConfig
          * @description ClarificationGate settings
@@ -8704,6 +8941,21 @@ export type components = {
          * @enum {string}
          */
         readonly DecisionMakingStyle: "analytical" | "intuitive" | "consultative" | "directive";
+        /** DecisionPayload */
+        readonly DecisionPayload: {
+            /**
+             * @description Options considered and not chosen
+             * @default []
+             */
+            readonly alternatives: readonly string[];
+            /** @description The option chosen */
+            readonly decision_outcome: string;
+            /**
+             * @default decision
+             * @constant
+             */
+            readonly entry_kind: "decision";
+        };
         /** DemoGreeting */
         readonly DemoGreeting: {
             readonly greeting: string;
@@ -8801,6 +9053,27 @@ export type components = {
              */
             readonly approval_chains: readonly components["schemas"]["ApprovalChain"][];
             readonly review_requirements: components["schemas"]["ReviewRequirements"];
+        };
+        /**
+         * DependencyKind
+         * @description What a dependency depends on.
+         *
+         *     ``TASK`` is another task in the project; ``EXTERNAL`` is an outside system,
+         *     vendor, or person; ``DECISION`` is a pending project-brain decision; and
+         *     ``RESOURCE`` is an artefact, credential, or environment.
+         * @enum {string}
+         */
+        readonly DependencyKind: "task" | "external" | "decision" | "resource";
+        /** DependencyPayload */
+        readonly DependencyPayload: {
+            readonly dependency_kind: components["schemas"]["DependencyKind"];
+            /** @description Identifier of the dependency target */
+            readonly depends_on: string;
+            /**
+             * @default dependency
+             * @constant
+             */
+            readonly entry_kind: "dependency";
         };
         /** DiscoverModelsResponse */
         readonly DiscoverModelsResponse: {
@@ -9070,7 +9343,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -9925,11 +10198,30 @@ export type components = {
             /** @description Task to kill */
             readonly task_id: string;
         };
+        /**
+         * Citation
+         * @description Resolvable provenance handle
+         */
+        readonly knowledge_models_Citation: {
+            /** @description Resolved chunk identifier */
+            readonly chunk_id: string;
+            /** @description Chunk content hash at index time */
+            readonly content_hash: string;
+            /** @description Exact source region */
+            readonly locator: components["schemas"]["PdfLocator"] | components["schemas"]["WebLocator"] | components["schemas"]["CodeLocator"] | components["schemas"]["TicketLocator"];
+            /** @description Owning source identifier */
+            readonly source_id: string;
+            readonly source_type: components["schemas"]["SourceType"];
+            /** @description Source title */
+            readonly title: string;
+            /** @description Source URI */
+            readonly uri: string;
+        };
         /** KnowledgeHit */
         readonly KnowledgeHit: {
             /** @description Matching chunk content */
             readonly chunk_text: string;
-            readonly citation: components["schemas"]["Citation"];
+            readonly citation: components["schemas"]["knowledge_models_Citation"];
             /** @description Backend-assigned relevance */
             readonly relevance_score: number;
         };
@@ -10350,19 +10642,16 @@ export type components = {
          * @description Memory type categories for agent memory (§7.2).
          *
          *     ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
-         *     by the living-documentation engine. Entries are stored under a
-         *     system docs agent_id in the docs namespace and scoped to a project
-         *     via the ``project:<project_id>`` tag, then surfaced transparently
-         *     via ``ProjectAwareMemoryFacade``.
-         *
-         *     ``KNOWLEDGE`` is a corpus-scoped (not agent-scoped) category used by
-         *     the knowledge + provenance substrate. Ingested external sources
-         *     (PDFs, web pages, repos, tickets) are chunked and stored under a
-         *     system knowledge agent_id in the knowledge namespace, scoped to a
-         *     project or globally via tags, and carry provenance for citations.
+         *     by the living-documentation engine: entries stored under a system docs
+         *     agent_id, scoped via the ``project:<id>`` tag, surfaced via
+         *     ``ProjectAwareMemoryFacade``. ``KNOWLEDGE`` is the corpus-scoped
+         *     knowledge + provenance substrate (ingested external sources, scoped
+         *     via tags, carrying provenance). ``PROJECT_BRAIN`` is the project-scoped
+         *     structured-state store: brain entries under a system brain agent_id,
+         *     scoped via ``project:<id>``, surfaced via the same facade.
          * @enum {string}
          */
-        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc" | "knowledge";
+        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc" | "knowledge" | "project_brain";
         /**
          * MemoryConfig
          * @description Memory configuration
@@ -10564,6 +10853,16 @@ export type components = {
                 readonly [key: string]: unknown;
             } | null;
         };
+        /** OpenQuestionPayload */
+        readonly OpenQuestionPayload: {
+            /** @description The answer, present once the question is resolved */
+            readonly answer: string | null;
+            /**
+             * @default open_question
+             * @constant
+             */
+            readonly entry_kind: "open_question";
+        };
         /**
          * OrgRole
          * @description Permission-level role for org configuration access.
@@ -10754,6 +11053,26 @@ export type components = {
         readonly PaginatedResponse_BackupInfo_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["BackupInfo"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[BrainSummary] */
+        readonly PaginatedResponse_BrainSummary_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["BrainSummary"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -11990,6 +12309,18 @@ export type components = {
              */
             readonly total_duration_ms: number;
         };
+        /** PlanRevisionPayload */
+        readonly PlanRevisionPayload: {
+            /**
+             * @default plan_revision
+             * @constant
+             */
+            readonly entry_kind: "plan_revision";
+            /** @description What this revision changes */
+            readonly summary: string;
+            /** @description entry_id of the plan revision this one replaces */
+            readonly supersedes_plan_entry_id: string | null;
+        };
         /**
          * PolicyFieldOrigin
          * @description Origin level for a resolved ceremony policy field.
@@ -12203,6 +12534,14 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+        };
+        /** Citation */
+        readonly project_brain_models_Citation: {
+            /** @description Optional in-source locator (page, line range, anchor) */
+            readonly locator: string | null;
+            readonly source_kind: components["schemas"]["CitationKind"];
+            /** @description Identifier of the cited source */
+            readonly source_ref: string;
         };
         /** ProjectCharter */
         readonly ProjectCharter: {
@@ -12914,6 +13253,24 @@ export type components = {
          * @enum {string}
          */
         readonly RiskClassifierType: "default" | "workload_adaptive" | "operator_configurable" | "time_based";
+        /**
+         * RiskLevel
+         * @description Qualitative likelihood or impact band for a risk.
+         * @enum {string}
+         */
+        readonly RiskLevel: "low" | "medium" | "high";
+        /** RiskPayload */
+        readonly RiskPayload: {
+            /**
+             * @default risk
+             * @constant
+             */
+            readonly entry_kind: "risk";
+            readonly impact: components["schemas"]["RiskLevel"];
+            readonly likelihood: components["schemas"]["RiskLevel"];
+            /** @description The mitigation, present once one is chosen */
+            readonly mitigation: string | null;
+        };
         /**
          * RiskTolerance
          * @description Risk tolerance level for agent personality.
@@ -21860,6 +22217,140 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdBrainListEntries: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Filter by entry_kind (decision / open_question / blocker / risk / dependency / plan_revision) */
+                readonly entry_kind?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Filter by status (e.g. open / accepted / blocked / active) */
+                readonly status?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_BrainSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdBrainEntryIdGetEntry: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly entry_id: string;
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_BrainEntry_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdBrainEntryIdHistoryGetHistory: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly entry_id: string;
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_BrainEntryVersion_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdBrainSearchSearchEntries: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Maximum hits to return */
+                readonly limit?: number;
+                /** @description Search query text */
+                readonly q: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_BrainSearchHit_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
             readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

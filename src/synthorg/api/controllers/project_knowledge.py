@@ -12,13 +12,14 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -109,19 +110,22 @@ class ProjectKnowledgeController(Controller):
         Returns:
             ``PaginatedResponse[KnowledgeSource]`` instance.
         """
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         sources = await _knowledge_service(state).list_sources(
             project_id=NotBlankStr(project_id),
             include_global=include_global,
             stale_only=stale_only,
             limit=limit + 1,
+            offset=offset,
         )
-        page, meta = paginate_cursor(
-            sources,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(sources),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
-        return PaginatedResponse[KnowledgeSource](data=page, pagination=meta)
+        return PaginatedResponse[KnowledgeSource](data=sources[:limit], pagination=meta)
 
     @get("/search", guards=[require_read_access])
     async def search(
@@ -193,16 +197,19 @@ class GlobalKnowledgeController(Controller):
         Returns:
             ``PaginatedResponse[KnowledgeSource]`` instance.
         """
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         sources = await _knowledge_service(state).list_sources(
             project_id=None,
             include_global=True,
             stale_only=stale_only,
             limit=limit + 1,
+            offset=offset,
         )
-        page, meta = paginate_cursor(
-            sources,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(sources),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
-        return PaginatedResponse[KnowledgeSource](data=page, pagination=meta)
+        return PaginatedResponse[KnowledgeSource](data=sources[:limit], pagination=meta)

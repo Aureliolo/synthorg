@@ -513,7 +513,7 @@
     },
     {
       "kind": "code",
-      "loc": 365,
+      "loc": 368,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -933,14 +933,21 @@
     },
     {
       "kind": "code",
-      "loc": 188,
+      "loc": 213,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/project_brain.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 192,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/project_docs.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 176,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/project_knowledge.py",
       "owning_feature": "api_core"
@@ -1506,9 +1513,9 @@
       "owning_feature": "api_core"
     },
     {
-      "kind": "code",
-      "loc": 446,
-      "loc_cap": 500,
+      "kind": "orchestrator",
+      "loc": 532,
+      "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
     },
@@ -3684,14 +3691,14 @@
     },
     {
       "kind": "declarative",
-      "loc": 765,
+      "loc": 764,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/core/error_taxonomy.py",
       "owning_feature": null
@@ -3922,7 +3929,7 @@
     },
     {
       "kind": "code",
-      "loc": 73,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/docs_engine/factory.py",
       "owning_feature": "docs"
@@ -3950,7 +3957,7 @@
     },
     {
       "kind": "code",
-      "loc": 188,
+      "loc": 243,
       "loc_cap": 500,
       "module": "src/synthorg/docs_engine/retrieval_facade.py",
       "owning_feature": "docs"
@@ -5175,7 +5182,7 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 284,
       "loc_cap": 500,
       "module": "src/synthorg/engine/loop_tool_execution.py",
       "owning_feature": "engine"
@@ -5539,7 +5546,7 @@
     },
     {
       "kind": "code",
-      "loc": 160,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/engine/prompt_safety.py",
       "owning_feature": "engine"
@@ -9970,6 +9977,13 @@
     },
     {
       "kind": "code",
+      "loc": 139,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/domains/_brain_args.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
       "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/_charter_args.py",
@@ -10078,6 +10092,13 @@
       "loc": 114,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/approvals.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 203,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/domains/brain.py",
       "owning_feature": "meta"
     },
     {
@@ -10253,6 +10274,13 @@
       "loc": 378,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/approvals.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 330,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/brain.py",
       "owning_feature": "meta"
     },
     {
@@ -11902,6 +11930,13 @@
     },
     {
       "kind": "code",
+      "loc": 42,
+      "loc_cap": 500,
+      "module": "src/synthorg/observability/events/project_brain.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "code",
       "loc": 17,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/promotion.py",
@@ -12658,6 +12693,13 @@
     },
     {
       "kind": "code",
+      "loc": 157,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_project_brain_sql.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 106,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/__init__.py",
@@ -13029,7 +13071,7 @@
     },
     {
       "kind": "code",
-      "loc": 1161,
+      "loc": 1175,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/backend.py",
       "owning_feature": "persistence"
@@ -13288,6 +13330,13 @@
     },
     {
       "kind": "code",
+      "loc": 497,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/project_brain_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 326,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/project_cost_aggregate_repo.py",
@@ -13477,6 +13526,13 @@
     },
     {
       "kind": "code",
+      "loc": 266,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/project_brain_protocol.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/project_cost_aggregate_protocol.py",
@@ -13505,7 +13561,7 @@
     },
     {
       "kind": "code",
-      "loc": 615,
+      "loc": 620,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/protocol.py",
       "owning_feature": "persistence"
@@ -13603,7 +13659,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 771,
+      "loc": 780,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/_backend_accessors.py",
       "owning_feature": "persistence"
@@ -13645,7 +13701,7 @@
     },
     {
       "kind": "code",
-      "loc": 877,
+      "loc": 886,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/backend.py",
       "owning_feature": "persistence"
@@ -13886,6 +13942,13 @@
       "loc": 176,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/principle_override_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 477,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/project_brain_repo.py",
       "owning_feature": "persistence"
     },
     {
@@ -14132,6 +14195,125 @@
       "loc_cap": 500,
       "module": "src/synthorg/persistence/workflow_execution_protocol.py",
       "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 11,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/__init__.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 39,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/_locks.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 204,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/chunker.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 67,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/constants.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 51,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/errors.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 112,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/factory.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "feature",
+      "loc": 45,
+      "loc_cap": 100,
+      "module": "src/synthorg/project_brain/feature.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 154,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/indexer.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "declarative",
+      "loc": 336,
+      "loc_cap": null,
+      "module": "src/synthorg/project_brain/models.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 172,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/mutation.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 196,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/query.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 119,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/replay.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 79,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/serializer.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "service",
+      "loc": 598,
+      "loc_cap": 600,
+      "module": "src/synthorg/project_brain/service.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 28,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/state.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 61,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/tool_factory.py",
+      "owning_feature": "project_brain"
+    },
+    {
+      "kind": "code",
+      "loc": 250,
+      "loc_cap": 500,
+      "module": "src/synthorg/project_brain/writer.py",
+      "owning_feature": "project_brain"
     },
     {
       "kind": "code",
@@ -16357,6 +16539,34 @@
       "loc": 213,
       "loc_cap": 500,
       "module": "src/synthorg/tools/base.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 8,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/brain/__init__.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 90,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/brain/_args.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 138,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/brain/search_brain.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 188,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/brain/write_brain_entry.py",
       "owning_feature": "tools"
     },
     {

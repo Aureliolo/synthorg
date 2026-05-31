@@ -11,13 +11,14 @@ from litestar import Controller, Response, get
 from litestar.datastructures import State
 from litestar.params import QueryParameter
 
+from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import (
     CursorLimit,
     CursorParam,
     cursor_secret_of,
-    paginate_cursor,
+    encode_countless_seek_meta,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
@@ -136,19 +137,22 @@ class ProjectDocsController(Controller):
             ``PaginatedResponse[DocSummary]`` instance.
         """
         parsed = _parse_doc_type(doc_type)
+        secret = cursor_secret_of(state.app_state)
+        offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         summaries = await _docs_service(state).list_docs(
             project_id=NotBlankStr(project_id),
             doc_type=parsed,
             tag=tag,
             limit=limit + 1,
+            offset=offset,
         )
-        page, meta = paginate_cursor(
-            summaries,
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(summaries),
             limit=limit,
-            cursor=cursor,
-            secret=cursor_secret_of(state.app_state),
+            secret=secret,
         )
-        return PaginatedResponse[DocSummary](data=page, pagination=meta)
+        return PaginatedResponse[DocSummary](data=summaries[:limit], pagination=meta)
 
     @get("/search", guards=[require_read_access])
     async def search_docs(

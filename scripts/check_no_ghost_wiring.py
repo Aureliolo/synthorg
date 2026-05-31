@@ -83,6 +83,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # factory + tool-factory construction lets the manifest track the
     # knowledge substrate's wiring (#1988).
     "src/synthorg/knowledge/",
+    # project_brain/ is reached at boot via
+    # api/lifecycle_helpers/feature_wiring.py::_wire_project_brain
+    # (build_project_brain_service); counting its factory + tool-factory
+    # construction lets the manifest track the project-brain wiring (#1996).
+    "src/synthorg/project_brain/",
     # research/ is reached at boot via api/app.py::_wire_research_engine
     # (build_research_service / build_research_tool_factory); counting its
     # factory + strategy + tool-factory construction lets the manifest track
