@@ -188,17 +188,21 @@ def _run_preflight_checks(
     checks: list[PreflightCheck] = []
     checks.append(_check_dependencies())
     checks.append(_check_gpu())
-    checks.append(
-        _check_documents(
-            request.source_dir,
-            min_required=min_required,
-            min_recommended=min_recommended,
-            max_depth=max_depth,
-            walk_timeout_s=walk_timeout_s,
+    # The document scan applies only to directory mode; trajectory mode
+    # sources from persisted org history, so there is no source dir to walk.
+    if request.source_dir is not None:
+        checks.append(
+            _check_documents(
+                request.source_dir,
+                min_required=min_required,
+                min_recommended=min_recommended,
+                max_depth=max_depth,
+                walk_timeout_s=walk_timeout_s,
+            )
         )
-    )
     output_dir = request.output_dir or request.source_dir
-    checks.append(_check_disk_space(output_dir))
+    if output_dir is not None:
+        checks.append(_check_disk_space(output_dir))
     return checks
 
 

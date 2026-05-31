@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Tests for the checkpoint promotion gate (#1990).
+"""Tests for the checkpoint promotion gate.
 
 The gate is a pure, signal-agnostic decision over two measured scores plus a
 margin. It is the load-bearing primitive behind "promotes ONLY on a measured

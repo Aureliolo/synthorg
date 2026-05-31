@@ -1,4 +1,4 @@
-"""Checkpoint promotion gate for the continual-improvement finetune (#1990).
+"""Checkpoint promotion gate for the continual-improvement finetune.
 
 A new embedding checkpoint is promoted (activated as the live embedder) ONLY
 when a measured A/B shows it beats the incumbent by at least a margin. The gate
@@ -13,6 +13,8 @@ never promote.
 """
 
 from typing import Final
+
+from synthorg.memory.embedding.fine_tune_models import EvalMetrics
 
 # Minimum absolute score gain (in the caller's own units) required to promote.
 # For the orchestrator this is an NDCG@10 delta; the golden-benchmark harness
@@ -46,3 +48,21 @@ def should_promote(
         msg = "margin must be positive so a tie does not promote"
         raise ValueError(msg)
     return candidate_score - base_score >= margin
+
+
+def should_promote_checkpoint(eval_metrics: EvalMetrics | None) -> bool:
+    """Decide whether a fine-tuned checkpoint earns promotion.
+
+    Feeds the measured eval-stage NDCG@10 A/B (fine-tuned vs base) to the pure
+    promotion gate. A missing measurement (only possible on a resume where the
+    deploy stage runs without a fresh evaluation) is treated as "no win".
+
+    Returns:
+        ``True`` only when the eval A/B beats base by the promotion margin.
+    """
+    if eval_metrics is None:
+        return False
+    return should_promote(
+        eval_metrics.base_ndcg_at_10,
+        eval_metrics.ndcg_at_10,
+    )

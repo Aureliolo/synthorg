@@ -20,20 +20,20 @@ from synthorg.memory.embedding.fine_tune import (
     contrastive_fine_tune,
     deploy_checkpoint,
     evaluate_checkpoint,
-    generate_training_data,
     mine_hard_negatives,
 )
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
-    EvalMetrics,
-    FineTuneDataSourceType,
     FineTuneRun,
-    FineTuneRunConfig,
     FineTuneStatus,
 )
-from synthorg.memory.embedding.promotion import should_promote
-from synthorg.memory.embedding.training_writer import split_and_write_pairs
-from synthorg.memory.errors import FineTuneCancelledError, FineTuneDataSourceError
+from synthorg.memory.embedding.fine_tune_run_helpers import (
+    build_config,
+    dir_size,
+    generate_run_training_data,
+)
+from synthorg.memory.embedding.promotion import should_promote_checkpoint
+from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -152,7 +152,7 @@ class FineTuneOrchestrator:
                 msg = "A fine-tuning run is already active"
                 raise RuntimeError(msg)
 
-            config = _build_config(request)
+            config = build_config(request)
             now = datetime.now(UTC)
             run = FineTuneRun(
                 id=str(uuid.uuid4()),
@@ -412,54 +412,6 @@ class FineTuneOrchestrator:
                 error=safe_error,
             )
 
-    async def _generate_training_data(
-        self,
-        cfg: FineTuneRunConfig,
-        out_dir: str,
-        run: FineTuneRun,
-    ) -> tuple[Path, Path]:
-        """Produce stage-1 train/validation files for the run's source mode.
-
-        Returns:
-            ``(training_path, validation_path)``.
-
-        Raises:
-            FineTuneDataSourceError: If trajectory mode is selected without a
-                wired data source.
-            ValueError: If directory mode is selected without a ``source_dir``
-                (guarded upstream by the config validator).
-        """
-        if cfg.data_source is FineTuneDataSourceType.TRAJECTORY:
-            if self._training_data_source is None:
-                msg = "trajectory data source selected but none is wired"
-                raise FineTuneDataSourceError(msg)
-            pairs = await self._training_data_source.collect()
-            records = [
-                {
-                    "query": str(pair.query),
-                    "positive_passage": str(pair.positive_passage),
-                }
-                for pair in pairs
-            ]
-            return await split_and_write_pairs(
-                records,
-                out_dir,
-                validation_split=cfg.validation_split,
-            )
-        if cfg.source_dir is None:
-            # Unreachable: the FineTuneRunConfig validator requires source_dir
-            # in directory mode. Guard so the type-checker can narrow.
-            msg = "source_dir is required in directory mode"
-            raise ValueError(msg)
-        return await generate_training_data(
-            source_dir=cfg.source_dir,
-            output_dir=out_dir,
-            llm_provider=self._llm_provider,
-            validation_split=cfg.validation_split,
-            progress_callback=self._make_progress_cb(run),
-            cancellation=self._cancellation,
-        )
-
     async def _run_stages(
         self,
         run: FineTuneRun,
@@ -480,11 +432,15 @@ class FineTuneOrchestrator:
                 run,
                 FineTuneStage.GENERATING_DATA,
             )
-            train_path, val_path = await self._generate_training_data(cfg, out_dir, run)
-            run = await self._complete_stage(
-                run,
-                "generating_data",
+            train_path, val_path = await generate_run_training_data(
+                cfg,
+                out_dir,
+                training_data_source=self._training_data_source,
+                llm_provider=self._llm_provider,
+                progress_callback=self._make_progress_cb(run),
+                cancellation=self._cancellation,
             )
+            run = await self._complete_stage(run, "generating_data")
         else:
             train_path = Path(f"{out_dir}/training.jsonl")
             val_path = Path(f"{out_dir}/validation.jsonl")
@@ -561,7 +517,7 @@ class FineTuneOrchestrator:
         else:
             eval_metrics = None
 
-        # Stage 5: Deploy -- promote ONLY on a measured win (#1990). A tie or
+        # Stage 5: Deploy -- promote ONLY on a measured win. A tie or
         # regression records the evaluated checkpoint inactive and leaves the
         # live embedder config untouched.
         if "deploying" not in completed:
@@ -569,7 +525,7 @@ class FineTuneOrchestrator:
                 run,
                 FineTuneStage.DEPLOYING,
             )
-            promote = _should_promote_checkpoint(eval_metrics)
+            promote = should_promote_checkpoint(eval_metrics)
             backup_json: str | None = None
             if promote:
                 backup_json = await deploy_checkpoint(
@@ -588,7 +544,7 @@ class FineTuneOrchestrator:
                     ndcg_at_10=(eval_metrics.ndcg_at_10 if eval_metrics else None),
                 )
             # Persist checkpoint record (active only on a promote).
-            size_bytes = _dir_size(checkpoint_path)
+            size_bytes = dir_size(checkpoint_path)
             record = CheckpointRecord(
                 id=str(uuid.uuid4()),
                 run_id=run.id,
@@ -805,62 +761,3 @@ class FineTuneOrchestrator:
                 exc,
                 note="unhandled exception in pipeline task",
             )
-
-
-# -- Helpers -----------------------------------------------------------
-
-
-def _should_promote_checkpoint(eval_metrics: EvalMetrics | None) -> bool:
-    """Decide whether a fine-tuned checkpoint earns promotion.
-
-    Feeds the measured eval-stage NDCG@10 A/B (fine-tuned vs base) to the pure
-    promotion gate. A missing measurement (only possible on a resume where the
-    deploy stage runs without a fresh evaluation) is treated as "no win".
-
-    Returns:
-        ``True`` only when the eval A/B beats base by the promotion margin.
-    """
-    if eval_metrics is None:
-        return False
-    return should_promote(
-        eval_metrics.base_ndcg_at_10,
-        eval_metrics.ndcg_at_10,
-    )
-
-
-def _dir_size(path: Path) -> int:
-    """Compute total size in bytes of a directory.
-
-    Returns:
-        Result of type ``int``.
-    """
-    if not path.is_dir():
-        return path.stat().st_size if path.exists() else 0
-    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-
-
-def _build_config(request: FineTuneRequest) -> FineTuneRunConfig:
-    """Build a frozen config snapshot from a request.
-
-    Returns:
-        Result of type ``FineTuneRunConfig``.
-    """
-    overrides = {
-        k: v
-        for k, v in request.model_dump(
-            exclude={"resume_run_id"},
-        ).items()
-        if v is not None
-    }
-    defaults = {
-        "base_model": "all-MiniLM-L6-v2",
-        "output_dir": "/data/fine-tune",
-        "epochs": 3,
-        "learning_rate": 1e-5,
-        "temperature": 0.02,
-        "top_k": 4,
-        "batch_size": 128,
-        "validation_split": 0.1,
-    }
-    merged = {**defaults, **overrides}
-    return FineTuneRunConfig(**merged)

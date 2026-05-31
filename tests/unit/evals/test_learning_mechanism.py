@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Load-bearing proof for the learning curve (#1983).
+"""Load-bearing proof for the learning curve.
 
 The provable claim "an org that learns" rests on this experiment, not on
 per-release scorecards (there is only one release). The honest construction:
@@ -14,9 +14,9 @@ per-release scorecards (there is only one release). The honest construction:
   proposer's stable system-prompt marker), so the round-over-round
   improvement cannot flake.
 
-With the pipeline active a round-1 failure is captured as a lesson, injected
-on round 2, and flips the outcome to success. With procedural memory disabled
-the same failure recurs every round: a flat curve. The experiment therefore
+With the pipeline active the first failure is captured as a lesson, injected
+on the next pass, and flips the outcome to success. With procedural memory
+disabled the same failure recurs every pass: a flat curve. The experiment
 tests the learning MACHINERY end to end, not "do LLMs get smarter".
 """
 
@@ -199,7 +199,7 @@ async def test_learning_pipeline_flips_outcome() -> None:
     await backend.connect()
     identity = _make_identity()
 
-    # Round 1: no lesson yet -> naive branch fails -> recovery -> proposer
+    # First pass: no lesson yet -> naive branch fails -> recovery -> proposer
     # (scripted) -> lesson stored. This is the REAL capture path.
     round_one = await engine.run(identity=identity, task=_make_task())
     assert round_one.termination_reason is TerminationReason.ERROR
@@ -210,7 +210,7 @@ async def test_learning_pipeline_flips_outcome() -> None:
     assert lesson_messages
     assert any(_MEMORY_MARKER in (m.content or "") for m in lesson_messages)
 
-    # Round 2: the injected lesson flips the deterministic LLM to the
+    # Second pass: the injected lesson flips the deterministic LLM to the
     # corrected branch -> success.
     round_two = await engine.run(
         identity=identity,

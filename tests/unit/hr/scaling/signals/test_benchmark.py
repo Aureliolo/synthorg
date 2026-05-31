@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Tests for the scaling benchmark signal source (#1983).
+"""Tests for the scaling benchmark signal source.
 
 Closes the benchmark -> hiring/scaling feedback path: the source reads the same
 golden-benchmark learning curve the meta-loop consumes and emits a regression

@@ -296,7 +296,7 @@ class TestOrchestratorStatus:
         assert status.run_id == run.id
 
 
-# -- Promotion gate (#1990) -------------------------------------------
+# -- Promotion gate ---------------------------------------------------
 
 
 @pytest.mark.unit
@@ -408,7 +408,7 @@ class TestPromotionGate:
         assert status.stage == FineTuneStage.COMPLETE
 
 
-# -- Training-data source selection (#1990) ---------------------------
+# -- Training-data source selection -----------------------------------
 
 
 class _FakeTrainingDataSource:
@@ -441,6 +441,7 @@ _HARVESTED_PAIRS = (
 )
 
 _ORCH = "synthorg.memory.embedding.fine_tune_orchestrator"
+_HELPERS = "synthorg.memory.embedding.fine_tune_run_helpers"
 
 
 @contextlib.contextmanager
@@ -475,7 +476,7 @@ def _mock_stages_2_to_5() -> Any:
 
 @pytest.mark.unit
 class TestTrainingDataSourceSelection:
-    """Stage 1 dispatches to the configured training-data source (#1990)."""
+    """Stage 1 dispatches to the configured training-data source."""
 
     async def test_trajectory_mode_harvests_from_the_source(
         self,
@@ -503,8 +504,8 @@ class TestTrainingDataSourceSelection:
         req = FineTuneRequest(data_source=FineTuneDataSourceType.TRAJECTORY)
         with (
             _mock_stages_2_to_5(),
-            patch(f"{_ORCH}.split_and_write_pairs", side_effect=_spy_writer),
-            patch(f"{_ORCH}.generate_training_data") as scan,
+            patch(f"{_HELPERS}.split_and_write_pairs", side_effect=_spy_writer),
+            patch(f"{_HELPERS}.generate_training_data") as scan,
         ):
             await orchestrator.start(req)
             if orchestrator._current_task is not None:
@@ -544,8 +545,8 @@ class TestTrainingDataSourceSelection:
         assert req.data_source is FineTuneDataSourceType.DIRECTORY
         with (
             _mock_stages_2_to_5(),
-            patch(f"{_ORCH}.generate_training_data", side_effect=_scan) as scan,
-            patch(f"{_ORCH}.split_and_write_pairs") as writer,
+            patch(f"{_HELPERS}.generate_training_data", side_effect=_scan) as scan,
+            patch(f"{_HELPERS}.split_and_write_pairs") as writer,
         ):
             await orchestrator.start(req)
             if orchestrator._current_task is not None:
@@ -641,7 +642,7 @@ def _mock_all_stages(
 
     base = "synthorg.memory.embedding.fine_tune_orchestrator"
     with (
-        patch(f"{base}.generate_training_data", side_effect=_gen_data),
+        patch(f"{_HELPERS}.generate_training_data", side_effect=_gen_data),
         patch(f"{base}.mine_hard_negatives", side_effect=_mine),
         patch(f"{base}.contrastive_fine_tune", side_effect=_train),
         patch(f"{base}.evaluate_checkpoint", side_effect=_eval),

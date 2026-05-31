@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Engine-level proof for success-derived procedural capture (#1983, GAP-B).
+"""Engine-level proof for success-derived procedural capture.
 
 The procedural-memory learning loop has two halves: capture (this file) and
 injection (``test_agent_engine_memory_injection.py``).  Before this wiring the

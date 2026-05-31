@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.meta.models import (
+from synthorg.meta.signal_models import (
     OrgBenchmarkSummary,
     OrgBudgetSummary,
     OrgCoordinationSummary,

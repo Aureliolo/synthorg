@@ -842,7 +842,7 @@
     },
     {
       "kind": "code",
-      "loc": 430,
+      "loc": 432,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/memory/_preflight.py",
       "owning_feature": "api_core"
@@ -1521,9 +1521,16 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 620,
+      "loc": 536,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 100,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/lifecycle_helpers/finetune_wiring.py",
       "owning_feature": "api_core"
     },
     {
@@ -9025,9 +9032,16 @@
     },
     {
       "kind": "code",
-      "loc": 729,
+      "loc": 644,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_orchestrator.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 102,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/fine_tune_run_helpers.py",
       "owning_feature": "memory"
     },
     {
@@ -9039,7 +9053,7 @@
     },
     {
       "kind": "code",
-      "loc": 35,
+      "loc": 50,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/promotion.py",
       "owning_feature": "memory"
@@ -10677,7 +10691,7 @@
     },
     {
       "kind": "code",
-      "loc": 662,
+      "loc": 660,
       "loc_cap": 500,
       "module": "src/synthorg/meta/models.py",
       "owning_feature": "meta"
@@ -10873,7 +10887,14 @@
     },
     {
       "kind": "code",
-      "loc": 543,
+      "loc": 66,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/rules/benchmark_rule.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 492,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rules/builtin.py",
       "owning_feature": "meta"

@@ -1,5 +1,5 @@
 # module-kind: code
-"""Real-trajectory training-data sourcing for the finetune pipeline (#1990).
+"""Real-trajectory training-data sourcing for the finetune pipeline.
 
 The embedding finetune used to scan a static document directory. This module
 harvests the org's REAL working history into ``{query, positive_passage}``

@@ -20,7 +20,7 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
-from synthorg.api.lifecycle_helpers.feature_wiring import (
+from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
 from synthorg.api.state import AppState

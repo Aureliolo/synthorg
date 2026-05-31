@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Engine-level proof for context memory injection (#1983, GAP-A).
+"""Engine-level proof for context memory injection in the live run loop.
 
 The capture half of the loop (``test_agent_engine_success_capture.py``) stores
 lessons; this half makes the live engine *use* them.  Before this wiring the

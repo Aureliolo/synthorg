@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Golden-benchmark A/B promotion proof for the finetune gate (#1990).
+"""Golden-benchmark A/B promotion proof for the finetune gate.
 
 The continual-improvement finetune "A/Bs on the golden benchmark; promotes ONLY
 on a measured win". This exercises that end to end under the deterministic sim

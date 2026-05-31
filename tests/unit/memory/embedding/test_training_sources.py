@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Tests for the real-trajectory training-data source (#1990).
+"""Tests for the real-trajectory training-data source.
 
 The finetune sources training pairs from the org's REAL working history --
 accepted deliverables (completed-task artifacts), trajectories (EPISODIC

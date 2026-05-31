@@ -1,10 +1,9 @@
 # module-kind: tests
 """End-to-end proof that the benchmark signal *drives* a corrective action.
 
-W1 proves the learning *mechanism* (capture -> inject flips the curve).
-This module proves the W3 claim of issue #1983: the golden-benchmark
-quality signal feeds back into the self-improvement loop so that a
-measured regression turns into a concrete corrective proposal.
+The golden-benchmark quality signal feeds back into the self-improvement
+loop so that a measured regression turns into a concrete corrective
+proposal.
 
 The chain exercised is the real pipeline -- recorded scorecard history
 -> ``BenchmarkSignalAggregator`` -> ``SnapshotBuilder`` -> ``RuleEngine``
@@ -24,6 +23,13 @@ import pytest
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.learning_curve import ScorecardSummary, append_summary
 from synthorg.meta.models import (
+    ProposalAltitude,
+    RuleSeverity,
+)
+from synthorg.meta.rules.benchmark_rule import BenchmarkRegressionRule
+from synthorg.meta.rules.builtin import default_rules
+from synthorg.meta.rules.engine import RuleEngine
+from synthorg.meta.signal_models import (
     OrgBenchmarkSummary,
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -33,11 +39,7 @@ from synthorg.meta.models import (
     OrgScalingSummary,
     OrgSignalSnapshot,
     OrgTelemetrySummary,
-    ProposalAltitude,
-    RuleSeverity,
 )
-from synthorg.meta.rules.builtin import BenchmarkRegressionRule, default_rules
-from synthorg.meta.rules.engine import RuleEngine
 from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
 from synthorg.meta.signals.budget import BudgetSignalAggregator
 from synthorg.meta.signals.coordination import CoordinationSignalAggregator

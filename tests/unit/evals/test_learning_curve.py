@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Learning-curve acceptance under the deterministic benchmark runner (#1983).
+"""Learning-curve acceptance under the deterministic benchmark runner.
 
 Re-runs ``evals.run.run_benchmark_async`` across rounds while a single procedural
 memory backend accumulates. The benchmark score RISES because the company
