@@ -10418,7 +10418,7 @@
     },
     {
       "kind": "code",
-      "loc": 170,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/_memory_finetune_parse.py",
       "owning_feature": "meta"
