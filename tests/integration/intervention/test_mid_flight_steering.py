@@ -167,16 +167,24 @@ class TestMidFlightSteeringAcceptance:
             )
             assert engine.cancelled == [_OBSOLETE_TASK]
 
-            # 2. The brain records the directive as a PLAN_REVISION whose
-            #    rationale is the operator's redirect text.
+            # 2. The brain records the directive as a PLAN_REVISION tagged
+            #    steering; the board projection carries the id + tags.
             recorded = await brain_service.list_current(  # type: ignore[attr-defined]
                 project_id=_PROJECT,
                 entry_kind=BrainEntryKind.PLAN_REVISION,
             )
             assert len(recorded) == 1
-            assert recorded[0].entry_id == result.directive_id
-            assert recorded[0].rationale == _DIRECTIVE_TEXT
-            assert NotBlankStr("steering") in recorded[0].tags
+            summary = recorded[0]
+            assert summary.entry_id == result.directive_id
+            assert NotBlankStr("steering") in summary.tags
+            # The full entry stores the operator's redirect text verbatim as
+            # its rationale (the summary projection omits rationale).
+            entry = await brain_service.get_entry(  # type: ignore[attr-defined]
+                project_id=_PROJECT,
+                entry_id=result.directive_id,
+            )
+            assert entry.rationale == _DIRECTIVE_TEXT
+            assert entry.entry_kind is BrainEntryKind.PLAN_REVISION
 
             # 3. The in-flight agent adopts the directive at its turn boundary.
             run = await ReactLoop(steering_inbox=inbox).execute(
