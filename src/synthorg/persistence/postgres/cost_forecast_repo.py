@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -42,7 +42,6 @@ from synthorg.persistence.cost_forecast_protocol import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
 
     from psycopg_pool import AsyncConnectionPool
 
@@ -78,7 +77,7 @@ _UPSERT_SQL = f"""
 """  # noqa: S608 -- column list is a compile-time constant
 
 
-def _row_to_forecast(row: dict[str, Any]) -> Forecast:
+def _row_to_forecast(row: DictRow) -> Forecast:
     """Convert a Postgres dict row into a :class:`Forecast`.
 
     Returns:

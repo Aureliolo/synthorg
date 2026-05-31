@@ -9,7 +9,7 @@ All query methods use parameterised SQL internally to prevent
 injection.
 """
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
-class JsonbQueryCapability(Protocol):
+class JsonbQueryCapability[RowT](Protocol):
     """Optional JSONB-native query extension for Postgres backends.
 
     Repositories implementing this protocol support GIN-indexed
@@ -32,13 +32,13 @@ class JsonbQueryCapability(Protocol):
     async def query_jsonb_contains(  # noqa: PLR0913
         self,
         column: str,
-        value: dict[str, Any] | list[Any],
+        value: dict[str, object] | list[object],
         *,
         since: datetime | None = None,
         until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
-    ) -> tuple[tuple[Any, ...], int]:
+    ) -> tuple[tuple[RowT, ...], int]:
         """Query rows where a JSONB column contains the given value.
 
         Uses the Postgres ``@>`` containment operator, which is
@@ -66,7 +66,7 @@ class JsonbQueryCapability(Protocol):
         until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
-    ) -> tuple[tuple[Any, ...], int]:
+    ) -> tuple[tuple[RowT, ...], int]:
         """Query rows where a JSONB column has the given top-level key.
 
         Uses the Postgres ``?`` existence operator, which is

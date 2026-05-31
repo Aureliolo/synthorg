@@ -8,7 +8,6 @@ SQLite connection provides survival across restarts.
 import contextlib
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any
 
 import aiosqlite
 
@@ -38,7 +37,7 @@ from synthorg.persistence.sqlite._shared import WriteContext
 logger = get_logger(__name__)
 
 
-def _row_to_session(row: Any) -> Session:
+def _row_to_session(row: aiosqlite.Row) -> Session:
     """Deserialize an aiosqlite.Row into a :class:`Session`.
 
     SQLite stores timestamps as TEXT (``aiosqlite`` returns them as

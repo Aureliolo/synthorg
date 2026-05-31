@@ -5,10 +5,10 @@ record) plus denormalised ``run_id`` / ``brief_id`` / ``project_id`` /
 ``status`` / ``created_at`` columns for filtering and ordering.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, TupleRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -56,7 +56,7 @@ _UPSERT_SQL = """
 """
 
 
-def _row_to_run(row: dict[str, Any]) -> ResearchRun:
+def _row_to_run(row: DictRow) -> ResearchRun:
     """Reconstruct a :class:`ResearchRun` from its persisted JSON blob.
 
     Returns:
@@ -88,7 +88,7 @@ class PostgresResearchRunRepository:
         )
 
     async def _safe_rollback(
-        self, conn: psycopg.AsyncConnection[Any], *, event: str
+        self, conn: psycopg.AsyncConnection[TupleRow], *, event: str
     ) -> None:
         """Safe rollback."""
         try:
@@ -313,9 +313,7 @@ class PostgresResearchRunRepository:
         )
         return count
 
-    def _rows_to_tuple(
-        self, rows: tuple[dict[str, Any], ...]
-    ) -> tuple[ResearchRun, ...]:
+    def _rows_to_tuple(self, rows: tuple[DictRow, ...]) -> tuple[ResearchRun, ...]:
         """Deserialise a row batch with one shared error path.
 
         Returns:

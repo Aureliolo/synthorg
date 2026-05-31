@@ -6,9 +6,10 @@ Owns ``migrate``, ``_apply_timescaledb_setup``, and
 backend.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
+from psycopg.rows import TupleRow
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
@@ -156,7 +157,7 @@ class PostgresMigrationMixin:
 
     async def _create_hypertable(
         self,
-        cur: psycopg.AsyncCursor[Any],
+        cur: psycopg.AsyncCursor[TupleRow],
         table: str,
         chunk_interval: str,
     ) -> None:

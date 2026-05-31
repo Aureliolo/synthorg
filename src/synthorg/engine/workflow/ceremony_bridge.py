@@ -6,8 +6,10 @@ instances that the ``MeetingScheduler`` can execute.
 
 from typing import TYPE_CHECKING
 
-from synthorg.communication.config import MeetingTypeConfig
-from synthorg.communication.meeting.config import MeetingProtocolConfig
+from synthorg.communication.meeting.config import (
+    MeetingProtocolConfig,
+    MeetingTypeConfig,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import SPRINT_CEREMONY_BRIDGE_CREATED
 

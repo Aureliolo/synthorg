@@ -16,10 +16,10 @@ constraint-classification table and the dict_row deserialisation
 helpers.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -104,7 +104,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _row_to_user(row: dict[str, Any]) -> User:
+def _row_to_user(row: DictRow) -> User:
     """Reconstruct a ``User`` from a Postgres dict_row.
 
     Postgres returns JSONB as Python list/dict (no json.loads needed),
@@ -122,7 +122,7 @@ def _row_to_user(row: dict[str, Any]) -> User:
     return User.model_validate(data)
 
 
-def _row_to_api_key(row: dict[str, Any]) -> ApiKey:
+def _row_to_api_key(row: DictRow) -> ApiKey:
     """Reconstruct an ``ApiKey`` from a Postgres dict_row.
 
     Returns:

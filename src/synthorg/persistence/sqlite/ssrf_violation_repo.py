@@ -2,7 +2,7 @@
 
 import contextlib
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
@@ -278,7 +278,7 @@ class SQLiteSsrfViolationRepository:
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
                 "WHERE status = ? ORDER BY timestamp DESC LIMIT ?"
             )
-            params: tuple[Any, ...] = (status.value, limit)
+            params: tuple[object, ...] = (status.value, limit)
         else:
             query = (
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
@@ -383,7 +383,7 @@ class SQLiteSsrfViolationRepository:
         return cursor.rowcount > 0
 
 
-def _row_to_violation(row: Any) -> SsrfViolation:
+def _row_to_violation(row: aiosqlite.Row) -> SsrfViolation:
     """Convert a SQLite row to an SsrfViolation.
 
     Returns:

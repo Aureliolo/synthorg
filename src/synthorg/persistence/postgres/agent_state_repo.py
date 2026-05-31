@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.enums import ExecutionStatus
@@ -273,7 +273,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
             )
         return deleted
 
-    def _row_to_model(self, row: dict[str, object]) -> AgentRuntimeState:
+    def _row_to_model(self, row: DictRow) -> AgentRuntimeState:
         """Convert a database row to an ``AgentRuntimeState`` model.
 
         Raises:

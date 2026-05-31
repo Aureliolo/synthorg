@@ -8,7 +8,6 @@ newest-first and bounded by an explicit ``limit``.
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import aiosqlite
 
@@ -40,7 +39,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_receipt(row: aiosqlite.Row | tuple[Any, ...]) -> WebhookReceipt:
+def _row_to_receipt(row: aiosqlite.Row) -> WebhookReceipt:
     """Deserialize a row tuple into a :class:`WebhookReceipt`.
 
     Returns:

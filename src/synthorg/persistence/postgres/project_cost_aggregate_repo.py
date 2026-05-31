@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
@@ -141,7 +141,7 @@ class PostgresProjectCostAggregateRepository:
 
     @staticmethod
     def _deserialize(
-        row: dict[str, object],
+        row: DictRow,
         project_id: NotBlankStr,
         *,
         context: str = "",

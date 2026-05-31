@@ -2,7 +2,6 @@
 
 import contextlib
 import sqlite3
-from typing import Any
 
 import aiosqlite
 from pydantic import ValidationError
@@ -27,7 +26,7 @@ from synthorg.persistence.sqlite._shared import WriteContext
 logger = get_logger(__name__)
 
 
-def _row_to_preset(row: Any, *, event: str) -> Preset:
+def _row_to_preset(row: aiosqlite.Row, *, event: str) -> Preset:
     """Build a ``Preset`` from a DB row, failing closed on bad data.
 
     A corrupt row (wrong arity, unvalidatable field) must surface as

@@ -15,7 +15,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
+from synthorg.communication.config import MeetingsConfig
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.errors import SchedulerAlreadyRunningError
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator

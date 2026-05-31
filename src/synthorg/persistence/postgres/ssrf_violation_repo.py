@@ -7,7 +7,7 @@ Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 from typing import TYPE_CHECKING, cast
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -349,7 +349,7 @@ class PostgresSsrfViolationRepository:
         return updated
 
 
-def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
+def _row_to_violation(row: DictRow) -> SsrfViolation:
     """Convert a Postgres row to an SsrfViolation.
 
     Returns:

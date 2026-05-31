@@ -7,10 +7,10 @@ and native BOOLEAN for boolean flags. The protocol surface returns the same
 Pydantic models as the SQLite backend.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -98,7 +98,7 @@ class PostgresLifecycleEventRepository:
             )
             raise QueryError(msg) from exc
 
-    def _row_to_event(self, row: dict[str, Any]) -> AgentLifecycleEvent:
+    def _row_to_event(self, row: DictRow) -> AgentLifecycleEvent:
         """Reconstruct a lifecycle event from a database row.
 
         Returns:
@@ -141,7 +141,7 @@ class PostgresLifecycleEventRepository:
             QueryError: If the database query fails.
         """
         clauses: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = %s")
             params.append(agent_id)
@@ -244,7 +244,7 @@ class PostgresTaskMetricRepository:
             )
             raise QueryError(msg) from exc
 
-    def _row_to_record(self, row: dict[str, Any]) -> TaskMetricRecord:
+    def _row_to_record(self, row: DictRow) -> TaskMetricRecord:
         """Reconstruct a task metric record from a database row.
 
         Returns:
@@ -289,7 +289,7 @@ class PostgresTaskMetricRepository:
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
         )
         clauses: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = %s")
             params.append(agent_id)
@@ -382,7 +382,7 @@ class PostgresCollaborationMetricRepository:
             )
             raise QueryError(msg) from exc
 
-    def _row_to_record(self, row: dict[str, Any]) -> CollaborationMetricRecord:
+    def _row_to_record(self, row: DictRow) -> CollaborationMetricRecord:
         """Reconstruct a collaboration metric record from a database row.
 
         Returns:
@@ -427,7 +427,7 @@ class PostgresCollaborationMetricRepository:
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
         )
         clauses: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if agent_id is not None:
             clauses.append("agent_id = %s")
             params.append(agent_id)

@@ -8,7 +8,7 @@ Postgres sibling of ``persistence/sqlite/flight_recorder_repo.py``.
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import AwareDatetime, ValidationError
 
@@ -300,7 +300,7 @@ class PostgresFlightRecorderFrameRepository:
         data["tool_calls"] = Jsonb(list(frame.tool_calls))
         return data
 
-    def _row_to_model(self, row: dict[str, object]) -> FlightRecorderFrame:
+    def _row_to_model(self, row: DictRow) -> FlightRecorderFrame:
         """Convert a database row to a ``FlightRecorderFrame`` model.
 
         ``tool_calls`` comes back from Postgres JSONB as a Python list;

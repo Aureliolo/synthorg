@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.communication.config import MeetingTypeConfig
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.engine.workflow.ceremony_bridge import (

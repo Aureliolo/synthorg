@@ -8,7 +8,7 @@ from datetime import UTC
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -208,7 +208,7 @@ ON CONFLICT(execution_id) DO UPDATE SET
 
         return deleted
 
-    def _row_to_model(self, row: dict[str, object]) -> Heartbeat:
+    def _row_to_model(self, row: DictRow) -> Heartbeat:
         """Convert a database row to a ``Heartbeat`` model.
 
         Raises:

@@ -27,7 +27,7 @@ import re
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ValidationError
 
@@ -118,7 +118,7 @@ class PostgresVersionRepository[T: BaseModel]:
         self._count_sql = f"SELECT COUNT(*) FROM {_t} WHERE entity_id = %s"  # noqa: S608
         self._delete_sql = f"DELETE FROM {_t} WHERE entity_id = %s"  # noqa: S608
 
-    def _deserialize_row(self, row: dict[str, object]) -> VersionSnapshot[T]:
+    def _deserialize_row(self, row: DictRow) -> VersionSnapshot[T]:
         """Reconstruct a VersionSnapshot from a database row.
 
         Returns:

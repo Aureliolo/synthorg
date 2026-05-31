@@ -18,10 +18,10 @@ exercises identical surfaces.
 
 import json
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -72,7 +72,7 @@ def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
     return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
 
 
-def _run_from_row(row: dict[str, Any]) -> FineTuneRun:
+def _run_from_row(row: DictRow) -> FineTuneRun:
     """Build a ``FineTuneRun`` from a JSONB-aware Postgres row.
 
     Postgres returns JSONB as native Python dict/list and TIMESTAMPTZ
@@ -102,7 +102,7 @@ def _run_from_row(row: dict[str, Any]) -> FineTuneRun:
         raise QueryError(msg) from exc
 
 
-def _checkpoint_from_row(row: dict[str, Any]) -> CheckpointRecord:
+def _checkpoint_from_row(row: DictRow) -> CheckpointRecord:
     """Build a ``CheckpointRecord`` from a JSONB-aware Postgres row.
 
     ``backup_config_json`` is a JSONB column on the wire but a string
