@@ -58,10 +58,18 @@ typed-ID and helper imports.
 
 ::: synthorg.persistence.sqlite.backend
 
-::: synthorg.persistence.sqlite.repositories
+::: synthorg.persistence.sqlite.task_repo
+
+::: synthorg.persistence.sqlite.cost_record_repo
+
+::: synthorg.persistence.sqlite.message_repo
 
 ## Postgres Backend
 
 ::: synthorg.persistence.postgres.backend
 
-::: synthorg.persistence.postgres.repositories
+::: synthorg.persistence.postgres.task_repo
+
+::: synthorg.persistence.postgres.cost_record_repo
+
+::: synthorg.persistence.postgres.message_repo

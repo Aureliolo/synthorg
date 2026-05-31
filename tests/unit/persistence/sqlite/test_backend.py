@@ -10,9 +10,13 @@ from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
-from synthorg.persistence.sqlite.repositories import (
+from synthorg.persistence.sqlite.cost_record_repo import (
     SQLiteCostRecordRepository,
+)
+from synthorg.persistence.sqlite.message_repo import (
     SQLiteMessageRepository,
+)
+from synthorg.persistence.sqlite.task_repo import (
     SQLiteTaskRepository,
 )
 
