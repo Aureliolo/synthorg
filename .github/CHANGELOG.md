@@ -1,5 +1,91 @@
 # Changelog
 
+## [0.8.9](https://github.com/Aureliolo/synthorg/compare/v0.8.8...v0.8.9) (2026-05-31)
+
+
+### Features
+
+* long-horizon project brain ([#2172](https://github.com/Aureliolo/synthorg/issues/2172)) ([c0ea7d9](https://github.com/Aureliolo/synthorg/commit/c0ea7d96b49248ae2776cc6a8cae834baf4823c6)), closes [#1996](https://github.com/Aureliolo/synthorg/issues/1996)
+* **web:** surface unwired backend capabilities in the dashboard ([#2159](https://github.com/Aureliolo/synthorg/issues/2159)) ([019fc96](https://github.com/Aureliolo/synthorg/commit/019fc9660a7cbcc650becc28a936d9eaddfbaa79)), closes [#2144](https://github.com/Aureliolo/synthorg/issues/2144)
+
+
+### Bug Fixes
+
+* bump x/crypto to 0.52.0 and x/net to 0.55.0 for OSV advisories ([#2156](https://github.com/Aureliolo/synthorg/issues/2156)) ([b71dc91](https://github.com/Aureliolo/synthorg/commit/b71dc9193a0b3c3f5e759471283214dd7accde0f))
+* **ci:** harden finalize-release gh JSON reads against transient API failures ([#2164](https://github.com/Aureliolo/synthorg/issues/2164)) ([1d662a3](https://github.com/Aureliolo/synthorg/commit/1d662a3ad18a784acf34b01ee71f0d3ca95e544f)), closes [#1793](https://github.com/Aureliolo/synthorg/issues/1793)
+* resolve dev-tag Docker CI failures (retag disk + sig convergence) ([#2173](https://github.com/Aureliolo/synthorg/issues/2173)) ([0cd6bb9](https://github.com/Aureliolo/synthorg/commit/0cd6bb9ee27bbb8d2cc7dfc68db2202f22e245c5))
+* wire git-hook setup correctly and correct the LLM-provider claim ([#2147](https://github.com/Aureliolo/synthorg/issues/2147)) ([68a1660](https://github.com/Aureliolo/synthorg/commit/68a1660077c926d560a60d9abdadcbfae180c363))
+
+
+### Refactoring
+
+* activate ERA001 gate, remove commented-out code ([#2142](https://github.com/Aureliolo/synthorg/issues/2142)) ([e626a4b](https://github.com/Aureliolo/synthorg/commit/e626a4bd48da19bf3ab2afa3a9aa47add7cd84ae)), closes [#2063](https://github.com/Aureliolo/synthorg/issues/2063)
+* align FakePersistenceBackend with PersistenceBackend protocol ([#2119](https://github.com/Aureliolo/synthorg/issues/2119)) ([#2130](https://github.com/Aureliolo/synthorg/issues/2130)) ([4592972](https://github.com/Aureliolo/synthorg/commit/4592972928e9a92fe187708390af0e96ccd9ea39))
+* backfill [@override](https://github.com/override) across tests/ subclasses and block isolation gate on worker crash ([#2148](https://github.com/Aureliolo/synthorg/issues/2148)) ([537fc7b](https://github.com/Aureliolo/synthorg/commit/537fc7bd5fdf2ae11bed1349730f1bb9592907ee)), closes [#2118](https://github.com/Aureliolo/synthorg/issues/2118)
+* backfill [@override](https://github.com/override) decorators across synthorg.* ([#2160](https://github.com/Aureliolo/synthorg/issues/2160)) ([e50e68b](https://github.com/Aureliolo/synthorg/commit/e50e68b3b21674b26563f28670a28819f5af7d75)), closes [#2057](https://github.com/Aureliolo/synthorg/issues/2057)
+* **cli:** close [#2067](https://github.com/Aureliolo/synthorg/issues/2067) — lift all path-scoped complexity exclusions in cli/.golangci.yml ([#2099](https://github.com/Aureliolo/synthorg/issues/2099)) ([4916f87](https://github.com/Aureliolo/synthorg/commit/4916f871375b7aa00e15920c29253e7bfa9fcd2b))
+* controller decomposition + composition-root finalisation (3/4) ([#2171](https://github.com/Aureliolo/synthorg/issues/2171)) ([164af71](https://github.com/Aureliolo/synthorg/commit/164af71060ca599bc375cc08d765e997a3e68477)), closes [#2049](https://github.com/Aureliolo/synthorg/issues/2049)
+* docstring backfill (Wave 2): engine/ ([#2136](https://github.com/Aureliolo/synthorg/issues/2136)) ([a8a66fc](https://github.com/Aureliolo/synthorg/commit/a8a66fccaa9ae065fe646333f1f5847ef215f040)), closes [#2110](https://github.com/Aureliolo/synthorg/issues/2110)
+* drain disallow_any_explicit override for synthorg.client ([#2158](https://github.com/Aureliolo/synthorg/issues/2158)) ([62e5e78](https://github.com/Aureliolo/synthorg/commit/62e5e781e1eec1811e0e3e8d56ec9c3c429694e8)), closes [#2157](https://github.com/Aureliolo/synthorg/issues/2157)
+* eliminate unused web exports and make Knip blocking ([#2145](https://github.com/Aureliolo/synthorg/issues/2145)) ([95e22d2](https://github.com/Aureliolo/synthorg/commit/95e22d267192b22bfa18e0674098305670d10522)), closes [#2071](https://github.com/Aureliolo/synthorg/issues/2071)
+* enable full sqlfluff ruleset for SQL schema and migrations ([#2143](https://github.com/Aureliolo/synthorg/issues/2143)) ([4beeff1](https://github.com/Aureliolo/synthorg/commit/4beeff1ece4aa4c54f89b96c85af3ef93e8a304b)), closes [#2076](https://github.com/Aureliolo/synthorg/issues/2076)
+* enforce unused-awaitable across tests/ via explicit task discards ([#2162](https://github.com/Aureliolo/synthorg/issues/2162)) ([24afefb](https://github.com/Aureliolo/synthorg/commit/24afefb7e862f9fe757cf4315a559a14ff090844)), closes [#2116](https://github.com/Aureliolo/synthorg/issues/2116)
+* feature manifests, AI-navigation index, manifest gates ([#2149](https://github.com/Aureliolo/synthorg/issues/2149)) ([#2153](https://github.com/Aureliolo/synthorg/issues/2153)) ([200bee6](https://github.com/Aureliolo/synthorg/commit/200bee657547afbb372b97e0a90f5f04824a0e23))
+* feature-manifest substrate + thin AppState composition root ([#2048](https://github.com/Aureliolo/synthorg/issues/2048)) ([#2150](https://github.com/Aureliolo/synthorg/issues/2150)) ([7c1b7fc](https://github.com/Aureliolo/synthorg/commit/7c1b7fc74e1a663663c86788c2fad8fb7f82a17b))
+* **memory,tools,hr,budget:** Wave 4 docstring backfill + reraise_critical adoption ([#2135](https://github.com/Aureliolo/synthorg/issues/2135)) ([8e212d6](https://github.com/Aureliolo/synthorg/commit/8e212d698d9374110037b53595b1132dda278966))
+* **persistence:** Wave 1 docstring backfill + reraise_critical helper ([#2125](https://github.com/Aureliolo/synthorg/issues/2125)) ([24a8db7](https://github.com/Aureliolo/synthorg/commit/24a8db71999f03e6955aeba9c7f9de119de32073))
+* replace vulture ignore_names with declaration-site underscore prefix ([#2073](https://github.com/Aureliolo/synthorg/issues/2073)) ([#2115](https://github.com/Aureliolo/synthorg/issues/2115)) ([3ab816a](https://github.com/Aureliolo/synthorg/commit/3ab816a48ace38fd955c8a2f9d2858b6c8315514))
+* reraise_critical adoption + error-path coverage; add filler-docstring gate ([#2134](https://github.com/Aureliolo/synthorg/issues/2134)) ([70b980a](https://github.com/Aureliolo/synthorg/commit/70b980a25d9222cecb6283ec69fb344c58f0767a))
+* sweep frozen test fixtures to extra="forbid" + expand gate scope to tests/ ([#2133](https://github.com/Aureliolo/synthorg/issues/2133)) ([d64ed73](https://github.com/Aureliolo/synthorg/commit/d64ed7353ae5d0795f352521f17988b888cb26ce))
+* **tests:** mypy strict++ partial-landing (newly enforce `disallow_any_generics`, narrow `tests.*` override) ([#2123](https://github.com/Aureliolo/synthorg/issues/2123)) ([c8ed71b](https://github.com/Aureliolo/synthorg/commit/c8ed71b9c248c1ea72e2c25fa7edee8a8080ece0))
+* **tools:** migrate streamablehttp_client to streamable_http_client ([#2060](https://github.com/Aureliolo/synthorg/issues/2060)) ([#2106](https://github.com/Aureliolo/synthorg/issues/2106)) ([7cea37b](https://github.com/Aureliolo/synthorg/commit/7cea37b282e3435c3d9b732ca1bd1085e3072dfb))
+* use monkeypatch.setattr in org_mutations tests; enable method-assign mypy gate ([#2128](https://github.com/Aureliolo/synthorg/issues/2128)) ([b619c80](https://github.com/Aureliolo/synthorg/commit/b619c80373d8c4a9373e2c761a5792cda9e98239))
+* **web/stores:** web component-size ratchet for stores (incl. websocket split) ([#2109](https://github.com/Aureliolo/synthorg/issues/2109)) ([074ed80](https://github.com/Aureliolo/synthorg/commit/074ed80cfb080ff54baefdea852549e1700b2b1c))
+* **web:** decompose D1 page families under ESLint size caps ([#2146](https://github.com/Aureliolo/synthorg/issues/2146)) ([0efa34a](https://github.com/Aureliolo/synthorg/commit/0efa34a7b394f9f19df8a13cf5c6babb409cb098)), closes [#2095](https://github.com/Aureliolo/synthorg/issues/2095)
+* **web:** decompose D2a page families under ESLint size caps ([#2154](https://github.com/Aureliolo/synthorg/issues/2154)) ([ea06da2](https://github.com/Aureliolo/synthorg/commit/ea06da263d4e945ef39b7e6e49584d874ca6f3c5))
+* **web:** lift ESLint size-cap exemption across web/src (EPIC [#2066](https://github.com/Aureliolo/synthorg/issues/2066) D2) ([#2163](https://github.com/Aureliolo/synthorg/issues/2163)) ([60dbb00](https://github.com/Aureliolo/synthorg/commit/60dbb00c1992b33c59dbb2bacfd20da91dc93dff)), closes [#2141](https://github.com/Aureliolo/synthorg/issues/2141)
+* **web:** PR C, decompose oversized components + API types/endpoints ([#2094](https://github.com/Aureliolo/synthorg/issues/2094)) ([#2132](https://github.com/Aureliolo/synthorg/issues/2132)) ([faa1529](https://github.com/Aureliolo/synthorg/commit/faa152931569f5a8debb8f9e47e3bcc0038f6231))
+
+
+### Documentation
+
+* **adr:** correct nats-core + nats-jetstream evaluation ([#2104](https://github.com/Aureliolo/synthorg/issues/2104)) ([7038039](https://github.com/Aureliolo/synthorg/commit/7038039ea5535ea4506483a6f310aa6db93741bf)), closes [#2037](https://github.com/Aureliolo/synthorg/issues/2037)
+* align runtime banners and README with EPIC [#1955](https://github.com/Aureliolo/synthorg/issues/1955) close-out ([#2105](https://github.com/Aureliolo/synthorg/issues/2105)) ([366d628](https://github.com/Aureliolo/synthorg/commit/366d62808e84693dccc4a5d5d8f4a721933d6243))
+* **api,meta:** docstring Wave 3 — DOC201/202/501 to zero + activate enforcement gate ([#2137](https://github.com/Aureliolo/synthorg/issues/2137)) ([4f51d0f](https://github.com/Aureliolo/synthorg/commit/4f51d0fe7482bc6872d02139f2d65ce7e8fee292)), closes [#2111](https://github.com/Aureliolo/synthorg/issues/2111)
+* backfill Returns/Raises docstrings (Wave 5) across 7 packages ([#2165](https://github.com/Aureliolo/synthorg/issues/2165)) ([e532c46](https://github.com/Aureliolo/synthorg/commit/e532c46e382dd17a202146a969fa46d08ee2c367)), closes [#2113](https://github.com/Aureliolo/synthorg/issues/2113)
+* docstring Returns/Raises backfill Wave 6 (final) + interrogate flip to 95 ([#2169](https://github.com/Aureliolo/synthorg/issues/2169)) ([a3b3b01](https://github.com/Aureliolo/synthorg/commit/a3b3b01fa410b30273be7d782eea13614bce2c9e)), closes [#2065](https://github.com/Aureliolo/synthorg/issues/2065) [#2114](https://github.com/Aureliolo/synthorg/issues/2114)
+* document complex_service module-size tier in ADR-0006 ([#2140](https://github.com/Aureliolo/synthorg/issues/2140)) ([ae7c680](https://github.com/Aureliolo/synthorg/commit/ae7c6806b804c9c85473b0729d73d202e834d744)), closes [#2129](https://github.com/Aureliolo/synthorg/issues/2129)
+
+
+### Tests
+
+* add table-driven tests for zero-coverage CLI command functions ([#2170](https://github.com/Aureliolo/synthorg/issues/2170)) ([4826590](https://github.com/Aureliolo/synthorg/commit/482659053f57267d51ceb78b34829533bb2b2670))
+* migrate API test suite to portal-free LoopAsyncClient ([#2151](https://github.com/Aureliolo/synthorg/issues/2151)) ([#2161](https://github.com/Aureliolo/synthorg/issues/2161)) ([df68bde](https://github.com/Aureliolo/synthorg/commit/df68bde9dc416eb06bb236788efe435165cff39e))
+
+
+### CI/CD
+
+* refresh .test_durations.{unit,integration} ([#2175](https://github.com/Aureliolo/synthorg/issues/2175)) ([313946e](https://github.com/Aureliolo/synthorg/commit/313946ee29bb040ee1a9e54dcda8eae2fc726990))
+* retry go mod download on transient proxy.golang.org/GCS failures ([#2102](https://github.com/Aureliolo/synthorg/issues/2102)) ([2a4cd68](https://github.com/Aureliolo/synthorg/commit/2a4cd6896fe715eb97dc74619405202fd3dafd79))
+* split lychee link check into internal gate + weekly external report ([#2139](https://github.com/Aureliolo/synthorg/issues/2139)) ([448fa22](https://github.com/Aureliolo/synthorg/commit/448fa229249e6b15511c7ac15e2d2717e96f1296)), closes [#2138](https://github.com/Aureliolo/synthorg/issues/2138)
+* update apko lockfiles ([#2124](https://github.com/Aureliolo/synthorg/issues/2124)) ([89ba1c3](https://github.com/Aureliolo/synthorg/commit/89ba1c31c4286f753754d051efb3ca7b6fb3cf82))
+* wire core-dump + verbose-capture forensics into integration / e2e / conformance-sqlite ([#2127](https://github.com/Aureliolo/synthorg/issues/2127)) ([f0fd962](https://github.com/Aureliolo/synthorg/commit/f0fd962e1b336f1dce4258127ed35c683df83e88))
+
+
+### Maintenance
+
+* **audit:** tag legitimately-complex files with complex_service tier ([#2052](https://github.com/Aureliolo/synthorg/issues/2052)) ([#2131](https://github.com/Aureliolo/synthorg/issues/2131)) ([96ab32c](https://github.com/Aureliolo/synthorg/commit/96ab32ce4d66b840030554b5b32d559cbee7a010))
+* close EPIC [#1973](https://github.com/Aureliolo/synthorg/issues/1973) (Windows-safe workspace rmtree + unit-tier discipline) ([#2108](https://github.com/Aureliolo/synthorg/issues/2108)) ([8055ce3](https://github.com/Aureliolo/synthorg/commit/8055ce3cacc4314e5dc2777eceeadc491a5150d1))
+* lazy vale sync per worktree via pre-push wrapper ([#2126](https://github.com/Aureliolo/synthorg/issues/2126)) ([6a80783](https://github.com/Aureliolo/synthorg/commit/6a807836d1993604bb5d16425df2eedd4a91f5ff))
+* litestar 2.22 migration + cli golden masking + path-param gate ([#2101](https://github.com/Aureliolo/synthorg/issues/2101)) ([7ac1f5b](https://github.com/Aureliolo/synthorg/commit/7ac1f5b8d1879b70cef7603e3596eb6ebfcb9a90))
+* Lock file maintenance ([#2174](https://github.com/Aureliolo/synthorg/issues/2174)) ([133af32](https://github.com/Aureliolo/synthorg/commit/133af32a7b281115e4971f43b07b5f34fce24c7e))
+* pin explicit model on all agent defs + subagent-model cost note in CLAUDE.md ([21fdb56](https://github.com/Aureliolo/synthorg/commit/21fdb562b287bb4c9630ad0686bb76d37cae087f))
+* Update Infrastructure dependencies ([#2167](https://github.com/Aureliolo/synthorg/issues/2167)) ([bb915d8](https://github.com/Aureliolo/synthorg/commit/bb915d87f695ea8ccd73787b8546f691ce644e42))
+* Update Python dependencies ([#2168](https://github.com/Aureliolo/synthorg/issues/2168)) ([afa5327](https://github.com/Aureliolo/synthorg/commit/afa532788ef4d67301b5f145c8c44b64ab63f3a8))
+* Update Web dependencies ([#2166](https://github.com/Aureliolo/synthorg/issues/2166)) ([6079c7a](https://github.com/Aureliolo/synthorg/commit/6079c7a681821701c696132c5a2c3ceaccf4f031))
+* wire typeguard runtime type-checking infrastructure ([#2155](https://github.com/Aureliolo/synthorg/issues/2155)) ([0b52bf6](https://github.com/Aureliolo/synthorg/commit/0b52bf6114bdb464a38ee26af4c2d727e7b76de6)), closes [#2068](https://github.com/Aureliolo/synthorg/issues/2068)
+* wire vale prose linter (Google style + British vocab) ([#2107](https://github.com/Aureliolo/synthorg/issues/2107)) ([9873c60](https://github.com/Aureliolo/synthorg/commit/9873c606fca0b1fdc4eb7197e248eb6c4039e7fb)), closes [#2069](https://github.com/Aureliolo/synthorg/issues/2069)
+
 ## [0.8.8](https://github.com/Aureliolo/synthorg/compare/v0.8.7...v0.8.8) (2026-05-24)
 
 
