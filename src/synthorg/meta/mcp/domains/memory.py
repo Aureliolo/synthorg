@@ -155,19 +155,20 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "memory",
         "start_fine_tune",
-        "Start a memory fine-tuning pipeline.",
-        _FINE_TUNE_PLAN_PROPERTIES,
-        required=("source_dir",),
+        "Start a memory fine-tuning pipeline (privileged; requires confirm).",
+        {**_FINE_TUNE_PLAN_PROPERTIES, **ADMIN_GUARDRAIL_PROPERTIES},
+        required=("source_dir", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryStartFineTuneArgs,
     ),
     admin_tool(
         "memory",
         "resume_fine_tune",
-        "Resume a failed or cancelled fine-tune run.",
+        "Resume a failed or cancelled fine-tune run (privileged; requires confirm).",
         {
             "run_id": {"type": "string", "description": "Run ID to resume"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("run_id",),
+        required=("run_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryResumeFineTuneArgs,
     ),
     read_tool(
@@ -203,11 +204,12 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
     admin_tool(
         "memory",
         "deploy_checkpoint",
-        "Deploy a fine-tune checkpoint.",
+        "Deploy a fine-tune checkpoint (privileged; requires confirm).",
         {
             "checkpoint_id": {"type": "string", "description": "Checkpoint UUID"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("checkpoint_id",),
+        required=("checkpoint_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=MemoryDeployCheckpointArgs,
     ),
     admin_tool(

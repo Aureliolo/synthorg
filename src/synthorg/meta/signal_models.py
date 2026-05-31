@@ -14,6 +14,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     model_validator,
 )
 
@@ -294,10 +295,15 @@ class OrgBenchmarkSummary(BaseModel):
     run_count: int = Field(default=0, ge=0)
     latest_total: int = Field(default=0, ge=0)
     max_total: int = Field(default=0, ge=0)
-    score_fraction: float = Field(default=0.0, ge=0.0)
     delta: int = 0
     is_regression: bool = False
     has_regression: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def score_fraction(self) -> float:
+        """Latest run's score as a fraction of the maximum (0.0 with no runs)."""
+        return self.latest_total / self.max_total if self.max_total > 0 else 0.0
 
 
 # ── Composite signal snapshot ──────────────────────────────────────

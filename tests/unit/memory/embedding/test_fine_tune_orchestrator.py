@@ -12,6 +12,7 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
+from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
@@ -136,7 +137,7 @@ class TestOrchestratorLifecycle:
         req = _request(tmp_path)
         with _mock_all_stages(block=True):
             await orchestrator.start(req)
-            with pytest.raises(RuntimeError, match="already active"):
+            with pytest.raises(FineTuneRunActiveError, match="already active"):
                 await orchestrator.start(req)
             # Clean up the blocking task.
             await orchestrator.cancel()
@@ -440,7 +441,7 @@ _HARVESTED_PAIRS = (
     ),
 )
 
-_ORCH = "synthorg.memory.embedding.fine_tune_orchestrator"
+_PIPELINE = "synthorg.memory.embedding.fine_tune_pipeline"
 _HELPERS = "synthorg.memory.embedding.fine_tune_run_helpers"
 
 
@@ -466,10 +467,10 @@ def _mock_stages_2_to_5() -> Any:
         return None
 
     with (
-        patch(f"{_ORCH}.mine_hard_negatives", side_effect=_mine),
-        patch(f"{_ORCH}.contrastive_fine_tune", side_effect=_train),
-        patch(f"{_ORCH}.evaluate_checkpoint", side_effect=_eval),
-        patch(f"{_ORCH}.deploy_checkpoint", side_effect=_deploy),
+        patch(f"{_PIPELINE}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{_PIPELINE}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{_PIPELINE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_PIPELINE}.deploy_checkpoint", side_effect=_deploy),
     ):
         yield
 
@@ -640,12 +641,11 @@ def _mock_all_stages(
             deploy_calls.append(str(kwargs.get("checkpoint_path", "")))
         return '{"embedder_model": "test-model"}'
 
-    base = "synthorg.memory.embedding.fine_tune_orchestrator"
     with (
         patch(f"{_HELPERS}.generate_training_data", side_effect=_gen_data),
-        patch(f"{base}.mine_hard_negatives", side_effect=_mine),
-        patch(f"{base}.contrastive_fine_tune", side_effect=_train),
-        patch(f"{base}.evaluate_checkpoint", side_effect=_eval),
-        patch(f"{base}.deploy_checkpoint", side_effect=_deploy),
+        patch(f"{_PIPELINE}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{_PIPELINE}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{_PIPELINE}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_PIPELINE}.deploy_checkpoint", side_effect=_deploy),
     ):
         yield

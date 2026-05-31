@@ -35,7 +35,7 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.observability.events.memory import (
-    MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+    MEMORY_FINE_TUNE_WIRING_FAILED,
 )
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
@@ -431,7 +431,7 @@ class TestWireFineTuneOrchestrator:
         degraded = [
             e
             for e in captured
-            if e["event"] == MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED
+            if e["event"] == MEMORY_FINE_TUNE_WIRING_FAILED
             and e.get("operation") == "startup_wire"
         ]
         assert len(degraded) == 1

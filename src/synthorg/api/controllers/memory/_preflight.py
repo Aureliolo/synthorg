@@ -15,6 +15,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
     PreflightCheck,
 )
+from synthorg.memory.embedding.fine_tune_run_helpers import build_config
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
@@ -200,9 +201,11 @@ def _run_preflight_checks(
                 walk_timeout_s=walk_timeout_s,
             )
         )
-    output_dir = request.output_dir or request.source_dir
-    if output_dir is not None:
-        checks.append(_check_disk_space(output_dir))
+    # Disk space is checked against the directory the run will actually write
+    # checkpoints to. ``build_config`` resolves the effective output dir
+    # (request override, else the run default) so trajectory mode -- which has
+    # no ``source_dir`` to fall back on -- is still covered.
+    checks.append(_check_disk_space(build_config(request).output_dir))
     return checks
 
 

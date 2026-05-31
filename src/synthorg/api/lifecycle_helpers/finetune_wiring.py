@@ -43,7 +43,7 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
     )
     from synthorg.memory.state import MemoryStateSlice  # noqa: PLC0415
     from synthorg.observability.events.memory import (  # noqa: PLC0415
-        MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+        MEMORY_FINE_TUNE_WIRING_FAILED,
     )
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
@@ -103,7 +103,8 @@ async def _wire_fine_tune_orchestrator(app_state: AppState) -> None:
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
-            MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+            MEMORY_FINE_TUNE_WIRING_FAILED,
+            service="fine_tune_orchestrator",
             operation="startup_wire",
             note="fine-tune orchestrator wiring raised; controllers stay 501",
             error_type=type(exc).__name__,

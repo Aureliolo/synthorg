@@ -254,7 +254,7 @@ async def _persist_triples(
     Returns:
         Result of type ``Path``.
     """
-    out = _ensure_dir(output_dir)
+    out = await _ensure_dir(output_dir)
     triples_path = out / "training_triples.jsonl"
     await asyncio.to_thread(_write_jsonl_any, triples_path, triples)
     return triples_path
@@ -329,14 +329,17 @@ def _require_not_blank(value: str, name: str) -> None:
         raise ValueError(msg)
 
 
-def _ensure_dir(path: str) -> Path:
-    """Create directory if needed and return as Path.
+async def _ensure_dir(path: str) -> Path:
+    """Create directory (and parents) off the event loop, returning the Path.
+
+    The ``mkdir`` syscall is blocking, so it is offloaded to a worker thread
+    to keep the orchestrator's event loop responsive during a pipeline run.
 
     Returns:
         Result of type ``Path``.
     """
     p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
     return p
 
 
@@ -511,7 +514,9 @@ async def mine_hard_negatives(  # noqa: PLR0913
         training_data_path,
         require_non_empty=False,
     )
-    model = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    model = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
     triples = await _mine_negatives_from_pairs(
         model=model,
         model_name=base_model,
@@ -706,13 +711,15 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     _import_torch()
 
     triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
-    model = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    model = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
 
     examples = _build_training_examples(st, triples)
     total_steps = math.ceil(len(examples) / batch_size) * epochs
 
-    checkpoint_dir = _ensure_dir(output_dir) / "checkpoint"
-    checkpoint_dir.mkdir(exist_ok=True)
+    checkpoint_dir = (await _ensure_dir(output_dir)) / "checkpoint"
+    await asyncio.to_thread(checkpoint_dir.mkdir, exist_ok=True)
 
     step = 0
 
@@ -853,8 +860,12 @@ async def _run_eval_pipeline(  # noqa: PLR0913
         EvalMetrics,
     )
 
-    finetuned = await asyncio.to_thread(st.SentenceTransformer, checkpoint_path)
-    base = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    finetuned = await asyncio.to_thread(
+        st.SentenceTransformer, checkpoint_path, trust_remote_code=False
+    )
+    base = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
     if cancellation is not None:
         cancellation.check()
     _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_LOAD)
@@ -910,7 +921,7 @@ async def _persist_eval_metrics(  # noqa: PLR0913
         base_recall_at_10=base_recall,
     )
 
-    out = _ensure_dir(output_dir)
+    out = await _ensure_dir(output_dir)
     metrics_path = out / "eval_metrics.json"
     await asyncio.to_thread(
         metrics_path.write_text,

@@ -73,7 +73,6 @@ async def _client_with_history(
         yield client
 
 
-@pytest.mark.unit
 class TestLearningController:
     async def test_curve_empty_when_history_unset(
         self, async_test_client: LoopAsyncClient

@@ -7,7 +7,7 @@ harvest), checkpoint directory sizing, and the request -> run-config snapshot.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
@@ -25,8 +25,8 @@ from synthorg.memory.errors import FineTuneDataSourceError
 if TYPE_CHECKING:
     from synthorg.memory.embedding.training_sources import TrainingDataSource
 
-_DEFAULT_BASE_MODEL = "all-MiniLM-L6-v2"
-_DEFAULT_OUTPUT_DIR = "/data/fine-tune"
+_DEFAULT_BASE_MODEL: Final[str] = "all-MiniLM-L6-v2"
+_DEFAULT_OUTPUT_DIR: Final[str] = "/data/fine-tune"
 
 
 async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for testability
@@ -53,7 +53,14 @@ async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for test
         if training_data_source is None:
             msg = "trajectory data source selected but none is wired"
             raise FineTuneDataSourceError(msg)
+        # The harvest can be long (it sweeps the org's working history); the
+        # source protocol takes no token, so bracket the call with the run's
+        # cancellation check to stay responsive to a cancel request.
+        if cancellation is not None:
+            cancellation.check()
         pairs = await training_data_source.collect()
+        if cancellation is not None:
+            cancellation.check()
         records = [
             {
                 "query": str(pair.query),
@@ -103,15 +110,11 @@ def build_config(request: FineTuneRequest) -> FineTuneRunConfig:
         ).items()
         if v is not None
     }
+    # base_model + output_dir are the only FineTuneRunConfig fields without
+    # their own default; every numeric knob defaults on the model itself, so
+    # restating those values here would just risk the two copies drifting.
     defaults = {
         "base_model": _DEFAULT_BASE_MODEL,
         "output_dir": _DEFAULT_OUTPUT_DIR,
-        "epochs": 3,
-        "learning_rate": 1e-5,
-        "temperature": 0.02,
-        "top_k": 4,
-        "batch_size": 128,
-        "validation_split": 0.1,
     }
-    merged = {**defaults, **overrides}
-    return FineTuneRunConfig(**merged)
+    return FineTuneRunConfig(**{**defaults, **overrides})

@@ -9,30 +9,19 @@ import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.memory.embedding.cancellation import CancellationToken
-from synthorg.memory.embedding.fine_tune import (
-    FineTuneStage,
-    contrastive_fine_tune,
-    deploy_checkpoint,
-    evaluate_checkpoint,
-    mine_hard_negatives,
-)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
-    CheckpointRecord,
     FineTuneRun,
     FineTuneStatus,
 )
-from synthorg.memory.embedding.fine_tune_run_helpers import (
-    build_config,
-    dir_size,
-    generate_run_training_data,
-)
-from synthorg.memory.embedding.promotion import should_promote_checkpoint
+from synthorg.memory.embedding.fine_tune_pipeline import run_fine_tune_stages
+from synthorg.memory.embedding.fine_tune_run_helpers import build_config
 from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.observability import (
     get_logger,
@@ -41,7 +30,6 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_CANCELLED,
-    MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
     MEMORY_FINE_TUNE_COMPLETED,
     MEMORY_FINE_TUNE_FAILED,
     MEMORY_FINE_TUNE_PROGRESS,
@@ -63,7 +51,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Minimum interval between WS progress events.
-_PROGRESS_THROTTLE_SEC = 1.0
+_PROGRESS_THROTTLE_SEC: Final[float] = 1.0
+# How long ``cancel`` waits for the in-flight pipeline task to stop before
+# returning anyway (recovery marks any still-active run FAILED on next boot).
+_CANCEL_TIMEOUT_SEC: Final[float] = 30.0
 
 
 class ChannelsPlugin(Protocol):
@@ -145,12 +136,12 @@ class FineTuneOrchestrator:
             The created run record.
 
         Raises:
-            RuntimeError: If a run is already active (409 Conflict).
+            FineTuneRunActiveError: If a run is already active (409 Conflict).
         """
         async with self._op_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
-                raise RuntimeError(msg)
+                raise FineTuneRunActiveError(msg)
 
             config = build_config(request)
             now = datetime.now(UTC)
@@ -189,13 +180,13 @@ class FineTuneOrchestrator:
             The resumed run record.
 
         Raises:
-            RuntimeError: If a run is already active.
+            FineTuneRunActiveError: If a run is already active.
             ValueError: If run not found or not resumable.
         """
         async with self._op_lock:
             if self.is_running:
                 msg = "A fine-tuning run is already active"
-                raise RuntimeError(msg)
+                raise FineTuneRunActiveError(msg)
             run = await self._run_repo.get(run_id)
             if run is None:
                 msg = f"Run {run_id} not found"
@@ -245,7 +236,7 @@ class FineTuneOrchestrator:
         # Await outside the lock so pipeline can complete.
         if task is not None and not task.done():
             try:
-                async with asyncio.timeout(30):
+                async with asyncio.timeout(_CANCEL_TIMEOUT_SEC):
                     await asyncio.shield(task)
             except TimeoutError:
                 logger.warning(
@@ -416,151 +407,26 @@ class FineTuneOrchestrator:
         self,
         run: FineTuneRun,
     ) -> FineTuneRun:
-        """Run all stages, skipping completed ones (resume).
+        """Run all pipeline stages, skipping completed ones (resume).
+
+        Delegates stage sequencing to :func:`run_fine_tune_stages`,
+        passing the run-state lifecycle hooks so this orchestrator stays
+        the single owner of ``_current_run`` and progress emission.
 
         Returns:
             Result of type ``FineTuneRun``.
         """
-        cfg = run.config
-        out_dir = f"{cfg.output_dir}/runs/{run.id}"
-        completed = set(run.stages_completed)
-
-        # Stage 1: Generate training data (directory scan or real-trajectory
-        # harvest, selected by the run's data_source).
-        if "generating_data" not in completed:
-            run = await self._enter_stage(
-                run,
-                FineTuneStage.GENERATING_DATA,
-            )
-            train_path, val_path = await generate_run_training_data(
-                cfg,
-                out_dir,
-                training_data_source=self._training_data_source,
-                llm_provider=self._llm_provider,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
-            run = await self._complete_stage(run, "generating_data")
-        else:
-            train_path = Path(f"{out_dir}/training.jsonl")
-            val_path = Path(f"{out_dir}/validation.jsonl")
-
-        # Stage 2: Mine hard negatives.
-        if "mining_negatives" not in completed:
-            run = await self._enter_stage(
-                run,
-                FineTuneStage.MINING_NEGATIVES,
-            )
-            triples_path = await mine_hard_negatives(
-                training_data_path=str(train_path),
-                base_model=cfg.base_model,
-                output_dir=out_dir,
-                top_k=cfg.top_k,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
-            run = await self._complete_stage(
-                run,
-                "mining_negatives",
-            )
-        else:
-            triples_path = Path(f"{out_dir}/training_triples.jsonl")
-
-        # Stage 3: Contrastive fine-tuning.
-        if "training" not in completed:
-            run = await self._enter_stage(
-                run,
-                FineTuneStage.TRAINING,
-            )
-            checkpoint_path = await contrastive_fine_tune(
-                training_data_path=str(triples_path),
-                base_model=cfg.base_model,
-                output_dir=out_dir,
-                epochs=cfg.epochs,
-                learning_rate=cfg.learning_rate,
-                temperature=cfg.temperature,
-                batch_size=cfg.batch_size,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
-            run = await self._complete_stage(run, "training")
-        else:
-            checkpoint_path = Path(f"{out_dir}/checkpoint")
-
-        # Stage 4: Evaluation. Re-run when deploy is still pending so the
-        # promotion gate always has a fresh measured A/B (evaluation is cheap
-        # relative to training); on a resume where deploy already finished the
-        # metrics are unused.
-        if "evaluating" not in completed:
-            run = await self._enter_stage(
-                run,
-                FineTuneStage.EVALUATING,
-            )
-            eval_metrics = await evaluate_checkpoint(
-                checkpoint_path=str(checkpoint_path),
-                base_model=cfg.base_model,
-                validation_data_path=str(val_path),
-                output_dir=out_dir,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
-            run = await self._complete_stage(run, "evaluating")
-        elif "deploying" not in completed:
-            eval_metrics = await evaluate_checkpoint(
-                checkpoint_path=str(checkpoint_path),
-                base_model=cfg.base_model,
-                validation_data_path=str(val_path),
-                output_dir=out_dir,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
-        else:
-            eval_metrics = None
-
-        # Stage 5: Deploy -- promote ONLY on a measured win. A tie or
-        # regression records the evaluated checkpoint inactive and leaves the
-        # live embedder config untouched.
-        if "deploying" not in completed:
-            run = await self._enter_stage(
-                run,
-                FineTuneStage.DEPLOYING,
-            )
-            promote = should_promote_checkpoint(eval_metrics)
-            backup_json: str | None = None
-            if promote:
-                backup_json = await deploy_checkpoint(
-                    checkpoint_path=str(checkpoint_path),
-                    settings_service=self._settings_service,
-                )
-                await self._checkpoint_repo.deactivate_all()
-            else:
-                logger.info(
-                    MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
-                    run_id=run.id,
-                    checkpoint_path=str(checkpoint_path),
-                    base_ndcg_at_10=(
-                        eval_metrics.base_ndcg_at_10 if eval_metrics else None
-                    ),
-                    ndcg_at_10=(eval_metrics.ndcg_at_10 if eval_metrics else None),
-                )
-            # Persist checkpoint record (active only on a promote).
-            size_bytes = dir_size(checkpoint_path)
-            record = CheckpointRecord(
-                id=str(uuid.uuid4()),
-                run_id=run.id,
-                model_path=str(checkpoint_path),
-                base_model=cfg.base_model,
-                doc_count=0,
-                eval_metrics=eval_metrics,
-                size_bytes=size_bytes,
-                created_at=datetime.now(UTC),
-                is_active=promote,
-                backup_config_json=backup_json,
-            )
-            await self._checkpoint_repo.save(record)
-            run = await self._complete_stage(run, "deploying")
-
-        return run
+        return await run_fine_tune_stages(
+            run,
+            checkpoint_repo=self._checkpoint_repo,
+            settings_service=self._settings_service,
+            training_data_source=self._training_data_source,
+            llm_provider=self._llm_provider,
+            cancellation=self._cancellation,
+            enter_stage=self._enter_stage,
+            complete_stage=self._complete_stage,
+            make_progress_cb=self._make_progress_cb,
+        )
 
     # -- Stage lifecycle helpers --------------------------------------
 
@@ -655,6 +521,7 @@ class FineTuneOrchestrator:
             Result of type ``Any``.
         """
         run_id = run.id
+        run_stage = run.stage
         last_emit = 0.0
         loop = asyncio.get_running_loop()
         # Bind the clock once outside the worker-thread closure so each
@@ -671,6 +538,10 @@ class FineTuneOrchestrator:
             """Apply progress update (runs on event loop thread)."""
             current = self._current_run
             if current is not None and current.id == run_id:
+                if current.stage is not run_stage:
+                    # Stale callback from a stage the run has since left;
+                    # don't clobber the current stage's progress with it.
+                    return
                 updated = current.model_copy(
                     update={"progress": progress},
                 )
@@ -705,16 +576,20 @@ class FineTuneOrchestrator:
         event_type: str,
         run: FineTuneRun,
     ) -> None:
-        """Emit a WS event (safe from both event loop and threads)."""
+        """Emit a WS event from the event-loop thread.
+
+        Only ever called from the loop thread (the pipeline coroutine and
+        its stage helpers); worker-thread progress callbacks marshal back
+        via ``call_soon_threadsafe`` before touching WS state. When no
+        loop is running (teardown, or tests driving helpers synchronously)
+        the emit is skipped rather than raising.
+        """
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
-            # No running loop -- skip.
+            # No running loop -- nothing to publish onto.
             return
-        if asyncio.get_event_loop() is loop:
-            self._emit_ws(event_type, run)
-        else:
-            loop.call_soon_threadsafe(self._emit_ws, event_type, run)
+        self._emit_ws(event_type, run)
 
     def _emit_ws(
         self,
@@ -746,6 +621,8 @@ class FineTuneOrchestrator:
                 MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
                 run_id=run.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     @staticmethod

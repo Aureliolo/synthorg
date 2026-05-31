@@ -189,3 +189,7 @@ META_CHAT_DEPENDENCY_UNAVAILABLE: Final[str] = "meta.chat.dependency_unavailable
 # directory.  Carries the point count and whether any run regressed so
 # operators can correlate curve reads with the underlying history state.
 META_LEARNING_CURVE_QUERIED: Final[str] = "meta.learning.curve_queried"
+# A single recorded run summary failed to parse (corrupt / schema-drifted
+# ``.curvepoint.json``); it is skipped so one bad file cannot break the
+# whole curve read, the trajectory harvest, or the curve endpoint.
+META_LEARNING_CURVE_SUMMARY_SKIPPED: Final[str] = "meta.learning.curve_summary_skipped"

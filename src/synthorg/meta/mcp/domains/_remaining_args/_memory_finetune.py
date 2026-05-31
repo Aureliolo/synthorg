@@ -120,12 +120,18 @@ class _FineTunePlanFields(_ArgsBase):
     )
 
 
-class MemoryStartFineTuneArgs(_FineTunePlanFields):
-    """Args for ``memory.start_fine_tune``."""
+class MemoryStartFineTuneArgs(_FineTunePlanFields, AdminGuardrailFields):
+    """Args for ``memory.start_fine_tune`` (privileged; requires confirm).
+
+    Starting a run launches the full pipeline -- including the internal
+    deploy stage that swaps the active embedding model -- so the same
+    ``confirm`` / ``reason`` guardrail the destructive checkpoint ops use
+    gates it.
+    """
 
 
-class MemoryResumeFineTuneArgs(_ArgsBase):
-    """Args for ``memory.resume_fine_tune``."""
+class MemoryResumeFineTuneArgs(AdminGuardrailFields):
+    """Args for ``memory.resume_fine_tune`` (privileged; requires confirm)."""
 
     run_id: NotBlankStr = Field(description="Run ID to resume")
 
@@ -152,8 +158,13 @@ class _CheckpointIdArgs(_ArgsBase):
     checkpoint_id: NotBlankStr = Field(description="Checkpoint UUID")
 
 
-class MemoryDeployCheckpointArgs(_CheckpointIdArgs):
-    """Args for ``memory.deploy_checkpoint``."""
+class MemoryDeployCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):
+    """Args for ``memory.deploy_checkpoint`` (privileged; requires confirm).
+
+    Deploying swaps the active embedding model for all future retrieval,
+    so it carries the same ``confirm`` / ``reason`` guardrail as its
+    inverse, ``rollback_checkpoint``.
+    """
 
 
 class MemoryRollbackCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):

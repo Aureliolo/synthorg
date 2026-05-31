@@ -111,7 +111,6 @@ class BenchmarkSignalAggregator:
             run_count=len(curve.points),
             latest_total=latest.total,
             max_total=latest.max_total,
-            score_fraction=latest.score_fraction,
             delta=latest.delta,
             is_regression=latest.is_regression,
             has_regression=curve.has_regression,

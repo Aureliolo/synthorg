@@ -18,10 +18,15 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
     computed_field,
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.meta import META_LEARNING_CURVE_SUMMARY_SKIPPED
+
+logger = get_logger(__name__)
 
 # Suffix marking a recorded run summary in the history directory.
 SUMMARY_SUFFIX: Final[str] = ".curvepoint.json"
@@ -114,10 +119,22 @@ def _load_summaries(history_dir: Path) -> tuple[ScorecardSummary, ...]:
     """
     if not history_dir.is_dir():
         return ()
-    summaries = [
-        ScorecardSummary.model_validate_json(path.read_text(encoding="utf-8"))
-        for path in sorted(history_dir.glob(f"*{SUMMARY_SUFFIX}"))
-    ]
+    summaries: list[ScorecardSummary] = []
+    for path in sorted(history_dir.glob(f"*{SUMMARY_SUFFIX}")):
+        try:
+            summaries.append(
+                ScorecardSummary.model_validate_json(path.read_text(encoding="utf-8"))
+            )
+        except (ValidationError, ValueError, OSError) as exc:
+            # One corrupt / schema-drifted / truncated summary must not break
+            # the whole read (harvest curation, the curve endpoint, the
+            # in-app feedback signal); skip it and keep the rest.
+            logger.warning(
+                META_LEARNING_CURVE_SUMMARY_SKIPPED,
+                path=str(path),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     summaries.sort(key=lambda summary: summary.generated_at)
     return tuple(summaries)
 

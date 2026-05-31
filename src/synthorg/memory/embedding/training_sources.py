@@ -26,7 +26,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory, TaskStatus
@@ -98,7 +98,7 @@ class TrainingDataSource(Protocol):
 
 
 def _passes_curation(
-    created_at: datetime | None,
+    created_at: AwareDatetime | None,
     points: tuple[LearningCurvePoint, ...],
 ) -> bool:
     """Decide whether a record from *created_at* belongs in the training set.
@@ -197,13 +197,13 @@ class TrajectoryTrainingDataSource:
 
         harvested: list[tuple[QueryPassagePair, datetime | None]] = []
         harvested.extend(await self._artifact_pairs(completed))
-        for agent_id in agent_ids:
-            harvested.extend(
-                await self._distillation_pairs(agent_id, title_by_id),
-            )
-            harvested.extend(
-                await self._failure_pairs(agent_id, title_by_id),
-            )
+        async with asyncio.TaskGroup() as group:
+            agent_tasks = [
+                group.create_task(self._harvest_agent(agent_id, title_by_id))
+                for agent_id in agent_ids
+            ]
+        for task in agent_tasks:
+            harvested.extend(task.result())
 
         seen: set[tuple[str, str]] = set()
         curated: list[QueryPassagePair] = []
@@ -229,6 +229,23 @@ class TrajectoryTrainingDataSource:
             curated_out=len(harvested) - len(curated),
         )
         return tuple(curated)
+
+    async def _harvest_agent(
+        self,
+        agent_id: NotBlankStr,
+        title_by_id: dict[str, str],
+    ) -> list[tuple[QueryPassagePair, datetime | None]]:
+        """Harvest one agent's distillation + failure-lesson pairs.
+
+        Per-source failures are isolated inside the pair builders, so a
+        single agent's bad data never aborts the concurrent harvest.
+
+        Returns:
+            ``(pair, created_at)`` tuples for the agent.
+        """
+        pairs = await self._distillation_pairs(agent_id, title_by_id)
+        pairs.extend(await self._failure_pairs(agent_id, title_by_id))
+        return pairs
 
     async def _load_curation_points(self) -> tuple[LearningCurvePoint, ...]:
         """Load the benchmark curve points used to curate, if configured.

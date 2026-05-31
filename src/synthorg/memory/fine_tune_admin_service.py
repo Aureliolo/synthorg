@@ -169,7 +169,7 @@ class FineTuneAdminService:
         Raises:
             MemoryBackendUnsupportedError: When the active backend does
                 not expose fine-tune support.
-            RuntimeError: If another run is already active.
+            FineTuneRunActiveError: If another run is already active.
         """
         orchestrator = self._require_orchestrator()
         logger.info(
@@ -204,7 +204,7 @@ class FineTuneAdminService:
             FineTuneRunNotFoundError: If *run_id* does not exist.
             FineTuneRunNotResumableError: If the run exists but is not
                 in a resumable stage.
-            RuntimeError: If another run is already active.
+            FineTuneRunActiveError: If another run is already active.
         """
         from synthorg.memory.service import (  # noqa: PLC0415
             FineTuneRunNotFoundError,
