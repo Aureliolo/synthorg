@@ -12,7 +12,6 @@ from synthorg.communication.config import (
     HierarchyConfig,
     LoopPreventionConfig,
     MeetingsConfig,
-    MeetingTypeConfig,
     MessageBusConfig,
     MessageRetentionConfig,
     RateLimitConfig,
@@ -28,6 +27,7 @@ from synthorg.communication.enums import (
     MessagePriority,
     MessageType,
 )
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
