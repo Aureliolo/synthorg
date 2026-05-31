@@ -62,6 +62,9 @@ class ScalingContext(BaseModel):
         budget_signals: Budget-related signals.
         performance_signals: Performance-related signals.
         skill_signals: Skill coverage signals.
+        benchmark_signals: Golden-benchmark quality signals (e.g. the latest
+            regression flag), surfaced so scaling strategies can react to a
+            measured org-wide quality drop.
         evaluated_at: When the context was built.
     """
 
@@ -86,6 +89,10 @@ class ScalingContext(BaseModel):
     skill_signals: tuple[ScalingSignal, ...] = Field(
         default=(),
         description="Skill coverage signals",
+    )
+    benchmark_signals: tuple[ScalingSignal, ...] = Field(
+        default=(),
+        description="Golden-benchmark quality signals (e.g. regression flag)",
     )
     performance_snapshots: Mapping[NotBlankStr, Any] = Field(
         default_factory=dict,

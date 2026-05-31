@@ -12,6 +12,7 @@ from synthorg.hr.scaling.guards.composite import CompositeScalingGuard
 from synthorg.hr.scaling.guards.conflict_resolver import ConflictResolver
 from synthorg.hr.scaling.guards.cooldown import CooldownGuard
 from synthorg.hr.scaling.guards.rate_limit import RateLimitGuard
+from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
 from synthorg.hr.scaling.signals.budget import BudgetSignalSource
 from synthorg.hr.scaling.signals.performance import PerformanceSignalSource
 from synthorg.hr.scaling.signals.skill import SkillSignalSource
@@ -30,6 +31,7 @@ from synthorg.observability.events.hr import HR_SCALING_FACTORY_ASSEMBLED
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from pathlib import Path
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.types import NotBlankStr
@@ -153,11 +155,18 @@ def create_scaling_guards(
 
 def create_scaling_context_builder(
     config: ScalingConfig,
+    *,
+    benchmark_history_dir: Path | None = None,
 ) -> ScalingContextBuilder:
     """Create the context builder from configuration.
 
     Args:
         config: Scaling configuration.
+        benchmark_history_dir: Directory the golden benchmark records its
+            per-run scorecard summaries into (``meta.scorecard_history_dir``).
+            When provided, a ``BenchmarkSignalSource`` is wired so a benchmark
+            regression surfaces into the scaling context; when ``None`` (no
+            benchmark configured) the benchmark signal is simply absent.
 
     Returns:
         Configured ScalingContextBuilder.
@@ -168,12 +177,18 @@ def create_scaling_context_builder(
     performance_src = (
         PerformanceSignalSource() if config.performance_pruning.enabled else None
     )
+    benchmark_src = (
+        BenchmarkSignalSource(benchmark_history_dir)
+        if benchmark_history_dir is not None
+        else None
+    )
 
     return ScalingContextBuilder(
         workload_source=workload_src,
         budget_source=budget_src,
         performance_source=performance_src,
         skill_source=skill_src,
+        benchmark_source=benchmark_src,
     )
 
 
