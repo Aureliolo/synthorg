@@ -122,6 +122,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     ),
     # interrupts
     "interrupts.resume": (60, 60),
+    # learning
+    "learning.curve": (30, 60),
     # meetings
     "meetings.create": (20, 60),
     # messages

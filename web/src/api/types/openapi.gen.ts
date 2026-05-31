@@ -2167,6 +2167,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/learning/curve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetCurve */
+        readonly get: operations["ApiV1LearningCurveGetCurve"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meetings": {
         readonly parameters: {
             readonly query?: never;
@@ -5958,6 +5975,19 @@ export type components = {
         /** ApiResponse[KnowledgeSource] */
         readonly ApiResponse_KnowledgeSource_: {
             readonly data: components["schemas"]["KnowledgeSource"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[LearningCurve] */
+        readonly ApiResponse_LearningCurve_: {
+            readonly data: components["schemas"]["LearningCurve"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -10263,6 +10293,32 @@ export type components = {
             readonly updated_at: string;
             /** @description Source URI (path / url / repo@ref / id) */
             readonly uri: string;
+        };
+        /** LearningCurve */
+        readonly LearningCurve: {
+            /** @description Whether any run on the curve is a regression */
+            readonly has_regression: boolean;
+            /** @description The most recent run's total, or None when empty */
+            readonly latest_total: number | null;
+            /** @default [] */
+            readonly points: readonly components["schemas"]["LearningCurvePoint"][];
+        };
+        /** LearningCurvePoint */
+        readonly LearningCurvePoint: {
+            /** @description total minus the previous run's total (0 first) */
+            readonly delta: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly generated_at: string;
+            readonly is_passing: boolean;
+            readonly is_regression: boolean;
+            readonly max_total: number;
+            readonly run_label: string;
+            /** @description Fraction of the maximum achievable score */
+            readonly score_fraction: number;
+            readonly total: number;
         };
         /**
          * LifecycleEventType
@@ -20357,6 +20413,30 @@ export interface operations {
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1LearningCurveGetCurve: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_LearningCurve_"];
+                };
+            };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
