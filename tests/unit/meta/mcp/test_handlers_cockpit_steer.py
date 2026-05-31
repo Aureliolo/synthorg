@@ -34,6 +34,10 @@ class _RecordingTaskEngine:
         self.cancelled.append(task_id)
         return (None, None)
 
+    async def get_task(self, task_id: str) -> None:
+        """No tasks are tracked, so ownership validation always passes."""
+        return
+
     async def list_tasks(
         self, *, status: object, project: str, limit: int
     ) -> tuple[tuple[object, ...], int]:
@@ -81,6 +85,9 @@ class TestSteerHandlers:
         assert body["data"]["directive_id"]
 
     async def test_steer_rejects_pause_kind(self, actor: AgentIdentity) -> None:
+        # A non-steerable but valid InterventionKind is a bad argument at this
+        # boundary, not a generic invoke failure: reject it as an argument error
+        # before it reaches the service.
         state = _state_with_steering()
         handler = COCKPIT_HANDLERS["synthorg_cockpit_steer"]
         raw = await handler(
@@ -96,7 +103,7 @@ class TestSteerHandlers:
         )
         body = json.loads(raw)
         assert body["status"] == "error"
-        assert body["error_type"] == "SteeringKindError"
+        assert body["error_type"] == "ArgumentValidationError"
 
     async def test_steer_list_returns_issued_directive(
         self, actor: AgentIdentity

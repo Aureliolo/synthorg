@@ -18,7 +18,11 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import InterventionKind, TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.intervention.errors import SteeringKindError
+from synthorg.engine.intervention.errors import (
+    SteeringDirectiveFieldError,
+    SteeringKindError,
+    SteeringTaskProjectMismatchError,
+)
 from synthorg.engine.intervention.inbox import brain_entry_to_directive
 from synthorg.engine.intervention.models import (
     STEERABLE_KINDS,
@@ -109,9 +113,21 @@ class SteeringService:
             obsolete-task proposal awaiting confirmation (``PROPOSE``).
 
         Raises:
+            SteeringDirectiveFieldError: When ``project_id``, ``text`` or
+                ``author`` is blank or whitespace-only. ``NotBlankStr`` only
+                validates inside Pydantic models, so the single write path
+                guards explicitly.
             SteeringKindError: When ``kind`` is not a steerable directive
                 (only ``HINT`` and ``REDIRECT`` propagate into agents).
         """
+        for field_name, field_value in (
+            ("project_id", project_id),
+            ("text", text),
+            ("author", author),
+        ):
+            if not field_value.strip():
+                msg = f"steering directive {field_name} must not be blank"
+                raise SteeringDirectiveFieldError(msg)
         if kind not in STEERABLE_KINDS:
             msg = f"{kind.value!r} is not a steerable directive kind"
             raise SteeringKindError(msg)
@@ -285,9 +301,26 @@ class SteeringService:
     ) -> tuple[NotBlankStr, ...]:
         """Cancel each task via the single-writer TaskEngine; log any failure.
 
+        Ownership is validated up front: ``cancel_task`` cancels by raw id with
+        no project check, so a target belonging to another project is rejected
+        before anything is cancelled (no partial-batch cancellation). A missing
+        task is left to the cancel loop, which logs and continues.
+
         Returns:
             The task ids that were cancelled successfully.
+
+        Raises:
+            SteeringTaskProjectMismatchError: When a target task exists but
+                belongs to a different project than ``project_id``.
         """
+        for task_id in task_ids:
+            task = await self._task_engine.get_task(task_id)
+            if task is not None and task.project != project_id:
+                msg = (
+                    f"task {task_id!r} belongs to project {task.project!r}, "
+                    f"not {project_id!r}"
+                )
+                raise SteeringTaskProjectMismatchError(msg)
         reason = f"Superseded by steering directive {directive_id}"
         cancelled: list[NotBlankStr] = []
         for task_id in task_ids:

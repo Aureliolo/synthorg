@@ -15,6 +15,7 @@ from synthorg.core.enums import InterventionKind, TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.intervention import SupersedeMode
+from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.engine.state import task_engine_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -61,7 +62,9 @@ _ARG_SUPERSEDE_TASK_IDS = "supersede_task_ids"
 _ARG_SUPERSEDE_MODE = "supersede_mode"
 _TY_POS_INT = "positive int"
 _TY_STR_ARRAY = "array of non-empty strings"
-_EXPECTED_KIND: Final[str] = f"one of {'/'.join(k.value for k in InterventionKind)}"
+_EXPECTED_KIND: Final[str] = (
+    f"one of {'/'.join(sorted(k.value for k in STEERABLE_KINDS))}"
+)
 _EXPECTED_SUPERSEDE_MODE: Final[str] = (
     f"one of {'/'.join(m.value for m in SupersedeMode)}"
 )
@@ -275,6 +278,8 @@ async def _steer(
             kind = InterventionKind(raw_kind)
         except ValueError as exc:
             raise ArgumentValidationError(_ARG_KIND, _EXPECTED_KIND) from exc
+        if kind not in STEERABLE_KINDS:
+            raise ArgumentValidationError(_ARG_KIND, _EXPECTED_KIND)
         text = require_arg(arguments, _ARG_TEXT, str)
         raw_mode = arguments.get(_ARG_SUPERSEDE_MODE, SupersedeMode.NONE.value)
         try:

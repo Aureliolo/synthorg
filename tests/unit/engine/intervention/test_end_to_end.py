@@ -46,6 +46,10 @@ class _RecordingTaskEngine:
         self.cancelled.append(task_id)
         return (None, None)
 
+    async def get_task(self, task_id: str) -> None:
+        """No tasks are tracked, so ownership validation always passes."""
+        return
+
     async def list_tasks(
         self, *, status: TaskStatus, project: str, limit: int
     ) -> tuple[tuple[object, ...], int]:

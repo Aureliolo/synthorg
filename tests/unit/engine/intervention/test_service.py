@@ -7,6 +7,11 @@ import pytest
 from synthorg.core.enums import InterventionKind, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.errors import (
+    SteeringDirectiveFieldError,
+    SteeringKindError,
+    SteeringTaskProjectMismatchError,
+)
 from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.engine.intervention.proposer import NoOpSupersessionProposer
 from synthorg.engine.intervention.service import SteeringService
@@ -29,6 +34,9 @@ class _FakeTaskEngine:
         self.cancelled.append((task_id, reason))
         return (None, None)
 
+    async def get_task(self, task_id: str) -> Task | None:
+        return next((t for t in self._tasks if t.id == task_id), None)
+
     async def list_tasks(
         self, *, status: TaskStatus, project: str, limit: int
     ) -> tuple[tuple[Task, ...], int]:
@@ -38,14 +46,18 @@ class _FakeTaskEngine:
         return (items, len(items))
 
 
-def _task(task_id: str, status: TaskStatus = TaskStatus.IN_PROGRESS) -> Task:
+def _task(
+    task_id: str,
+    status: TaskStatus = TaskStatus.IN_PROGRESS,
+    project: NotBlankStr = _PROJECT,
+) -> Task:
     return Task(
         id=task_id,
         title=f"Task {task_id}",
         description="A task.",
         type=TaskType.DEVELOPMENT,
         priority=Priority.MEDIUM,
-        project=_PROJECT,
+        project=project,
         created_by="pm",
         assigned_to="agent-1",
         status=status,
@@ -137,6 +149,9 @@ class TestIssue:
                 entries_at_first_cancel.append(len(rows))
                 return (None, None)
 
+            async def get_task(self, task_id: str) -> Task | None:
+                return None
+
             async def list_tasks(
                 self, *, status: TaskStatus, project: str, limit: int
             ) -> tuple[tuple[Task, ...], int]:
@@ -170,6 +185,61 @@ class TestIssue:
         active = await service.list_active(project_id=_PROJECT)
         assert active[0].narrow_task_ids == ("task-9",)
 
+    @pytest.mark.parametrize(
+        ("project_id", "text", "author"),
+        [
+            (NotBlankStr(""), NotBlankStr("t"), NotBlankStr("a")),
+            (_PROJECT, NotBlankStr("   "), NotBlankStr("a")),
+            (_PROJECT, NotBlankStr("t"), NotBlankStr("")),
+        ],
+    )
+    async def test_blank_required_field_rejected(
+        self,
+        project_id: NotBlankStr,
+        text: NotBlankStr,
+        author: NotBlankStr,
+    ) -> None:
+        # NotBlankStr is an identity cast at runtime, so a blank id would
+        # otherwise persist a directive with an empty title/summary/author.
+        service, _repo, engine = _service()
+        with pytest.raises(SteeringDirectiveFieldError):
+            await service.issue(
+                project_id=project_id,
+                kind=InterventionKind.HINT,
+                text=text,
+                author=author,
+            )
+        assert engine.cancelled == []
+
+    async def test_non_steerable_kind_rejected(self) -> None:
+        # PAUSE/KILL are task-lifecycle interventions, not steering directives;
+        # the brain write path rejects them so the inbox never silently drops
+        # an entry it cannot propagate.
+        service, _repo, _engine = _service()
+        with pytest.raises(SteeringKindError):
+            await service.issue(
+                project_id=_PROJECT,
+                kind=InterventionKind.PAUSE,
+                text=NotBlankStr("halt"),
+                author=NotBlankStr("mission-control"),
+            )
+
+    async def test_explicit_supersede_rejects_foreign_project_task(self) -> None:
+        # A task from another project must not be cancelled by this project's
+        # directive; ownership is validated before any cancellation.
+        foreign = _task("foreign", project=NotBlankStr("other-proj"))
+        service, _repo, engine = _service(tasks=(foreign,))
+        with pytest.raises(SteeringTaskProjectMismatchError):
+            await service.issue(
+                project_id=_PROJECT,
+                kind=InterventionKind.REDIRECT,
+                text=NotBlankStr("pivot"),
+                author=NotBlankStr("mission-control"),
+                supersede_task_ids=(NotBlankStr("foreign"),),
+                supersede_mode=SupersedeMode.EXPLICIT,
+            )
+        assert engine.cancelled == []
+
     async def test_issue_publishes_ws_event(self) -> None:
         events: list[str] = []
 
@@ -200,3 +270,15 @@ class TestConfirmSupersession:
         )
         assert cancelled == ("t1", "t2")
         assert len(engine.cancelled) == 2
+
+    async def test_confirm_rejects_foreign_project_task(self) -> None:
+        foreign = _task("foreign", project=NotBlankStr("other-proj"))
+        service, _repo, engine = _service(tasks=(foreign,))
+        with pytest.raises(SteeringTaskProjectMismatchError):
+            await service.confirm_supersession(
+                project_id=_PROJECT,
+                directive_id=NotBlankStr("d1"),
+                task_ids=(NotBlankStr("foreign"),),
+                author=NotBlankStr("mission-control"),
+            )
+        assert engine.cancelled == []

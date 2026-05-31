@@ -9,6 +9,11 @@ controllers.
 
 from typing import TYPE_CHECKING
 
+from synthorg.meta.mcp.domains._cockpit_args import (
+    SteerArgs,
+    SteerListArgs,
+    SteerSupersedeArgs,
+)
 from synthorg.meta.mcp.tool_builder import (
     ADMIN_GUARDRAIL_PROPERTIES,
     ADMIN_GUARDRAIL_REQUIRED,
@@ -115,6 +120,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "Issue a project-scoped steering directive (hint or redirect).",
         {**_STEER_PROPS, **ADMIN_GUARDRAIL_PROPERTIES},
         required=("project_id", "kind", "text", *ADMIN_GUARDRAIL_REQUIRED),
+        args_model=SteerArgs,
     ),
     admin_tool(
         "cockpit",
@@ -127,6 +133,7 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
             "task_ids",
             *ADMIN_GUARDRAIL_REQUIRED,
         ),
+        args_model=SteerSupersedeArgs,
     ),
     read_tool(
         "cockpit",
@@ -134,5 +141,6 @@ COCKPIT_TOOLS: tuple[MCPToolDef, ...] = (
         "List the active steering directives for a project.",
         _PROJECT_PROP,
         required=("project_id",),
+        args_model=SteerListArgs,
     ),
 )

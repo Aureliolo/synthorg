@@ -3705,7 +3705,7 @@
     },
     {
       "kind": "code",
-      "loc": 266,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/core/error_taxonomy.py",
       "owning_feature": null
@@ -5168,7 +5168,7 @@
     },
     {
       "kind": "code",
-      "loc": 20,
+      "loc": 45,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/errors.py",
       "owning_feature": "engine"
@@ -5210,7 +5210,7 @@
     },
     {
       "kind": "service",
-      "loc": 344,
+      "loc": 375,
       "loc_cap": 600,
       "module": "src/synthorg/engine/intervention/service.py",
       "owning_feature": "engine"
@@ -10061,6 +10061,13 @@
     },
     {
       "kind": "code",
+      "loc": 45,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/domains/_cockpit_args.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
       "loc": 135,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/_common_args.py",
@@ -10187,7 +10194,7 @@
     },
     {
       "kind": "code",
-      "loc": 132,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/cockpit.py",
       "owning_feature": "meta"
@@ -10369,7 +10376,7 @@
     },
     {
       "kind": "code",
-      "loc": 356,
+      "loc": 361,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"
