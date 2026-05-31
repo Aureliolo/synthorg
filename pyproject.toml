@@ -302,7 +302,7 @@ ignore = [
     # TC001/2/3 ("move-to-TYPE_CHECKING") conflict with typeguard's
     # eager ``inspect.signature`` annotation evaluation. The project
     # wires typeguard via ``--typeguard-packages=synthorg`` (see ADR-0006
-    # Section F + issue #2068); every type that appears in a function
+    # Section F); every type that appears in a function
     # signature, NamedTuple field, or Pydantic model annotation must be
     # importable at runtime so typeguard can resolve it. Other TC checks
     # (TC004 move-out-of-TYPE_CHECKING, TC005 empty block, TC006/7/8
@@ -941,9 +941,10 @@ addopts = [
     # ``forward_ref_policy`` does NOT skip (AwareDatetime-vs-datetime, test
     # doubles failing Protocol/isinstance checks, DTO generics), plus the
     # ~1,055-module ``TYPE_CHECKING``-guarded-signature class. Activation is a
-    # dedicated multi-PR programme: #2182 (WARN) + #2183 (ERROR). See ADR-0006
-    # Section F. The wiring, dependency pin, conftest hook, and ruff TC001/2/3
-    # disable all ship now so #2182 starts from a clean base.
+    # dedicated multi-PR programme (WARN pass, then ERROR hardening); ADR-0006
+    # Section F documents the scope and tracks the follow-up work. The wiring,
+    # dependency pin, conftest hook, and ruff TC001/2/3 disable all ship now so
+    # activation starts from a clean base.
     # "--typeguard-packages=synthorg",
     # "--typeguard-forward-ref-policy=WARN",
 ]

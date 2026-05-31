@@ -73,8 +73,8 @@ Cross-worker coordination rule (read before adding a new fixture):
 # The hook install is COMMENTED out alongside the pyproject activation
 # flags: activation surfaces ~1,500 resolved-type mismatches plus the
 # ~1,055-module TYPE_CHECKING-guarded-signature class -- a dedicated
-# multi-PR programme (#2182 WARN, #2183 ERROR), not a one-line uncomment.
-# ADR-0006 Section F documents the scope.
+# multi-PR programme, not a one-line uncomment. ADR-0006 Section F
+# documents the scope and tracks the follow-up work.
 import warnings as _warnings
 
 import typeguard
