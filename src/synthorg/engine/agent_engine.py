@@ -97,6 +97,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
@@ -197,6 +198,7 @@ class AgentEngine(
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         ontology_injection_strategy: OntologyInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
+        capture_strategy: CaptureStrategy | None = None,
         memory_backend: MemoryBackend | None = None,
         distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
@@ -309,6 +311,7 @@ class AgentEngine(
         self._memory_injection_strategy = memory_injection_strategy
         self._ontology_injection_strategy = ontology_injection_strategy
         self._procedural_memory_config = procedural_memory_config
+        self._capture_strategy = capture_strategy
         self._memory_backend = memory_backend
         self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver

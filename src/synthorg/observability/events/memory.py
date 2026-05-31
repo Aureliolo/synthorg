@@ -63,6 +63,11 @@ MEMORY_FORMAT_INVALID_INJECTION_POINT: Final[str] = (
     "memory.format.invalid_injection_point"
 )
 MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noqa: S105
+# Engine context-injection dispatch: emitted when the wired injection strategy
+# surfaces memories into an agent's pre-execution context, or when that call
+# fails unexpectedly (non-fatal -- the run proceeds without injected memory).
+MEMORY_CONTEXT_INJECTED: Final[str] = "memory.context.injected"
+MEMORY_CONTEXT_INJECTION_FAILED: Final[str] = "memory.context.injection_failed"
 
 # ── Memory filter ──────────────────────────────────────────────
 

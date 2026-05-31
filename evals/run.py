@@ -46,8 +46,11 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_SUITE_RUN_COMPLETE,
@@ -224,7 +227,6 @@ async def _score_briefs(  # noqa: PLR0913
     briefs: tuple[Brief, ...],
     *,
     identity: AgentIdentity,
-    memory_backend: MemoryBackend | None,
     judge: JudgeProtocol,
     anchors_dir: Path,
     work_dir: Path,
@@ -238,9 +240,7 @@ async def _score_briefs(  # noqa: PLR0913
     results: list[BriefResult] = []
     calibrations: dict[str, JudgeCalibrationReport] = {}
     for brief in briefs:
-        outcome = await run_brief(
-            engine, brief, identity=identity, memory_backend=memory_backend
-        )
+        outcome = await run_brief(engine, brief, identity=identity)
         grade, calibration = grade_brief(
             brief,
             deliverable_text=outcome.deliverable_text,
@@ -359,10 +359,23 @@ async def run_benchmark_async(  # noqa: PLR0913
         if procedural_config is not None
         else root_config.memory.procedural
     )
+    # Wire context injection so the engine surfaces accumulated procedural
+    # memory through its OWN dispatch (``_prepare_context`` -> ``prepare_messages``)
+    # rather than the harness pre-retrieving it. The curve experiment therefore
+    # proves the live capture -> store -> retrieve -> inject loop end to end.
+    injection_strategy: MemoryInjectionStrategy | None = (
+        ContextInjectionStrategy(
+            backend=memory_backend,
+            config=MemoryRetrievalConfig(),
+        )
+        if memory_backend is not None
+        else None
+    )
     engine = AgentEngine(
         provider=active_provider,
         recovery_strategy=FailAndReassignStrategy(),
         procedural_memory_config=effective_procedural,
+        memory_injection_strategy=injection_strategy,
         memory_backend=memory_backend,
     )
 
@@ -378,7 +391,6 @@ async def run_benchmark_async(  # noqa: PLR0913
         engine,
         briefs,
         identity=identity,
-        memory_backend=memory_backend,
         judge=active_judge,
         anchors_dir=resolved_anchors,
         work_dir=out_dir,

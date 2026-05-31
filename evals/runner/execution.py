@@ -1,10 +1,13 @@
 # module-kind: code
 """Per-brief execution: run one brief through a direct ``AgentEngine``.
 
-The runner boots a real agent engine with a deterministic provider, injects any
-retrieved procedural memory (the live ``capture -> store -> retrieve -> inject``
-pipeline), runs the brief as a task, and captures the process-fact events the
-scorer's penalty table tracks. Only the LLM is a deterministic stand-in.
+The runner boots a real agent engine with a deterministic provider, runs the
+brief as a task, and captures the process-fact events the scorer's penalty
+table tracks. When the engine is wired with a ``memory_injection_strategy`` and
+a backend (see ``evals.run``), it surfaces accumulated procedural memory through
+its OWN dispatch -- the runner does not pre-retrieve and pass memory in, so the
+learning curve proves the live ``capture -> store -> retrieve -> inject``
+pipeline. Only the LLM is a deterministic stand-in.
 """
 
 from pydantic import BaseModel, ConfigDict
@@ -18,19 +21,10 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.run_result import AgentRunResult
-from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_BRIEF_RUN_COMPLETE
-from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)
-
-# Token budget for the memory-injection retrieval step. Generous enough to
-# admit the handful of procedural lessons a benchmark agent accumulates without
-# crowding the deterministic prompt; tuning lives here, not in brief YAML.
-_MEMORY_TOKEN_BUDGET: int = 4000
 
 
 class BriefRunOutcome(BaseModel):
@@ -49,32 +43,11 @@ class BriefRunOutcome(BaseModel):
     total_cost: float
 
 
-async def _retrieve_memory_messages(
-    memory_backend: MemoryBackend | None,
-    *,
-    agent_id: str,
-    query_text: str,
-) -> tuple[ChatMessage, ...]:
-    """Retrieve + format procedural memory for injection (empty when absent).
-
-    Returns:
-        Formatted memory messages, or an empty tuple when no backend/query.
-    """
-    if memory_backend is None or not query_text:
-        return ()
-    strategy = ContextInjectionStrategy(
-        backend=memory_backend,
-        config=MemoryRetrievalConfig(),
-    )
-    return await strategy.prepare_messages(
-        NotBlankStr(agent_id),
-        NotBlankStr(query_text),
-        token_budget=_MEMORY_TOKEN_BUDGET,
-    )
-
-
 def _brief_task(brief: Brief, *, agent_id: str) -> Task:
     """Build the task the engine executes for *brief*.
+
+    The brief title becomes the task title, which the engine's context
+    injection uses as the memory-retrieval anchor.
 
     Returns:
         The :class:`~synthorg.core.task.Task` for the brief.
@@ -96,37 +69,28 @@ async def run_brief(
     brief: Brief,
     *,
     identity: AgentIdentity,
-    memory_backend: MemoryBackend | None,
-    retrieval_query: str | None = None,
 ) -> BriefRunOutcome:
     """Run *brief* through *engine* and capture its outcome + process facts.
+
+    The engine injects any accumulated procedural memory itself (when wired
+    with a ``memory_injection_strategy``); the runner does not pre-retrieve.
 
     Args:
         engine: The booted agent engine (provider + optional memory pipeline).
         brief: The exam item to run.
         identity: The stable agent identity (reused across rounds so memory
             accumulates per agent).
-        memory_backend: Backend to retrieve procedural memory from for
-            injection (``None`` disables injection).
-        retrieval_query: Memory-retrieval query text; defaults to the brief
-            title (the salient task token for relevance matching).
 
     Returns:
         The brief's run outcome (termination, deliverable, tracked events).
     """
-    agent_id = str(identity.id)
-    query = retrieval_query if retrieval_query is not None else brief.title
-    memory_messages = await _retrieve_memory_messages(
-        memory_backend, agent_id=agent_id, query_text=query
-    )
-    task = _brief_task(brief, agent_id=agent_id)
+    task = _brief_task(brief, agent_id=str(identity.id))
 
     with capture_logs() as logs:
         result: AgentRunResult = await engine.run(
             identity=identity,
             task=task,
             max_turns=brief.limits.max_turns,
-            memory_messages=memory_messages,
         )
 
     tracked: dict[str, int] = {}

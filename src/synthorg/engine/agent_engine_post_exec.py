@@ -66,6 +66,7 @@ class AgentEnginePostExecMixin:
     _memory_backend: Any
     _procedural_memory_config: Any
     _procedural_proposer: Any
+    _capture_strategy: Any
     _provider: Any
     _shutdown_checker: Any
     # Injected by ``AgentEngine.__init__``; declared on the mixin so
@@ -154,6 +155,12 @@ class AgentEnginePostExecMixin:
                 )
         await self._try_procedural_memory(
             failed_result or execution_result,
+            recovery_result,
+            agent_id,
+            task_id,
+        )
+        await self._try_capture_success(
+            execution_result,
             recovery_result,
             agent_id,
             task_id,
@@ -337,6 +344,27 @@ class AgentEnginePostExecMixin:
             procedural_proposer=self._procedural_proposer,
             memory_backend=self._memory_backend,
             procedural_memory_config=self._procedural_memory_config,
+        )
+
+    async def _try_capture_success(
+        self,
+        execution_result: ExecutionResult,
+        recovery_result: RecoveryResult | None,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Run the success-capture strategy post-execution (non-critical)."""
+        from synthorg.engine.post_execution import (  # noqa: PLC0415
+            try_capture_success,
+        )
+
+        await try_capture_success(
+            execution_result,
+            recovery_result,
+            agent_id,
+            task_id,
+            capture_strategy=self._capture_strategy,
+            memory_backend=self._memory_backend,
         )
 
     def _build_and_log_result(
