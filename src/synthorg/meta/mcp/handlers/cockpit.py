@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg._core.features import require_service
 from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
+from synthorg.engine.intervention import SupersedeMode
 from synthorg.engine.state import task_engine_of
 from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -46,11 +48,42 @@ logger = get_logger(__name__)
 
 _COCKPIT_NS: Final[str] = "cockpit"
 _ARG_EXECUTION_ID = "execution_id"
-_ARG_AGENT_ID = "agent_id"
 _ARG_TASK_ID = "task_id"
 _ARG_TEXT = "text"
 _ARG_TURN_INDEX = "turn_index"
+_ARG_PROJECT_ID = "project_id"
+_ARG_KIND = "kind"
+_ARG_DIRECTIVE_ID = "directive_id"
+_ARG_TASK_IDS = "task_ids"
+_ARG_NARROW_TASK_IDS = "narrow_task_ids"
+_ARG_NARROW_AGENT_IDS = "narrow_agent_ids"
+_ARG_SUPERSEDE_TASK_IDS = "supersede_task_ids"
+_ARG_SUPERSEDE_MODE = "supersede_mode"
 _TY_POS_INT = "positive int"
+_TY_STR_ARRAY = "array of non-empty strings"
+
+
+def _str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
+    """Parse an optional array-of-strings argument into a tuple.
+
+    Returns:
+        The non-empty string ids; an empty tuple when the key is absent.
+
+    Raises:
+        ArgumentValidationError: When the value is not an array of
+            non-empty strings.
+    """
+    raw = arguments.get(key)
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise ArgumentValidationError(key, _TY_STR_ARRAY)
+    out: list[NotBlankStr] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ArgumentValidationError(key, _TY_STR_ARRAY)
+        out.append(NotBlankStr(item))
+    return tuple(out)
 
 
 def _parse_turn_index(arguments: dict[str, Any]) -> int:
@@ -218,44 +251,40 @@ async def _intervene_kill(
         return err(exc)
 
 
-async def _steer_to(
-    app_state: Any,
-    arguments: dict[str, Any],
-    kind: InterventionKind,
-    tool_name: str,
-) -> str:
-    """Resolve steering args and route through the steering directive.
-
-    Returns:
-        Resulting string.
-    """
-    execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
-    agent_id = require_arg(arguments, _ARG_AGENT_ID, str)
-    text = require_arg(arguments, _ARG_TEXT, str)
-    steering = require_service(
-        app_state.slice(CockpitStateSlice).steering_directive, "Steering Directive"
-    )
-    outcome = await steering.steer(
-        kind=kind,
-        execution_id=execution_id,
-        agent_id=agent_id,
-        details={"text": text},
-    )
-    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
-    return ok(outcome.model_dump(mode="json"))
-
-
-async def _intervene_hint(
+async def _steer(
     *,
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Return intervene hint."""
-    tool_name = "synthorg_cockpit_intervene_hint"
+    """Issue a project-scoped steering directive.
+
+    Returns:
+        The JSON-encoded ``SteeringIssueResult`` or an error envelope.
+    """
+    tool_name = "synthorg_cockpit_steer"
     try:
         require_admin_guardrails(arguments, actor)
-        return await _steer_to(app_state, arguments, InterventionKind.HINT, tool_name)
+        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
+        kind = InterventionKind(require_arg(arguments, _ARG_KIND, str))
+        text = require_arg(arguments, _ARG_TEXT, str)
+        raw_mode = arguments.get(_ARG_SUPERSEDE_MODE, SupersedeMode.NONE.value)
+        mode = SupersedeMode(raw_mode)
+        steering = require_service(
+            app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
+        )
+        result = await steering.issue(
+            project_id=NotBlankStr(project_id),
+            kind=kind,
+            text=NotBlankStr(text),
+            author=NotBlankStr(require_actor_id(actor)),
+            narrow_task_ids=_str_tuple(arguments, _ARG_NARROW_TASK_IDS),
+            narrow_agent_ids=_str_tuple(arguments, _ARG_NARROW_AGENT_IDS),
+            supersede_task_ids=_str_tuple(arguments, _ARG_SUPERSEDE_TASK_IDS),
+            supersede_mode=mode,
+        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        return ok(result.model_dump(mode="json"))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
@@ -264,19 +293,67 @@ async def _intervene_hint(
         return err(exc)
 
 
-async def _intervene_redirect(
+async def _steer_supersede(
     *,
     app_state: Any,
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Return intervene redirect."""
-    tool_name = "synthorg_cockpit_intervene_redirect"
+    """Confirm the obsolete-task set for a steering directive.
+
+    Returns:
+        The JSON-encoded cancelled task ids or an error envelope.
+    """
+    tool_name = "synthorg_cockpit_steer_supersede"
     try:
         require_admin_guardrails(arguments, actor)
-        return await _steer_to(
-            app_state, arguments, InterventionKind.REDIRECT, tool_name
+        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
+        directive_id = require_arg(arguments, _ARG_DIRECTIVE_ID, str)
+        task_ids = _str_tuple(arguments, _ARG_TASK_IDS)
+        steering = require_service(
+            app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )
+        cancelled = await steering.confirm_supersession(
+            project_id=NotBlankStr(project_id),
+            directive_id=NotBlankStr(directive_id),
+            task_ids=task_ids,
+            author=NotBlankStr(require_actor_id(actor)),
+        )
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        return ok(
+            {
+                "directive_id": directive_id,
+                "cancelled_task_ids": [str(t) for t in cancelled],
+            }
+        )
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool_name, exc)
+        return err(exc)
+    except Exception as exc:
+        log_handler_invoke_failed(tool_name, exc)
+        return err(exc)
+
+
+async def _steer_list(
+    *,
+    app_state: Any,
+    arguments: dict[str, Any],
+    actor: AgentIdentity | None = None,  # noqa: ARG001
+) -> str:
+    """List the active steering directives for a project.
+
+    Returns:
+        The JSON-encoded active directives or an error envelope.
+    """
+    tool_name = "synthorg_cockpit_steer_list"
+    try:
+        project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
+        steering = require_service(
+            app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
+        )
+        directives = await steering.list_active(project_id=NotBlankStr(project_id))
+        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+        return ok(dump_many(directives))
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool_name, exc)
         return err(exc)
@@ -292,7 +369,8 @@ COCKPIT_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
         "synthorg_cockpit_seek_flight_recorder": _seek,
         "synthorg_cockpit_intervene_pause": _intervene_pause,
         "synthorg_cockpit_intervene_kill": _intervene_kill,
-        "synthorg_cockpit_intervene_hint": _intervene_hint,
-        "synthorg_cockpit_intervene_redirect": _intervene_redirect,
+        "synthorg_cockpit_steer": _steer,
+        "synthorg_cockpit_steer_supersede": _steer_supersede,
+        "synthorg_cockpit_steer_list": _steer_list,
     },
 )

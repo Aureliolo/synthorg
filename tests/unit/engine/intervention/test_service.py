@@ -1,8 +1,6 @@
 """Tests for the SteeringService write path."""
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
-from uuid import uuid4
 
 import pytest
 
@@ -13,46 +11,10 @@ from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.engine.intervention.proposer import NoOpSupersessionProposer
 from synthorg.engine.intervention.service import SteeringService
 from synthorg.observability.events.cockpit import STEERING_DIRECTIVE_ISSUED
-from synthorg.project_brain.models import BrainEntry, BrainEntryStatus
+from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import FakeProjectBrainRepository
 
-_RECORDED_AT = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
 _PROJECT = NotBlankStr("proj-001")
-
-
-class _FakeBrainService:
-    """Appends entries into the shared fake repo (so list_active sees them)."""
-
-    def __init__(self, repo: FakeProjectBrainRepository) -> None:
-        self._repo = repo
-
-    async def append_entry(  # noqa: PLR0913 -- mirrors the real signature
-        self,
-        *,
-        project_id: NotBlankStr,
-        title: NotBlankStr,
-        rationale: NotBlankStr,
-        status: BrainEntryStatus,
-        author: NotBlankStr,
-        payload: object,
-        related_task_ids: tuple[NotBlankStr, ...] = (),
-        tags: tuple[NotBlankStr, ...] = (),
-    ) -> BrainEntry:
-        entry = BrainEntry(
-            entry_id=NotBlankStr(str(uuid4())),
-            revision=1,
-            project_id=project_id,
-            entry_kind=payload.entry_kind,  # type: ignore[attr-defined]
-            title=title,
-            rationale=rationale,
-            status=status,
-            author=author,
-            recorded_at=_RECORDED_AT,
-            related_task_ids=related_task_ids,
-            tags=tags,
-            payload=payload,  # type: ignore[arg-type]
-        )
-        return await self._repo.append_with_next_revision(entry)
 
 
 class _FakeTaskEngine:
@@ -97,7 +59,7 @@ def _service(
     repo = FakeProjectBrainRepository()
     task_engine = _FakeTaskEngine(tasks)
     service = SteeringService(
-        brain_service=_FakeBrainService(repo),  # type: ignore[arg-type]
+        brain_service=FakeBrainService(repo),  # type: ignore[arg-type]
         brain_repo=repo,
         task_engine=task_engine,  # type: ignore[arg-type]
         proposer=NoOpSupersessionProposer(),

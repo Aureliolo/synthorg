@@ -107,51 +107,6 @@ class TestCockpitController:
         assert [f["turn_index"] for f in data["frames"]] == [1, 2]
         assert data["current_frame"]["turn_index"] == 2
 
-    async def test_hint_queues_steering(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        resp = await async_test_client.post(
-            "/api/v1/cockpit/interventions/hint",
-            headers=_HEADERS,
-            json={
-                "execution_id": "exec-1",
-                "agent_id": "agent-1",
-                "text": "use Postgres not Mongo",
-            },
-        )
-        assert resp.status_code == 201
-        data = resp.json()["data"]
-        assert data["applied"] is True
-        assert data["kind"] == "hint"
-
-    async def test_redirect_queues_steering(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        resp = await async_test_client.post(
-            "/api/v1/cockpit/interventions/redirect",
-            headers=_HEADERS,
-            json={
-                "execution_id": "exec-1",
-                "agent_id": "agent-1",
-                "text": "pivot off the frontend",
-            },
-        )
-        assert resp.status_code == 201
-        assert resp.json()["data"]["applied"] is True
-
-    async def test_hint_rejects_blank_text(
-        self,
-        async_test_client: LoopAsyncClient,
-    ) -> None:
-        resp = await async_test_client.post(
-            "/api/v1/cockpit/interventions/hint",
-            headers=_HEADERS,
-            json={"execution_id": "exec-1", "agent_id": "agent-1", "text": ""},
-        )
-        assert resp.status_code == 400
-
     async def test_pause_rejects_unknown_field(
         self,
         async_test_client: LoopAsyncClient,

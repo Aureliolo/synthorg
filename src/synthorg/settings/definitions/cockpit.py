@@ -136,19 +136,49 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COCKPIT,
-        key="steering_directive_strategy",
-        type=SettingType.ENUM,
-        default="safe_default",
-        enum_values=("safe_default",),
+        key="steering_proposer_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
         description=(
-            "Steering directive implementation selected at boot. The"
-            " 'safe_default' strategy applies hint and redirect"
-            " interventions as an INFO_REQUEST interrupt at the next safe"
-            " turn boundary."
+            "Enable the LLM supersession proposer for redirect directives"
+            " issued in PROPOSE mode. When off, PROPOSE echoes the"
+            " operator's seed set unchanged (no LLM refinement)."
         ),
         group="Intervention",
         level=SettingLevel.ADVANCED,
-        read_only_post_init=True,
-        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COCKPIT,
+        key="steering_proposer_model",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Model id the LLM supersession proposer calls when enabled."
+            " Empty falls back to the no-op proposer (operator selection"
+            " unchanged)."
+        ),
+        group="Intervention",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COCKPIT,
+        key="steering_max_active_directives",
+        type=SettingType.INTEGER,
+        default="100",
+        description=(
+            "Maximum active steering directives the operator board lists"
+            " for a project; older active directives beyond this cap are"
+            " not returned."
+        ),
+        group="Intervention",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=1000,
     )
 )

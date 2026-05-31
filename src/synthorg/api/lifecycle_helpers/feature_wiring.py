@@ -17,6 +17,7 @@ backend's conventions.
 
 from typing import TYPE_CHECKING
 
+from synthorg.api._app_wiring import _wire_steering_service
 from synthorg.api.app_builders import (
     build_chief_of_staff_chat,
     build_chief_of_staff_proposer,
@@ -558,6 +559,7 @@ async def wire_features_on_startup(
     """Run every optional feature-engine wire in dependency order."""
     await _wire_docs_engine(app_state)
     await _wire_project_brain(app_state)
+    await _wire_steering_service(app_state, provider_registry=provider_registry)
     await _wire_knowledge_engine(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)
     await _wire_charter_engine(

@@ -18,8 +18,10 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import InterventionKind, TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.errors import SteeringKindError
 from synthorg.engine.intervention.inbox import brain_entry_to_directive
 from synthorg.engine.intervention.models import (
+    STEERABLE_KINDS,
     STEERING_TAG,
     ActiveSteeringDirective,
     SteeringIssueResult,
@@ -32,6 +34,7 @@ from synthorg.engine.intervention.models import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ISSUED,
+    STEERING_SUPERSESSION_PROPOSED,
     STEERING_TASK_SUPERSEDE_FAILED,
     STEERING_TASKS_SUPERSEDED,
 )
@@ -104,7 +107,14 @@ class SteeringService:
             The :class:`SteeringIssueResult` carrying the directive id, any
             immediately-superseded task ids (``EXPLICIT``), and any
             obsolete-task proposal awaiting confirmation (``PROPOSE``).
+
+        Raises:
+            SteeringKindError: When ``kind`` is not a steerable directive
+                (only ``HINT`` and ``REDIRECT`` propagate into agents).
         """
+        if kind not in STEERABLE_KINDS:
+            msg = f"{kind.value!r} is not a steerable directive kind"
+            raise SteeringKindError(msg)
         tags = (
             STEERING_TAG,
             steering_kind_tag(kind),
@@ -148,6 +158,14 @@ class SteeringService:
                 directive_text=text,
                 seed_task_ids=supersede_task_ids,
             )
+            await self._notify(
+                STEERING_SUPERSESSION_PROPOSED,
+                {
+                    "project_id": project_id,
+                    "directive_id": directive_id,
+                    "proposed_task_ids": list(proposal.proposed_task_ids),
+                },
+            )
 
         return SteeringIssueResult(
             directive_id=directive_id,
@@ -180,6 +198,7 @@ class SteeringService:
         self,
         *,
         project_id: NotBlankStr,
+        limit: int = _LIST_ACTIVE_LIMIT,
     ) -> tuple[ActiveSteeringDirective, ...]:
         """Return all active steering directives for the project (operator view).
 
@@ -195,7 +214,7 @@ class SteeringService:
             status=BrainEntryStatus.ACTIVE,
             tag=STEERING_TAG,
         )
-        rows = await self._repo.list_current(spec, limit=_LIST_ACTIVE_LIMIT, offset=0)
+        rows = await self._repo.list_current(spec, limit=limit, offset=0)
         directives = [
             directive
             for row in rows

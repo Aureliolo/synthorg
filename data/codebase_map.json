@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 209,
+      "loc": 273,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -709,7 +709,7 @@
     },
     {
       "kind": "code",
-      "loc": 272,
+      "loc": 200,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/cockpit.py",
       "owning_feature": "api_core"
@@ -1185,6 +1185,13 @@
     },
     {
       "kind": "code",
+      "loc": 197,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/controllers/steering.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
       "loc": 384,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/subworkflows.py",
@@ -1514,7 +1521,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 532,
+      "loc": 534,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -3698,7 +3705,7 @@
     },
     {
       "kind": "code",
-      "loc": 265,
+      "loc": 266,
       "loc_cap": 500,
       "module": "src/synthorg/core/error_taxonomy.py",
       "owning_feature": null
@@ -4461,7 +4468,7 @@
     },
     {
       "kind": "feature",
-      "loc": 40,
+      "loc": 43,
       "loc_cap": 100,
       "module": "src/synthorg/engine/cockpit/feature.py",
       "owning_feature": "cockpit"
@@ -4475,7 +4482,7 @@
     },
     {
       "kind": "code",
-      "loc": 19,
+      "loc": 21,
       "loc_cap": 500,
       "module": "src/synthorg/engine/cockpit/state.py",
       "owning_feature": "cockpit"
@@ -5154,9 +5161,16 @@
     },
     {
       "kind": "code",
-      "loc": 46,
+      "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/__init__.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 20,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/errors.py",
       "owning_feature": "engine"
     },
     {
@@ -5196,16 +5210,9 @@
     },
     {
       "kind": "service",
-      "loc": 276,
+      "loc": 294,
       "loc_cap": 600,
       "module": "src/synthorg/engine/intervention/service.py",
-      "owning_feature": "engine"
-    },
-    {
-      "kind": "code",
-      "loc": 127,
-      "loc_cap": 500,
-      "module": "src/synthorg/engine/intervention/steering.py",
       "owning_feature": "engine"
     },
     {
@@ -10173,7 +10180,7 @@
     },
     {
       "kind": "code",
-      "loc": 83,
+      "loc": 132,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/cockpit.py",
       "owning_feature": "meta"
@@ -10355,7 +10362,7 @@
     },
     {
       "kind": "code",
-      "loc": 269,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"
@@ -15913,7 +15920,7 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/cockpit.py",
       "owning_feature": "settings"
@@ -17761,6 +17768,13 @@
     },
     {
       "kind": "code",
+      "loc": 55,
+      "loc_cap": 500,
+      "module": "src/synthorg/workers/_agent_engine_collaborators.py",
+      "owning_feature": "runtime"
+    },
+    {
+      "kind": "code",
       "loc": 26,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_construction.py",
@@ -17845,7 +17859,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 892,
+      "loc": 868,
       "loc_cap": 600,
       "module": "src/synthorg/workers/runtime_builder.py",
       "owning_feature": "runtime"
