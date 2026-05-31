@@ -1,0 +1,29 @@
+# Hand-scored calibration anchors for the ``default-bench`` rubric.
+#
+# At scoring time the judge re-scores these anchors; the eval refuses to emit a
+# number unless the judge's ordering correlates with these hand scores
+# (Spearman rho >= 0.7). Five anchors with distinct correctness scores give the
+# correlation a well-defined ordering.
+rubric_id: default-bench
+anchor_set_version: 1
+items:
+  - anchor_id: anchor-empty
+    output: "No deliverable was produced."
+    hand_scores:
+      correctness: 0.0
+  - anchor_id: anchor-poor
+    output: "An attempt was started but left the checkout flow broken."
+    hand_scores:
+      correctness: 0.25
+  - anchor_id: anchor-partial
+    output: "The checkout flow works for the happy path but not on failure."
+    hand_scores:
+      correctness: 0.5
+  - anchor_id: anchor-good
+    output: "The checkout flow recovers from most failures with clear handling."
+    hand_scores:
+      correctness: 0.75
+  - anchor_id: anchor-excellent
+    output: "A fully resilient checkout flow that recovers from every failure."
+    hand_scores:
+      correctness: 1.0

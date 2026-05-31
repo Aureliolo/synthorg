@@ -1,0 +1,8 @@
+# Reference golden-company config for the benchmark.
+#
+# A healthy, well-formed company: adequate budget and turn limits, so a
+# competent run completes its briefs cleanly with no process-fact penalties.
+# The broken sibling (broken.yaml) tightens these limits so the same brief
+# suite, run with the same deterministic provider, trips budget / turn events
+# and produces a measurably worse scorecard.
+company_name: "Reference Benchmark Co"
