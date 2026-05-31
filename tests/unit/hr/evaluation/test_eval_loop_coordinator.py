@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
 from synthorg.hr.evaluation.config import EvalLoopConfig
 from synthorg.hr.evaluation.dogfooding_dataset_builder import DogfoodingDatasetBuilder
@@ -133,6 +134,39 @@ class TestEvalLoopCoordinatorRunCycle:
         coordinator = _make_coordinator(config=config)
         report = await coordinator.run_cycle(window=timedelta(hours=1))
         assert report.benchmark_results == ()  # No benchmarks registered
+
+    async def test_training_not_triggered_without_actions(self) -> None:
+        """A cycle that proposes no actions never marks training triggered."""
+        config = EvalLoopConfig(training_on_actions=True)
+        coordinator = _make_coordinator(config=config)
+        report = await coordinator.run_cycle(window=timedelta(hours=1))
+        assert report.proposed_actions == ()
+        assert report.training_triggered is False
+
+
+@pytest.mark.unit
+class TestEvalLoopCoordinatorTrainingDecision:
+    """EvalLoopCoordinator._should_trigger_training() gating."""
+
+    _ACTIONS: tuple[NotBlankStr, ...] = (NotBlankStr("increase_review_depth"),)
+
+    def test_fires_when_actions_and_opt_in(self) -> None:
+        coordinator = _make_coordinator(
+            config=EvalLoopConfig(training_on_actions=True),
+        )
+        assert coordinator._should_trigger_training(self._ACTIONS) is True
+
+    def test_no_fire_when_actions_but_opt_out(self) -> None:
+        coordinator = _make_coordinator(
+            config=EvalLoopConfig(training_on_actions=False),
+        )
+        assert coordinator._should_trigger_training(self._ACTIONS) is False
+
+    def test_no_fire_when_opted_in_but_no_actions(self) -> None:
+        coordinator = _make_coordinator(
+            config=EvalLoopConfig(training_on_actions=True),
+        )
+        assert coordinator._should_trigger_training(()) is False
 
 
 @pytest.mark.unit
