@@ -5210,7 +5210,7 @@
     },
     {
       "kind": "service",
-      "loc": 294,
+      "loc": 344,
       "loc_cap": 600,
       "module": "src/synthorg/engine/intervention/service.py",
       "owning_feature": "engine"
@@ -10369,7 +10369,7 @@
     },
     {
       "kind": "code",
-      "loc": 343,
+      "loc": 356,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"

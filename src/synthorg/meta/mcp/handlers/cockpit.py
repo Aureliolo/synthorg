@@ -61,6 +61,10 @@ _ARG_SUPERSEDE_TASK_IDS = "supersede_task_ids"
 _ARG_SUPERSEDE_MODE = "supersede_mode"
 _TY_POS_INT = "positive int"
 _TY_STR_ARRAY = "array of non-empty strings"
+_EXPECTED_KIND: Final[str] = f"one of {'/'.join(k.value for k in InterventionKind)}"
+_EXPECTED_SUPERSEDE_MODE: Final[str] = (
+    f"one of {'/'.join(m.value for m in SupersedeMode)}"
+)
 
 
 def _str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
@@ -261,15 +265,24 @@ async def _steer(
 
     Returns:
         The JSON-encoded ``SteeringIssueResult`` or an error envelope.
-    """
+    """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer"
     try:
         _reason, _actor = require_admin_guardrails(arguments, actor)
         project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
-        kind = InterventionKind(require_arg(arguments, _ARG_KIND, str))
+        raw_kind = require_arg(arguments, _ARG_KIND, str)
+        try:
+            kind = InterventionKind(raw_kind)
+        except ValueError as exc:
+            raise ArgumentValidationError(_ARG_KIND, _EXPECTED_KIND) from exc
         text = require_arg(arguments, _ARG_TEXT, str)
         raw_mode = arguments.get(_ARG_SUPERSEDE_MODE, SupersedeMode.NONE.value)
-        mode = SupersedeMode(raw_mode)
+        try:
+            mode = SupersedeMode(raw_mode)
+        except ValueError as exc:
+            raise ArgumentValidationError(
+                _ARG_SUPERSEDE_MODE, _EXPECTED_SUPERSEDE_MODE
+            ) from exc
         steering = require_service(
             app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )

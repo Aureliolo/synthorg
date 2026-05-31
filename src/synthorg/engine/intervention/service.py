@@ -115,58 +115,22 @@ class SteeringService:
         if kind not in STEERABLE_KINDS:
             msg = f"{kind.value!r} is not a steerable directive kind"
             raise SteeringKindError(msg)
-        tags = (
-            STEERING_TAG,
-            steering_kind_tag(kind),
-            *(task_narrow_tag(t) for t in narrow_task_ids),
-            *(agent_narrow_tag(a) for a in narrow_agent_ids),
-        )
-        title = NotBlankStr(text[:_TITLE_MAX_CHARS])
-        entry = await self._brain.append_entry(
+        directive_id = await self._record_directive(
             project_id=project_id,
-            title=title,
-            rationale=text,
-            status=BrainEntryStatus.ACTIVE,
+            kind=kind,
+            text=text,
             author=author,
-            payload=PlanRevisionPayload(summary=text),
-            related_task_ids=narrow_task_ids,
-            tags=tags,
+            narrow_task_ids=narrow_task_ids,
+            narrow_agent_ids=narrow_agent_ids,
         )
-        directive_id = entry.entry_id
-        await self._notify(
-            STEERING_DIRECTIVE_ISSUED,
-            {
-                "project_id": project_id,
-                "directive_id": directive_id,
-                "kind": kind.value,
-            },
+        superseded, proposal = await self._handle_supersession(
+            project_id=project_id,
+            directive_id=directive_id,
+            text=text,
+            author=author,
+            supersede_task_ids=supersede_task_ids,
+            supersede_mode=supersede_mode,
         )
-
-        superseded: tuple[NotBlankStr, ...] = ()
-        proposal: SteeringSupersessionProposal | None = None
-        if supersede_mode is SupersedeMode.EXPLICIT and supersede_task_ids:
-            superseded = await self._supersede_tasks(
-                project_id=project_id,
-                directive_id=directive_id,
-                task_ids=supersede_task_ids,
-                author=author,
-            )
-        elif supersede_mode is SupersedeMode.PROPOSE:
-            proposal = await self._propose(
-                project_id=project_id,
-                directive_id=directive_id,
-                directive_text=text,
-                seed_task_ids=supersede_task_ids,
-            )
-            await self._notify(
-                STEERING_SUPERSESSION_PROPOSED,
-                {
-                    "project_id": project_id,
-                    "directive_id": directive_id,
-                    "proposed_task_ids": list(proposal.proposed_task_ids),
-                },
-            )
-
         return SteeringIssueResult(
             directive_id=directive_id,
             kind=kind,
@@ -221,6 +185,95 @@ class SteeringService:
             if (directive := brain_entry_to_directive(row)) is not None
         ]
         return tuple(directives)
+
+    async def _record_directive(  # noqa: PLR0913 -- explicit directive fields
+        self,
+        *,
+        project_id: NotBlankStr,
+        kind: InterventionKind,
+        text: NotBlankStr,
+        author: NotBlankStr,
+        narrow_task_ids: tuple[NotBlankStr, ...],
+        narrow_agent_ids: tuple[NotBlankStr, ...],
+    ) -> NotBlankStr:
+        """Append the directive to the brain and announce it.
+
+        Returns:
+            The new brain entry's id, used as the directive id.
+        """
+        tags = (
+            STEERING_TAG,
+            steering_kind_tag(kind),
+            *(task_narrow_tag(t) for t in narrow_task_ids),
+            *(agent_narrow_tag(a) for a in narrow_agent_ids),
+        )
+        title = NotBlankStr(text[:_TITLE_MAX_CHARS])
+        entry = await self._brain.append_entry(
+            project_id=project_id,
+            title=title,
+            rationale=text,
+            status=BrainEntryStatus.ACTIVE,
+            author=author,
+            payload=PlanRevisionPayload(summary=text),
+            related_task_ids=narrow_task_ids,
+            tags=tags,
+        )
+        directive_id = entry.entry_id
+        await self._notify(
+            STEERING_DIRECTIVE_ISSUED,
+            {
+                "project_id": project_id,
+                "directive_id": directive_id,
+                "kind": kind.value,
+            },
+        )
+        return directive_id
+
+    async def _handle_supersession(  # noqa: PLR0913 -- explicit directive fields
+        self,
+        *,
+        project_id: NotBlankStr,
+        directive_id: NotBlankStr,
+        text: NotBlankStr,
+        author: NotBlankStr,
+        supersede_task_ids: tuple[NotBlankStr, ...],
+        supersede_mode: SupersedeMode,
+    ) -> tuple[tuple[NotBlankStr, ...], SteeringSupersessionProposal | None]:
+        """Apply the directive's supersession mode.
+
+        ``EXPLICIT`` cancels the given tasks immediately; ``PROPOSE`` gathers an
+        obsolete-task proposal for operator confirmation and announces it;
+        ``NONE`` does nothing.
+
+        Returns:
+            The immediately-superseded task ids and any proposal awaiting
+            operator confirmation.
+        """
+        if supersede_mode is SupersedeMode.EXPLICIT and supersede_task_ids:
+            superseded = await self._supersede_tasks(
+                project_id=project_id,
+                directive_id=directive_id,
+                task_ids=supersede_task_ids,
+                author=author,
+            )
+            return superseded, None
+        if supersede_mode is SupersedeMode.PROPOSE:
+            proposal = await self._propose(
+                project_id=project_id,
+                directive_id=directive_id,
+                directive_text=text,
+                seed_task_ids=supersede_task_ids,
+            )
+            await self._notify(
+                STEERING_SUPERSESSION_PROPOSED,
+                {
+                    "project_id": project_id,
+                    "directive_id": directive_id,
+                    "proposed_task_ids": list(proposal.proposed_task_ids),
+                },
+            )
+            return (), proposal
+        return (), None
 
     async def _supersede_tasks(
         self,

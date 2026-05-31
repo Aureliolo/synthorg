@@ -195,10 +195,10 @@ class ActiveSteeringDirective(BaseModel):
             ``True`` when the directive applies to the running agent/task.
         """
         task_excluded = self.narrow_task_ids and (
-            task_id is None or NotBlankStr(task_id) not in self.narrow_task_ids
+            task_id is None or task_id not in self.narrow_task_ids
         )
         agent_excluded = self.narrow_agent_ids and (
-            agent_id is None or NotBlankStr(agent_id) not in self.narrow_agent_ids
+            agent_id is None or agent_id not in self.narrow_agent_ids
         )
         return not (task_excluded or agent_excluded)
 
