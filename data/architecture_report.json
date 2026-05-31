@@ -1046,8 +1046,8 @@
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
-      "loc": 495,
-      "ratio": 0.99,
+      "loc": 493,
+      "ratio": 0.986,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/session_repo.py": {
@@ -1160,8 +1160,8 @@
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
       "cap": 500,
-      "loc": 477,
-      "ratio": 0.954,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/project_repo.py": {

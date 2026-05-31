@@ -13484,7 +13484,7 @@
     },
     {
       "kind": "code",
-      "loc": 495,
+      "loc": 493,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/project_brain_repo.py",
       "owning_feature": "persistence"
@@ -14156,7 +14156,7 @@
     },
     {
       "kind": "code",
-      "loc": 477,
+      "loc": 488,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/project_brain_repo.py",
       "owning_feature": "persistence"
