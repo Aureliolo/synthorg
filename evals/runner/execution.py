@@ -46,6 +46,7 @@ class BriefRunOutcome(BaseModel):
     termination_reason: NotBlankStr
     deliverable_text: str | None
     tracked_events: dict[str, int]
+    total_cost: float
 
 
 async def _retrieve_memory_messages(
@@ -145,6 +146,7 @@ async def run_brief(
         termination_reason=NotBlankStr(result.termination_reason.value),
         deliverable_text=result.completion_summary,
         tracked_events=tracked,
+        total_cost=result.total_cost,
     )
 
 

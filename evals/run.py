@@ -31,11 +31,15 @@ from evals.models.scorecard import (
     JudgeCalibrationReport,
     Scorecard,
 )
-from evals.runner.execution import run_brief
+from evals.runner.execution import BriefRunOutcome, run_brief
 from evals.runner.grading import grade_brief
+from evals.runner.penalties import (
+    BENCHMARK_PENALTY_TABLE,
+    PENALTY_CLASS_BRIEF_BUDGET_OVER,
+)
+from evals.runner.strategies import CleanCompletionStrategy
 from evals.scoring.aggregate import aggregate_brief_score
 from evals.scoring.judged import JudgeProtocol, ScriptedJudge
-from evals.scoring.penalties import DEFAULT_PENALTY_TABLE
 from synthorg.config.loader import load_config
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.types import NotBlankStr
@@ -172,7 +176,7 @@ def _build_brief_result(
     Returns:
         The assembled :class:`BriefResult` row.
     """
-    aggregation = aggregate_brief_score(grade, tracked_events, DEFAULT_PENALTY_TABLE)
+    aggregation = aggregate_brief_score(grade, tracked_events, BENCHMARK_PENALTY_TABLE)
     from evals.models.scorecard import ProcessFactReport  # noqa: PLC0415
 
     report = ProcessFactReport(
@@ -185,11 +189,33 @@ def _build_brief_result(
         grade=aggregation.grade,
         deduction=aggregation.deduction,
         score=aggregation.score,
-        score_floor=DEFAULT_PENALTY_TABLE.floor,
+        score_floor=BENCHMARK_PENALTY_TABLE.floor,
         process_facts=report,
         termination_reason=NotBlankStr(termination_reason),
         judge_calibration=calibration,
     )
+
+
+def _tracked_with_synthetic(
+    outcome: BriefRunOutcome,
+    *,
+    run_hard_ceiling: float,
+) -> dict[str, int]:
+    """Augment captured events with runner-measured synthetic process facts.
+
+    A run whose measured cost meets or exceeds the company's per-run hard
+    ceiling (when one is configured) is attributed a synthetic budget-over
+    process fact, mirroring the wall-clock breach the spine already models.
+
+    Returns:
+        The event-class counts including any synthetic penalty.
+    """
+    tracked = dict(outcome.tracked_events)
+    if run_hard_ceiling > 0 and outcome.total_cost >= run_hard_ceiling:
+        tracked[PENALTY_CLASS_BRIEF_BUDGET_OVER] = (
+            tracked.get(PENALTY_CLASS_BRIEF_BUDGET_OVER, 0) + 1
+        )
+    return tracked
 
 
 async def _score_briefs(  # noqa: PLR0913
@@ -201,6 +227,7 @@ async def _score_briefs(  # noqa: PLR0913
     judge: JudgeProtocol,
     anchors_dir: Path,
     work_dir: Path,
+    run_hard_ceiling: float,
 ) -> tuple[tuple[BriefResult, ...], dict[str, JudgeCalibrationReport]]:
     """Run + grade every brief, returning the rows and judge calibrations.
 
@@ -227,7 +254,9 @@ async def _score_briefs(  # noqa: PLR0913
                 brief,
                 grade=grade,
                 termination_reason=outcome.termination_reason,
-                tracked_events=outcome.tracked_events,
+                tracked_events=_tracked_with_synthetic(
+                    outcome, run_hard_ceiling=run_hard_ceiling
+                ),
                 calibration=calibration,
             )
         )
@@ -299,7 +328,7 @@ async def run_benchmark_async(  # noqa: PLR0913
     briefs = load_brief_suite(brief_suite)
     resolved_anchors = _resolve_anchors_dir(brief_suite, anchors_dir)
     active_provider: CompletionProvider = provider or ScriptedDriver(
-        _DEFAULT_PROVIDER_NAME
+        _DEFAULT_PROVIDER_NAME, strategy=CleanCompletionStrategy()
     )
     identity = _default_identity(_resolve_provider_name(active_provider))
 
@@ -348,6 +377,7 @@ async def run_benchmark_async(  # noqa: PLR0913
         judge=active_judge,
         anchors_dir=resolved_anchors,
         work_dir=out_dir,
+        run_hard_ceiling=root_config.budget.run_hard_ceiling,
     )
     scorecard = Scorecard(
         generated_at=datetime.now(UTC),
