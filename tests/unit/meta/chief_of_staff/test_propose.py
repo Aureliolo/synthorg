@@ -534,12 +534,14 @@ class TestConcurrentConverse:
         # Two different conversations get independent locks; their
         # turn pipelines do not block one another. (Easier to verify
         # structurally than via timing -- assert that distinct
-        # ``_lock_for`` calls return distinct lock instances.)
+        # ``acquire_for`` calls return distinct lock instances.) The
+        # proposer delegates per-conversation serialisation to the
+        # shared ``ConversationLockRegistry``.
         provider = ScriptedProvider(responses=[])
         proposer, *_ = _build(provider=provider)
-        lock_a = await proposer._lock_for("conv-A")
-        lock_b = await proposer._lock_for("conv-B")
-        lock_a_again = await proposer._lock_for("conv-A")
+        lock_a = await proposer._locks.acquire_for("conv-A")
+        lock_b = await proposer._locks.acquire_for("conv-B")
+        lock_a_again = await proposer._locks.acquire_for("conv-A")
         assert lock_a is not lock_b
         assert lock_a is lock_a_again
 

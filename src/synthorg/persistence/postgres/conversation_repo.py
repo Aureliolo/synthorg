@@ -14,6 +14,7 @@ from psycopg.rows import dict_row
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -47,20 +48,31 @@ _MAX_PAGE_LIMIT: int = 1_000
 _ALLOWED_TRANSITION_KEYS: frozenset[str] = frozenset({"updated_at"})
 
 _CONVERSATIONS_UPSERT_SQL = """
-    INSERT INTO conversations (id, created_by, created_at, updated_at, status)
-    VALUES (%s, %s, %s, %s, %s)
+    INSERT INTO conversations
+        (id, created_by, created_at, updated_at, status, kind)
+    VALUES (%s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         created_by = EXCLUDED.created_by,
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
-        status = EXCLUDED.status
+        status = EXCLUDED.status,
+        kind = EXCLUDED.kind
 """
+
+_CONVERSATION_COLUMNS = "id, created_by, created_at, updated_at, status, kind"
 
 _TURN_INSERT_SQL = """
     INSERT INTO conversation_turns
-        (id, conversation_id, sequence, role, content, created_at)
-    VALUES (%s, %s, %s, %s, %s, %s)
+        (id, conversation_id, sequence, role, content,
+         author_agent_id, author_name, routed_topic, routing_confidence,
+         created_at)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
+
+_TURN_COLUMNS = (
+    "id, conversation_id, sequence, role, content, "
+    "author_agent_id, author_name, routed_topic, routing_confidence, created_at"
+)
 
 _TURN_NEXT_SEQUENCE_SQL = """
     SELECT COALESCE(MAX(sequence), -1) + 1 FROM conversation_turns
@@ -94,6 +106,7 @@ def _row_to_conversation(row: dict[str, Any]) -> Conversation:
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
             status=ConversationStatus(str(row["status"])),
+            kind=ConversationKind(str(row["kind"])),
         )
     except (ValueError, TypeError, KeyError) as exc:
         msg = "Failed to parse conversation row"
@@ -116,12 +129,22 @@ def _row_to_turn(row: dict[str, Any]) -> ConversationTurn:
         QueryError: If the database query fails.
     """
     try:
+        author_agent_id = row["author_agent_id"]
+        author_name = row["author_name"]
+        routed_topic = row["routed_topic"]
+        routing_confidence = row["routing_confidence"]
         return ConversationTurn(
             id=str(row["id"]),
             conversation_id=str(row["conversation_id"]),
             sequence=int(row["sequence"]),
             role=ConversationRole(str(row["role"])),
             content=str(row["content"]),
+            author_agent_id=(None if author_agent_id is None else str(author_agent_id)),
+            author_name=None if author_name is None else str(author_name),
+            routed_topic=None if routed_topic is None else str(routed_topic),
+            routing_confidence=(
+                None if routing_confidence is None else float(routing_confidence)
+            ),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
     except (ValueError, TypeError, KeyError) as exc:
@@ -158,6 +181,7 @@ class PostgresConversationRepository:
             entity.created_at,
             entity.updated_at,
             entity.status.value,
+            entity.kind.value,
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -197,10 +221,7 @@ class PostgresConversationRepository:
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        sql = (
-            "SELECT id, created_by, created_at, updated_at, status "
-            "FROM conversations WHERE id = %s"
-        )
+        sql = f"SELECT {_CONVERSATION_COLUMNS} FROM conversations WHERE id = %s"  # noqa: S608 -- fixed column list
         try:
             async with (
                 self._pool.connection() as conn,
@@ -249,7 +270,7 @@ class PostgresConversationRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT id, created_by, created_at, updated_at, status "
+                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed column list
                     "FROM conversations ORDER BY created_at DESC, id DESC "
                     "LIMIT %s OFFSET %s",
                     (effective_limit, offset),
@@ -396,6 +417,10 @@ class PostgresConversationTurnRepository:
                 current.sequence,
                 current.role.value,
                 current.content,
+                current.author_agent_id,
+                current.author_name,
+                current.routed_topic,
+                current.routing_confidence,
                 current.created_at,
             )
             try:
@@ -501,8 +526,8 @@ class PostgresConversationTurnRepository:
         where = " AND ".join(clauses) if clauses else "TRUE"
         params.extend([effective_limit, offset])
         sql = (
-            "SELECT id, conversation_id, sequence, role, content, "  # noqa: S608
-            f"created_at FROM conversation_turns WHERE {where} "
+            f"SELECT {_TURN_COLUMNS} "  # noqa: S608 -- fixed columns + closed predicate set
+            f"FROM conversation_turns WHERE {where} "
             "ORDER BY sequence DESC, id DESC LIMIT %s OFFSET %s"
         )
         try:

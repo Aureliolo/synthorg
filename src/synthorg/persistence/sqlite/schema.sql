@@ -1410,6 +1410,9 @@ CREATE TABLE conversations (
     ),
     status TEXT NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'proposed', 'closed')
+    ),
+    kind TEXT NOT NULL DEFAULT 'direct' CHECK (
+        kind IN ('direct', 'routed', 'group')
     )
 );
 
@@ -1418,8 +1421,12 @@ CREATE TABLE conversation_turns (
     conversation_id TEXT NOT NULL
     CONSTRAINT fk_ct_conversation REFERENCES conversations (id),
     sequence INTEGER NOT NULL CHECK (sequence >= 0),
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'agent')),
     content TEXT NOT NULL CHECK (LENGTH(TRIM(content)) > 0),
+    author_agent_id TEXT,
+    author_name TEXT,
+    routed_topic TEXT,
+    routing_confidence REAL,
     created_at TEXT NOT NULL CHECK (
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),
@@ -1441,6 +1448,47 @@ CREATE TABLE conversational_proposals (
 );
 CREATE UNIQUE INDEX idx_cp_approval_id
 ON conversational_proposals (approval_id);
+
+CREATE TABLE conversation_participants (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    conversation_id TEXT NOT NULL
+    CONSTRAINT fk_cpart_conversation REFERENCES conversations (id),
+    agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
+    agent_name TEXT NOT NULL CHECK (LENGTH(TRIM(agent_name)) > 0),
+    participant_role TEXT NOT NULL CHECK (LENGTH(TRIM(participant_role)) > 0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (
+        status IN ('active', 'removed')
+    ),
+    added_by TEXT NOT NULL CHECK (LENGTH(TRIM(added_by)) > 0),
+    added_at TEXT NOT NULL CHECK (
+        added_at LIKE '%+00:00' OR added_at LIKE '%Z'
+    ),
+    CONSTRAINT uq_cpart_conversation_agent UNIQUE (conversation_id, agent_id)
+);
+CREATE INDEX idx_cpart_conversation_id
+ON conversation_participants (conversation_id);
+
+CREATE TABLE conversation_invites (
+    id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
+    conversation_id TEXT NOT NULL
+    CONSTRAINT fk_cinv_conversation REFERENCES conversations (id),
+    approval_id TEXT NOT NULL CHECK (LENGTH(TRIM(approval_id)) > 0),
+    requested_by_agent_id TEXT NOT NULL
+    CHECK (LENGTH(TRIM(requested_by_agent_id)) > 0),
+    target_agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(target_agent_id)) > 0),
+    target_role TEXT,
+    reason TEXT NOT NULL CHECK (LENGTH(TRIM(reason)) > 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (
+        status IN ('pending', 'accepted', 'declined')
+    ),
+    created_at TEXT NOT NULL CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    )
+);
+CREATE UNIQUE INDEX idx_cinv_approval_id
+ON conversation_invites (approval_id);
+CREATE INDEX idx_cinv_conversation_id
+ON conversation_invites (conversation_id);
 
 -- Pre-flight cost forecasts.
 -- One row per pre-flight estimate. ``decision`` gates dispatch:

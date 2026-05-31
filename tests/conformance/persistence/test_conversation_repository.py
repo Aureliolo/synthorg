@@ -17,6 +17,7 @@ import pytest
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
@@ -76,6 +77,7 @@ def _make_conversation(
     *,
     conversation_id: str = "conv-001",
     status: ConversationStatus = ConversationStatus.ACTIVE,
+    kind: ConversationKind = ConversationKind.DIRECT,
 ) -> Conversation:
     return Conversation(
         id=conversation_id,
@@ -83,16 +85,21 @@ def _make_conversation(
         created_at=_NOW,
         updated_at=_NOW,
         status=status,
+        kind=kind,
     )
 
 
-def _make_turn(
+def _make_turn(  # noqa: PLR0913 -- attribution columns are optional kwargs
     *,
     turn_id: str = "turn-001",
     conversation_id: str = "conv-001",
     sequence: int = 0,
     role: ConversationRole = ConversationRole.USER,
     content: str = "I need a landing page",
+    author_agent_id: str | None = None,
+    author_name: str | None = None,
+    routed_topic: str | None = None,
+    routing_confidence: float | None = None,
 ) -> ConversationTurn:
     return ConversationTurn(
         id=turn_id,
@@ -100,6 +107,10 @@ def _make_turn(
         sequence=sequence,
         role=role,
         content=content,
+        author_agent_id=author_agent_id,
+        author_name=author_name,
+        routed_topic=routed_topic,
+        routing_confidence=routing_confidence,
         created_at=_NOW + timedelta(seconds=sequence),
     )
 
@@ -221,6 +232,36 @@ class TestConversationRepository:
         repo = _conversation_repo(backend)
         assert isinstance(repo, ConversationRepository)
 
+    async def test_kind_defaults_to_direct(self, backend: PersistenceBackend) -> None:
+        repo = _conversation_repo(backend)
+        conv = _make_conversation(conversation_id="conv-kind-default")
+        await repo.save(conv)
+        fetched = await repo.get(conv.id)
+        assert fetched is not None
+        assert fetched.kind is ConversationKind.DIRECT
+
+    async def test_group_kind_round_trips(self, backend: PersistenceBackend) -> None:
+        repo = _conversation_repo(backend)
+        conv = _make_conversation(
+            conversation_id="conv-kind-group",
+            kind=ConversationKind.GROUP,
+        )
+        await repo.save(conv)
+        fetched = await repo.get(conv.id)
+        assert fetched is not None
+        assert fetched.kind is ConversationKind.GROUP
+
+    async def test_routed_kind_round_trips(self, backend: PersistenceBackend) -> None:
+        repo = _conversation_repo(backend)
+        conv = _make_conversation(
+            conversation_id="conv-kind-routed",
+            kind=ConversationKind.ROUTED,
+        )
+        await repo.save(conv)
+        fetched = await repo.get(conv.id)
+        assert fetched is not None
+        assert fetched.kind is ConversationKind.ROUTED
+
 
 class TestConversationTurnRepository:
     async def test_append_and_query(self, backend: PersistenceBackend) -> None:
@@ -310,6 +351,99 @@ class TestConversationTurnRepository:
             ConversationTurnFilterSpec(conversation_id=NotBlankStr("c-purge"))
         )
         assert rows == ()
+
+    async def test_agent_role_turn_round_trips_with_attribution(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Group-chat AGENT turn: the widened role CHECK admits 'agent'
+        # and the attribution columns persist the responding agent.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(
+            _make_conversation(
+                conversation_id="conv-agent-turn",
+                kind=ConversationKind.GROUP,
+            )
+        )
+        repo = _turn_repo(backend)
+        await repo.append(
+            _make_turn(
+                turn_id="agent-turn-0",
+                conversation_id="conv-agent-turn",
+                sequence=0,
+                role=ConversationRole.AGENT,
+                content="From a budget angle, scope this to one quarter.",
+                author_agent_id="agent-cfo-001",
+                author_name="Casey (CFO)",
+            )
+        )
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-agent-turn"))
+        )
+        assert len(rows) == 1
+        assert rows[0].role is ConversationRole.AGENT
+        assert rows[0].author_agent_id == "agent-cfo-001"
+        assert rows[0].author_name == "Casey (CFO)"
+        assert rows[0].routed_topic is None
+        assert rows[0].routing_confidence is None
+
+    async def test_routed_attribution_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Routed ASSISTANT turn: topic + confidence persist alongside
+        # the responding role agent.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(
+            _make_conversation(
+                conversation_id="conv-routed-turn",
+                kind=ConversationKind.ROUTED,
+            )
+        )
+        repo = _turn_repo(backend)
+        await repo.append(
+            _make_turn(
+                turn_id="routed-turn-0",
+                conversation_id="conv-routed-turn",
+                sequence=0,
+                role=ConversationRole.ASSISTANT,
+                content="Here is the budget plan.",
+                author_agent_id="agent-cfo-001",
+                author_name="Casey (CFO)",
+                routed_topic="budget",
+                routing_confidence=0.92,
+            )
+        )
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-routed-turn"))
+        )
+        assert len(rows) == 1
+        assert rows[0].routed_topic == "budget"
+        assert rows[0].routing_confidence == pytest.approx(0.92)
+        assert rows[0].author_agent_id == "agent-cfo-001"
+
+    async def test_null_attribution_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The generic-persona path leaves every attribution column NULL.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="conv-null-attr"))
+        repo = _turn_repo(backend)
+        await repo.append(
+            _make_turn(
+                turn_id="plain-turn-0",
+                conversation_id="conv-null-attr",
+                sequence=0,
+                role=ConversationRole.ASSISTANT,
+                content="Which audience?",
+            )
+        )
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-null-attr"))
+        )
+        assert len(rows) == 1
+        assert rows[0].author_agent_id is None
+        assert rows[0].author_name is None
+        assert rows[0].routed_topic is None
+        assert rows[0].routing_confidence is None
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _turn_repo(backend)

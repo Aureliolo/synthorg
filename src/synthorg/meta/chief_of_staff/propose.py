@@ -8,7 +8,6 @@ through the work pipeline via the approval-decision seam (still no
 autonomous acting).
 """
 
-import asyncio
 import uuid
 from typing import TYPE_CHECKING
 
@@ -34,6 +33,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,
@@ -171,34 +171,7 @@ class ChiefOfStaffProposer:
         # turns the other side never saw. New conversations
         # (``args.conversation_id is None``) skip the lock because no
         # other caller can address the id before it's assigned.
-        # ``_conversation_locks_guard`` is lazy-initialised on first
-        # use so the lock binds to the request-handling event loop
-        # rather than whichever loop ran ``__init__``.
-        self._conversation_locks: dict[str, asyncio.Lock] = {}
-        self._conversation_locks_guard: asyncio.Lock | None = None
-
-    async def _lock_for(self, conversation_id: str) -> asyncio.Lock:
-        """Return the asyncio.Lock for *conversation_id*, creating it once.
-
-        Lazy-initialises ``_conversation_locks_guard`` so the guard
-        lock binds to the live request-handling loop rather than the
-        loop that built the proposer. Subsequent callers re-use the
-        same per-conversation lock instance through the guarded
-        dict lookup; a tight race on first guard-init merely wastes
-        a Lock() instance (the loser drops its instance after
-        observing the populated guard).
-
-        Returns:
-            ``asyncio.Lock`` instance.
-        """
-        if self._conversation_locks_guard is None:
-            self._conversation_locks_guard = asyncio.Lock()
-        async with self._conversation_locks_guard:
-            lock = self._conversation_locks.get(conversation_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._conversation_locks[conversation_id] = lock
-            return lock
+        self._locks = ConversationLockRegistry()
 
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
@@ -241,7 +214,7 @@ class ChiefOfStaffProposer:
         # (a deletion otherwise lets a concurrent caller mint a fresh
         # lock while a queued waiter on the old one is still pending),
         # which v1 does not need at its expected scale.
-        async with await self._lock_for(conversation.id):
+        async with await self._locks.acquire_for(conversation.id):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(

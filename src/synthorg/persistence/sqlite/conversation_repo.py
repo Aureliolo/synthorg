@@ -15,6 +15,7 @@ from aiosqlite import Row
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
+from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import (
     get_logger,
@@ -52,20 +53,30 @@ _ALLOWED_TRANSITION_KEYS: frozenset[str] = frozenset({"updated_at"})
 
 _CONVERSATIONS_UPSERT_SQL = """
     INSERT INTO conversations (
-        id, created_by, created_at, updated_at, status
-    ) VALUES (?, ?, ?, ?, ?)
+        id, created_by, created_at, updated_at, status, kind
+    ) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         created_by = excluded.created_by,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
-        status = excluded.status
+        status = excluded.status,
+        kind = excluded.kind
 """
+
+_CONVERSATION_COLUMNS = "id, created_by, created_at, updated_at, status, kind"
 
 _TURN_INSERT_SQL = """
     INSERT INTO conversation_turns (
-        id, conversation_id, sequence, role, content, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?)
+        id, conversation_id, sequence, role, content,
+        author_agent_id, author_name, routed_topic, routing_confidence,
+        created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+_TURN_COLUMNS = (
+    "id, conversation_id, sequence, role, content, "
+    "author_agent_id, author_name, routed_topic, routing_confidence, created_at"
+)
 
 _TURN_NEXT_SEQUENCE_SQL = """
     SELECT COALESCE(MAX(sequence), -1) + 1 FROM conversation_turns
@@ -134,6 +145,7 @@ def _row_to_conversation(row: Row) -> Conversation:
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
             status=ConversationStatus(str(row["status"])),
+            kind=ConversationKind(str(row["kind"])),
         )
     except (ValueError, TypeError, KeyError) as exc:
         msg = "Failed to parse conversation row"
@@ -156,12 +168,22 @@ def _row_to_turn(row: Row) -> ConversationTurn:
         Result of type ``ConversationTurn``.
     """
     try:
+        author_agent_id = row["author_agent_id"]
+        author_name = row["author_name"]
+        routed_topic = row["routed_topic"]
+        routing_confidence = row["routing_confidence"]
         return ConversationTurn(
             id=str(row["id"]),
             conversation_id=str(row["conversation_id"]),
             sequence=int(row["sequence"]),
             role=ConversationRole(str(row["role"])),
             content=str(row["content"]),
+            author_agent_id=(None if author_agent_id is None else str(author_agent_id)),
+            author_name=None if author_name is None else str(author_name),
+            routed_topic=None if routed_topic is None else str(routed_topic),
+            routing_confidence=(
+                None if routing_confidence is None else float(routing_confidence)
+            ),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
     except (ValueError, TypeError, KeyError) as exc:
@@ -208,6 +230,7 @@ class SQLiteConversationRepository:
             format_iso_utc(entity.created_at),
             format_iso_utc(entity.updated_at),
             entity.status.value,
+            entity.kind.value,
         )
         async with self._write_context():
             try:
@@ -255,10 +278,10 @@ class SQLiteConversationRepository:
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        sql = """
-            SELECT id, created_by, created_at, updated_at, status
+        sql = f"""
+            SELECT {_CONVERSATION_COLUMNS}
             FROM conversations WHERE id = ?
-        """
+        """  # noqa: S608 -- _CONVERSATION_COLUMNS is a fixed column list
         try:
             cursor = await self._db.execute(sql, (entity_id,))
             row = await cursor.fetchone()
@@ -297,12 +320,12 @@ class SQLiteConversationRepository:
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        sql = """
-            SELECT id, created_by, created_at, updated_at, status
+        sql = f"""
+            SELECT {_CONVERSATION_COLUMNS}
             FROM conversations
             ORDER BY created_at DESC, id DESC
             LIMIT ? OFFSET ?
-        """
+        """  # noqa: S608 -- _CONVERSATION_COLUMNS is a fixed column list
         try:
             cursor = await self._db.execute(sql, (effective_limit, offset))
             rows = await cursor.fetchall()
@@ -467,6 +490,10 @@ class SQLiteConversationTurnRepository:
                     current.sequence,
                     current.role.value,
                     current.content,
+                    current.author_agent_id,
+                    current.author_name,
+                    current.routed_topic,
+                    current.routing_confidence,
                     format_iso_utc(current.created_at),
                 )
                 try:
@@ -576,11 +603,11 @@ class SQLiteConversationTurnRepository:
         where = " AND ".join(clauses) if clauses else "1=1"
         params.extend([effective_limit, offset])
         sql = f"""
-            SELECT id, conversation_id, sequence, role, content, created_at
+            SELECT {_TURN_COLUMNS}
             FROM conversation_turns WHERE {where}
             ORDER BY sequence DESC, id DESC
             LIMIT ? OFFSET ?
-        """  # noqa: S608  -- ``where`` is a closed set of column predicates
+        """  # noqa: S608  -- ``where`` + columns are closed sets
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()

@@ -7160,25 +7160,23 @@ export type components = {
          *
          *     Routing of a decided approval (mid-execution resume vs. review
          *     gate) keys off this persisted discriminator rather than a live
-         *     parked-context probe, so the flow is deterministic even when the
-         *     parked-context backend is momentarily unavailable.
+         *     parked-context probe, keeping the flow deterministic.
          *
          *     Attributes:
          *         PARKED_CONTEXT: Backs a parked agent execution context (SecOps
-         *             escalation or the ``request_human_approval`` tool); the
-         *             decision resumes the parked run.
+         *             escalation or ``request_human_approval``); resumes the run.
          *         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
-         *             pruning, scaling, training, signals, ...); the decision
-         *             drives the review-gate transition. Default.
-         *         CONVERSATIONAL_INTAKE: A work item proposed through the
-         *             conversational interface (Chief of Staff clarify + propose);
-         *             approval reconstructs the ``WorkItem`` and runs it through
-         *             the work pipeline. Rejection records the proposal as
-         *             declined and never touches the pipeline.
+         *             scaling, ...); drives the review-gate transition. Default.
+         *         CONVERSATIONAL_INTAKE: A work item proposed via the
+         *             conversational interface; approval rebuilds the ``WorkItem``
+         *             and runs it through the pipeline, rejection declines it.
+         *         CONVERSATIONAL_INVITE: An agent's request to add another agent
+         *             to a group conversation; approval adds the participant +
+         *             hands over the transcript, rejection leaves membership.
          * @default review_gate
          * @enum {string}
          */
-        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake";
+        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake" | "conversational_invite";
         /**
          * ApprovalStatus
          * @description Status of a human approval item.
