@@ -12,8 +12,6 @@ are the Postgres-side counterpart to ``_json_list`` in
 ``synthorg.persistence.sqlite.task_repo``.
 """
 
-from typing import Any
-
 from pydantic import BaseModel
 
 from synthorg.observability import get_logger
@@ -21,7 +19,7 @@ from synthorg.observability import get_logger
 logger = get_logger(__name__)
 
 
-def jsonify(value: object) -> Any:
+def jsonify(value: object) -> object:
     """Convert a value to a JSON-shaped Python structure.
 
     - Pydantic ``BaseModel`` instances are serialized via
@@ -31,18 +29,18 @@ def jsonify(value: object) -> Any:
     - Dicts, lists, and scalar types pass through unchanged -- psycopg
       adapts them directly to ``JSONB``.
 
-    The return type is ``Any`` because psycopg's adapter accepts
-    arbitrary JSON-compatible Python structures.
+    psycopg's adapter accepts arbitrary JSON-compatible Python
+    structures, so the result is typed ``object``.
 
     Returns:
-        Result of type ``Any``.
+        The JSON-shaped value.
     """
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
     return value
 
 
-def jsonify_list(items: tuple[object, ...] | list[object]) -> list[Any]:
+def jsonify_list(items: tuple[object, ...] | list[object]) -> list[object]:
     """Serialize a tuple or list of values to a JSONB-ready list.
 
     Each element is passed through :func:`jsonify`, so Pydantic models

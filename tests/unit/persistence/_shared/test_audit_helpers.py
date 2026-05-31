@@ -80,7 +80,9 @@ class TestAuditEntryToPayload:
         assert captured["json"] == ["rule-a", "rule-b"]
         assert captured["ts"] == entry.timestamp.astimezone(UTC)
         assert payload["matched_rules"] == "<json ['rule-a', 'rule-b']>"
-        assert payload["timestamp"].startswith("<ts ")
+        timestamp_value = payload["timestamp"]
+        assert isinstance(timestamp_value, str)
+        assert timestamp_value.startswith("<ts ")
 
     def test_normalizes_timestamp_to_utc_before_serialising(self) -> None:
         offset_tz = timezone(timedelta(hours=5))

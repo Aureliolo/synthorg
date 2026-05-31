@@ -1,9 +1,9 @@
 """Postgres repository implementation for ProjectWorkspace."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.enums import GitBackendType
@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: int = 10_000
 
 
-def _row_to_workspace(row: dict[str, Any]) -> ProjectWorkspace:
+def _row_to_workspace(row: DictRow) -> ProjectWorkspace:
     """Reconstruct a ``ProjectWorkspace`` from a Postgres dict_row.
 
     Returns:

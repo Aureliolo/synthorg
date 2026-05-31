@@ -7,9 +7,10 @@ and returns the associated session/user info for re-issuance.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from psycopg import Error as PsycopgError
+from psycopg.rows import BaseRowFactory, DictRow
 
 from synthorg.core.auth.refresh_record import (
     RefreshConsumeOutcome,
@@ -34,11 +35,11 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -181,7 +182,7 @@ class PostgresRefreshTokenRepository:
                     # raising the sentinel here lets ``conn.transaction``
                     # auto-rollback without a second cursor.execute().
                     _raise_session_revoked()
-                replay_row: dict[str, Any] | None = None
+                replay_row: DictRow | None = None
                 if row is None:
                     await cur.execute(
                         "SELECT used FROM refresh_tokens WHERE token_hash = %s",

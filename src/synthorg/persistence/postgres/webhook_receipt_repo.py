@@ -7,9 +7,9 @@ newest-first and bounded by an explicit ``limit``.
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.critical_errors import reraise_critical
@@ -44,7 +44,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_receipt(row: dict[str, Any]) -> WebhookReceipt:
+def _row_to_receipt(row: DictRow) -> WebhookReceipt:
     """Deserialize a dict row into a :class:`WebhookReceipt`.
 
     The ``payload_json`` column is JSONB (a parsed value); the
@@ -97,7 +97,7 @@ class PostgresWebhookReceiptRepository:
         # a structured value without a second parse.
         if receipt.payload_json:
             try:
-                payload_obj: Any = json.loads(receipt.payload_json)
+                payload_obj: object = json.loads(receipt.payload_json)
             except (ValueError, TypeError) as exc:
                 # Quarantine malformed JSON as a string under a stable key so
                 # downstream readers still get a deserializable value.  Log

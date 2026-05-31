@@ -12,10 +12,10 @@ structurally.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -75,7 +75,7 @@ _APPROVALS_UPSERT_SQL = f"""
 """  # noqa: S608 -- column list is compile-time constant
 
 
-def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
+def _row_to_item(row: DictRow) -> ApprovalItem:
     """Convert a Postgres dict row into an :class:`ApprovalItem`.
 
     Postgres ``TIMESTAMPTZ`` columns return native ``datetime``

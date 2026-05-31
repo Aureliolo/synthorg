@@ -10,9 +10,11 @@ only its connection handling.
 """
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
+
+from psycopg.rows import DictRow
 
 from synthorg.persistence._shared import coerce_row_timestamp
 from synthorg.project_brain.models import (
@@ -33,9 +35,9 @@ BRAIN_COLUMNS = (
 
 
 def row_to_entry(
-    row: Mapping[str, Any],
+    row: DictRow,
     *,
-    load_json: Callable[[Any], Any],
+    load_json: Callable[[str], object],
 ) -> BrainEntry:
     """Reconstruct a :class:`BrainEntry` from a DB row.
 
@@ -51,9 +53,13 @@ def row_to_entry(
     data.pop("rn", None)
     data["entry_kind"] = BrainEntryKind(data["entry_kind"])
     data["status"] = BrainEntryStatus(data["status"])
-    data["tags"] = tuple(load_json(data["tags"]))
-    data["related_task_ids"] = tuple(load_json(data["related_task_ids"]))
-    data["related_entry_ids"] = tuple(load_json(data["related_entry_ids"]))
+    data["tags"] = tuple(cast("list[object]", load_json(data["tags"])))
+    data["related_task_ids"] = tuple(
+        cast("list[object]", load_json(data["related_task_ids"]))
+    )
+    data["related_entry_ids"] = tuple(
+        cast("list[object]", load_json(data["related_entry_ids"]))
+    )
     data["citations"] = load_json(data["citations"])
     data["payload"] = load_json(data["payload"])
     data["recorded_at"] = coerce_row_timestamp(data["recorded_at"])

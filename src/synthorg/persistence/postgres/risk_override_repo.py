@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
@@ -330,7 +330,7 @@ class PostgresRiskOverrideRepository:
         return revoked
 
 
-def _row_to_override(row: dict[str, object]) -> RiskTierOverride:
+def _row_to_override(row: DictRow) -> RiskTierOverride:
     """Convert a Postgres row to a RiskTierOverride.
 
     Returns:

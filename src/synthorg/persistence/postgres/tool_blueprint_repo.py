@@ -7,10 +7,10 @@ Sibling of :class:`SQLiteDynamicToolRepository` backed by
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -87,7 +87,7 @@ _UPSERT_SQL = f"""
 """  # noqa: S608 -- column list is compile-time constant
 
 
-def _row_to_blueprint(row: dict[str, Any]) -> ToolBlueprint:
+def _row_to_blueprint(row: DictRow) -> ToolBlueprint:
     """Convert a Postgres dict row into a :class:`ToolBlueprint`.
 
     Raises:

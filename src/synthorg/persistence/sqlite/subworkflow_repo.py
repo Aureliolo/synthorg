@@ -10,7 +10,7 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
@@ -134,7 +134,7 @@ def _deserialize_row(
 
 
 def _extract_references(  # noqa: PLR0913
-    rows: Iterable[Any],
+    rows: Iterable[aiosqlite.Row],
     subworkflow_id: str,
     version: str | None,
     *,
@@ -781,11 +781,11 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         query: str,
         subworkflow_id: str,
-    ) -> Iterable[Any]:
+    ) -> Iterable[aiosqlite.Row]:
         """Execute a SELECT and return all rows, with error handling.
 
         Returns:
-            Result of type ``Iterable[Any]``.
+            Result of type ``Iterable[aiosqlite.Row]``.
 
         Raises:
             QueryError: If the database query fails.
@@ -805,7 +805,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
     def _build_summaries_from_rows(
         self,
-        rows: Iterable[Any],
+        rows: Iterable[aiosqlite.Row],
     ) -> tuple[SubworkflowSummary, ...]:
         """Group rows by subworkflow and emit a summary for the latest one.
 
@@ -815,7 +815,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         Raises:
             QueryError: If the database query fails.
         """
-        grouped: dict[str, list[dict[str, Any]]] = {}
+        grouped: dict[str, list[dict[str, object]]] = {}
         for row in rows:
             data = dict(row)
             grouped.setdefault(str(data["subworkflow_id"]), []).append(data)
@@ -828,8 +828,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             )
             latest = versions[0]
             try:
-                inputs = json.loads(latest["inputs"])
-                outputs = json.loads(latest["outputs"])
+                inputs = json.loads(cast("str", latest["inputs"]))
+                outputs = json.loads(cast("str", latest["outputs"]))
             except json.JSONDecodeError as exc:
                 msg = f"Corrupted I/O JSON in subworkflow {sub_id!r}"
                 logger.warning(

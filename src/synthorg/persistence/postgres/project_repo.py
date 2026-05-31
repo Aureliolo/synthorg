@@ -1,9 +1,9 @@
 """Postgres repository implementation for Project."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: int = 10_000
 
 
-def _row_to_project(row: dict[str, Any]) -> Project:
+def _row_to_project(row: DictRow) -> Project:
     """Reconstruct a ``Project`` from a Postgres dict_row.
 
     Returns:

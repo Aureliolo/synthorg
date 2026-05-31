@@ -7,10 +7,10 @@ and ``attachments`` use native JSONB.
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -110,7 +110,7 @@ class PostgresMessageRepository:
             )
             raise QueryError(msg) from exc
 
-    def _row_to_message(self, row: dict[str, Any]) -> Message:
+    def _row_to_message(self, row: DictRow) -> Message:
         """Reconstruct a Message from a Postgres dict_row.
 
         Returns:

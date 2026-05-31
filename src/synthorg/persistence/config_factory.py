@@ -13,7 +13,7 @@ per init choice; the helpers below cover both shapes.
 """
 
 from pathlib import Path
-from typing import Any, NoReturn, get_args
+from typing import NoReturn, TypedDict, cast, get_args
 from urllib.parse import unquote, urlparse
 
 from pydantic import SecretStr
@@ -161,7 +161,13 @@ def _resolve_postgres_port(parsed_port: int | None) -> int:
     return parsed_port
 
 
-def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> dict[str, Any]:
+class _SslKwargs(TypedDict, total=False):
+    """Optional ``ssl_mode`` keyword for the ``PostgresConfig`` constructor."""
+
+    ssl_mode: PostgresSslMode
+
+
+def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> _SslKwargs:
     """Validate ``ssl_mode_override`` and return ``PostgresConfig`` kwargs.
 
     Empty / ``None`` overrides return an empty dict so the caller's
@@ -169,7 +175,7 @@ def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> dict[str, Any]:
     (``"require"``) in place.
 
     Returns:
-        Result of type ``dict[str, Any]``.
+        Result of type ``_SslKwargs``.
     """
     if not ssl_mode_override:
         return {}
@@ -180,7 +186,7 @@ def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> dict[str, Any]:
             f"must be one of: {sorted(valid_modes)}",
             "invalid_ssl_mode",
         )
-    return {"ssl_mode": ssl_mode_override}
+    return {"ssl_mode": cast("PostgresSslMode", ssl_mode_override)}
 
 
 def build_postgres_persistence_config_from_url(

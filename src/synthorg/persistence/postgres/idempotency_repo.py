@@ -11,9 +11,11 @@ to overwrite expired/failed rows in a follow-up ``UPDATE``.
 
 import secrets
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from psycopg import AsyncCursor
 from psycopg import Error as PsycopgError
+from psycopg.rows import BaseRowFactory, DictRow
 from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import QueryError
@@ -32,11 +34,11 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -177,7 +179,7 @@ class PostgresIdempotencyRepository:
 
     async def _attempt_insert(  # noqa: PLR0913
         self,
-        cur: Any,
+        cur: AsyncCursor[DictRow],
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
@@ -208,7 +210,7 @@ class PostgresIdempotencyRepository:
 
     async def _select_for_update_and_classify(
         self,
-        cur: Any,
+        cur: AsyncCursor[DictRow],
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
@@ -251,7 +253,7 @@ class PostgresIdempotencyRepository:
 
     async def _reclaim_update(
         self,
-        cur: Any,
+        cur: AsyncCursor[DictRow],
         *,
         scope: NotBlankStr,
         key: NotBlankStr,

@@ -681,10 +681,6 @@ module = "synthorg.ontology.*"
 disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
 
-[[tool.mypy.overrides]]
-module = "synthorg.persistence.*"
-disallow_any_explicit = false
-
 # The fan-out TaskGroup pattern (tg.create_task fire-and-forget) trips
 # unused-awaitable even though the group awaits every task on exit; this is the
 # same sanctioned disable every fan-out indexer carries. disallow_any_explicit

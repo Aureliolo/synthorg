@@ -1,10 +1,10 @@
 """Postgres repository implementation for security audit entries."""
 
 from datetime import UTC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.persistence_errors import QueryError
@@ -249,7 +249,7 @@ class PostgresAuditRepository:
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         return where, params
 
-    def _row_to_entry(self, row: dict[str, object]) -> AuditEntry:
+    def _row_to_entry(self, row: DictRow) -> AuditEntry:
         """Convert a database row to an ``AuditEntry`` model.
 
         Delegates to :func:`row_to_audit_entry` from the shared helper
@@ -382,7 +382,7 @@ class PostgresAuditRepository:
     async def query_jsonb_contains(  # noqa: PLR0913
         self,
         column: str,
-        value: dict[str, Any] | list[Any],
+        value: dict[str, object] | list[object],
         *,
         since: AwareDatetime | None = None,
         until: AwareDatetime | None = None,

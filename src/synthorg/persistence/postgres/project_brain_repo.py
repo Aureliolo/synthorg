@@ -7,10 +7,10 @@ and a change is a new row rather than an in-place update.
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, TupleRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -54,7 +54,7 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: int = 10_000
 
 
-def _load_json(value: object) -> Any:
+def _load_json(value: object) -> object:
     """Parse a JSON column that Postgres may return as ``str`` or pre-parsed.
 
     Returns:
@@ -65,7 +65,7 @@ def _load_json(value: object) -> Any:
     return value
 
 
-def _row_to_entry(row: dict[str, Any]) -> BrainEntry:
+def _row_to_entry(row: DictRow) -> BrainEntry:
     """Reconstruct a :class:`BrainEntry` from a Postgres ``dict_row``.
 
     Returns:
@@ -99,7 +99,7 @@ class PostgresProjectBrainRepository:
         self._pool = pool
 
     async def _safe_rollback(
-        self, conn: psycopg.AsyncConnection[Any], *, event: str
+        self, conn: psycopg.AsyncConnection[TupleRow], *, event: str
     ) -> None:
         """Roll back the connection, logging if the rollback itself fails."""
         try:
@@ -472,7 +472,7 @@ class PostgresProjectBrainRepository:
 
     async def _fetch_one(
         self, sql: str, params: tuple[object, ...]
-    ) -> dict[str, Any] | None:
+    ) -> dict[str, object] | None:
         """Run a single-row SELECT.
 
         Returns:
@@ -525,9 +525,7 @@ class PostgresProjectBrainRepository:
             raise QueryError(msg) from exc
         return self._rows_to_tuple(tuple(rows))
 
-    def _rows_to_tuple(
-        self, rows: tuple[dict[str, Any], ...]
-    ) -> tuple[BrainEntry, ...]:
+    def _rows_to_tuple(self, rows: tuple[DictRow, ...]) -> tuple[BrainEntry, ...]:
         """Deserialise a row batch with one shared error path.
 
         Returns:

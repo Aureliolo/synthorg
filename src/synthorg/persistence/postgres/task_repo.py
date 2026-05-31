@@ -1,10 +1,10 @@
 # module-kind: repository
 """Postgres repository implementation for Task."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -33,16 +33,16 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _enum_value(value: Any) -> Any:
+def _enum_value(value: object) -> object:
     """Return ``value.value`` if present, else the value itself.
 
     Returns:
         Result of type ``Any``.
     """
-    return value.value if hasattr(value, "value") else value
+    return getattr(value, "value", value)
 
 
-def _task_params(task: Task) -> dict[str, Any]:
+def _task_params(task: Task) -> dict[str, object]:
     """Build the named-parameter dict for a Task insert/upsert.
 
     JSON-shaped fields are wrapped in ``Jsonb`` so psycopg adapts
@@ -50,7 +50,7 @@ def _task_params(task: Task) -> dict[str, Any]:
     through as native Python objects.
 
     Returns:
-        Result of type ``dict[str, Any]``.
+        Result of type ``dict[str, object]``.
     """
     dumped = task.model_dump(mode="json")
     return {
@@ -161,7 +161,7 @@ class PostgresTaskRepository:
         "delegation_chain"
     )
 
-    def _row_to_task(self, row: dict[str, Any]) -> Task:
+    def _row_to_task(self, row: DictRow) -> Task:
         """Reconstruct a Task from a Postgres dict_row.
 
         Postgres returns JSONB columns as Python lists/dicts and

@@ -17,7 +17,7 @@ either backend.
 import json
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Protocol
 
 from pydantic import ValidationError
 
@@ -55,14 +55,14 @@ AUDIT_COLUMNS: tuple[str, ...] = (
 )
 
 
-JsonSerializer = Callable[[list[str]], Any]
+JsonSerializer = Callable[[list[str]], object]
 """Serializes the ``matched_rules`` list for the target driver.
 
 SQLite passes ``json.dumps`` (TEXT column).
 Postgres passes ``psycopg.types.json.Jsonb`` (JSONB column).
 """
 
-TimestampSerializer = Callable[[datetime], Any]
+TimestampSerializer = Callable[[datetime], object]
 """Serializes the UTC-normalised timestamp for the target driver.
 
 SQLite passes ``lambda dt: dt.isoformat()`` (TEXT column).
@@ -75,7 +75,7 @@ def audit_entry_to_payload(
     *,
     json_serializer: JsonSerializer,
     timestamp_serializer: TimestampSerializer,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Assemble the column-name -> value mapping for an INSERT.
 
     Timestamp is normalised to UTC before being passed through the

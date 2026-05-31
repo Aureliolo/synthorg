@@ -1,9 +1,9 @@
 """Postgres repository for ceremony scheduler state snapshots."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -45,7 +45,7 @@ class PostgresCeremonySchedulerStateRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params: tuple[Any, ...] = (
+        params: tuple[object, ...] = (
             record.sprint_id,
             record.completion_counters_json,
             record.fired_once_triggers_json,
@@ -189,7 +189,7 @@ ON CONFLICT (sprint_id) DO UPDATE SET
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(sql, (limit, offset))
-                rows: list[dict[str, Any]] = await cur.fetchall()
+                rows: list[DictRow] = await cur.fetchall()
         except psycopg.Error as exc:
             msg = "Failed to list ceremony scheduler state snapshots"
             logger.warning(

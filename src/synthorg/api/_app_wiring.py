@@ -40,6 +40,10 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.persistence.db_handle import (  # noqa: PLC0415
+        postgres_pool,
+        sqlite_connection,
+    )
     from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
         SQLiteCostForecastRepository,
     )
@@ -50,7 +54,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     backend_name = persistence_of(app_state).backend_name
     if backend_name == "sqlite":
         forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
-            persistence_of(app_state).get_db(),
+            sqlite_connection(persistence_of(app_state)),
             write_context=persistence_of(app_state).write_context,
             currency_getter=lambda: budget_config.currency,
         )
@@ -60,7 +64,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         )
 
         forecast_repo = PostgresCostForecastRepository(
-            persistence_of(app_state).get_db(),
+            postgres_pool(persistence_of(app_state)),
             currency_getter=lambda: budget_config.currency,
         )
     forecaster = CostForecaster(budget_config=budget_config)

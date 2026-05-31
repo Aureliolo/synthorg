@@ -8,7 +8,7 @@ import json
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -311,7 +311,7 @@ INSERT INTO checkpoints (
 
         return count
 
-    def _row_to_model(self, row: dict[str, object]) -> Checkpoint:
+    def _row_to_model(self, row: DictRow) -> Checkpoint:
         """Convert a database row to a ``Checkpoint`` model.
 
         ``context_json`` comes back from Postgres JSONB as a Python

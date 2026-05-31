@@ -10,7 +10,7 @@ them (and any legacy ISO strings) to UTC-aware values. Satisfy the
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -35,7 +35,6 @@ from synthorg.persistence.conversation_protocol import (
 
 if TYPE_CHECKING:
     from datetime import datetime
-    from typing import Any
 
     from psycopg_pool import AsyncConnectionPool
 
@@ -78,7 +77,7 @@ _TURN_APPEND_MAX_RETRIES: int = 3
 _TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
 
 
-def _row_to_conversation(row: dict[str, Any]) -> Conversation:
+def _row_to_conversation(row: DictRow) -> Conversation:
     """Convert a Postgres dict row into a :class:`Conversation`.
 
     Returns:
@@ -106,7 +105,7 @@ def _row_to_conversation(row: dict[str, Any]) -> Conversation:
         raise QueryError(msg) from exc
 
 
-def _row_to_turn(row: dict[str, Any]) -> ConversationTurn:
+def _row_to_turn(row: DictRow) -> ConversationTurn:
     """Convert a Postgres dict row into a :class:`ConversationTurn`.
 
     Returns:

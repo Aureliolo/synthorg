@@ -9,7 +9,7 @@ import json
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -307,7 +307,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         return deleted
 
-    def _row_to_model(self, row: dict[str, object]) -> ParkedContext:
+    def _row_to_model(self, row: DictRow) -> ParkedContext:
         """Convert a database row to a ``ParkedContext`` model.
 
         ``context_json`` comes back from Postgres JSONB as a Python
