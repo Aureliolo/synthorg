@@ -19,20 +19,22 @@ from synthorg.approval.protocol import (
 )
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
-from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
-    ApprovalSource,
-    ApprovalStatus,
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
 )
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.chief_of_staff._intake_parking import (
+    build_work_approval_item,
+    build_work_item,
+    park_steering,
+    unwind_parked_steering,
+)
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
@@ -41,8 +43,10 @@ from synthorg.meta.chief_of_staff.models import (
     ProposeArgs,
     ProposedApprovalSummary,
     ProposeDecision,
+    ProposedSteering,
     ProposedWork,
     ProposeResult,
+    SteeringProposalSummary,
 )
 from synthorg.meta.chief_of_staff.prompts import CONVERSATIONAL_PROPOSE_PROMPT
 from synthorg.meta.errors import (
@@ -82,8 +86,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_ACTION_TYPE: NotBlankStr = NotBlankStr("conversational:create_work")
-_ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("conversational-cos")
 _CAP_MESSAGE: NotBlankStr = NotBlankStr(
     "We have gone back and forth several times without converging on "
     "actionable work. Closing this conversation -- please open a new "
@@ -114,14 +116,18 @@ def _render_history(turns: tuple[ConversationTurn, ...]) -> str:
     return "\n".join(f"{turn.role.value.upper()}: {turn.content}" for turn in turns)
 
 
-def _summarise_proposals(proposals: tuple[ProposedWork, ...]) -> str:
-    """One-line-per-item assistant summary of parked proposals.
+def _summarise_decision(
+    proposals: tuple[ProposedWork, ...],
+    steering: tuple[ProposedSteering, ...],
+) -> str:
+    """One-line-per-item assistant summary of parked work and steering.
 
     Returns:
         Resulting string.
     """
     lines = [f"- {p.title}" for p in proposals]
-    return "I've queued the following work for your approval:\n" + "\n".join(lines)
+    lines += [f"- steer ({s.kind.value}): {s.text}" for s in steering]
+    return "I've queued the following for your approval:\n" + "\n".join(lines)
 
 
 class ChiefOfStaffProposer:
@@ -507,13 +513,37 @@ class ChiefOfStaffProposer:
                 )
                 raise ConversationalProposeResponseInvalidError
             resolved.append((proposed, project))
+        resolved_steering: list[tuple[ProposedSteering, NotBlankStr]] = []
+        for steer in decision.steering:
+            steer_project = steer.project or args.project
+            if steer_project is None:
+                logger.warning(
+                    COS_PROPOSE_RESPONSE_INVALID,
+                    detail="steering_missing_project",
+                    conversation_id=conversation.id,
+                )
+                raise ConversationalProposeResponseInvalidError
+            resolved_steering.append((steer, steer_project))
 
         summaries: list[ProposedApprovalSummary] = []
+        steering_summaries: list[SteeringProposalSummary] = []
         try:
             for proposed, project in resolved:
                 summaries.append(
                     await self._park_proposal(
                         conversation, args, proposed, project, now
+                    )
+                )
+            for steer, steer_project in resolved_steering:
+                steering_summaries.append(
+                    await park_steering(
+                        approval_store=self._approval_store,
+                        conversation=conversation,
+                        args=args,
+                        steer=steer,
+                        project=steer_project,
+                        config=self._config,
+                        now=now,
                     )
                 )
         except Exception as exc:
@@ -524,6 +554,10 @@ class ChiefOfStaffProposer:
                     proposal_id=parked.proposal_id,
                     approval_id=parked.approval_id,
                 )
+            for parked_steer in steering_summaries:
+                await unwind_parked_steering(
+                    self._approval_store, parked_steer.approval_id
+                )
             raise
 
         await self._turn_repo.append(
@@ -532,7 +566,9 @@ class ChiefOfStaffProposer:
                 conversation_id=conversation.id,
                 sequence=sequence,
                 role=ConversationRole.ASSISTANT,
-                content=NotBlankStr(_summarise_proposals(decision.proposals)),
+                content=NotBlankStr(
+                    _summarise_decision(decision.proposals, decision.steering)
+                ),
                 created_at=now,
             )
         )
@@ -564,71 +600,13 @@ class ChiefOfStaffProposer:
         logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=conversation.id,
-            proposal_count=len(summaries),
+            proposal_count=len(summaries) + len(steering_summaries),
         )
         return ProposeResult(
             conversation_id=conversation.id,
             status="proposed",
             proposals=tuple(summaries),
-        )
-
-    def _build_work_item(
-        self,
-        conversation: Conversation,
-        args: ProposeArgs,
-        proposed: ProposedWork,
-        project: NotBlankStr,
-        now: datetime,
-    ) -> WorkItem:
-        """Compose the pipeline-spine envelope for one proposal.
-
-        Returns:
-            ``WorkItem`` instance.
-        """
-        return WorkItem(
-            origin_adapter_id=_ORIGIN_ADAPTER_ID,
-            source=WorkSource.CONVERSATIONAL,
-            title=proposed.title,
-            raw_intent=proposed.raw_intent,
-            project=project,
-            requested_by=args.created_by,
-            priority=proposed.priority,
-            task_type=proposed.task_type,
-            estimated_complexity=proposed.estimated_complexity,
-            acceptance_criteria=proposed.acceptance_criteria,
-            correlation_id=conversation.id,
-            created_at=now,
-        )
-
-    def _build_approval_item(  # noqa: PLR0913 -- ApprovalItem field set is broad by design
-        self,
-        *,
-        approval_id: NotBlankStr,
-        proposal_id: NotBlankStr,
-        conversation: Conversation,
-        args: ProposeArgs,
-        proposed: ProposedWork,
-        now: datetime,
-    ) -> ApprovalItem:
-        """Compose the parked approval-queue item for one proposal.
-
-        Returns:
-            ``ApprovalItem`` instance.
-        """
-        return ApprovalItem(
-            id=approval_id,
-            action_type=_ACTION_TYPE,
-            title=proposed.title,
-            description=proposed.raw_intent,
-            requested_by=args.created_by,
-            risk_level=self._config.propose_default_risk_level,
-            source=ApprovalSource.CONVERSATIONAL_INTAKE,
-            status=ApprovalStatus.PENDING,
-            created_at=now,
-            metadata={
-                "conversation_id": conversation.id,
-                "proposal_id": proposal_id,
-            },
+            steering=tuple(steering_summaries),
         )
 
     async def _park_proposal(
@@ -662,7 +640,7 @@ class ChiefOfStaffProposer:
         """
         approval_id = _new_id()
         proposal_id = _new_id()
-        work_item = self._build_work_item(conversation, args, proposed, project, now)
+        work_item = build_work_item(conversation, args, proposed, project, now)
         await self._proposal_repo.save(
             ConversationalProposal(
                 id=proposal_id,
@@ -675,12 +653,13 @@ class ChiefOfStaffProposer:
         )
         try:
             await self._approval_store.add(
-                self._build_approval_item(
+                build_work_approval_item(
                     approval_id=approval_id,
                     proposal_id=proposal_id,
                     conversation=conversation,
                     args=args,
                     proposed=proposed,
+                    config=self._config,
                     now=now,
                 )
             )

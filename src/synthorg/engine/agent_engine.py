@@ -81,6 +81,7 @@ if TYPE_CHECKING:
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.hybrid_models import HybridLoopConfig
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
@@ -186,6 +187,7 @@ class AgentEngine(
         checkpoint_config: CheckpointConfig | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        steering_inbox: SteeringInbox | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
         hybrid_loop_config: HybridLoopConfig | None = None,
         compaction_callback: CompactionCallback | None = None,
@@ -253,6 +255,7 @@ class AgentEngine(
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
         self._stakes_router = stakes_router
         self._stagnation_detector = stagnation_detector
+        self._steering_inbox = steering_inbox
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config
         self._compaction_callback = compaction_callback

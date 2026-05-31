@@ -214,6 +214,14 @@ Queue: Hiring Queue
     questions, blockers, risks, dependencies, and the evolving plan. Append-only,
     versioned in the workspace, and queried by agents on resume and by the operator.
 
+-   [**Mid-Flight Steering**](mid-flight-steering.md)
+
+    ---
+
+    The operator injects a hint or redirect into a running project; in-flight and
+    newly-spawned agents adopt it at safe boundaries, redirects force a re-plan,
+    and obsolete work is superseded, recorded in the brain with its rationale.
+
 -   [**Semantic Ontology**](ontology.md)
 
     ---

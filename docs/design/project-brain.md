@@ -392,13 +392,13 @@ when, and the outcomes. The `citations` tuple, the `related_task_ids`, and the
 commit-aligned git snapshot supply the provenance the narrative attaches to each
 claim. The brain is queried by the narrator; it does not itself produce prose.
 
-**Mid-flight steering (#1997)** both writes to and reads from the brain. When the
-operator issues a steering redirect, the brain receives a new entry (a plan
-revision or a decision, with the directive as its rationale and the operator as
-author) **before** the directive propagates to agents, so a crash between
-propagation and persistence cannot lose the steering history. In-flight agents
-picking up the directive query `list_current` at safe boundaries to read the
-latest steering state.
+[**Mid-flight steering (#1997)**](mid-flight-steering.md) both writes to and
+reads from the brain. When the operator issues a steering redirect, the brain
+receives a new `PLAN_REVISION` entry (tagged `steering`, with the directive as
+its rationale and the operator as author) **before** the directive propagates to
+agents, so a crash between propagation and persistence cannot lose the steering
+history. In-flight agents picking up the directive query `list_current` at safe
+boundaries to read the latest steering state.
 
 ## API and tool surface
 

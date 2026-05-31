@@ -46,7 +46,11 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
 `TerminationReason`
 :   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `STAGNATION`,
-    `ERROR`, `PARKED`.  `max_turns` defaults to 20.
+    `ERROR`, `PARKED`, `CANCELLED`.  `max_turns` defaults to 20.  `CANCELLED`
+    fires when a per-task `TaskCancellationChecker` observes the task's terminal
+    status at a safe boundary (e.g. an operator superseded it via mid-flight
+    steering); the loop halts and the post-execution pipeline performs no
+    re-transition because the task is already terminal.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
@@ -321,6 +325,10 @@ async run(
     - `ERROR` termination: recovery strategy is applied (default
       `FailAndReassignStrategy` transitions to FAILED;
       see [Crash Recovery](coordination.md#agent-crash-recovery)).
+    - `CANCELLED` termination: the task is already terminal (an operator
+      cancelled or superseded it out of band), so the pipeline performs no
+      re-transition and records no phantom state change. See
+      [Mid-Flight Steering](mid-flight-steering.md).
     - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`,
       `STAGNATION`, `PARKED`) leave the task in its current state.
       `STAGNATION` indicates the agent was stuck in a repetitive loop.

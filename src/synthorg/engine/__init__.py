@@ -54,8 +54,8 @@ from synthorg.engine.classification import (
 from synthorg.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
-    AgentContextSnapshot,
 )
+from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.coordination import (
     AgentContribution,
     CentralizedDispatcher,

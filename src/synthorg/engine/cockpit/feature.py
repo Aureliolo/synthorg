@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 from synthorg._core.features import FeatureManifest, FeatureModule
 from synthorg.api.controllers.cockpit import CockpitController
+from synthorg.api.controllers.steering import SteeringController
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.meta.mcp.domains.cockpit import COCKPIT_TOOLS
 from synthorg.meta.mcp.feature_descriptors import mcp_descriptor
@@ -31,7 +32,7 @@ FEATURE: FeatureModule = FeatureManifest(
     name="cockpit",
     settings_namespace=SettingNamespace.COCKPIT,
     state_slice=CockpitStateSlice,
-    controllers=(CockpitController,),
+    controllers=(CockpitController, SteeringController),
     mcp_handlers=(
         mcp_descriptor(
             domain="cockpit",
@@ -43,7 +44,9 @@ FEATURE: FeatureModule = FeatureManifest(
     ghost_wired_symbols=(
         "CockpitService",
         "FlightRecorderService",
-        "build_steering_directive",
+        "SteeringService",
+        "build_steering_inbox",
+        "build_supersession_proposer",
         "build_flight_recorder_sink",
     ),
     depends_on=(),

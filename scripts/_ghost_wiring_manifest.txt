@@ -123,5 +123,7 @@ ENFORCED install_dynamic_tool_layer #1995 -- called by api/app.py::_wire_toolsmi
 ENFORCED build_stakes_router #1998 -- called by workers/runtime_builder._build_stakes_router_or_none when a benchmark provider is wired; injected into AgentEngine for stakes-aware tier selection before budget downgrade
 ENFORCED CockpitService #1981 -- constructed in api/app.py::_wire_cockpit_services and installed on AppState; serves the mission-control live-activity snapshot (who/what + stuck/runaway)
 ENFORCED FlightRecorderService #1981 -- constructed in api/app.py::_wire_cockpit_services; frame-authoritative get/seek behind the flight-recorder cockpit endpoints
-ENFORCED build_steering_directive #1981 -- called in api/app.py::_wire_cockpit_services; builds the SafeDefaultSteeringDirective that delivers cockpit hint/redirect as INFO_REQUEST interrupts
-ENFORCED build_flight_recorder_sink #1981 -- called in workers/runtime_builder._build_flight_recorder_sink; selects the recorder sink the boot AgentEngine records per-turn frames through
+ENFORCED SteeringService #1997 -- constructed in api/_app_wiring.py::_wire_steering_service after the project brain wires; single write path for mid-flight steering directives (issue/list/supersede)
+ENFORCED build_steering_inbox #1997 -- called in workers/_agent_engine_collaborators.boot_steering_inbox; builds the brain-backed inbox the boot AgentEngine reads active directives from at safe boundaries
+ENFORCED build_supersession_proposer #1997 -- called in api/_app_wiring.py::_wire_steering_service; selects the pluggable LLM/no-op proposer that refines the obsolete-task set in PROPOSE mode
+ENFORCED build_flight_recorder_sink #1981 -- called in workers/_agent_engine_collaborators.build_boot_flight_recorder_sink; selects the recorder sink the boot AgentEngine records per-turn frames through

@@ -2,7 +2,6 @@ import type {
   FlightRecorderFrame,
   LiveActivitySnapshot,
   ReplaySeekView,
-  SteeringOutcome,
   Task,
 } from '@/api/types'
 
@@ -65,32 +64,6 @@ export async function killTask(taskId: string, reason: string): Promise<Task> {
   const response = await apiClient.post<ApiResponse<Task>>(
     '/cockpit/interventions/kill',
     { task_id: taskId, reason },
-  )
-  return unwrap(response)
-}
-
-/** Queue a hint for a running agent (applied at the next safe turn boundary). */
-export async function sendHint(
-  executionId: string,
-  agentId: string,
-  text: string,
-): Promise<SteeringOutcome> {
-  const response = await apiClient.post<ApiResponse<SteeringOutcome>>(
-    '/cockpit/interventions/hint',
-    { execution_id: executionId, agent_id: agentId, text },
-  )
-  return unwrap(response)
-}
-
-/** Queue a redirect for a running agent. */
-export async function redirectAgent(
-  executionId: string,
-  agentId: string,
-  text: string,
-): Promise<SteeringOutcome> {
-  const response = await apiClient.post<ApiResponse<SteeringOutcome>>(
-    '/cockpit/interventions/redirect',
-    { execution_id: executionId, agent_id: agentId, text },
   )
   return unwrap(response)
 }

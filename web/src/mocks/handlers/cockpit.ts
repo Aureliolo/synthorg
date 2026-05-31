@@ -5,9 +5,7 @@ import type {
   getFlightRecorderFrames,
   killTask,
   pauseTask,
-  redirectAgent,
   seekFlightRecorder,
-  sendHint,
 } from '@/api/endpoints/cockpit'
 
 import { buildTask } from './tasks'
@@ -90,25 +88,5 @@ export const cockpitHandlers = [
   ),
   http.post('/api/v1/cockpit/interventions/kill', () =>
     HttpResponse.json(successFor<typeof killTask>(buildTask({ status: 'cancelled' }))),
-  ),
-  http.post('/api/v1/cockpit/interventions/hint', () =>
-    HttpResponse.json(
-      successFor<typeof sendHint>({
-        kind: 'hint',
-        applied: true,
-        artifact_id: 'interrupt-1',
-        detail: 'queued, awaiting the agent next safe turn boundary',
-      }),
-    ),
-  ),
-  http.post('/api/v1/cockpit/interventions/redirect', () =>
-    HttpResponse.json(
-      successFor<typeof redirectAgent>({
-        kind: 'redirect',
-        applied: true,
-        artifact_id: 'interrupt-2',
-        detail: 'queued, awaiting the agent next safe turn boundary',
-      }),
-    ),
   ),
 ]

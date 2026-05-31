@@ -7,7 +7,7 @@ type aliases.
 """
 
 import copy
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
@@ -69,6 +69,7 @@ class TerminationReason(StrEnum):
     SHUTDOWN = "shutdown"
     PARKED = "parked"
     STAGNATION = "stagnation"
+    CANCELLED = "cancelled"
     ERROR = "error"
 
 
@@ -277,6 +278,15 @@ BudgetChecker = Callable[[AgentContext], bool]
 ShutdownChecker = Callable[[], bool]
 """Callback that returns ``True`` when a graceful shutdown has been requested."""
 
+TaskCancellationChecker = Callable[[], Awaitable[bool]]
+"""Async callback that returns ``True`` when the running task has been cancelled
+or superseded externally (e.g. by a steering supersession or a cockpit kill).
+
+Consulted at the top-of-turn safe boundary so the agent halts cleanly instead of
+running an obsolete task to completion. The task's terminal DB status is the
+durable cross-process signal (the operator cancels in the API process; the agent
+runs in the worker process)."""
+
 
 @runtime_checkable
 class ExecutionLoop(Protocol):
@@ -296,6 +306,7 @@ class ExecutionLoop(Protocol):
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Run the execution loop.
 
@@ -309,6 +320,9 @@ class ExecutionLoop(Protocol):
                 a graceful shutdown has been requested.
             completion_config: Optional per-execution override for
                 temperature/max_tokens (defaults to identity's model config).
+            task_cancellation_checker: Optional async callback; returns
+                ``True`` when the running task was cancelled or superseded
+                externally, so the loop halts at the next safe boundary.
 
         Returns:
             Execution result with final context and termination reason.
