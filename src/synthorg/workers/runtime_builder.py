@@ -39,10 +39,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
-from synthorg.engine.flight_recording import (
-    FlightRecorderSink,
-    build_flight_recorder_sink,
-)
+from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.pipeline.factory import build_work_pipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
@@ -66,7 +63,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.state import PersistenceStateSlice, persistence_of
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -89,6 +86,10 @@ from synthorg.tools.sandbox.factory import (
     resolve_sandbox_for_category,
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.workers._agent_engine_collaborators import (
+    boot_steering_inbox,
+    build_boot_flight_recorder_sink,
+)
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
@@ -118,9 +119,6 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
-_COCKPIT_NS: str = SettingNamespace.COCKPIT.value
-_FR_ENABLED_KEY: str = "flight_recorder_enabled"
-_FR_STRATEGY_KEY: str = "flight_recorder_sink_strategy"
 _ROUTING_POLICY_KEY: str = "routing_policy"
 _LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
 _BASELINE_WINDOW_KEY: str = "baseline_window_size"
@@ -441,33 +439,6 @@ def _build_stakes_router_or_none(
     )
 
 
-async def _build_flight_recorder_sink(app_state: AppState) -> FlightRecorderSink:
-    """Resolve the cockpit flight-recorder sink for the boot engine.
-
-    Reads the cockpit ``flight_recorder_enabled`` flag and the
-    ``flight_recorder_sink_strategy`` discriminator via the async
-    resolver (DB > env > default), and supplies the persistence-backed
-    frame repository only when persistence is connected. Without
-    persistence the factory degrades to the no-op sink, so a
-    persistence-less dev boot records nothing instead of crashing.
-
-    Returns:
-        The configured flight-recorder sink (a no-op sink when disabled
-        or persistence is absent).
-    """
-    backend = app_state.slice(PersistenceStateSlice).backend
-    repository = backend.flight_recorder_frames if backend is not None else None
-    enabled = await config_resolver_of(app_state).get_bool(_COCKPIT_NS, _FR_ENABLED_KEY)
-    strategy = await config_resolver_of(app_state).get_str(
-        _COCKPIT_NS, _FR_STRATEGY_KEY
-    )
-    return build_flight_recorder_sink(
-        repository,
-        enabled=enabled,
-        strategy=strategy,
-    )
-
-
 def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
@@ -520,6 +491,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
         flight_recorder_sink=flight_recorder_sink,
+        steering_inbox=boot_steering_inbox(app_state),
         clock=app_state.clock,
     )
 
@@ -807,7 +779,7 @@ async def build_runtime_services(
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     external_api_runtime = await _build_external_api_runtime(app_state)
-    flight_recorder_sink = await _build_flight_recorder_sink(app_state)
+    flight_recorder_sink = await build_boot_flight_recorder_sink(app_state)
     engine = _construct_agent_engine(
         app_state,
         provider,

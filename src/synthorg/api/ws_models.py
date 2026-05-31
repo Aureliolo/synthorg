@@ -143,6 +143,10 @@ class WsEventType(StrEnum):
     INTERRUPT_RESUMED = "interrupt.resumed"
     DISSENT_PUBLISHED = "dissent.published"
 
+    STEERING_DIRECTIVE_ISSUED = "steering.directive.issued"
+    STEERING_SUPERSESSION_PROPOSED = "steering.supersession.proposed"
+    STEERING_TASKS_SUPERSEDED = "steering.tasks.superseded"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

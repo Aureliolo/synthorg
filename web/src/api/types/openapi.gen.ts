@@ -1306,23 +1306,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/cockpit/interventions/hint": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Hint */
-        readonly post: operations["ApiV1CockpitInterventionsHintHint"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/cockpit/interventions/kill": {
         readonly parameters: {
             readonly query?: never;
@@ -1357,23 +1340,6 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v1/cockpit/interventions/redirect": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Redirect */
-        readonly post: operations["ApiV1CockpitInterventionsRedirectRedirect"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/v1/cockpit/snapshot": {
         readonly parameters: {
             readonly query?: never;
@@ -1385,6 +1351,41 @@ export type paths = {
         readonly get: operations["ApiV1CockpitSnapshotGetSnapshot"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/steering": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListActive */
+        readonly get: operations["ApiV1CockpitSteeringListActive"];
+        readonly put?: never;
+        /** Issue */
+        readonly post: operations["ApiV1CockpitSteeringIssue"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/steering/{directive_id}/supersede": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Supersede */
+        readonly post: operations["ApiV1CockpitSteeringDirectiveIdSupersedeSupersede"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -5026,6 +5027,33 @@ export type components = {
             /** @description Embedding provider name */
             readonly provider: string | null;
         };
+        /** ActiveSteeringDirective */
+        readonly ActiveSteeringDirective: {
+            /** @description Operator or agent id that issued it */
+            readonly author: string;
+            /** @description Brain entry id (stable across revisions) */
+            readonly entry_id: string;
+            readonly kind: components["schemas"]["InterventionKind"];
+            /**
+             * @description Optional agent-id narrowing; empty means every agent
+             * @default []
+             */
+            readonly narrow_agent_ids: readonly string[];
+            /**
+             * @description Optional task-id narrowing; empty means project-wide
+             * @default []
+             */
+            readonly narrow_task_ids: readonly string[];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            /** @description Whether adopting this directive forces a replan */
+            readonly requires_replan: boolean;
+            /** @description The operator directive text (raw) */
+            readonly text: string;
+        };
         /** ActivityEvent */
         readonly ActivityEvent: {
             /**
@@ -5998,6 +6026,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[list[ActiveSteeringDirective]] */
+        readonly ApiResponse_list_ActiveSteeringDirective_: {
+            readonly data: readonly components["schemas"]["ActiveSteeringDirective"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[SessionResponse]] */
         readonly ApiResponse_list_SessionResponse_: {
             readonly data: readonly components["schemas"]["SessionResponse"][] | null;
@@ -6492,9 +6533,22 @@ export type components = {
              */
             readonly success: boolean;
         };
-        /** ApiResponse[SteeringOutcome] */
-        readonly ApiResponse_SteeringOutcome_: {
-            readonly data: components["schemas"]["SteeringOutcome"] | null;
+        /** ApiResponse[SteeringIssueResult] */
+        readonly ApiResponse_SteeringIssueResult_: {
+            readonly data: components["schemas"]["SteeringIssueResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SteeringSupersessionResult] */
+        readonly ApiResponse_SteeringSupersessionResult_: {
+            readonly data: components["schemas"]["SteeringSupersessionResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -8255,6 +8309,13 @@ export type components = {
          * @enum {string}
          */
         readonly Complexity: "simple" | "medium" | "complex" | "epic";
+        /** ConfirmSupersessionRequest */
+        readonly ConfirmSupersessionRequest: {
+            /** @description Project the directive targets */
+            readonly project_id: string;
+            /** @description Operator-confirmed obsolete tasks to cancel */
+            readonly task_ids: readonly string[];
+        };
         /** Conflict */
         readonly Conflict: {
             /**
@@ -9373,7 +9434,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -10239,6 +10300,30 @@ export type components = {
             readonly next_question: string | null;
             /** @enum {string} */
             readonly status: "needs_more" | "drafted";
+        };
+        /** IssueSteeringRequest */
+        readonly IssueSteeringRequest: {
+            readonly kind: components["schemas"]["InterventionKind"];
+            /**
+             * @description Optional agent-id narrowing; empty means every agent
+             * @default []
+             */
+            readonly narrow_agent_ids: readonly string[];
+            /**
+             * @description Optional task-id narrowing; empty means project-wide
+             * @default []
+             */
+            readonly narrow_task_ids: readonly string[];
+            /** @description Project the directive targets */
+            readonly project_id: string;
+            readonly supersede_mode?: components["schemas"]["SupersedeMode"];
+            /**
+             * @description Tasks to treat as obsolete (EXPLICIT cancels, PROPOSE seeds)
+             * @default []
+             */
+            readonly supersede_task_ids: readonly string[];
+            /** @description The operator directive text */
+            readonly text: string;
         };
         /** KillInterventionRequest */
         readonly KillInterventionRequest: {
@@ -12692,6 +12777,8 @@ export type components = {
             readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
             /** @enum {string} */
             readonly status: "needs_clarification" | "proposed";
+            /** @default [] */
+            readonly steering: readonly components["schemas"]["SteeringProposalSummary"][];
         };
         /** ProseBlock */
         readonly ProseBlock: {
@@ -14009,24 +14096,50 @@ export type components = {
         readonly StartSimulationPayload: {
             readonly config: components["schemas"]["SimulationConfig"];
         };
-        /** SteeringOutcome */
-        readonly SteeringOutcome: {
-            /** @description Whether the directive was delivered */
-            readonly applied: boolean;
-            /** @description Interrupt id the directive produced, when applied */
-            readonly artifact_id: string | null;
-            /** @description Human-readable outcome description */
-            readonly detail: string;
+        /** SteeringIssueResult */
+        readonly SteeringIssueResult: {
+            /** @description Brain entry id of the recorded directive */
+            readonly directive_id: string;
             readonly kind: components["schemas"]["InterventionKind"];
+            /** @description Proposed obsolete set awaiting confirmation (PROPOSE mode) */
+            readonly proposal: components["schemas"]["SteeringSupersessionProposal"] | null;
+            /**
+             * @description Tasks cancelled immediately (EXPLICIT mode)
+             * @default []
+             */
+            readonly superseded_task_ids: readonly string[];
         };
-        /** SteerInterventionRequest */
-        readonly SteerInterventionRequest: {
-            /** @description Agent to steer */
-            readonly agent_id: string;
-            /** @description Execution to steer */
-            readonly execution_id: string;
-            /** @description Operator hint / redirect text */
+        /** SteeringProposalSummary */
+        readonly SteeringProposalSummary: {
+            readonly approval_id: string;
+            readonly kind: components["schemas"]["InterventionKind"];
+            readonly project: string;
             readonly text: string;
+        };
+        /** SteeringSupersessionProposal */
+        readonly SteeringSupersessionProposal: {
+            /** @description The directive this refines */
+            readonly directive_id: string;
+            /**
+             * @description Tasks the proposer judged obsolete
+             * @default []
+             */
+            readonly proposed_task_ids: readonly string[];
+            /**
+             * @description Why these tasks are obsolete (operator-facing)
+             * @default
+             */
+            readonly rationale: string;
+        };
+        /** SteeringSupersessionResult */
+        readonly SteeringSupersessionResult: {
+            /**
+             * @description Tasks cancelled via the single-writer task engine
+             * @default []
+             */
+            readonly cancelled_task_ids: readonly string[];
+            /** @description The directive confirmed */
+            readonly directive_id: string;
         };
         /** StragglerGap */
         readonly StragglerGap: {
@@ -14086,6 +14199,18 @@ export type components = {
             /** @description Total versions */
             readonly version_count: number;
         };
+        /**
+         * SupersedeMode
+         * @description How a steering directive treats now-obsolete sibling tasks.
+         *
+         *     ``NONE`` cancels nothing. ``EXPLICIT`` cancels the supplied task ids
+         *     immediately at issue time. ``PROPOSE`` runs the pluggable proposer to
+         *     refine the obsolete set and returns it for the operator to confirm or edit
+         *     before any cancellation; the proposer never cancels.
+         * @default none
+         * @enum {string}
+         */
+        readonly SupersedeMode: "none" | "explicit" | "propose";
         /** SyncModelsRequest */
         readonly SyncModelsRequest: {
             /** @description Optional preset hint for discovery shape */
@@ -18565,37 +18690,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1CockpitInterventionsHintHint: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SteerInterventionRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_SteeringOutcome_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1CockpitInterventionsKillKill: {
         readonly parameters: {
             readonly query?: never;
@@ -18658,37 +18752,6 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
-    readonly ApiV1CockpitInterventionsRedirectRedirect: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SteerInterventionRequest"];
-            };
-        };
-        readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_SteeringOutcome_"];
-                };
-            };
-            readonly 400: components["responses"]["BadRequest"];
-            readonly 401: components["responses"]["Unauthorized"];
-            readonly 403: components["responses"]["Forbidden"];
-            readonly 409: components["responses"]["Conflict"];
-            readonly 429: components["responses"]["TooManyRequests"];
-            readonly 500: components["responses"]["InternalError"];
-            readonly 503: components["responses"]["ServiceUnavailable"];
-        };
-    };
     readonly ApiV1CockpitSnapshotGetSnapshot: {
         readonly parameters: {
             readonly query?: never;
@@ -18708,6 +18771,100 @@ export interface operations {
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitSteeringListActive: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Project the directives target */
+                readonly project_id: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_list_ActiveSteeringDirective_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitSteeringIssue: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["IssueSteeringRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SteeringIssueResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitSteeringDirectiveIdSupersedeSupersede: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly directive_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ConfirmSupersessionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SteeringSupersessionResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

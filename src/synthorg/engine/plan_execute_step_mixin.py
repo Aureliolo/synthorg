@@ -9,7 +9,10 @@ import copy
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.intervention.loop_hook import check_steering
+from synthorg.engine.loop_cancellation import check_task_cancelled
 from synthorg.engine.loop_helpers import (
+    build_result,
     call_provider,
     check_budget,
     check_response_errors,
@@ -22,6 +25,8 @@ from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
+    TaskCancellationChecker,
+    TerminationReason,
     TurnRecord,
 )
 from synthorg.engine.loop_tool_execution import (
@@ -33,6 +38,7 @@ from synthorg.engine.plan_models import ExecutionPlan
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
+    EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
@@ -42,6 +48,7 @@ if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.providers.models import (
         CompletionConfig,
         CompletionResponse,
@@ -58,6 +65,7 @@ class PlanExecuteStepMixin:
 
     _approval_gate: ApprovalGate | None
     _checkpoint_callback: CheckpointCallback | None
+    _steering_inbox: SteeringInbox | None
 
     async def _run_step_turn(  # noqa: PLR0913
         self,
@@ -70,13 +78,14 @@ class PlanExecuteStepMixin:
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
         Returns:
             The updated :class:`AgentContext` to continue the
             sub-loop, an :class:`ExecutionResult` to terminate
-            execution (shutdown / budget / completion), or
+            execution (shutdown / budget / cancellation), or
             ``(ctx, True)`` when the step completed successfully.
         """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
@@ -85,6 +94,18 @@ class PlanExecuteStepMixin:
         budget_result = check_budget(ctx, budget_checker, turns)
         if budget_result is not None:
             return budget_result
+        cancel_result = await check_task_cancelled(
+            ctx, task_cancellation_checker, turns
+        )
+        if cancel_result is not None:
+            return cancel_result
+        # Adopt pending steering directives before the LLM call so the
+        # operator's constraint is in context for this step's turn.
+        steered = await check_steering(
+            ctx, self._steering_inbox, execution_id=ctx.execution_id
+        )
+        if steered is not None:
+            ctx = steered
 
         turn_number = ctx.turn_count + 1
         response = await call_provider(
@@ -244,3 +265,46 @@ class PlanExecuteStepMixin:
             }
         )
         return result.model_copy(update={"metadata": metadata})
+
+    def _build_final_result(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        plan: ExecutionPlan,
+        step_idx: int,
+        turns: list[TurnRecord],
+        all_plans: list[ExecutionPlan],
+        replans_used: int,
+    ) -> ExecutionResult:
+        """Build the final result after step iteration completes.
+
+        Returns:
+            The terminal :class:`ExecutionResult` with ``MAX_TURNS``
+            when turns ran out mid-plan and ``COMPLETED`` otherwise.
+        """
+        # Sync live plan so final_plan metadata reflects step statuses
+        if all_plans:
+            all_plans[-1] = plan
+        if not ctx.has_turns_remaining and step_idx < len(plan.steps):
+            logger.info(
+                EXECUTION_LOOP_TERMINATED,
+                execution_id=ctx.execution_id,
+                reason=TerminationReason.MAX_TURNS.value,
+                turns=len(turns),
+            )
+            return self._finalize(
+                build_result(ctx, TerminationReason.MAX_TURNS, turns),
+                all_plans,
+                replans_used,
+            )
+
+        logger.info(
+            EXECUTION_LOOP_TERMINATED,
+            execution_id=ctx.execution_id,
+            reason=TerminationReason.COMPLETED.value,
+            turns=len(turns),
+        )
+        return self._finalize(
+            build_result(ctx, TerminationReason.COMPLETED, turns),
+            all_plans,
+            replans_used,
+        )

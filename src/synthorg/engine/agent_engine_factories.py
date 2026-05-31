@@ -52,6 +52,7 @@ class AgentEngineFactoriesMixin:
     _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: Any
     _compaction_callback: Any
+    _steering_inbox: Any
     _auto_loop_config: Any
     _loop: Any
     _hybrid_loop_config: Any
@@ -124,6 +125,7 @@ class AgentEngineFactoriesMixin:
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
             compaction_callback=self._compaction_callback,
+            steering_inbox=self._steering_inbox,
         )
 
     async def _resolve_loop(
@@ -189,6 +191,7 @@ class AgentEngineFactoriesMixin:
             compaction_callback=self._compaction_callback,
             plan_execute_config=self._plan_execute_config,
             hybrid_loop_config=self._hybrid_loop_config,
+            steering_inbox=self._steering_inbox,
         )
 
     def _make_security_interceptor(

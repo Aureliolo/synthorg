@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import ExecutionLoop
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.stagnation import StagnationDetector
@@ -305,6 +306,7 @@ def _build_react_loop(
     approval_gate: ApprovalGate | None = None,
     stagnation_detector: StagnationDetector | None = None,
     compaction_callback: CompactionCallback | None = None,
+    steering_inbox: SteeringInbox | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
     """Build a :class:`ReactLoop` for the ``react`` strategy.
@@ -318,16 +320,18 @@ def _build_react_loop(
         approval_gate=approval_gate,
         stagnation_detector=stagnation_detector,
         compaction_callback=compaction_callback,
+        steering_inbox=steering_inbox,
     )
 
 
-def _build_plan_execute_loop(
+def _build_plan_execute_loop(  # noqa: PLR0913
     *,
     checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,
     stagnation_detector: StagnationDetector | None = None,
     compaction_callback: CompactionCallback | None = None,
     plan_execute_config: PlanExecuteConfig | None = None,
+    steering_inbox: SteeringInbox | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
     """Build a :class:`PlanExecuteLoop` for the ``plan_execute`` strategy.
@@ -342,16 +346,18 @@ def _build_plan_execute_loop(
         approval_gate=approval_gate,
         stagnation_detector=stagnation_detector,
         compaction_callback=compaction_callback,
+        steering_inbox=steering_inbox,
     )
 
 
-def _build_hybrid_loop(
+def _build_hybrid_loop(  # noqa: PLR0913
     *,
     checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,
     stagnation_detector: StagnationDetector | None = None,
     compaction_callback: CompactionCallback | None = None,
     hybrid_loop_config: HybridLoopConfig | None = None,
+    steering_inbox: SteeringInbox | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
     """Build a :class:`HybridLoop` for the ``hybrid`` strategy.
@@ -366,6 +372,7 @@ def _build_hybrid_loop(
         approval_gate=approval_gate,
         stagnation_detector=stagnation_detector,
         compaction_callback=compaction_callback,
+        steering_inbox=steering_inbox,
     )
 
 
@@ -388,6 +395,7 @@ def build_execution_loop(  # noqa: PLR0913
     compaction_callback: CompactionCallback | None = None,
     plan_execute_config: PlanExecuteConfig | None = None,
     hybrid_loop_config: HybridLoopConfig | None = None,
+    steering_inbox: SteeringInbox | None = None,
 ) -> ExecutionLoop:
     """Build an ``ExecutionLoop`` instance from a loop type string.
 
@@ -402,6 +410,8 @@ def build_execution_loop(  # noqa: PLR0913
             (ignored when ``loop_type`` is not ``"plan_execute"``).
         hybrid_loop_config: Configuration for the hybrid loop
             (ignored when ``loop_type`` is not ``"hybrid"``).
+        steering_inbox: Optional steering inbox wired into the loop so it
+            adopts mid-flight directives at safe boundaries.
 
     Returns:
         A concrete ``ExecutionLoop`` implementation.
@@ -417,4 +427,5 @@ def build_execution_loop(  # noqa: PLR0913
         compaction_callback=compaction_callback,
         plan_execute_config=plan_execute_config,
         hybrid_loop_config=hybrid_loop_config,
+        steering_inbox=steering_inbox,
     )

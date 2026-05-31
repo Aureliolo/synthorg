@@ -25,6 +25,7 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.compaction.models import CompressionMetadata
+from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger
@@ -47,69 +48,6 @@ logger = get_logger(__name__)
 
 DEFAULT_MAX_TURNS: int = 20
 """Default hard limit on LLM turns per agent execution."""
-
-
-class AgentContextSnapshot(BaseModel):
-    """Compact frozen snapshot of an ``AgentContext`` for reporting.
-
-    Attributes:
-        execution_id: Unique execution run identifier.
-        agent_id: Agent identifier (string form of UUID).
-        task_id: Task identifier, if a task is active.
-        turn_count: Number of turns completed.
-        accumulated_cost: Running cost totals.
-        task_status: Current task status, if a task is active.
-        started_at: When the execution began.
-        snapshot_at: When this snapshot was taken.
-        message_count: Number of messages in the conversation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    execution_id: NotBlankStr = Field(description="Unique execution identifier")
-    agent_id: NotBlankStr = Field(description="Agent identifier")
-    task_id: NotBlankStr | None = Field(
-        default=None,
-        description="Task identifier",
-    )
-    turn_count: int = Field(ge=0, description="Turns completed")
-    accumulated_cost: TokenUsage = Field(
-        description="Running cost totals",
-    )
-    task_status: TaskStatus | None = Field(
-        default=None,
-        description="Current task status",
-    )
-    started_at: AwareDatetime = Field(description="Execution start time")
-    snapshot_at: AwareDatetime = Field(
-        description="When snapshot was taken",
-    )
-    message_count: int = Field(ge=0, description="Messages in conversation")
-    context_fill_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Estimated context fill tokens",
-    )
-    context_fill_percent: float | None = Field(
-        default=None,
-        description="Context fill percentage",
-    )
-
-    @model_validator(mode="after")
-    def _validate_task_pair(self) -> AgentContextSnapshot:
-        """Ensure task_id and task_status are both set or both None.
-
-        Returns:
-            ``self`` unchanged when ``task_id`` and ``task_status``
-            agree.
-
-        Raises:
-            ValueError: When exactly one of the pair is set.
-        """
-        if (self.task_id is None) != (self.task_status is None):
-            msg = "task_id and task_status must both be set or both be None"
-            raise ValueError(msg)
-        return self
 
 
 class AgentContext(BaseModel):
@@ -214,6 +152,19 @@ class AgentContext(BaseModel):
         description="Insertion-ordered tool names for FIFO unload",
     )
 
+    # ── Mid-flight steering adoption state ────────────────────────
+    adopted_steering_ids: frozenset[NotBlankStr] = Field(
+        default=frozenset(),
+        description="Steering directive entry ids already adopted by this run",
+    )
+    pending_steering_replan_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Steering REDIRECT directive id awaiting a forced replan at the "
+            "next step boundary (Plan/Hybrid only); None when no replan is pending"
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_disclosure_consistency(self) -> AgentContext:
         """Ensure loaded_tools and tool_load_order are consistent.
@@ -300,6 +251,57 @@ class AgentContext(BaseModel):
             New ``AgentContext`` with the message appended.
         """
         return self.model_copy(update={"conversation": (*self.conversation, msg)})
+
+    def with_steering_adopted(self, directive_id: NotBlankStr) -> AgentContext:
+        """Mark a mid-flight steering directive as adopted by this run.
+
+        Adoption is context-local and travels with the checkpointed
+        context, so every concurrent agent on a project adopts a
+        directive independently and a resumed run never re-adopts one it
+        already consumed. Idempotent: re-adopting is a no-op.
+
+        Args:
+            directive_id: The project-brain entry id of the directive.
+
+        Returns:
+            New ``AgentContext`` with the directive id recorded; the same
+            instance when it was already adopted.
+        """
+        if directive_id in self.adopted_steering_ids:
+            return self
+        return self.model_copy(
+            update={
+                "adopted_steering_ids": self.adopted_steering_ids | {directive_id},
+            },
+        )
+
+    def with_pending_replan(self, directive_id: NotBlankStr) -> AgentContext:
+        """Record a REDIRECT awaiting a forced replan at the next step.
+
+        The id is carried on the (checkpointed) context rather than a
+        loop-local flag so a crash/resume between adoption and the step
+        boundary still fires the forced replan.
+
+        Args:
+            directive_id: The directive id that requested the replan.
+
+        Returns:
+            New ``AgentContext`` carrying the pending-replan id.
+        """
+        return self.model_copy(
+            update={"pending_steering_replan_id": directive_id},
+        )
+
+    def cleared_pending_replan(self) -> AgentContext:
+        """Clear the pending steering replan after it has been consumed.
+
+        Returns:
+            New ``AgentContext`` with no pending replan; the same instance
+            when none was pending.
+        """
+        if self.pending_steering_replan_id is None:
+            return self
+        return self.model_copy(update={"pending_steering_replan_id": None})
 
     def with_turn_completed(
         self,

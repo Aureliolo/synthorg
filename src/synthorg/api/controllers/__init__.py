@@ -124,6 +124,7 @@ from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
 from synthorg.api.controllers.simulations import SimulationController
+from synthorg.api.controllers.steering import SteeringController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
@@ -236,6 +237,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     LearningController,
     CustomRuleController,
     CockpitController,
+    SteeringController,
 )
 
 if TYPE_CHECKING:

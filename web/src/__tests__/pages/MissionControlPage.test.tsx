@@ -7,11 +7,12 @@ import type { getCockpitSnapshot } from '@/api/endpoints/cockpit'
 import MissionControlPage from '@/pages/MissionControlPage'
 import { successFor } from '@/mocks/handlers'
 import { useMissionControlStore } from '@/stores/mission-control'
+import { useSteeringStore } from '@/stores/steering'
 import { server } from '@/test-setup'
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <MissionControlPage />
     </MemoryRouter>,
   )
@@ -27,6 +28,13 @@ afterEach(() => {
     framesLoading: false,
     framesError: null,
     seekView: null,
+  })
+  useSteeringStore.setState({
+    directives: [],
+    directivesProject: null,
+    directivesLoading: false,
+    directivesError: null,
+    pendingProposal: null,
   })
 })
 
@@ -82,5 +90,13 @@ describe('MissionControlPage', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Flight Recorder' }))
     expect(screen.getByText('No frames loaded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Load run' })).toBeInTheDocument()
+  })
+
+  it('switches to the steering tab and seeds the project from the URL', async () => {
+    renderPage(['/?project=checkout'])
+    await screen.findByText('Active agents')
+    fireEvent.click(screen.getByRole('radio', { name: 'Steering' }))
+    expect(screen.getByLabelText('Project')).toHaveValue('checkout')
+    expect(await screen.findByText('use Postgres not Mongo')).toBeInTheDocument()
   })
 })

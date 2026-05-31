@@ -31,8 +31,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import LiveActivitySnapshot
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.engine.flight_recording import ReplaySeekView
-from synthorg.engine.intervention import SteeringOutcome
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.state import EngineStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (
@@ -75,16 +73,6 @@ class KillInterventionRequest(BaseModel):
 
     task_id: NotBlankStr = Field(description="Task to kill")
     reason: NotBlankStr = Field(description="Operator reason for the kill")
-
-
-class SteerInterventionRequest(BaseModel):
-    """Send a hint or redirect to a running agent."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    execution_id: NotBlankStr = Field(description="Execution to steer")
-    agent_id: NotBlankStr = Field(description="Agent to steer")
-    text: NotBlankStr = Field(description="Operator hint / redirect text")
 
 
 class CockpitController(Controller):
@@ -245,74 +233,3 @@ class CockpitController(Controller):
             task_id=data.task_id,
         )
         return ApiResponse(data=task)
-
-    @post("/interventions/hint", guards=[require_write_access])
-    async def hint(
-        self,
-        state: State,
-        data: SteerInterventionRequest,
-    ) -> ApiResponse[SteeringOutcome]:
-        """Queue a hint for a running agent.
-
-        Returns:
-            ``ApiResponse[SteeringOutcome]`` instance.
-        """
-        return await self._steer(state, InterventionKind.HINT, data)
-
-    @post("/interventions/redirect", guards=[require_write_access])
-    async def redirect(
-        self,
-        state: State,
-        data: SteerInterventionRequest,
-    ) -> ApiResponse[SteeringOutcome]:
-        """Queue a redirect for a running agent.
-
-        Returns:
-            ``ApiResponse[SteeringOutcome]`` instance.
-        """
-        return await self._steer(state, InterventionKind.REDIRECT, data)
-
-    async def _steer(
-        self,
-        state: State,
-        kind: InterventionKind,
-        data: SteerInterventionRequest,
-    ) -> ApiResponse[SteeringOutcome]:
-        """Route a hint/redirect through the steering directive.
-
-        Wraps the operator-supplied text via :func:`wrap_untrusted` at
-        the controller boundary: the agent will read this text as
-        untrusted content the next time it consumes interrupts, so
-        the boundary must apply the prompt-safety envelope before the
-        directive persists it. The directive applies its own wrap on
-        the persisted question for defence-in-depth; double-wrapping is
-        safe because the safety envelope is idempotent on already-tagged
-        content.
-
-        Returns:
-            ``ApiResponse[SteeringOutcome]`` instance.
-        """
-        app_state: AppState = state.app_state
-        logger.info(
-            COCKPIT_INTERVENTION_INITIATED,
-            intervention_kind=kind.value,
-            execution_id=data.execution_id,
-            agent_id=data.agent_id,
-        )
-        steering = require_service(
-            app_state.slice(CockpitStateSlice).steering_directive, "Steering Directive"
-        )
-        outcome = await steering.steer(
-            kind=kind,
-            execution_id=data.execution_id,
-            agent_id=data.agent_id,
-            details={"text": wrap_untrusted(TAG_TASK_DATA, data.text)},
-        )
-        logger.info(
-            COCKPIT_INTERVENTION_APPLIED,
-            intervention_kind=kind.value,
-            execution_id=data.execution_id,
-            agent_id=data.agent_id,
-            applied=outcome.applied,
-        )
-        return ApiResponse(data=outcome)

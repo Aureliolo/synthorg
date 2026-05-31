@@ -20,6 +20,7 @@ from synthorg.observability.events.api import API_APP_STARTUP
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
+    from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
 
@@ -108,26 +109,22 @@ def _try_wire_cost_dial(app_state: AppState) -> None:
 def _wire_cockpit_services(app_state: AppState) -> None:
     """Construct the mission-control cockpit services from live state.
 
-    Builds the live-activity ``CockpitService``, the flight-recorder
-    query/seek service, and the steering directive, then installs them
-    on ``AppState`` for the cockpit controllers and MCP tools. Requires
-    a connected persistence backend (for the frame store) plus a task
-    engine and interrupt store.
+    Builds the live-activity ``CockpitService`` and the flight-recorder
+    query/seek service, then installs them on ``AppState`` for the
+    cockpit controllers and MCP tools. Requires a connected persistence
+    backend (for the frame store) plus a task engine. The steering
+    service wires separately in ``_wire_steering_service`` once the
+    project brain is up (it records directives through the brain).
     """
-    from synthorg.communication.state import (  # noqa: PLC0415
-        CommunicationStateSlice,
-    )
     from synthorg.engine.state import EngineStateSlice, task_engine_of  # noqa: PLC0415
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
         persistence_of,
     )
 
-    interrupt_store = app_state.slice(CommunicationStateSlice).interrupt_store
     if (
         app_state.slice(PersistenceStateSlice).backend is None
         or app_state.slice(EngineStateSlice).task_engine is None
-        or interrupt_store is None
     ):
         return
     from synthorg.engine.cockpit import CockpitService  # noqa: PLC0415
@@ -135,25 +132,19 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     from synthorg.engine.flight_recording import (  # noqa: PLC0415
         FlightRecorderService,
     )
-    from synthorg.engine.intervention import build_steering_directive  # noqa: PLC0415
 
     frames = persistence_of(app_state).flight_recorder_frames
-    cockpit_service = CockpitService(
-        task_engine_of(app_state),
-        frames,
-        clock=app_state.clock,
-    )
-    flight_recorder_service = FlightRecorderService(frames)
-    steering_directive = build_steering_directive(
-        interrupt_store,
-        clock=app_state.clock,
-    )
-    app_state.swap_slice(
-        CockpitStateSlice(
-            cockpit_service=cockpit_service,
-            flight_recorder_service=flight_recorder_service,
-            steering_directive=steering_directive,
-        )
+    # Partial wire (not swap_slice) so the ``steering_notifier`` wired at
+    # construction (where the channels plugin lives) and any later
+    # ``steering_service`` survive this hook.
+    app_state.wire(
+        CockpitStateSlice,
+        cockpit_service=CockpitService(
+            task_engine_of(app_state),
+            frames,
+            clock=app_state.clock,
+        ),
+        flight_recorder_service=FlightRecorderService(frames),
     )
 
 
@@ -182,6 +173,90 @@ def _try_wire_cockpit(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+async def _wire_steering_service(
+    app_state: AppState,
+    *,
+    provider_registry: ProviderRegistry | None,
+) -> None:
+    """Wire the mid-flight steering service once the project brain is up.
+
+    Runs after ``_wire_project_brain`` in the feature-wiring chain because the
+    directive write path records through ``ProjectBrainService`` (memory-gated),
+    while the loop read path (the steering inbox in the boot ``AgentEngine``) is
+    persistence-only and already wired earlier. Idempotent: a steering service
+    already on the cockpit slice short-circuits. The pluggable supersession
+    proposer is built behind ``cockpit.steering_proposer_enabled`` plus a model
+    id; a missing provider or disabled flag degrades it to the no-op proposer. A
+    missing brain leaves the steering controllers + MCP tools to 503 rather than
+    poisoning startup.
+    """
+    from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
+    from synthorg.engine.intervention import (  # noqa: PLC0415
+        SteeringService,
+        build_supersession_proposer,
+    )
+    from synthorg.engine.state import (  # noqa: PLC0415
+        EngineStateSlice,
+        task_engine_of,
+    )
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
+    from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import (  # noqa: PLC0415
+        SettingsStateSlice,
+        config_resolver_of,
+        settings_service_of,
+    )
+
+    if app_state.slice(CockpitStateSlice).steering_service is not None:
+        return
+    brain_service = app_state.slice(ProjectBrainStateSlice).service
+    if (
+        brain_service is None
+        or app_state.slice(PersistenceStateSlice).backend is None
+        or app_state.slice(EngineStateSlice).task_engine is None
+    ):
+        return
+    enabled = False
+    model: str | None = None
+    provider = None
+    if (
+        app_state.slice(SettingsStateSlice).settings_service is not None
+        and provider_registry is not None
+    ):
+        settings = settings_service_of(app_state)
+        enabled = await config_resolver_of(app_state).get_bool(
+            "cockpit", "steering_proposer_enabled"
+        )
+        model = (
+            await settings.get("cockpit", "steering_proposer_model")
+        ).value.strip() or None
+        names = provider_registry.list_providers()
+        configured = (
+            await settings.get("cockpit", "steering_proposer_provider")
+        ).value.strip()
+        if configured and configured in names:
+            provider = provider_registry.get(configured)
+        elif names:
+            provider = provider_registry.get(names[0])
+    app_state.wire(
+        CockpitStateSlice,
+        steering_service=SteeringService(
+            brain_service=brain_service,
+            brain_repo=persistence_of(app_state).project_brain,
+            task_engine=task_engine_of(app_state),
+            proposer=build_supersession_proposer(
+                provider, model=model, enabled=enabled
+            ),
+            notifier=app_state.slice(CockpitStateSlice).steering_notifier,
+            clock=app_state.clock,
+        ),
+    )
+    logger.info(API_APP_STARTUP, service="steering", note="wired")
 
 
 def _wire_environment_service(app_state: AppState) -> None:
@@ -239,4 +314,5 @@ __all__ = [
     "_wire_cockpit_services",
     "_wire_cost_dial_services",
     "_wire_environment_service",
+    "_wire_steering_service",
 ]

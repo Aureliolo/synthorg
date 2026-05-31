@@ -81,6 +81,7 @@ import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
+import { steeringHandlers } from './steering'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
 import { templatePacksHandlers } from './template-packs'
@@ -140,6 +141,7 @@ export const defaultHandlers = [
   ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,
+  ...steeringHandlers,
   ...subworkflowsHandlers,
   ...tasksHandlers,
   ...templatePacksHandlers,

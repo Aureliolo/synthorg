@@ -1,11 +1,9 @@
 import { Activity } from 'lucide-react'
-import { useState } from 'react'
 
 import type { AgentActivity } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
-import { InputField } from '@/components/ui/input-field'
 import { MetricCard } from '@/components/ui/metric-card'
 import { useMissionControlData } from '@/hooks/useMissionControlData'
 import { useMissionControlStore } from '@/stores/mission-control'
@@ -65,37 +63,6 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
   )
 }
 
-function AgentHintControl({ activity }: { activity: AgentActivity }) {
-  const [hint, setHint] = useState('')
-  const sendHint = useMissionControlStore((s) => s.sendHintAction)
-
-  if (activity.execution_id == null) return null
-
-  return (
-    <div className="flex items-center gap-2" aria-describedby={`agent-row-${activity.task_id}`}>
-      <InputField
-        label="Hint"
-        placeholder="Hint or redirect..."
-        value={hint}
-        onChange={(e) => setHint(e.target.value)}
-      />
-      <Button
-        variant="default"
-        size="sm"
-        disabled={hint.trim() === ''}
-        onClick={() => {
-          const executionId = activity.execution_id
-          if (executionId == null || hint.trim() === '') return
-          void sendHint(executionId, activity.agent_id, hint.trim())
-          setHint('')
-        }}
-      >
-        Send
-      </Button>
-    </div>
-  )
-}
-
 function AgentRow({ activity }: { activity: AgentActivity }) {
   const pause = useMissionControlStore((s) => s.pauseTaskAction)
   const kill = useMissionControlStore((s) => s.killTaskAction)
@@ -119,7 +86,6 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
         >
           Kill
         </Button>
-        <AgentHintControl activity={activity} />
       </div>
     </div>
   )

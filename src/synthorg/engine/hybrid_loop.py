@@ -45,6 +45,8 @@ from .hybrid.step_helpers import (
     warn_insufficient_budget,
 )
 from .hybrid_models import HybridLoopConfig
+from .intervention.loop_hook import check_steering
+from .loop_cancellation import check_task_cancelled
 from .loop_helpers import (
     build_result,
     call_provider,
@@ -62,6 +64,7 @@ from .loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
+    TaskCancellationChecker,
     TerminationReason,
     TurnRecord,
 )
@@ -82,6 +85,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
@@ -106,7 +110,7 @@ class HybridLoop:
             disables).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         config: HybridLoopConfig | None = None,
         checkpoint_callback: CheckpointCallback | None = None,
@@ -114,12 +118,14 @@ class HybridLoop:
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
+        steering_inbox: SteeringInbox | None = None,
     ) -> None:
         self._config = config or HybridLoopConfig()
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
+        self._steering_inbox = steering_inbox
 
     @property
     def config(self) -> HybridLoopConfig:
@@ -141,6 +147,11 @@ class HybridLoop:
         """Return the compaction callback, or ``None``."""
         return self._compaction_callback
 
+    @property
+    def steering_inbox(self) -> SteeringInbox | None:
+        """Return the steering inbox, or ``None``."""
+        return self._steering_inbox
+
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
         return "hybrid"
@@ -154,6 +165,7 @@ class HybridLoop:
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Run the Hybrid Plan + ReAct loop until termination.
 
@@ -164,6 +176,8 @@ class HybridLoop:
             budget_checker: Optional budget exhaustion callback.
             shutdown_checker: Optional graceful-shutdown callback.
             completion_config: Optional per-execution config override.
+            task_cancellation_checker: Optional async callback; returns
+                ``True`` when the task was cancelled/superseded externally.
 
         Returns:
             Execution result with final context and termination info.
@@ -176,6 +190,9 @@ class HybridLoop:
         )
 
         ctx = context
+        cancel_result = await check_task_cancelled(ctx, task_cancellation_checker, [])
+        if cancel_result is not None:
+            return self._finalize(cancel_result, [], 0)
         default_model = ctx.identity.model.model_id
         planner_model = self._config.planner_model or default_model
         executor_model = self._config.executor_model or default_model
@@ -220,6 +237,7 @@ class HybridLoop:
             replans_used,
             budget_checker,
             shutdown_checker,
+            task_cancellation_checker,
         )
 
     # -- Phase orchestration -----------------------------------------------
@@ -270,12 +288,14 @@ class HybridLoop:
         replans_used: int,
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Iterate through plan steps with checkpointing/replanning.
 
         Returns:
             The terminal :class:`ExecutionResult` once the loop exits
-            (success, budget exhausted, shutdown, or replan exhaustion).
+            (success, budget exhausted, shutdown, cancellation, or replan
+            exhaustion).
         """
         step_idx = 0
         while step_idx < len(plan.steps):
@@ -306,6 +326,7 @@ class HybridLoop:
                 turns,
                 budget_checker,
                 shutdown_checker,
+                task_cancellation_checker,
             )
 
             if isinstance(step_result, ExecutionResult):
@@ -335,6 +356,31 @@ class HybridLoop:
                 if isinstance(outcome, ExecutionResult):
                     return outcome
                 ctx, plan, replans_used, restart = outcome
+                # A REDIRECT adopted mid-step forces a replan at this safe
+                # boundary so the revised plan honours the directive.
+                if not restart and ctx.pending_steering_replan_id is not None:
+                    steer_out = await self._steering_replan_hybrid(
+                        ctx,
+                        provider,
+                        planner_model,
+                        config,
+                        plan,
+                        step,
+                        turns,
+                        all_plans,
+                        replans_used,
+                    )
+                    if isinstance(steer_out, ExecutionResult):
+                        return steer_out
+                    ctx, plan, replans_used = steer_out
+                    restart = True
+                elif restart and ctx.pending_steering_replan_id is not None:
+                    # A completion-triggered replan already re-planned with the
+                    # adopted directive in conversation context, so a dedicated
+                    # steering replan would be redundant. Clear the pending flag
+                    # so it does not linger to fire a stale replan on a later
+                    # step or persist into a terminal checkpoint.
+                    ctx = ctx.cleared_pending_replan()
                 if restart:
                     step_idx = 0
                     continue
@@ -517,6 +563,54 @@ class HybridLoop:
         )
         return ctx, plan, replans_used, True
 
+    async def _steering_replan_hybrid(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        planner_model: str,
+        config: CompletionConfig,
+        plan: ExecutionPlan,
+        step: PlanStep,
+        turns: list[TurnRecord],
+        all_plans: list[ExecutionPlan],
+        replans_used: int,
+    ) -> tuple[AgentContext, ExecutionPlan, int] | ExecutionResult:
+        """Replan after adopting a mid-flight steering REDIRECT.
+
+        The directive is already in ``ctx`` (injected at the turn boundary);
+        this revises the remaining plan to honour it. Operator-driven and
+        consume-once, so it does not count against ``max_replans``; the
+        pending-replan id is cleared here.
+
+        Returns:
+            ``(ctx, new_plan, replans_used)`` on success, or a terminal
+            :class:`ExecutionResult`.
+        """
+        result = await do_replan(
+            self._config,
+            ctx,
+            provider,
+            planner_model,
+            config,
+            plan,
+            step,
+            turns,
+            step_failed=False,
+            checkpoint_callback=self._checkpoint_callback,
+        )
+        if isinstance(result, ExecutionResult):
+            return self._finalize(result, all_plans, replans_used)
+        ctx, new_plan = result
+        ctx = ctx.cleared_pending_replan()
+        all_plans.append(new_plan)
+        logger.info(
+            EXECUTION_HYBRID_REPLAN_DECIDED,
+            execution_id=ctx.execution_id,
+            trigger="steering",
+            replans_used=replans_used,
+        )
+        return ctx, new_plan, replans_used
+
     def _build_final_result(  # noqa: PLR0913
         self,
         ctx: AgentContext,
@@ -627,6 +721,7 @@ class HybridLoop:
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> tuple[AgentContext, bool] | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
@@ -653,6 +748,7 @@ class HybridLoop:
                 turns,
                 budget_checker,
                 shutdown_checker,
+                task_cancellation_checker,
             )
             step_turns += 1
 
@@ -719,6 +815,7 @@ class HybridLoop:
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
         """Execute a single turn within a step's mini-ReAct sub-loop.
 
@@ -733,6 +830,18 @@ class HybridLoop:
         budget_result = check_budget(ctx, budget_checker, turns)
         if budget_result is not None:
             return budget_result
+        cancel_result = await check_task_cancelled(
+            ctx, task_cancellation_checker, turns
+        )
+        if cancel_result is not None:
+            return cancel_result
+        # Adopt pending steering directives before the LLM call so the
+        # operator's constraint is in context for this step's turn.
+        steered = await check_steering(
+            ctx, self._steering_inbox, execution_id=ctx.execution_id
+        )
+        if steered is not None:
+            ctx = steered
 
         turn_number = ctx.turn_count + 1
         response = await call_provider(

@@ -791,6 +791,13 @@ export const STRATEGIC_OUTPUT_MODE_VALUES = [
 ] as const
 export type StrategicOutputMode = (typeof STRATEGIC_OUTPUT_MODE_VALUES)[number]
 
+export const SUPERSEDE_MODE_VALUES = [
+    'none',
+    'explicit',
+    'propose',
+] as const
+export type SupersedeMode = (typeof SUPERSEDE_MODE_VALUES)[number]
+
 export const TASK_SOURCE_VALUES = [
     'internal',
     'client',

@@ -415,3 +415,54 @@ class WsDissentPublishedPayload(BaseModel):
     task_id: NotBlankStr
     agent_id: NotBlankStr
     message: NotBlankStr
+
+
+# ── Steering domain ─────────────────────────────────────────────────
+
+
+class WsSteeringDirectiveIssuedPayload(BaseModel):
+    """Payload for ``steering.directive.issued``.
+
+    Emitted by ``SteeringService.issue`` on the cockpit channel.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.STEERING_DIRECTIVE_ISSUED] = (
+        WsEventType.STEERING_DIRECTIVE_ISSUED
+    )
+    project_id: NotBlankStr
+    directive_id: NotBlankStr
+    kind: NotBlankStr
+
+
+class WsSteeringSupersessionProposedPayload(BaseModel):
+    """Payload for ``steering.supersession.proposed``.
+
+    Emitted by ``SteeringService.issue`` in PROPOSE mode.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.STEERING_SUPERSESSION_PROPOSED] = (
+        WsEventType.STEERING_SUPERSESSION_PROPOSED
+    )
+    project_id: NotBlankStr
+    directive_id: NotBlankStr
+    proposed_task_ids: tuple[NotBlankStr, ...] = ()
+
+
+class WsSteeringTasksSupersededPayload(BaseModel):
+    """Payload for ``steering.tasks.superseded``.
+
+    Emitted by ``SteeringService`` after cancelling obsolete tasks.
+    """
+
+    model_config = PAYLOAD_CONFIG
+
+    event_type: Literal[WsEventType.STEERING_TASKS_SUPERSEDED] = (
+        WsEventType.STEERING_TASKS_SUPERSEDED
+    )
+    project_id: NotBlankStr
+    directive_id: NotBlankStr
+    task_ids: tuple[NotBlankStr, ...] = ()
