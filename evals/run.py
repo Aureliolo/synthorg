@@ -22,6 +22,7 @@ from pathlib import Path
 from uuid import UUID
 
 from evals.errors import CompanyConfigInvalidError
+from evals.history import ScorecardHistory
 from evals.loader.anchors import AnchorSet, load_anchor_set
 from evals.loader.briefs import load_brief_suite
 from evals.models.brief import Brief, BriefKind
@@ -292,6 +293,7 @@ async def run_benchmark_async(  # noqa: PLR0913
     judge: JudgeProtocol | None = None,
     memory_backend: MemoryBackend | None = None,
     procedural_config: ProceduralMemoryConfig | None = None,
+    history_dir: Path | None = None,
 ) -> Scorecard:
     """Run the brief suite against the company config and return the scorecard.
 
@@ -309,6 +311,9 @@ async def run_benchmark_async(  # noqa: PLR0913
             capture/inject pipeline so accumulated memory moves the score.
         procedural_config: Procedural-memory capture config (enables failure
             capture when paired with a backend).
+        history_dir: When set, the scorecard is also appended to this
+            scorecard-history directory so the learning curve can be assembled
+            across runs.
 
     Returns:
         The assembled, schema-versioned scorecard.
@@ -395,6 +400,8 @@ async def run_benchmark_async(  # noqa: PLR0913
     )
 
     _emit(scorecard, out_dir)
+    if history_dir is not None:
+        ScorecardHistory(history_dir).record(scorecard)
     logger.info(
         EVALS_SUITE_RUN_COMPLETE,
         total=scorecard.total,
