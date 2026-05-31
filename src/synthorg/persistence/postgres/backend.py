@@ -65,10 +65,13 @@ from synthorg.persistence.postgres.connection_repo import (
 from synthorg.persistence.postgres.connection_secret_repo import (
     PostgresConnectionSecretRepository,
 )
+from synthorg.persistence.postgres.cost_record_repo import (
+    PostgresCostRecordRepository,
+)
 from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
 )
-from synthorg.persistence.postgres.decision_repo import PostgresDecisionRepository
+from synthorg.persistence.postgres.decision import PostgresDecisionRepository
 from synthorg.persistence.postgres.docs_repo import PostgresDocsRepository
 from synthorg.persistence.postgres.fine_tune_repo import (
     PostgresFineTuneCheckpointRepository,
@@ -102,6 +105,9 @@ from synthorg.persistence.postgres.mcp_installation_repo import (
 )
 from synthorg.persistence.postgres.meeting_cooldown_repo import (
     PostgresMeetingCooldownRepository,
+)
+from synthorg.persistence.postgres.message_repo import (
+    PostgresMessageRepository,
 )
 from synthorg.persistence.postgres.oauth_state_repo import (
     PostgresOAuthStateRepository,
@@ -146,11 +152,6 @@ from synthorg.persistence.postgres.provider_audit_repo import (
 from synthorg.persistence.postgres.refresh_repo import (
     PostgresRefreshTokenRepository,
 )
-from synthorg.persistence.postgres.repositories import (
-    PostgresCostRecordRepository,
-    PostgresMessageRepository,
-    PostgresTaskRepository,
-)
 from synthorg.persistence.postgres.research_run_repo import (
     PostgresResearchRunRepository,
 )
@@ -169,6 +170,9 @@ from synthorg.persistence.postgres.ssrf_violation_repo import (
 )
 from synthorg.persistence.postgres.subworkflow_repo import (
     PostgresSubworkflowRepository,
+)
+from synthorg.persistence.postgres.task_repo import (
+    PostgresTaskRepository,
 )
 from synthorg.persistence.postgres.tracked_container_repo import (
     PostgresTrackedContainerRepository,

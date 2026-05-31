@@ -9,7 +9,7 @@ backend does.
 These helpers convert tuples of Pydantic models into lists of plain
 Python dicts that psycopg can adapt to ``JSONB`` wire format.  They
 are the Postgres-side counterpart to ``_json_list`` in
-``synthorg.persistence.sqlite.repositories``.
+``synthorg.persistence.sqlite.task_repo``.
 """
 
 from typing import Any

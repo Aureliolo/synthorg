@@ -58,7 +58,7 @@ class FakeDecisionRepository:
             raise DuplicateRecordError(msg)
         # Reject naive datetimes explicitly to match the production
         # ``SQLiteDecisionRepository`` contract (see
-        # ``synthorg/persistence/sqlite/decision_repo.py``).
+        # ``synthorg/persistence/sqlite/decision/``).
         if recorded_at.tzinfo is None:
             msg = (
                 f"recorded_at must be timezone-aware, got a naive "

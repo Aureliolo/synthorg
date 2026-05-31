@@ -62,10 +62,13 @@ from synthorg.persistence.sqlite.connection_repo import SQLiteConnectionReposito
 from synthorg.persistence.sqlite.connection_secret_repo import (
     SQLiteConnectionSecretRepository,
 )
+from synthorg.persistence.sqlite.cost_record_repo import (
+    SQLiteCostRecordRepository,
+)
 from synthorg.persistence.sqlite.custom_rule_repo import (
     SQLiteCustomRuleRepository,
 )
-from synthorg.persistence.sqlite.decision_repo import (
+from synthorg.persistence.sqlite.decision import (
     SQLiteDecisionRepository,
 )
 from synthorg.persistence.sqlite.docs_repo import SQLiteDocsRepository
@@ -101,6 +104,9 @@ from synthorg.persistence.sqlite.mcp_installation_repo import (
 )
 from synthorg.persistence.sqlite.meeting_cooldown_repo import (
     SQLiteMeetingCooldownRepository,
+)
+from synthorg.persistence.sqlite.message_repo import (
+    SQLiteMessageRepository,
 )
 from synthorg.persistence.sqlite.oauth_state_repo import SQLiteOAuthStateRepository
 from synthorg.persistence.sqlite.ontology_drift_repo import (
@@ -145,11 +151,6 @@ from synthorg.persistence.sqlite.provider_audit_repo import (
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository,
 )
-from synthorg.persistence.sqlite.repositories import (
-    SQLiteCostRecordRepository,
-    SQLiteMessageRepository,
-    SQLiteTaskRepository,
-)
 from synthorg.persistence.sqlite.research_run_repo import (
     SQLiteResearchRunRepository,
 )
@@ -170,6 +171,9 @@ from synthorg.persistence.sqlite.ssrf_violation_repo import (
 )
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,
+)
+from synthorg.persistence.sqlite.task_repo import (
+    SQLiteTaskRepository,
 )
 from synthorg.persistence.sqlite.tracked_container_repo import (
     SQLiteTrackedContainerRepository,
