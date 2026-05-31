@@ -102,6 +102,9 @@ MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_sav
 MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
     "memory.fine_tune.checkpoint_deployed"
 )
+MEMORY_FINE_TUNE_CHECKPOINT_REJECTED: Final[str] = (
+    "memory.fine_tune.checkpoint_rejected"
+)
 MEMORY_FINE_TUNE_CHECKPOINT_ROLLED_BACK: Final[str] = (
     "memory.fine_tune.checkpoint_rolled_back"
 )

@@ -25,10 +25,12 @@ from synthorg.memory.embedding.fine_tune import (
 )
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
+    EvalMetrics,
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
 )
+from synthorg.memory.embedding.promotion import should_promote
 from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.observability import (
     get_logger,
@@ -37,6 +39,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_CANCELLED,
+    MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
     MEMORY_FINE_TUNE_COMPLETED,
     MEMORY_FINE_TUNE_FAILED,
     MEMORY_FINE_TUNE_PROGRESS,
@@ -478,7 +481,10 @@ class FineTuneOrchestrator:
         else:
             checkpoint_path = Path(f"{out_dir}/checkpoint")
 
-        # Stage 4: Evaluation.
+        # Stage 4: Evaluation. Re-run when deploy is still pending so the
+        # promotion gate always has a fresh measured A/B (evaluation is cheap
+        # relative to training); on a resume where deploy already finished the
+        # metrics are unused.
         if "evaluating" not in completed:
             run = await self._enter_stage(
                 run,
@@ -493,20 +499,45 @@ class FineTuneOrchestrator:
                 cancellation=self._cancellation,
             )
             run = await self._complete_stage(run, "evaluating")
+        elif "deploying" not in completed:
+            eval_metrics = await evaluate_checkpoint(
+                checkpoint_path=str(checkpoint_path),
+                base_model=cfg.base_model,
+                validation_data_path=str(val_path),
+                output_dir=out_dir,
+                progress_callback=self._make_progress_cb(run),
+                cancellation=self._cancellation,
+            )
         else:
             eval_metrics = None
 
-        # Stage 5: Deploy.
+        # Stage 5: Deploy -- promote ONLY on a measured win (#1990). A tie or
+        # regression records the evaluated checkpoint inactive and leaves the
+        # live embedder config untouched.
         if "deploying" not in completed:
             run = await self._enter_stage(
                 run,
                 FineTuneStage.DEPLOYING,
             )
-            backup_json = await deploy_checkpoint(
-                checkpoint_path=str(checkpoint_path),
-                settings_service=self._settings_service,
-            )
-            # Persist checkpoint record.
+            promote = _should_promote_checkpoint(eval_metrics)
+            backup_json: str | None = None
+            if promote:
+                backup_json = await deploy_checkpoint(
+                    checkpoint_path=str(checkpoint_path),
+                    settings_service=self._settings_service,
+                )
+                await self._checkpoint_repo.deactivate_all()
+            else:
+                logger.info(
+                    MEMORY_FINE_TUNE_CHECKPOINT_REJECTED,
+                    run_id=run.id,
+                    checkpoint_path=str(checkpoint_path),
+                    base_ndcg_at_10=(
+                        eval_metrics.base_ndcg_at_10 if eval_metrics else None
+                    ),
+                    ndcg_at_10=(eval_metrics.ndcg_at_10 if eval_metrics else None),
+                )
+            # Persist checkpoint record (active only on a promote).
             size_bytes = _dir_size(checkpoint_path)
             record = CheckpointRecord(
                 id=str(uuid.uuid4()),
@@ -517,10 +548,9 @@ class FineTuneOrchestrator:
                 eval_metrics=eval_metrics,
                 size_bytes=size_bytes,
                 created_at=datetime.now(UTC),
-                is_active=True,
+                is_active=promote,
                 backup_config_json=backup_json,
             )
-            await self._checkpoint_repo.deactivate_all()
             await self._checkpoint_repo.save(record)
             run = await self._complete_stage(run, "deploying")
 
@@ -728,6 +758,24 @@ class FineTuneOrchestrator:
 
 
 # -- Helpers -----------------------------------------------------------
+
+
+def _should_promote_checkpoint(eval_metrics: EvalMetrics | None) -> bool:
+    """Decide whether a fine-tuned checkpoint earns promotion.
+
+    Feeds the measured eval-stage NDCG@10 A/B (fine-tuned vs base) to the pure
+    promotion gate. A missing measurement (only possible on a resume where the
+    deploy stage runs without a fresh evaluation) is treated as "no win".
+
+    Returns:
+        ``True`` only when the eval A/B beats base by the promotion margin.
+    """
+    if eval_metrics is None:
+        return False
+    return should_promote(
+        eval_metrics.base_ndcg_at_10,
+        eval_metrics.ndcg_at_10,
+    )
 
 
 def _dir_size(path: Path) -> int:

@@ -14,6 +14,7 @@ import pytest
 
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
+    EvalMetrics,
     FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
@@ -289,6 +290,118 @@ class TestOrchestratorStatus:
         assert status.run_id == run.id
 
 
+# -- Promotion gate (#1990) -------------------------------------------
+
+
+@pytest.mark.unit
+class TestPromotionGate:
+    """Stage 5 promotes a checkpoint ONLY on a measured eval win."""
+
+    async def _run_to_completion(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        req: FineTuneRequest,
+        *,
+        eval_metrics: EvalMetrics,
+        deploy_calls: list[str],
+    ) -> None:
+        with _mock_all_stages(
+            eval_metrics=eval_metrics,
+            deploy_calls=deploy_calls,
+        ):
+            await orchestrator.start(req)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+    async def test_measured_win_promotes_checkpoint(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+        tmp_path: Path,
+    ) -> None:
+        """A fine-tuned NDCG@10 above base by the margin activates + deploys."""
+        deploy_calls: list[str] = []
+        await self._run_to_completion(
+            orchestrator,
+            _request(tmp_path),
+            eval_metrics=EvalMetrics(
+                ndcg_at_10=0.6,
+                recall_at_10=0.7,
+                base_ndcg_at_10=0.5,
+                base_recall_at_10=0.6,
+            ),
+            deploy_calls=deploy_calls,
+        )
+
+        checkpoints = await cp_repo.list_items()
+        assert len(checkpoints) == 1
+        assert checkpoints[0].is_active is True
+        assert checkpoints[0].backup_config_json is not None
+        assert len(deploy_calls) == 1
+        active = await cp_repo.get_active_checkpoint()
+        assert active is not None
+
+    @pytest.mark.parametrize(
+        ("ndcg", "base_ndcg"),
+        [(0.5, 0.5), (0.4, 0.6)],
+        ids=["exact-tie", "regression"],
+    )
+    async def test_tie_or_loss_records_inactive_and_skips_deploy(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+        tmp_path: Path,
+        ndcg: float,
+        base_ndcg: float,
+    ) -> None:
+        """A tie or regression records the checkpoint inactive, deploys nothing."""
+        deploy_calls: list[str] = []
+        await self._run_to_completion(
+            orchestrator,
+            _request(tmp_path),
+            eval_metrics=EvalMetrics(
+                ndcg_at_10=ndcg,
+                recall_at_10=0.7,
+                base_ndcg_at_10=base_ndcg,
+                base_recall_at_10=0.6,
+            ),
+            deploy_calls=deploy_calls,
+        )
+
+        checkpoints = await cp_repo.list_items()
+        assert len(checkpoints) == 1
+        assert checkpoints[0].is_active is False
+        # The deploy mechanism never ran: live embedder config is untouched.
+        assert deploy_calls == []
+        assert checkpoints[0].backup_config_json is None
+        # The evaluated metrics are still recorded for operator audit.
+        assert checkpoints[0].eval_metrics is not None
+        active = await cp_repo.get_active_checkpoint()
+        assert active is None
+
+    async def test_run_completes_even_when_promotion_rejected(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        tmp_path: Path,
+    ) -> None:
+        """A rejected promotion still finishes the run cleanly (COMPLETE)."""
+        req = _request(tmp_path)
+        deploy_calls: list[str] = []
+        await self._run_to_completion(
+            orchestrator,
+            req,
+            eval_metrics=EvalMetrics(
+                ndcg_at_10=0.5,
+                recall_at_10=0.6,
+                base_ndcg_at_10=0.5,
+                base_recall_at_10=0.6,
+            ),
+            deploy_calls=deploy_calls,
+        )
+        status = await orchestrator.get_status()
+        assert status.stage == FineTuneStage.COMPLETE
+
+
 # -- Helpers ----------------------------------------------------------
 
 
@@ -296,10 +409,15 @@ class TestOrchestratorStatus:
 def _mock_all_stages(
     *,
     block: bool = False,
+    eval_metrics: EvalMetrics | None = None,
+    deploy_calls: list[str] | None = None,
 ) -> Any:
     """Mock all pipeline stage functions.
 
     If block=True, generate_training_data blocks until cancelled.
+    ``eval_metrics`` overrides the evaluation-stage A/B result (defaults to a
+    clear win); ``deploy_calls`` records each checkpoint path passed to the
+    deploy mechanism so the promotion gate can be observed.
     """
 
     async def _gen_data(**kwargs: Any) -> tuple[Path, Path]:
@@ -338,10 +456,8 @@ def _mock_all_stages(
         return cp
 
     async def _eval(**kwargs: Any) -> Any:
-        from synthorg.memory.embedding.fine_tune_models import (
-            EvalMetrics,
-        )
-
+        if eval_metrics is not None:
+            return eval_metrics
         return EvalMetrics(
             ndcg_at_10=0.6,
             recall_at_10=0.7,
@@ -350,6 +466,8 @@ def _mock_all_stages(
         )
 
     async def _deploy(**kwargs: Any) -> str | None:
+        if deploy_calls is not None:
+            deploy_calls.append(str(kwargs.get("checkpoint_path", "")))
         return '{"embedder_model": "test-model"}'
 
     base = "synthorg.memory.embedding.fine_tune_orchestrator"
