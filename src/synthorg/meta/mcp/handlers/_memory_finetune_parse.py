@@ -113,6 +113,8 @@ def _collect_optional_execution(
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
+        MemoryError: Re-raised unwrapped; a system error must not be masked.
+        RecursionError: Re-raised unwrapped; a system error must not be masked.
     """
     raw = arguments.get(_ARG_EXECUTION)
     if raw is None:
@@ -121,6 +123,8 @@ def _collect_optional_execution(
         raise ArgumentValidationError(_ARG_EXECUTION, _TY_EXECUTION_OR_NULL)
     try:
         payload[_ARG_EXECUTION] = FineTuneExecutionConfig(**raw)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         raise ArgumentValidationError(_ARG_EXECUTION, _TY_EXECUTION_SHAPE) from exc
 
@@ -189,6 +193,8 @@ def parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
+        MemoryError: Re-raised unwrapped; a system error must not be masked.
+        RecursionError: Re-raised unwrapped; a system error must not be masked.
     """
     payload: dict[str, Any] = {}
     data_source = _resolve_data_source(arguments, payload)
@@ -199,6 +205,8 @@ def parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     _collect_optional_execution(arguments, payload)
     try:
         return FineTunePlan(**payload)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         arg_name = "plan"
         expected = "valid FineTunePlan shape"
