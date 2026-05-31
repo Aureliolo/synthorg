@@ -177,6 +177,9 @@ jobs:
       - name: Import-layering contracts (import-linter)
         run: uv run lint-imports --config .importlinter
 
+      - name: Architecture-drift gate (fan-in / LCOM / budget pressure)
+        run: uv run python scripts/check_architecture_drift.py
+
   # ── Runtime Stats Freshness ──
   # Fails the build when data/runtime_stats.yaml has drifted (any
   # stats.<name>.raw differs from a freshly-fetched value) or when
