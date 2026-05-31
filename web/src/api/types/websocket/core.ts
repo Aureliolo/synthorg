@@ -63,6 +63,11 @@ import type {
   WsSimulationEventPayload,
   WsSimulationFailedPayload,
 } from './request'
+import type {
+  WsSteeringDirectiveIssuedPayload,
+  WsSteeringSupersessionProposedPayload,
+  WsSteeringTasksSupersededPayload,
+} from './cockpit'
 
 // Synchronised with channel constants in `src/synthorg/api/channels.py`.
 // Admin-only channels (#dissent, #webhooks, #ratelimit) are not exposed
@@ -105,6 +110,7 @@ export const WS_EVENT_TYPE_VALUES = [
   'review.stage_completed', 'review.stage_decided', 'review.pipeline_completed',
   'interrupt.created', 'interrupt.resumed',
   'dissent.published',
+  'steering.directive.issued', 'steering.supersession.proposed', 'steering.tasks.superseded',
 ] as const
 
 export type WsEventType = (typeof WS_EVENT_TYPE_VALUES)[number]
@@ -215,6 +221,9 @@ export interface WsEventPayloadMap {
   'interrupt.created': WsInterruptCreatedPayload
   'interrupt.resumed': WsInterruptResumedPayload
   'dissent.published': WsDissentPublishedPayload
+  'steering.directive.issued': WsSteeringDirectiveIssuedPayload
+  'steering.supersession.proposed': WsSteeringSupersessionProposedPayload
+  'steering.tasks.superseded': WsSteeringTasksSupersededPayload
 }
 
 // Compile-time exhaustiveness guard: every WsEventType value must be a
