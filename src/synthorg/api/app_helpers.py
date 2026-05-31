@@ -7,7 +7,7 @@ budget.
 
 import asyncio
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -25,6 +25,7 @@ from litestar.channels import (
 from synthorg.api.channels import (
     CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
+    CHANNEL_COCKPIT,
     CHANNEL_MEETINGS,
 )
 from synthorg.api.ws_models import WsEvent, WsEventType
@@ -34,6 +35,7 @@ from synthorg.engine.agent_engine import (
     PersonalityTrimNotifier,
     PersonalityTrimPayload,
 )
+from synthorg.engine.intervention import SteeringNotifier
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -259,3 +261,47 @@ def make_personality_trim_notifier(
             )
 
     return _on_personality_trimmed
+
+
+def make_steering_notifier(channels_plugin: ChannelsPlugin) -> SteeringNotifier:
+    """Create an async notifier that publishes steering events to the cockpit WS.
+
+    The returned callback matches the ``SteeringNotifier`` contract and is
+    injected into ``SteeringService``. An ``event_name`` without a matching
+    :class:`WsEventType` (e.g. a worker-only steering event) raises
+    ``ValueError`` from the enum lookup; that and any publish failure are
+    logged at WARNING and swallowed so the steering write path is never
+    aborted by the best-effort notify.
+
+    Returns:
+        ``SteeringNotifier`` instance.
+    """
+
+    async def _on_steering_event(
+        event_name: str,
+        payload: Mapping[str, object],
+    ) -> None:
+        """Handle a steering event."""
+        try:
+            event = WsEvent(
+                event_type=WsEventType(event_name),
+                channel=CHANNEL_COCKPIT,
+                timestamp=datetime.now(UTC),
+                payload=dict(payload),
+            )
+            await asyncio.to_thread(
+                channels_plugin.publish,
+                event.model_dump_json(),
+                channels=[CHANNEL_COCKPIT],
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                API_WS_SEND_FAILED,
+                note="Failed to publish steering WebSocket event",
+                event_name=event_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    return _on_steering_event

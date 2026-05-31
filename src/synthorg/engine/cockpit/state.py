@@ -15,7 +15,7 @@ from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.flight_recording import (
     FlightRecorderService,
 )
-from synthorg.engine.intervention import SteeringService
+from synthorg.engine.intervention import SteeringNotifier, SteeringService
 
 
 class CockpitStateSlice(BaseFeatureStateSlice):
@@ -26,3 +26,6 @@ class CockpitStateSlice(BaseFeatureStateSlice):
     cockpit_service: CockpitService | None = None
     flight_recorder_service: FlightRecorderService | None = None
     steering_service: SteeringService | None = None
+    #: Cockpit-channel WS publisher, wired at construction (channels plugin
+    #: lives there); consumed by ``_wire_steering_service`` on startup.
+    steering_notifier: SteeringNotifier | None = None

@@ -130,17 +130,17 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     )
 
     frames = persistence_of(app_state).flight_recorder_frames
-    cockpit_service = CockpitService(
-        task_engine_of(app_state),
-        frames,
-        clock=app_state.clock,
-    )
-    flight_recorder_service = FlightRecorderService(frames)
-    app_state.swap_slice(
-        CockpitStateSlice(
-            cockpit_service=cockpit_service,
-            flight_recorder_service=flight_recorder_service,
-        )
+    # Partial wire (not swap_slice) so the ``steering_notifier`` wired at
+    # construction (where the channels plugin lives) and any later
+    # ``steering_service`` survive this hook.
+    app_state.wire(
+        CockpitStateSlice,
+        cockpit_service=CockpitService(
+            task_engine_of(app_state),
+            frames,
+            clock=app_state.clock,
+        ),
+        flight_recorder_service=FlightRecorderService(frames),
     )
 
 
@@ -241,6 +241,7 @@ async def _wire_steering_service(
             proposer=build_supersession_proposer(
                 provider, model=model, enabled=enabled
             ),
+            notifier=app_state.slice(CockpitStateSlice).steering_notifier,
             clock=app_state.clock,
         ),
     )
