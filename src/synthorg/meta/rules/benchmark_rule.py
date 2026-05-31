@@ -1,3 +1,4 @@
+# module-kind: code
 """Golden-benchmark regression rule for the meta-loop.
 
 Split from :mod:`synthorg.meta.rules.builtin` to keep that module under

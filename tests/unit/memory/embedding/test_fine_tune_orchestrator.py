@@ -14,6 +14,7 @@ import pytest
 
 from synthorg.core.domain_errors import FineTuneRunActiveError
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     EvalMetrics,
@@ -423,7 +424,10 @@ class _FakeTrainingDataSource:
     def name(self) -> str:
         return "fake-trajectory"
 
-    async def collect(self) -> tuple[QueryPassagePair, ...]:
+    async def collect(
+        self,
+        cancellation: CancellationToken | None = None,
+    ) -> tuple[QueryPassagePair, ...]:
         self.collect_calls += 1
         return self._pairs
 
@@ -603,28 +607,18 @@ def _mock_all_stages(
                 token.check()
             else:
                 await asyncio.Event().wait()
-        p = Path(kwargs.get("output_dir", "."))
-        await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
-        train = p / "training.jsonl"
-        val = p / "validation.jsonl"
-        data = '{"query":"q","positive_passage":"p"}\n'
-        await asyncio.to_thread(train.write_text, data)
-        await asyncio.to_thread(val.write_text, data)
-        return train, val
+        # Filesystem-free: the request carries synthetic POSIX paths
+        # (``/test/out``) that resolve to an unwritable drive root on a
+        # Linux CI runner. Every downstream stage is mocked and none
+        # reads these files, so hand back path handles without touching
+        # the disk (matches ``_mock_stages_2_to_5``).
+        return Path("training.jsonl"), Path("validation.jsonl")
 
     async def _mine(**kwargs: Any) -> Path:
-        p = Path(kwargs.get("output_dir", "."))
-        await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
-        out = p / "training_triples.jsonl"
-        data = '{"query":"q","positive":"p","negatives":[]}\n'
-        await asyncio.to_thread(out.write_text, data)
-        return out
+        return Path("training_triples.jsonl")
 
     async def _train(**kwargs: Any) -> Path:
-        p = Path(kwargs.get("output_dir", "."))
-        cp = p / "checkpoint"
-        await asyncio.to_thread(cp.mkdir, parents=True, exist_ok=True)
-        return cp
+        return Path("checkpoint")
 
     async def _eval(**kwargs: Any) -> Any:
         if eval_metrics is not None:

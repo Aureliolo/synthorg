@@ -33,6 +33,7 @@ from synthorg.core.enums import MemoryCategory, TaskStatus
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.consolidation.distillation import DISTILLATION_TAG
+from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.meta.learning_curve import LearningCurvePoint, read_learning_curve
@@ -52,8 +53,12 @@ logger = get_logger(__name__)
 # Prefix the procedural-memory pipeline writes onto a failure lesson's
 # ``metadata.source`` (``failure:{task_id}``).
 _FAILURE_SOURCE_PREFIX: Final[str] = "failure:"
-# Leading line of a distillation entry: ``Task ID: {task_id}``.
-_DISTILLATION_TASK_ID: Final[re.Pattern[str]] = re.compile(r"^Task ID:\s*(\S+)")
+# Leading line of a distillation entry: ``Task ID: {task_id}``. ``MULTILINE``
+# anchors ``^`` to any line start so a leading preamble before the marker
+# (whitespace, a blank line) does not defeat the search.
+_DISTILLATION_TASK_ID: Final[re.Pattern[str]] = re.compile(
+    r"^Task ID:\s*(\S+)", re.MULTILINE
+)
 # Bounds on how much history a single harvest scans.
 _MAX_TASKS_PER_STATUS: Final[int] = 1000
 _PER_AGENT_MEMORY_LIMIT: Final[int] = 1000
@@ -92,8 +97,16 @@ class TrainingDataSource(Protocol):
         """Stable identifier for logging."""
         ...
 
-    async def collect(self) -> tuple[QueryPassagePair, ...]:
-        """Harvest and curate training pairs."""
+    async def collect(
+        self,
+        cancellation: CancellationToken | None = None,
+    ) -> tuple[QueryPassagePair, ...]:
+        """Harvest and curate training pairs.
+
+        Args:
+            cancellation: Cooperative-cancellation token checked through the
+                harvest so a long sweep stays responsive to a cancel request.
+        """
         ...
 
 
@@ -170,12 +183,23 @@ class TrajectoryTrainingDataSource:
         """
         return "trajectory"
 
-    async def collect(self) -> tuple[QueryPassagePair, ...]:
+    async def collect(
+        self,
+        cancellation: CancellationToken | None = None,
+    ) -> tuple[QueryPassagePair, ...]:
         """Harvest the three sources and curate by benchmark score.
+
+        Args:
+            cancellation: Cooperative-cancellation token checked before the
+                opening queries and inside every per-record loop so a long
+                harvest (it sweeps the org's whole working history) stays
+                responsive to a cancel request.
 
         Returns:
             Curated, de-duplicated training pairs.
         """
+        if cancellation is not None:
+            cancellation.check()
         completed = await self._task_repo.query(
             TaskFilterSpec(status=TaskStatus.COMPLETED),
             limit=self._max_tasks,
@@ -196,10 +220,12 @@ class TrajectoryTrainingDataSource:
         points = await self._load_curation_points()
 
         harvested: list[tuple[QueryPassagePair, datetime | None]] = []
-        harvested.extend(await self._artifact_pairs(completed))
+        harvested.extend(await self._artifact_pairs(completed, cancellation))
         async with asyncio.TaskGroup() as group:
             agent_tasks = [
-                group.create_task(self._harvest_agent(agent_id, title_by_id))
+                group.create_task(
+                    self._harvest_agent(agent_id, title_by_id, cancellation)
+                )
                 for agent_id in agent_ids
             ]
         for task in agent_tasks:
@@ -234,6 +260,7 @@ class TrajectoryTrainingDataSource:
         self,
         agent_id: NotBlankStr,
         title_by_id: dict[str, str],
+        cancellation: CancellationToken | None = None,
     ) -> list[tuple[QueryPassagePair, datetime | None]]:
         """Harvest one agent's distillation + failure-lesson pairs.
 
@@ -243,8 +270,8 @@ class TrajectoryTrainingDataSource:
         Returns:
             ``(pair, created_at)`` tuples for the agent.
         """
-        pairs = await self._distillation_pairs(agent_id, title_by_id)
-        pairs.extend(await self._failure_pairs(agent_id, title_by_id))
+        pairs = await self._distillation_pairs(agent_id, title_by_id, cancellation)
+        pairs.extend(await self._failure_pairs(agent_id, title_by_id, cancellation))
         return pairs
 
     async def _load_curation_points(self) -> tuple[LearningCurvePoint, ...]:
@@ -264,6 +291,7 @@ class TrajectoryTrainingDataSource:
     async def _artifact_pairs(
         self,
         completed_tasks: tuple[Task, ...],
+        cancellation: CancellationToken | None = None,
     ) -> list[tuple[QueryPassagePair, datetime | None]]:
         """Build pairs from the accepted deliverables of completed tasks.
 
@@ -272,6 +300,8 @@ class TrajectoryTrainingDataSource:
         """
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for task in completed_tasks:
+            if cancellation is not None:
+                cancellation.check()
             try:
                 artifacts = await self._artifact_repo.query(
                     ArtifactFilterSpec(task_id=task.id),
@@ -301,6 +331,7 @@ class TrajectoryTrainingDataSource:
         self,
         agent_id: NotBlankStr,
         title_by_id: dict[str, str],
+        cancellation: CancellationToken | None = None,
     ) -> list[tuple[QueryPassagePair, datetime | None]]:
         """Build pairs from an agent's EPISODIC distillation memories.
 
@@ -318,9 +349,14 @@ class TrajectoryTrainingDataSource:
         )
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
+            if cancellation is not None:
+                cancellation.check()
             task_id = _task_id_from_distillation(entry.content)
             title = title_by_id.get(task_id) if task_id else None
-            if title is None:
+            # A blank title or passage would raise a ``NotBlankStr``
+            # ``ValidationError`` that aborts the whole TaskGroup harvest;
+            # skip the record so one bad entry never sinks the run.
+            if title is None or not title.strip() or not entry.content.strip():
                 continue
             pairs.append(
                 (
@@ -338,6 +374,7 @@ class TrajectoryTrainingDataSource:
         self,
         agent_id: NotBlankStr,
         title_by_id: dict[str, str],
+        cancellation: CancellationToken | None = None,
     ) -> list[tuple[QueryPassagePair, datetime | None]]:
         """Build pairs from an agent's PROCEDURAL ``failure:*`` lessons.
 
@@ -354,12 +391,17 @@ class TrajectoryTrainingDataSource:
         )
         pairs: list[tuple[QueryPassagePair, datetime | None]] = []
         for entry in entries:
+            if cancellation is not None:
+                cancellation.check()
             source = entry.metadata.source
             if not source or not source.startswith(_FAILURE_SOURCE_PREFIX):
                 continue
             task_id = source[len(_FAILURE_SOURCE_PREFIX) :]
             title = title_by_id.get(task_id)
-            if title is None:
+            # A blank title or passage would raise a ``NotBlankStr``
+            # ``ValidationError`` that aborts the whole TaskGroup harvest;
+            # skip the record so one bad entry never sinks the run.
+            if title is None or not title.strip() or not entry.content.strip():
                 continue
             pairs.append(
                 (

@@ -4069,7 +4069,7 @@
     },
     {
       "kind": "code",
-      "loc": 323,
+      "loc": 325,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_context.py",
       "owning_feature": "engine"
@@ -9046,7 +9046,7 @@
     },
     {
       "kind": "code",
-      "loc": 99,
+      "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_run_helpers.py",
       "owning_feature": "memory"
@@ -9088,7 +9088,7 @@
     },
     {
       "kind": "code",
-      "loc": 347,
+      "loc": 379,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/training_sources.py",
       "owning_feature": "memory"

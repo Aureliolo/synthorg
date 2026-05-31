@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Final
 from uuid import UUID
 
 from evals.errors import CompanyConfigInvalidError
@@ -68,10 +69,10 @@ _DEFAULT_PROVIDER_NAME: str = "benchmark-provider"
 _DEFAULT_MODEL_ID: str = "benchmark-model-001"
 # Midpoint per-dimension score the default deterministic judge assigns to a
 # deliverable it has no specific response for; keeps a bare run scoreable.
-_DEFAULT_DELIVERABLE_SCORE: float = 0.5
+_DEFAULT_DELIVERABLE_SCORE: Final[float] = 0.5
 # Hex characters of the suite-version digest retained in the scorecard; long
 # enough to be collision-free for a brief suite, short enough to read.
-_SUITE_VERSION_DIGEST_LEN: int = 16
+_SUITE_VERSION_DIGEST_LEN: Final[int] = 16
 
 
 def _default_identity(provider_name: str) -> AgentIdentity:

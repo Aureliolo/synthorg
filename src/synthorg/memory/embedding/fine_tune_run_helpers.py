@@ -53,14 +53,11 @@ async def generate_run_training_data(  # noqa: PLR0913 -- deps threaded for test
         if training_data_source is None:
             msg = "trajectory data source selected but none is wired"
             raise FineTuneDataSourceError(msg)
-        # The harvest can be long (it sweeps the org's working history); the
-        # source protocol takes no token, so bracket the call with the run's
-        # cancellation check to stay responsive to a cancel request.
-        if cancellation is not None:
-            cancellation.check()
-        pairs = await training_data_source.collect()
-        if cancellation is not None:
-            cancellation.check()
+        # The harvest can be long (it sweeps the org's whole working
+        # history); the source checks the token before its opening queries
+        # and inside every per-record loop, so a cancel request interrupts it
+        # promptly rather than only at this boundary.
+        pairs = await training_data_source.collect(cancellation)
         records = [
             {
                 "query": str(pair.query),

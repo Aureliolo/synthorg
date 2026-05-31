@@ -3,6 +3,8 @@
 import asyncio
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
+from pydantic import TypeAdapter
+
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -43,6 +45,11 @@ logger = get_logger(__name__)
 # wired ``memory_injection_strategy``.  Caps the injected-memory section so it
 # cannot crowd out the system prompt and task instruction.
 _DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
+# ``NotBlankStr(x)`` is a bare ``str(x)`` cast at runtime and performs no
+# validation, so a module-level adapter enforces the not-blank contract on the
+# identifiers before they cross the memory-injection strategy boundary (the
+# established pattern in ``post_execution/memory_hooks.py``).
+_NB_ADAPTER: Final = TypeAdapter(NotBlankStr)
 
 
 class PersonalityTrimPayload(TypedDict):
@@ -210,8 +217,8 @@ class AgentEngineContextMixin:
             messages: tuple[
                 ChatMessage, ...
             ] = await self._memory_injection_strategy.prepare_messages(
-                NotBlankStr(agent_id),
-                NotBlankStr(task.title),
+                _NB_ADAPTER.validate_python(agent_id),
+                _NB_ADAPTER.validate_python(task.title),
                 _DEFAULT_MEMORY_TOKEN_BUDGET,
             )
         except Exception as exc:

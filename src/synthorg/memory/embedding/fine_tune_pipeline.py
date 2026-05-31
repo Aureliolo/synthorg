@@ -14,7 +14,7 @@ import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from synthorg.memory.embedding.cancellation import CancellationToken
@@ -71,7 +71,10 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         Result of type ``FineTuneRun``.
     """
     cfg = run.config
-    out_dir = f"{cfg.output_dir}/runs/{run.id}"
+    # ``output_dir`` is contractually POSIX (``FineTuneRequest`` rejects drive
+    # letters); ``PurePosixPath`` joins the run subpath without emitting Windows
+    # separators that the forward-slash f-strings below would not match.
+    out_dir = str(PurePosixPath(cfg.output_dir) / "runs" / run.id)
     completed = set(run.stages_completed)
 
     # Stage 1: Generate training data (directory scan or real-trajectory
