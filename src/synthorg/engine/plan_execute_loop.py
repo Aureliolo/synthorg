@@ -15,7 +15,6 @@ from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_START,
-    EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
     EXECUTION_PLAN_CREATED,
     EXECUTION_PLAN_REPLAN_COMPLETE,
@@ -31,6 +30,8 @@ from synthorg.providers.models import (
     CompletionConfig,
 )
 
+from .intervention.plan_steering import steering_replan
+from .loop_cancellation import check_task_cancelled
 from .loop_helpers import (
     build_result,
     call_provider,
@@ -48,6 +49,7 @@ from .loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
+    TaskCancellationChecker,
     TerminationReason,
     TurnRecord,
 )
@@ -72,6 +74,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
@@ -101,7 +104,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
             context fill level is high.  ``None`` disables compaction.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         config: PlanExecuteConfig | None = None,
         checkpoint_callback: CheckpointCallback | None = None,
@@ -109,12 +112,14 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
+        steering_inbox: SteeringInbox | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
+        self._steering_inbox = steering_inbox
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -149,6 +154,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Run the Plan-and-Execute loop until termination.
 
@@ -160,6 +166,8 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
             shutdown_checker: Optional callback; returns ``True`` when
                 a graceful shutdown has been requested.
             completion_config: Optional per-execution config override.
+            task_cancellation_checker: Optional async callback; returns
+                ``True`` when the task was cancelled/superseded externally.
 
         Returns:
             Execution result with final context and termination info.
@@ -176,6 +184,9 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         )
 
         ctx = context
+        cancel_result = await check_task_cancelled(ctx, task_cancellation_checker, [])
+        if cancel_result is not None:
+            return self._finalize(cancel_result, [], 0)
         default_model = ctx.identity.model.model_id
         planner_model = self._config.planner_model or default_model
         executor_model = self._config.executor_model or default_model
@@ -218,6 +229,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
             planner_model,
             budget_checker,
             shutdown_checker,
+            task_cancellation_checker,
         )
 
     # ── Phase orchestration ─────────────────────────────────────────
@@ -268,12 +280,14 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         planner_model: str,
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Iterate through plan steps, handling failures and replanning.
 
         Returns:
             The terminal :class:`ExecutionResult` once the loop exits
-            (success, MAX_TURNS, replan exhaustion, or shutdown).
+            (success, MAX_TURNS, replan exhaustion, shutdown, or
+            cancellation).
         """
         step_idx = 0
         while step_idx < len(plan.steps):
@@ -304,6 +318,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
                 turns,
                 budget_checker,
                 shutdown_checker,
+                task_cancellation_checker,
             )
 
             if isinstance(step_result, ExecutionResult):
@@ -323,6 +338,25 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
                     step_number=step.step_number,
                 )
                 step_idx += 1
+                # A REDIRECT adopted mid-step forces a replan at this
+                # safe boundary so the revised plan honours the directive.
+                if ctx.pending_steering_replan_id is not None:
+                    steer_out = await steering_replan(
+                        ctx=ctx,
+                        provider=provider,
+                        planner_model=planner_model,
+                        config=config,
+                        plan=plan,
+                        turns=turns,
+                        all_plans=all_plans,
+                        replans_used=replans_used,
+                        call_planner=self._call_planner,
+                        finalize=self._finalize,
+                    )
+                    if isinstance(steer_out, ExecutionResult):
+                        return steer_out
+                    ctx, plan, replans_used = steer_out
+                    step_idx = 0
                 continue
 
             # Step failed -- attempt re-planning
@@ -343,6 +377,10 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
             if isinstance(replan_out, ExecutionResult):
                 return replan_out
             ctx, plan, replans_used = replan_out
+            # The failure replan already incorporates any adopted directive
+            # (it is in the conversation), so clear the pending steering
+            # replan to avoid a redundant second replan at the next boundary.
+            ctx = ctx.cleared_pending_replan()
             step_idx = 0
 
         return self._build_final_result(
@@ -435,49 +473,6 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         replans_used += 1
         all_plans.append(new_plan)
         return ctx, new_plan, replans_used
-
-    def _build_final_result(  # noqa: PLR0913
-        self,
-        ctx: AgentContext,
-        plan: ExecutionPlan,
-        step_idx: int,
-        turns: list[TurnRecord],
-        all_plans: list[ExecutionPlan],
-        replans_used: int,
-    ) -> ExecutionResult:
-        """Build the final result after step iteration completes.
-
-        Returns:
-            The terminal :class:`ExecutionResult` with ``MAX_TURNS``
-            when turns ran out mid-plan and ``COMPLETED`` otherwise.
-        """
-        # Sync live plan so final_plan metadata reflects step statuses
-        if all_plans:
-            all_plans[-1] = plan
-        if not ctx.has_turns_remaining and step_idx < len(plan.steps):
-            logger.info(
-                EXECUTION_LOOP_TERMINATED,
-                execution_id=ctx.execution_id,
-                reason=TerminationReason.MAX_TURNS.value,
-                turns=len(turns),
-            )
-            return self._finalize(
-                build_result(ctx, TerminationReason.MAX_TURNS, turns),
-                all_plans,
-                replans_used,
-            )
-
-        logger.info(
-            EXECUTION_LOOP_TERMINATED,
-            execution_id=ctx.execution_id,
-            reason=TerminationReason.COMPLETED.value,
-            turns=len(turns),
-        )
-        return self._finalize(
-            build_result(ctx, TerminationReason.COMPLETED, turns),
-            all_plans,
-            replans_used,
-        )
 
     # ── Planning ────────────────────────────────────────────────────
 
@@ -685,6 +680,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         turns: list[TurnRecord],
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> tuple[AgentContext, bool] | ExecutionResult:
         """Execute a single plan step via a mini-ReAct sub-loop.
 
@@ -723,6 +719,7 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
                 turns,
                 budget_checker,
                 shutdown_checker,
+                task_cancellation_checker,
             )
             if isinstance(result, ExecutionResult):
                 return result

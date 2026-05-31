@@ -23,6 +23,8 @@ from synthorg.providers.models import (
     CompletionResponse,
 )
 
+from .intervention.loop_hook import check_steering
+from .loop_cancellation import check_task_cancelled
 from .loop_helpers import (
     build_result,
     call_provider,
@@ -40,6 +42,7 @@ from .loop_protocol import (
     BudgetChecker,
     ExecutionResult,
     ShutdownChecker,
+    TaskCancellationChecker,
     TerminationReason,
     TurnRecord,
 )
@@ -53,6 +56,7 @@ if TYPE_CHECKING:
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
@@ -92,11 +96,13 @@ class ReactLoop:
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
         compaction_callback: CompactionCallback | None = None,
+        steering_inbox: SteeringInbox | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
         self._compaction_callback = compaction_callback
+        self._steering_inbox = steering_inbox
 
     @property
     def approval_gate(self) -> ApprovalGate | None:
@@ -126,6 +132,7 @@ class ReactLoop:
         budget_checker: BudgetChecker | None = None,
         shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
+        task_cancellation_checker: TaskCancellationChecker | None = None,
     ) -> ExecutionResult:
         """Run the ReAct loop until termination.
 
@@ -137,6 +144,8 @@ class ReactLoop:
             shutdown_checker: Optional callback; returns ``True`` when
                 a graceful shutdown has been requested.
             completion_config: Optional per-execution config override.
+            task_cancellation_checker: Optional async callback; returns
+                ``True`` when the task was cancelled/superseded externally.
 
         Returns:
             Execution result with final context and termination info.
@@ -159,6 +168,20 @@ class ReactLoop:
             budget_result = check_budget(ctx, budget_checker, turns)
             if budget_result is not None:
                 return budget_result
+
+            cancel_result = await check_task_cancelled(
+                ctx, task_cancellation_checker, turns
+            )
+            if cancel_result is not None:
+                return cancel_result
+
+            # Adopt any pending steering directives before the LLM call so
+            # the operator's constraint is in context for this turn.
+            steered = await check_steering(
+                ctx, self._steering_inbox, execution_id=ctx.execution_id
+            )
+            if steered is not None:
+                ctx = steered
 
             # Refresh tool defs each turn so newly loaded tools appear
             tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)

@@ -4048,7 +4048,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 681,
+      "loc": 684,
       "loc_cap": 700,
       "module": "src/synthorg/engine/agent_engine.py",
       "owning_feature": "engine"
@@ -4069,14 +4069,14 @@
     },
     {
       "kind": "code",
-      "loc": 316,
+      "loc": 319,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_factories.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 431,
+      "loc": 453,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_post_exec.py",
       "owning_feature": "engine"
@@ -4517,7 +4517,7 @@
     },
     {
       "kind": "code",
-      "loc": 493,
+      "loc": 491,
       "loc_cap": 500,
       "module": "src/synthorg/engine/context.py",
       "owning_feature": "engine"
@@ -4527,6 +4527,13 @@
       "loc": 164,
       "loc_cap": 500,
       "module": "src/synthorg/engine/context_budget.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 71,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/context_snapshot.py",
       "owning_feature": "engine"
     },
     {
@@ -4958,7 +4965,7 @@
     },
     {
       "kind": "code",
-      "loc": 214,
+      "loc": 215,
       "loc_cap": 500,
       "module": "src/synthorg/engine/flight_recording/sink.py",
       "owning_feature": "engine"
@@ -5021,7 +5028,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 763,
+      "loc": 855,
       "loc_cap": 1100,
       "module": "src/synthorg/engine/hybrid_loop.py",
       "owning_feature": "engine"
@@ -5154,9 +5161,44 @@
     },
     {
       "kind": "code",
+      "loc": 138,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/inbox.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 130,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/loop_hook.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 177,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/models.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 113,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/intervention/plan_steering.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
       "loc": 127,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/steering.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 68,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/loop_cancellation.py",
       "owning_feature": "engine"
     },
     {
@@ -5168,14 +5210,14 @@
     },
     {
       "kind": "code",
-      "loc": 294,
+      "loc": 306,
       "loc_cap": 500,
       "module": "src/synthorg/engine/loop_protocol.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 356,
+      "loc": 367,
       "loc_cap": 500,
       "module": "src/synthorg/engine/loop_selector.py",
       "owning_feature": "engine"
@@ -5476,14 +5518,14 @@
     },
     {
       "kind": "code",
-      "loc": 686,
+      "loc": 684,
       "loc_cap": 500,
       "module": "src/synthorg/engine/plan_execute_loop.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 219,
+      "loc": 277,
       "loc_cap": 500,
       "module": "src/synthorg/engine/plan_execute_step_mixin.py",
       "owning_feature": "engine"
@@ -5686,14 +5728,14 @@
     },
     {
       "kind": "code",
-      "loc": 335,
+      "loc": 354,
       "loc_cap": 500,
       "module": "src/synthorg/engine/react_loop.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 381,
+      "loc": 382,
       "loc_cap": 500,
       "module": "src/synthorg/engine/recovery.py",
       "owning_feature": "engine"
@@ -11545,7 +11587,7 @@
     },
     {
       "kind": "code",
-      "loc": 17,
+      "loc": 27,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/cockpit.py",
       "owning_feature": "observability"
@@ -11727,7 +11769,7 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 99,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/execution.py",
       "owning_feature": "observability"

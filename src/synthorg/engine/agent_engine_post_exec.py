@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.enums import TaskStatus
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
+        TaskCancellationChecker,
     )
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.providers.models import CompletionConfig
@@ -398,6 +400,30 @@ class AgentEnginePostExecMixin:
             task_id,
         )
 
+    def _make_task_cancellation_checker(
+        self,
+        task_id: str,
+    ) -> TaskCancellationChecker | None:
+        """Build a per-task cancellation checker if a TaskEngine is wired.
+
+        The closure reads the task's authoritative status at each safe boundary
+        and reports cancellation, the durable cross-process supersession signal
+        (the operator cancels in the API process; the agent runs in the worker).
+
+        Returns:
+            An async ``() -> bool`` checker, or ``None`` when no TaskEngine is
+            wired (cancellation observation is then disabled).
+        """
+        task_engine = self._task_engine
+        if task_engine is None:
+            return None
+
+        async def _check() -> bool:
+            task = await task_engine.get_task(task_id)
+            return task is not None and task.status == TaskStatus.CANCELLED
+
+        return _check
+
     async def _run_loop_with_timeout(  # noqa: PLR0913
         self,
         *,
@@ -428,6 +454,7 @@ class AgentEnginePostExecMixin:
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
+            task_cancellation_checker=self._make_task_cancellation_checker(task_id),
         )
         if timeout_seconds is None:
             return await coro
