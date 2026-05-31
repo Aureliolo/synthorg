@@ -1,12 +1,12 @@
 import { Compass } from 'lucide-react'
 
-import type { ActiveSteeringDirective } from '@/api/types'
+import type { ActiveSteeringDirective, InterventionKind } from '@/api/types'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
 
-function DirectiveKindBadge({ kind }: { kind: string }) {
+function DirectiveKindBadge({ kind }: { kind: InterventionKind }) {
   const isRedirect = kind === 'redirect'
   return (
     <span

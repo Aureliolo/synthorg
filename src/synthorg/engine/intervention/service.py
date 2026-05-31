@@ -12,7 +12,7 @@ supersession is auditable.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -57,13 +57,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 #: Cap on candidate in-flight tasks gathered for a PROPOSE-mode refinement.
-_PROPOSE_CANDIDATE_LIMIT: int = 100
+_PROPOSE_CANDIDATE_LIMIT: Final[int] = 100
 
 #: Cap on active steering directives listed for the operator board.
-_LIST_ACTIVE_LIMIT: int = 100
+_LIST_ACTIVE_LIMIT: Final[int] = 100
 
 #: Cap on the brain entry title derived from the directive text.
-_TITLE_MAX_CHARS: int = 80
+_TITLE_MAX_CHARS: Final[int] = 80
 
 SteeringNotifier = Callable[[str, Mapping[str, object]], Awaitable[None]]
 """Async callback publishing a steering WS event (event name + payload)."""
@@ -305,7 +305,10 @@ class SteeringService:
                 limit=_PROPOSE_CANDIDATE_LIMIT,
             )
             tasks.extend(items)
-        return tuple(tasks)
+        # The per-status queries each cap at _PROPOSE_CANDIDATE_LIMIT, so the
+        # union can be twice that. Cap the combined set the proposer LLM sees
+        # so a busy project cannot blow past the prompt budget.
+        return tuple(tasks[:_PROPOSE_CANDIDATE_LIMIT])
 
     async def _notify(self, event: str, payload: Mapping[str, object]) -> None:
         """Publish a steering WS event; best-effort, never raises.

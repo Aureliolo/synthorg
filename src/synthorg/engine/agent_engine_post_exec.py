@@ -49,6 +49,13 @@ logger = get_logger(__name__)
 
 _TRANSITION_REASON_CRITERIA_CAP: Final[int] = 5
 
+#: Grace window granted to a cancelled inner loop task so its finally-block
+#: cleanup (checkpoint / teardown writes) can settle before the post-execution
+#: pipeline writes the terminal status. Bounded so a loop wedged in synchronous
+#: work or swallowing cancellation cannot keep the worker hung past the
+#: wall-clock timeout.
+_CANCEL_GRACE_SECONDS: Final[float] = 2.0
+
 
 class AgentEnginePostExecMixin:
     """Mixin providing post-execution, timeout wrapper, and result builder."""
@@ -479,12 +486,27 @@ class AgentEnginePostExecMixin:
             timeout_seconds=timeout_seconds,
         )
         loop_task.cancel()
-        # Do not await the cancelled task: a loop stuck in synchronous
-        # work or swallowing cancellation would keep the worker hung past
-        # the wall-clock limit, breaking the timeout contract. A
-        # done-callback retrieves the eventual result so a later failure
-        # is not logged as an unretrieved task exception.
-        loop_task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        # Bounded grace window: let the cancelled task's finally-block
+        # cleanup (checkpoint / teardown writes) settle before the
+        # post-execution pipeline writes the terminal status, so a late
+        # checkpoint cannot land after the CANCELLED/ERROR transition.
+        # ``asyncio.wait`` never cancels on timeout, so a loop wedged in
+        # synchronous work or swallowing cancellation simply exhausts the
+        # grace window; we then fall through to a detached done-callback,
+        # preserving the wall-clock timeout contract.
+        _settled, still_pending = await asyncio.wait(
+            {loop_task}, timeout=_CANCEL_GRACE_SECONDS
+        )
+        if still_pending:
+            # Loop did not honour cancellation within the grace window; detach
+            # and let a done-callback retrieve the eventual result so a later
+            # failure is not logged as an unretrieved task exception.
+            loop_task.add_done_callback(lambda t: t.cancelled() or t.exception())
+        elif not loop_task.cancelled():
+            # Settled with a non-cancellation failure: retrieve it so it is not
+            # surfaced as an unretrieved task exception. (A cancelled task's
+            # ``exception()`` would itself raise, hence the guard.)
+            _ = loop_task.exception()
         return ExecutionResult(
             context=ctx,
             termination_reason=TerminationReason.ERROR,

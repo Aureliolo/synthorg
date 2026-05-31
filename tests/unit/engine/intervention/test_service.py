@@ -11,6 +11,7 @@ from synthorg.engine.intervention.models import SupersedeMode
 from synthorg.engine.intervention.proposer import NoOpSupersessionProposer
 from synthorg.engine.intervention.service import SteeringService
 from synthorg.observability.events.cockpit import STEERING_DIRECTIVE_ISSUED
+from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import FakeProjectBrainRepository
 
@@ -116,6 +117,46 @@ class TestIssue:
         # No-op proposer echoes the seed; nothing cancelled at issue time.
         assert result.proposal.proposed_task_ids == ("t1",)
         assert engine.cancelled == []
+        # The directive is still live and confirmable, not consumed by PROPOSE.
+        active = await service.list_active(project_id=_PROJECT)
+        assert len(active) == 1
+        assert active[0].entry_id == result.directive_id
+
+    async def test_brain_entry_written_before_tasks_cancelled(self) -> None:
+        # Brain-write-precedes-propagation: the directive must be durably
+        # recorded before the first cancellation fires, so a crash
+        # mid-supersede can never leave a cancelled task with no directive.
+        repo = FakeProjectBrainRepository()
+        entries_at_first_cancel: list[int] = []
+
+        class _OrderingEngine:
+            async def cancel_task(
+                self, task_id: str, *, requested_by: str, reason: str
+            ) -> tuple[None, None]:
+                rows = await repo.list_current(BrainFilterSpec(project_id=_PROJECT))
+                entries_at_first_cancel.append(len(rows))
+                return (None, None)
+
+            async def list_tasks(
+                self, *, status: TaskStatus, project: str, limit: int
+            ) -> tuple[tuple[Task, ...], int]:
+                return ((), 0)
+
+        service = SteeringService(
+            brain_service=FakeBrainService(repo),  # type: ignore[arg-type]
+            brain_repo=repo,
+            task_engine=_OrderingEngine(),  # type: ignore[arg-type]
+            proposer=NoOpSupersessionProposer(),
+        )
+        await service.issue(
+            project_id=_PROJECT,
+            kind=InterventionKind.REDIRECT,
+            text=NotBlankStr("pivot"),
+            author=NotBlankStr("mission-control"),
+            supersede_task_ids=(NotBlankStr("t1"),),
+            supersede_mode=SupersedeMode.EXPLICIT,
+        )
+        assert entries_at_first_cancel == [1]
 
     async def test_task_narrowing_recorded(self) -> None:
         service, _repo, _engine = _service()

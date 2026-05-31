@@ -13,7 +13,7 @@ back on approval and routes it to ``SteeringService.issue``.
 """
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from synthorg._core.features import require_service
 from synthorg.core.approval import ApprovalItem
@@ -33,6 +33,7 @@ from synthorg.engine.intervention.models import (
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
+    ConversationalProposal,
     ProposeArgs,
     ProposedSteering,
     ProposedWork,
@@ -197,8 +198,10 @@ async def unwind_parked_steering(
         )
 
 
-def is_conversational_steering(item: ApprovalItem | None) -> bool:
+def is_conversational_steering(item: ApprovalItem | None) -> TypeGuard[ApprovalItem]:
     """Whether *item* is a parked conversational steering directive.
+
+    Narrows ``item`` to a non-``None`` :class:`ApprovalItem` for callers.
 
     Returns:
         ``True`` when the approval is a ``CONVERSATIONAL_INTAKE`` item carrying
@@ -257,7 +260,7 @@ async def resume_conversational_steering(
         steering directive, so the caller falls through to the work-proposal
         flow.
     """
-    if not is_conversational_steering(item) or item is None:
+    if not is_conversational_steering(item):
         return False
     if approved:
         await execute_conversational_steering(app_state, item)
@@ -267,7 +270,7 @@ async def resume_conversational_steering(
 async def reject_conversational_proposal(
     app_state: AppState,
     approval_id: str,
-    proposal: object,
+    proposal: ConversationalProposal,
 ) -> None:
     """CAS the work proposal from PENDING to REJECTED; pipeline never runs."""
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -276,7 +279,7 @@ async def reject_conversational_proposal(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
     )
-    proposal_id = proposal.id  # type: ignore[attr-defined]
+    proposal_id = proposal.id
     transitioned = await repo.transition_if(
         proposal_id,
         ConversationalProposalStatus.PENDING,

@@ -34,6 +34,12 @@ class _RecordingTaskEngine:
         self.cancelled.append(task_id)
         return (None, None)
 
+    async def list_tasks(
+        self, *, status: object, project: str, limit: int
+    ) -> tuple[tuple[object, ...], int]:
+        """Mirror the TaskEngine surface the PROPOSE path enumerates."""
+        return ((), 0)
+
 
 @pytest.fixture
 def actor() -> AgentIdentity:
@@ -147,3 +153,24 @@ class TestSteerHandlers:
         assert body["status"] == "ok"
         assert body["data"]["cancelled_task_ids"] == ["t1", "t2"]
         assert engine.cancelled == ["t1", "t2"]
+
+    async def test_steer_supersede_rejects_empty_task_ids(
+        self, actor: AgentIdentity
+    ) -> None:
+        # An absent/empty task_ids set must error, not silently confirm a
+        # zero-task supersession the operator never sees.
+        engine = _RecordingTaskEngine()
+        state = _state_with_steering(engine)
+        raw = await COCKPIT_HANDLERS["synthorg_cockpit_steer_supersede"](
+            app_state=state,
+            arguments={
+                "project_id": "proj-1",
+                "directive_id": "directive-1",
+                "reason": "operator supersede",
+                "confirm": True,
+            },
+            actor=actor,
+        )
+        body = json.loads(raw)
+        assert body["status"] == "error"
+        assert engine.cancelled == []

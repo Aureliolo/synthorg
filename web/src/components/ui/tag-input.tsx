@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState, type KeyboardEvent, type ClipboardEvent } from 'react'
+import { useCallback, useId, useRef, useState, type KeyboardEvent, type ClipboardEvent } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface TagInputProps {
   value: string[]
   onChange: (value: string[]) => void
+  /** Visible label; rendered and associated with the input for screen readers. */
+  label?: string
   disabled?: boolean
   placeholder?: string
   className?: string
@@ -79,41 +81,54 @@ function useTagInputHandlers(
   return { draft, setDraft, handleKeyDown, handlePaste, removeAt }
 }
 
-export function TagInput({ value, onChange, disabled, placeholder, className }: TagInputProps) {
+export function TagInput({ value, onChange, label, disabled, placeholder, className }: TagInputProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const labelId = useId()
   const { draft, setDraft, handleKeyDown, handlePaste, removeAt } = useTagInputHandlers(value, onChange)
+  // aria-labelledby (when a label is rendered) takes precedence over the
+  // placeholder-derived aria-label below, so the latter can stay unconditional.
+  const labelledBy = label ? labelId : undefined
   return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5',
-        'focus-within:ring-2 focus-within:ring-accent/40',
-        disabled && 'opacity-50',
-        className,
+    <div className="flex flex-col gap-1.5">
+      {label && (
+        <span id={labelId} className="text-sm font-medium text-foreground">
+          {label}
+        </span>
       )}
-      onClick={() => inputRef.current?.focus()}
-      role="group"
-      aria-label={placeholder ?? 'Tags'}
-    >
-      {value.map((item, i) => (
-        <TagChip
-          key={_stableTagKey(value, item, i)}
-          item={item}
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1.5',
+          'focus-within:ring-2 focus-within:ring-accent/40',
+          disabled && 'opacity-50',
+          className,
+        )}
+        onClick={() => inputRef.current?.focus()}
+        role="group"
+        aria-labelledby={labelledBy}
+        aria-label={placeholder ?? 'Tags'}
+      >
+        {value.map((item, i) => (
+          <TagChip
+            key={_stableTagKey(value, item, i)}
+            item={item}
+            disabled={disabled}
+            onRemove={() => removeAt(i)}
+          />
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={disabled}
-          onRemove={() => removeAt(i)}
+          placeholder={value.length === 0 ? placeholder : undefined}
+          aria-labelledby={labelledBy}
+          aria-label={placeholder ?? 'Tags input'}
+          className="min-w-20 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
         />
-      ))}
-      <input
-        ref={inputRef}
-        type="text"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        disabled={disabled}
-        placeholder={value.length === 0 ? placeholder : undefined}
-        aria-label={placeholder ?? 'Tags input'}
-        className="min-w-20 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
-      />
+      </div>
     </div>
   )
 }

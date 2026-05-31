@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { WsEvent } from '@/api/types/websocket'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
@@ -27,6 +27,15 @@ export interface UseSteeringDataReturn {
 export function useSteeringData(projectId: string): UseSteeringDataReturn {
   const fetchDirectives = useSteeringStore((s) => s.fetchDirectives)
 
+  // The WS handler is registered once on mount (useWebSocket binds its
+  // bindings a single time). Read projectId from a ref kept current each
+  // render so the registered handler always sees the live value rather than
+  // the stale closure captured at first mount.
+  const projectIdRef = useRef(projectId)
+  useEffect(() => {
+    projectIdRef.current = projectId
+  })
+
   useEffect(() => {
     if (projectId.trim() === '') return
     void fetchDirectives(projectId)
@@ -34,13 +43,14 @@ export function useSteeringData(projectId: string): UseSteeringDataReturn {
 
   const handleSteeringEvent = useCallback(
     (event: WsEvent) => {
+      const pid = projectIdRef.current
       if (!REFRESH_EVENTS.has(event.event_type)) return
-      if (projectId.trim() === '') return
+      if (pid.trim() === '') return
       const eventProject = sanitizeWsString(event.payload.project_id)
-      if (eventProject !== projectId) return
-      void fetchDirectives(projectId)
+      if (eventProject !== pid) return
+      void fetchDirectives(pid)
     },
-    [projectId, fetchDirectives],
+    [fetchDirectives],
   )
 
   const bindings: ChannelBinding[] = useMemo(

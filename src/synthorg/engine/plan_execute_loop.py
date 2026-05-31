@@ -141,6 +141,11 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         """Return the compaction callback, or ``None``."""
         return self._compaction_callback
 
+    @property
+    def steering_inbox(self) -> SteeringInbox | None:
+        """Return the steering inbox, or ``None``."""
+        return self._steering_inbox
+
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
         return "plan_execute"

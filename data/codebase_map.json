@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 272,
+      "loc": 278,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -520,7 +520,7 @@
     },
     {
       "kind": "code",
-      "loc": 542,
+      "loc": 543,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_approval_review_gate.py",
       "owning_feature": "api_core"
@@ -4083,7 +4083,7 @@
     },
     {
       "kind": "code",
-      "loc": 453,
+      "loc": 460,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_post_exec.py",
       "owning_feature": "engine"
@@ -4349,7 +4349,7 @@
     },
     {
       "kind": "code",
-      "loc": 203,
+      "loc": 206,
       "loc_cap": 500,
       "module": "src/synthorg/engine/checkpoint/resume.py",
       "owning_feature": "engine"
@@ -5035,7 +5035,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 853,
+      "loc": 859,
       "loc_cap": 1100,
       "module": "src/synthorg/engine/hybrid_loop.py",
       "owning_feature": "engine"
@@ -5196,7 +5196,7 @@
     },
     {
       "kind": "code",
-      "loc": 113,
+      "loc": 121,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/plan_steering.py",
       "owning_feature": "engine"
@@ -5539,7 +5539,7 @@
     },
     {
       "kind": "code",
-      "loc": 682,
+      "loc": 686,
       "loc_cap": 500,
       "module": "src/synthorg/engine/plan_execute_loop.py",
       "owning_feature": "engine"
@@ -5749,7 +5749,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 358,
       "loc_cap": 500,
       "module": "src/synthorg/engine/react_loop.py",
       "owning_feature": "engine"
@@ -9844,7 +9844,7 @@
     },
     {
       "kind": "code",
-      "loc": 259,
+      "loc": 261,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_intake_parking.py",
       "owning_feature": "meta"
@@ -10369,7 +10369,7 @@
     },
     {
       "kind": "code",
-      "loc": 341,
+      "loc": 343,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/cockpit.py",
       "owning_feature": "meta"
@@ -15927,7 +15927,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 186,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/cockpit.py",
       "owning_feature": "settings"

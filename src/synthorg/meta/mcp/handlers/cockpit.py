@@ -264,7 +264,7 @@ async def _steer(
     """
     tool_name = "synthorg_cockpit_steer"
     try:
-        require_admin_guardrails(arguments, actor)
+        _reason, _actor = require_admin_guardrails(arguments, actor)
         project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
         kind = InterventionKind(require_arg(arguments, _ARG_KIND, str))
         text = require_arg(arguments, _ARG_TEXT, str)
@@ -303,13 +303,17 @@ async def _steer_supersede(
 
     Returns:
         The JSON-encoded cancelled task ids or an error envelope.
-    """
+    """  # noqa: DOC501 -- ArgumentValidationError raised + caught in-handler
     tool_name = "synthorg_cockpit_steer_supersede"
     try:
-        require_admin_guardrails(arguments, actor)
+        _reason, _actor = require_admin_guardrails(arguments, actor)
         project_id = require_arg(arguments, _ARG_PROJECT_ID, str)
         directive_id = require_arg(arguments, _ARG_DIRECTIVE_ID, str)
         task_ids = _str_tuple(arguments, _ARG_TASK_IDS)
+        if not task_ids:
+            # task_ids is required: an empty/absent set would silently
+            # "supersede" zero tasks, never surfaced to the operator.
+            raise ArgumentValidationError(_ARG_TASK_IDS, _TY_STR_ARRAY)
         steering = require_service(
             app_state.slice(CockpitStateSlice).steering_service, "Steering Service"
         )

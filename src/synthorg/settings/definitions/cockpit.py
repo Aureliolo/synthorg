@@ -168,6 +168,22 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COCKPIT,
+        key="steering_proposer_provider",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Provider name the LLM supersession proposer calls when enabled."
+            " Empty falls back to the first registered provider, matching the"
+            " research and chief-of-staff provider-selection convention."
+        ),
+        group="Intervention",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COCKPIT,
         key="steering_max_active_directives",
         type=SettingType.INTEGER,
         default="100",

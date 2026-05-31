@@ -48,15 +48,13 @@ function SupersedeControls({
         hint="Explicit cancels immediately; Propose returns a set for you to confirm."
       />
       {mode !== 'none' && (
-        <div className="space-y-1.5">
-          <span className="text-sm font-medium text-foreground">Task IDs</span>
-          <TagInput
-            value={taskIds}
-            onChange={onTaskIdsChange}
-            disabled={disabled}
-            placeholder="Add a task ID and press Enter"
-          />
-        </div>
+        <TagInput
+          label="Task IDs"
+          value={taskIds}
+          onChange={onTaskIdsChange}
+          disabled={disabled}
+          placeholder="Add a task ID and press Enter"
+        />
       )}
     </div>
   )
@@ -79,28 +77,20 @@ function NarrowingFields({
 }: NarrowingFieldsProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-1.5">
-        <span className="text-sm font-medium text-foreground">
-          Narrow to tasks (optional)
-        </span>
-        <TagInput
-          value={taskIds}
-          onChange={onTaskIdsChange}
-          disabled={disabled}
-          placeholder="Empty = project-wide"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <span className="text-sm font-medium text-foreground">
-          Narrow to agents (optional)
-        </span>
-        <TagInput
-          value={agentIds}
-          onChange={onAgentIdsChange}
-          disabled={disabled}
-          placeholder="Empty = every agent"
-        />
-      </div>
+      <TagInput
+        label="Narrow to tasks (optional)"
+        value={taskIds}
+        onChange={onTaskIdsChange}
+        disabled={disabled}
+        placeholder="Empty = project-wide"
+      />
+      <TagInput
+        label="Narrow to agents (optional)"
+        value={agentIds}
+        onChange={onAgentIdsChange}
+        disabled={disabled}
+        placeholder="Empty = every agent"
+      />
     </div>
   )
 }

@@ -11,6 +11,11 @@ from typing import TYPE_CHECKING, Protocol
 
 from synthorg.engine.plan_models import ExecutionPlan, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
+from synthorg.engine.prompt_safety import (
+    TAG_BRAIN_STATE,
+    untrusted_content_directive,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_PLAN_REPLAN_COMPLETE,
@@ -96,11 +101,16 @@ async def steering_replan(  # noqa: PLR0913
         )
         or "  (none)"
     )
+    # Step descriptions are agent-generated and may have absorbed external
+    # tool output, so fence them before they re-enter the planner prompt.
     replan_content = (
-        "An operator steering directive was just adopted (see the latest USER "
-        "message above). Create a revised plan for the REMAINING work that "
-        "honours that directive and abandons any step it makes obsolete.\n\n"
-        f"Completed steps so far:\n{completed_summary}\n\n"
+        "One or more operator steering directives were just adopted (see the "
+        "latest USER message(s) above). Create a revised plan for the REMAINING "
+        "work that honours every adopted directive and abandons any step they "
+        "make obsolete.\n\n"
+        "Completed steps so far:\n"
+        f"{wrap_untrusted(TAG_BRAIN_STATE, completed_summary)}\n\n"
+        f"{untrusted_content_directive((TAG_BRAIN_STATE,))}\n\n"
         f"Return your revised plan as a JSON object with the same schema:\n\n"
         f"{_REPLAN_JSON_EXAMPLE}\n\n"
         "Return ONLY the JSON object, no other text."

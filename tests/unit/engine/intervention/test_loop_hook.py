@@ -129,6 +129,24 @@ class TestCheckSteering:
         assert "d1" in updated.adopted_steering_ids
         assert updated.pending_steering_replan_id is None
 
+    async def test_multiple_redirects_keep_first_as_replan_trigger(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        # Two REDIRECTs adopted in one pass: both are injected and adopted,
+        # but the replan trigger id is deterministic (the first), not
+        # whichever happened to be iterated last.
+        inbox = _StubInbox(
+            (
+                _directive(entry_id="d1", kind=InterventionKind.REDIRECT),
+                _directive(entry_id="d2", kind=InterventionKind.REDIRECT),
+            )
+        )
+        updated = await check_steering(sample_agent_context, inbox, execution_id="e1")
+        assert updated is not None
+        assert updated.adopted_steering_ids >= frozenset({"d1", "d2"})
+        assert len(updated.conversation) == len(sample_agent_context.conversation) + 2
+        assert updated.pending_steering_replan_id == "d1"
+
     async def test_nothing_pending_returns_none(
         self, sample_agent_context: AgentContext
     ) -> None:

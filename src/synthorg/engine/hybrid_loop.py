@@ -147,6 +147,11 @@ class HybridLoop:
         """Return the compaction callback, or ``None``."""
         return self._compaction_callback
 
+    @property
+    def steering_inbox(self) -> SteeringInbox | None:
+        """Return the steering inbox, or ``None``."""
+        return self._steering_inbox
+
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
         return "hybrid"
@@ -369,6 +374,13 @@ class HybridLoop:
                         return steer_out
                     ctx, plan, replans_used = steer_out
                     restart = True
+                elif restart and ctx.pending_steering_replan_id is not None:
+                    # A completion-triggered replan already re-planned with the
+                    # adopted directive in conversation context, so a dedicated
+                    # steering replan would be redundant. Clear the pending flag
+                    # so it does not linger to fire a stale replan on a later
+                    # step or persist into a terminal checkpoint.
+                    ctx = ctx.cleared_pending_replan()
                 if restart:
                     step_idx = 0
                     continue

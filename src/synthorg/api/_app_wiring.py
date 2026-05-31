@@ -232,7 +232,13 @@ async def _wire_steering_service(
             await settings.get("cockpit", "steering_proposer_model")
         ).value.strip() or None
         names = provider_registry.list_providers()
-        provider = provider_registry.get(names[0]) if names else None
+        configured = (
+            await settings.get("cockpit", "steering_proposer_provider")
+        ).value.strip()
+        if configured and configured in names:
+            provider = provider_registry.get(configured)
+        elif names:
+            provider = provider_registry.get(names[0])
     app_state.wire(
         CockpitStateSlice,
         steering_service=SteeringService(

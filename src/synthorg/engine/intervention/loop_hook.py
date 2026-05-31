@@ -142,7 +142,13 @@ async def check_steering(
             directive_id=directive.entry_id,
             kind=directive.kind.value,
         )
-        if directive.requires_replan:
+        # Record only the first REDIRECT as the replan trigger. A second
+        # REDIRECT adopted in the same pass (or one carried over from a
+        # crash-resumed context) is still injected as a USER message and
+        # adopted; the single forced replan reads every injected directive
+        # from the conversation, so overwriting the trigger id would only
+        # lose the audit trail of which directive fired the replan.
+        if directive.requires_replan and updated.pending_steering_replan_id is None:
             updated = updated.with_pending_replan(directive.entry_id)
             logger.info(
                 STEERING_REPLAN_TRIGGERED,

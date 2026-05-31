@@ -40,17 +40,13 @@ export function SteeringProposalReview({
         </h4>
         <p className="mt-1 text-xs text-text-secondary">{proposal.rationale}</p>
       </div>
-      <div className="space-y-1.5">
-        <span className="text-sm font-medium text-foreground">
-          Tasks to cancel ({taskIds.length})
-        </span>
-        <TagInput
-          value={taskIds}
-          onChange={setTaskIds}
-          disabled={confirming}
-          placeholder="Edit the set before confirming"
-        />
-      </div>
+      <TagInput
+        label={`Tasks to cancel (${String(taskIds.length)})`}
+        value={taskIds}
+        onChange={setTaskIds}
+        disabled={confirming}
+        placeholder="Edit the set before confirming"
+      />
       <div className="flex flex-wrap gap-2">
         <Button
           variant="destructive"
