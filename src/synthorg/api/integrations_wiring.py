@@ -282,6 +282,9 @@ def auto_wire_integrations(  # noqa: PLR0913
         from synthorg.integrations.oauth.token_manager import (  # noqa: PLC0415
             OAuthTokenManager,
         )
+        from synthorg.persistence.db_handle import (  # noqa: PLC0415
+            postgres_pool_getter,
+        )
         from synthorg.persistence.secret_backends.factory import (  # noqa: PLC0415
             create_secret_backend,
             resolve_secret_backend_config,
@@ -294,7 +297,7 @@ def auto_wire_integrations(  # noqa: PLR0913
             db_url=db_url,
             boot_db_path=boot_db_path,
         )
-        pg_pool_getter = persistence.get_db if postgres_mode else None
+        pg_pool_getter = postgres_pool_getter(persistence) if postgres_mode else None
 
         selection = resolve_secret_backend_config(
             effective_config.integrations.secret_backend,

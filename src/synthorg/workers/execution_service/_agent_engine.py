@@ -1,39 +1,8 @@
 # module-kind: service
-"""Backend-side service called by the worker-callable execute endpoint.
-
-When the worker pool fetches a JetStream claim, it posts to
-``POST /api/v1/tasks/{task_id}/execute``. The controller delegates to
-:class:`WorkerExecutionService.execute_once`, a thin protocol-driven
-seam: the controller does not care which implementation is wired, only
-that ``execute_once`` returns the post-execution :class:`Task`.
-
-:mod:`synthorg.workers.runtime_builder` selects the implementation
-behind the provider-present switch (``AgentEngineExecutionService``
-when a provider is configured, ``NoProviderExecutionService``
-otherwise) and installs it through the
-``AppState.worker_execution_service`` seam.
-
-Three implementations live here:
-
-* :class:`AgentEngineExecutionService` -- the real agent runtime.
-  Installed at boot behind the provider-present switch (and re-installed
-  on setup-reinit); it resolves the assigned agent identity and runs a
-  fully-wired :class:`~synthorg.engine.agent_engine.AgentEngine`
-  (LLM + tools + per-call sandbox + memory, governed by the SecOps
-  safety spine).
-* :class:`NoProviderExecutionService` -- empty-company backstop. With no
-  provider configured the execute seam fails loudly instead of silently
-  walking status labels (task creation is also rejected upstream).
-* :class:`LifecycleAdvancingExecutionService` -- the lifecycle-only
-  baseline: it advances the task status without invoking an LLM. Used by
-  the dispatcher / queue / worker integration tests that pin the claim
-  round-trip, and the implementation the
-  ``AppState.worker_execution_service`` property lazily self-constructs
-  when no explicit service has been installed.
-"""
+"""Real agent-runtime worker execution service."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
@@ -41,7 +10,6 @@ from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
 )
-from synthorg.core.enums import TaskStatus
 from synthorg.core.task import (
     Task,
 )
@@ -63,7 +31,6 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_COMPLETED,
     WORKERS_EXECUTION_SERVICE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
-    WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASE_FAILED,
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
@@ -96,205 +63,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Bounded wait for in-flight parked-context resumes during shutdown
-# before they are cancelled, so a slow resume cannot stall process
-# teardown indefinitely. Sized to let a typical resumed turn finish
-# (a 5s budget routinely cancelled mid-LLM-call); the registry logs a
-# WARNING with the pending count on timeout so a cancelled resume is
-# never silent.
+
 _RESUME_DRAIN_TIMEOUT_SECONDS: Final[float] = 30.0
-
-
-@runtime_checkable
-class WorkerExecutionService(Protocol):
-    """Contract for the worker-callable execution surface.
-
-    The wired implementation is selected by the runtime builder behind
-    the provider-present switch (see :mod:`synthorg.workers.runtime_builder`):
-    :class:`AgentEngineExecutionService` when a provider is configured,
-    :class:`NoProviderExecutionService` otherwise.
-    :class:`LifecycleAdvancingExecutionService` is the lifecycle-only
-    baseline the dispatcher / queue / worker integration tests pin and
-    the property's lazy fallback when no explicit service is installed.
-    """
-
-    async def execute_once(
-        self,
-        *,
-        task_id: str,
-        previous_status: str | None,
-        new_status: str,
-        idempotency_key: str,
-        requested_by: str,
-    ) -> Task:
-        """Execute one step of the task and return the post-step state.
-
-        Implementations MUST persist the resulting status through the
-        ``TaskEngine`` so the single-writer invariant holds, and
-        return the typed ``Task`` for the controller to envelope.
-        """
-        ...
-
-    async def dispatch_resume(
-        self,
-        *,
-        approval_id: str,
-        approved: bool,
-        decided_by: str,
-        decision_reason: str | None,
-    ) -> None:
-        """Schedule a parked-context resume off the request path.
-
-        Called by the ``/approvals`` controller once a decision is
-        persisted and a parked context is known to exist. The agent
-        runtime implementation restores the parked ``AgentContext`` via
-        the shared ``ApprovalGate``, injects the decision, and
-        continues the original run as a tracked background task,
-        returning immediately so the approve/reject HTTP response is
-        not blocked by a full agent re-run. Non-runtime implementations
-        reject loudly: a parked context with no agent engine to resume
-        it is a misconfiguration, not a no-op.
-        """
-        ...
-
-
-class LifecycleAdvancingExecutionService:
-    """Lifecycle-only :class:`WorkerExecutionService` baseline.
-
-    Advances the task one transition forward when it is in an
-    executable state (``ASSIGNED`` or ``IN_PROGRESS``); returns the
-    current state unchanged otherwise. No LLM, no tools: a claim
-    arrives, the service rolls the lifecycle forward, the worker sees a
-    terminal-or-not response and acks accordingly.
-
-    This is what the dispatcher + queue + worker integration tests pin,
-    and the fallback the ``AppState.worker_execution_service`` property
-    lazily self-constructs when no explicit service is installed. The
-    real agent runtime is a sibling class in this module,
-    :class:`AgentEngineExecutionService`, selected by the runtime
-    builder behind the provider-present switch.
-    """
-
-    __slots__ = ("_task_engine",)
-
-    def __init__(self, *, task_engine: TaskEngine) -> None:
-        self._task_engine = task_engine
-
-    async def execute_once(
-        self,
-        *,
-        task_id: str,
-        previous_status: str | None,
-        new_status: str,
-        idempotency_key: str,
-        requested_by: str,
-    ) -> Task:
-        """Walk the task one step forward through the lifecycle.
-
-        ``ASSIGNED`` -> ``IN_PROGRESS`` -> ``IN_REVIEW`` -> ``COMPLETED``
-        is the canonical happy path. Tasks in any other status are
-        returned unchanged; the worker maps that into a retry so the
-        next dispatch picks up the new state.
-
-        Returns:
-            The task after one lifecycle step (unchanged when it is
-            outside the executable window).
-
-        Raises:
-            NotFoundError: When no task has ``task_id``.
-        """
-        task = await self._task_engine.get_task(task_id)
-        if task is None:
-            logger.warning(
-                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
-                task_id=task_id,
-                reason="task_not_found",
-                previous_status=previous_status,
-                new_status=new_status,
-                idempotency_key=idempotency_key,
-            )
-            msg = f"Task {task_id!r} not found"
-            raise NotFoundError(msg)
-        current_status = task.status
-        logger.info(
-            WORKERS_EXECUTION_SERVICE_ATTEMPTED,
-            task_id=task_id,
-            current_status=current_status.value,
-            previous_status=previous_status,
-            new_status=new_status,
-            idempotency_key=idempotency_key,
-        )
-        target = self._next_status(current_status)
-        if target is None:
-            logger.info(
-                WORKERS_EXECUTION_SERVICE_NO_OP,
-                task_id=task_id,
-                current_status=current_status.value,
-                reason="not_in_executable_status",
-            )
-            return task
-        advanced, _ = await self._task_engine.transition_task(
-            task_id,
-            target,
-            requested_by=requested_by,
-            reason=f"worker execution step from {current_status.value}",
-        )
-        logger.info(
-            WORKERS_EXECUTION_SERVICE_COMPLETED,
-            task_id=task_id,
-            from_status=task.status.value,
-            to_status=advanced.status.value,
-        )
-        return advanced
-
-    @staticmethod
-    def _next_status(current: TaskStatus) -> TaskStatus | None:
-        """Return the next baseline transition target for the lifecycle.
-
-        Returns ``None`` for statuses outside the executable window;
-        the worker maps that into a retry so any subsequent dispatch
-        picks up the new state.
-        """
-        if current == TaskStatus.ASSIGNED:
-            return TaskStatus.IN_PROGRESS
-        if current == TaskStatus.IN_PROGRESS:
-            return TaskStatus.IN_REVIEW
-        if current == TaskStatus.IN_REVIEW:
-            return TaskStatus.COMPLETED
-        return None
-
-    async def dispatch_resume(
-        self,
-        *,
-        approval_id: str,
-        approved: bool,
-        decided_by: str,
-        decision_reason: str | None,
-    ) -> None:
-        """Reject: the lifecycle baseline has no agent engine to resume.
-
-        A parked context only exists when a real ``AgentEngine`` ran
-        and parked, so reaching this baseline with one is a
-        misconfiguration (the runtime service was never installed).
-        Fail loudly rather than silently dropping the resume.
-
-        Raises:
-            AgentRuntimeNotConfiguredError: Always; the lifecycle
-                baseline has no agent engine to resume into.
-        """
-        logger.error(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            approved=approved,
-            decided_by=decided_by,
-            has_reason=decision_reason is not None,
-            reason="lifecycle_baseline_cannot_resume_agent",
-        )
-        msg = (
-            f"Approval {approval_id!r} has a parked agent context but the "
-            f"agent runtime is not installed; cannot resume execution."
-        )
-        raise AgentRuntimeNotConfiguredError(msg)
 
 
 class AgentEngineExecutionService:
@@ -862,80 +632,3 @@ class AgentEngineExecutionService:
     ) -> None:
         """Wait for in-flight parked-context resumes (shutdown hook)."""
         await self._resume_tasks.drain(timeout_sec=timeout_sec)
-
-
-class NoProviderExecutionService:
-    """Empty-company :class:`WorkerExecutionService`.
-
-    Installed when no LLM provider is configured. Task creation is
-    already rejected at the submission boundary; this is the
-    defence-in-depth backstop so a task that reaches the execute seam
-    by any other path fails loudly instead of running ungoverned or
-    silently walking status labels.
-    """
-
-    __slots__ = ()
-
-    async def execute_once(
-        self,
-        *,
-        task_id: str,
-        previous_status: str | None,
-        new_status: str,
-        idempotency_key: str,
-        requested_by: str,
-    ) -> Task:
-        """Reject execution: the company has no provider configured.
-
-        Raises:
-            AgentRuntimeNotConfiguredError: Always; no LLM provider is
-                configured (empty-company mode).
-        """
-        logger.warning(
-            WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
-            task_id=task_id,
-            previous_status=previous_status,
-            new_status=new_status,
-            idempotency_key=idempotency_key,
-            requested_by=requested_by,
-        )
-        msg = (
-            "No LLM provider is configured; the company is running in "
-            "empty mode and cannot execute tasks. Add a provider in "
-            "setup, then resubmit."
-        )
-        raise AgentRuntimeNotConfiguredError(msg)
-
-    async def dispatch_resume(
-        self,
-        *,
-        approval_id: str,
-        approved: bool,
-        decided_by: str,
-        decision_reason: str | None,
-    ) -> None:
-        """Reject: no provider means no agent engine to resume into.
-
-        A parked context implies an ``AgentEngine`` ran before the
-        provider was removed; surfacing this loudly tells the operator
-        the deployment is misconfigured rather than silently dropping
-        an approved resume.
-
-        Raises:
-            AgentRuntimeNotConfiguredError: Always; no provider means no
-                agent engine to resume into.
-        """
-        logger.error(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            approved=approved,
-            decided_by=decided_by,
-            has_reason=decision_reason is not None,
-            reason="no_provider_cannot_resume_agent",
-        )
-        msg = (
-            f"Approval {approval_id!r} has a parked agent context but no "
-            f"LLM provider is configured; cannot resume execution. "
-            f"Restore the provider, then retry the decision."
-        )
-        raise AgentRuntimeNotConfiguredError(msg)

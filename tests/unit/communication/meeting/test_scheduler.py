@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
+from synthorg.communication.config import MeetingsConfig
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.enums import (
     MeetingProtocolType,
     MeetingStatus,

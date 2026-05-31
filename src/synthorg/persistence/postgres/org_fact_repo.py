@@ -3,16 +3,13 @@
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
+from psycopg.rows import BaseRowFactory, DictRow, TupleRow
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    AutonomyLevel,
-    OrgFactCategory,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
@@ -43,11 +40,11 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -66,7 +63,7 @@ def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
     return json.dumps(sorted(tags))
 
 
-def _tags_from_json(raw: str | list[Any]) -> tuple[NotBlankStr, ...]:
+def _tags_from_json(raw: str | list[object]) -> tuple[NotBlankStr, ...]:
     """Deserialize tags (JSON string or JSONB-decoded list) to tuple.
 
     Returns:
@@ -84,10 +81,10 @@ def _tags_from_json(raw: str | list[Any]) -> tuple[NotBlankStr, ...]:
         msg = "Tags must be a JSON array of non-blank strings"
         logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
         raise OrgMemoryQueryError(msg)
-    return tuple(NotBlankStr(t) for t in parsed)
+    return tuple(NotBlankStr(cast("str", t)) for t in parsed)
 
 
-def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
+def _snapshot_row_to_org_fact(row: DictRow) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a snapshot row.
 
     Returns:
@@ -135,7 +132,7 @@ def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
+def _row_to_operation_log_entry(row: DictRow) -> OperationLogEntry:
     """Reconstruct an ``OperationLogEntry`` from a database row.
 
     Returns:
@@ -183,7 +180,7 @@ def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_snapshot(row: dict[str, Any]) -> OperationLogSnapshot:
+def _row_to_snapshot(row: DictRow) -> OperationLogSnapshot:
     """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
 
     Returns:
@@ -241,7 +238,7 @@ class PostgresOrgFactRepository:
 
     async def _append_to_operation_log(  # noqa: PLR0913
         self,
-        conn: psycopg.AsyncConnection[Any],
+        conn: psycopg.AsyncConnection[TupleRow],
         *,
         fact_id: str,
         operation_type: Literal["PUBLISH", "RETRACT"],
@@ -493,7 +490,7 @@ class PostgresOrgFactRepository:
         limit = max(1, min(limit, 100))
         offset = max(0, int(offset))
         clauses: list[str] = ["retracted_at IS NULL"]
-        params: list[Any] = []
+        params: list[object] = []
 
         if categories is not None and categories:
             placeholders = ",".join("%s" for _ in categories)

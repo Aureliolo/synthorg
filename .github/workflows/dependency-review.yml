@@ -118,6 +118,18 @@ jobs:
           # them here keeps the BUSL-1.1 / Apache-2.0 distribution clean
           # while still allowing the modularity-gate quality tooling to run
           # locally and in CI.
+          #
+          # grimp and import-linter: the import-layering tooling
+          # (``lint-imports`` + the architecture drift gate), declared in
+          # the dev dependency-groups, never imported by runtime synthorg
+          # code nor bundled into Docker images. Both are David Seddon
+          # projects licensed BSD-2-Clause upstream (verified against each
+          # package's installed LICENSE + ``OSI Approved :: BSD License``
+          # classifier). grimp reports a compound
+          # ``BSD-2-Clause AND BSD-2-Clause-Views AND BSD-3-Clause`` because
+          # scancode detects vendored BSD variants, and the action cannot
+          # split AND expressions; import-linter ships no SPDX field so the
+          # action reports it as unknown. Both are permissive.
           allow-dependencies-licenses: >-
             pkg:pypi/codespell@2.4.2,
             pkg:pypi/yamllint@1.38.0,
@@ -164,5 +176,7 @@ jobs:
             pkg:pypi/nvidia-nvjitlink@13.0.88,
             pkg:pypi/nvidia-nvshmem-cu13@3.4.5,
             pkg:pypi/nvidia-nvtx@13.0.85,
-            pkg:pypi/pillow@12.2.0
+            pkg:pypi/pillow@12.2.0,
+            pkg:pypi/grimp@3.14,
+            pkg:pypi/import-linter@2.11
           comment-summary-in-pr: always

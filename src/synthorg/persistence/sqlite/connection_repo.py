@@ -13,7 +13,6 @@ per the persistence-boundary rule documented in
 import contextlib
 import json
 import sqlite3
-from typing import Any
 
 import aiosqlite
 
@@ -55,7 +54,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_connection(row: aiosqlite.Row | tuple[Any, ...]) -> Connection:
+def _row_to_connection(row: aiosqlite.Row) -> Connection:
     """Deserialize a row tuple into a :class:`Connection` model.
 
     Returns:

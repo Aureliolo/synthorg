@@ -2,7 +2,7 @@
 
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
@@ -334,7 +334,7 @@ class SQLiteRiskOverrideRepository:
         return cursor.rowcount > 0
 
 
-def _row_to_override(row: Any) -> RiskTierOverride:
+def _row_to_override(row: aiosqlite.Row) -> RiskTierOverride:
     """Convert a SQLite row to a RiskTierOverride.
 
     Returns:

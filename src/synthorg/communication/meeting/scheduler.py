@@ -54,7 +54,8 @@ from synthorg.observability.events.meeting import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.communication.config import MeetingsConfig, MeetingTypeConfig
+    from synthorg.communication.config import MeetingsConfig
+    from synthorg.communication.meeting.config import MeetingTypeConfig
     from synthorg.persistence.meeting_cooldown_protocol import (
         MeetingCooldownRepository,
     )

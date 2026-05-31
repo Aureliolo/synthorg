@@ -36,7 +36,7 @@ transient-failure retry with temporal backoff.
   building another self-correction loop, extract a dedicated helper
   rather than wedging it through ``base=0`` here.
 
-- ``persistence.postgres.decision_repo._append_with_retry`` retries
+- ``persistence.postgres.decision._cas`` retries
   on ``UniqueViolation`` only when the constraint name indicates a
   ``(task_id, version)`` race; other unique-constraint failures map
   to ``DuplicateRecordError`` immediately.  The retry is

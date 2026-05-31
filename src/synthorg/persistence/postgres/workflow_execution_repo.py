@@ -6,10 +6,10 @@ Uses native JSONB for ``node_executions``, and native TIMESTAMPTZ for
 returns the same Pydantic models as the SQLite backend.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -64,7 +64,7 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _deserialize_node_executions(
-    raw: list[Any],
+    raw: list[DictRow],
 ) -> tuple[WorkflowNodeExecution, ...]:
     """Deserialize JSON array into WorkflowNodeExecution tuple.
 
@@ -84,7 +84,7 @@ def _deserialize_node_executions(
 
 
 def _deserialize_row(
-    row: dict[str, Any],
+    row: DictRow,
     context_id: str,
 ) -> WorkflowExecution:
     """Reconstruct a ``WorkflowExecution`` from a Postgres dict_row.

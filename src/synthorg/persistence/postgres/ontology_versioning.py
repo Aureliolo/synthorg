@@ -7,27 +7,23 @@ over :class:`EntityDefinition`; the dependency arrow points
 persistence -> ontology, never the other way around.
 """
 
-from typing import TYPE_CHECKING, Any
+from psycopg_pool import AsyncConnectionPool
 
+from synthorg.ontology.models import EntityDefinition
 from synthorg.ontology.versioning import _safe_deserialize_snapshot_dict
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.service import VersioningService
-
-if TYPE_CHECKING:
-    from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.version_protocol import VersionRepository
 
 
 def create_postgres_ontology_version_repo(
-    pool: Any,
+    pool: AsyncConnectionPool,
 ) -> VersionRepository[EntityDefinition]:
     """Create a Postgres-backed VersionRepository for EntityDefinition.
 
     Args:
         pool: An open ``psycopg_pool.AsyncConnectionPool`` produced by
-            the persistence backend. Typed as ``Any`` so this module
-            stays inside the persistence boundary linter's Python-level
-            rules; the handle is forwarded straight through.
+            the persistence backend, forwarded straight through.
 
     Returns:
         A repository targeting the ``entity_definition_versions`` table.
@@ -41,7 +37,7 @@ def create_postgres_ontology_version_repo(
 
 
 def create_postgres_ontology_versioning(
-    pool: Any,
+    pool: AsyncConnectionPool,
 ) -> VersioningService[EntityDefinition]:
     """Create a Postgres-backed VersioningService for EntityDefinition.
 

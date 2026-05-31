@@ -10,10 +10,10 @@ name -- robust to accidental SELECT re-ordering.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.critical_errors import reraise_critical
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _row_to_definition(row: dict[str, Any]) -> CustomRuleDefinition:
+def _row_to_definition(row: DictRow) -> CustomRuleDefinition:
     """Deserialize a dict row into a :class:`CustomRuleDefinition`.
 
     Delegates to :func:`row_to_custom_rule` from the shared helper so

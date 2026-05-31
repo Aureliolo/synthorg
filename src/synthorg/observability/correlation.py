@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 import structlog
 
-from synthorg.observability import get_logger
+from synthorg.observability._logger import get_logger
 from synthorg.observability.events.correlation import (
     CORRELATION_ASYNC_DECORATOR_MISUSE,
     CORRELATION_SYNC_DECORATOR_MISUSE,

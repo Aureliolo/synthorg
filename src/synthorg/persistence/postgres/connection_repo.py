@@ -9,9 +9,9 @@ Mutation audit logging stays at the service layer
 per the persistence-boundary rule.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.persistence_errors import QueryError
@@ -56,7 +56,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_connection(row: dict[str, Any]) -> Connection:
+def _row_to_connection(row: DictRow) -> Connection:
     """Deserialize a psycopg dict row into a :class:`Connection`.
 
     Returns:

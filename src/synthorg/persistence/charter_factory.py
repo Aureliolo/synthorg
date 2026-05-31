@@ -7,7 +7,7 @@ the concrete-backend imports here means the persistence boundary holds:
 no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -17,6 +17,9 @@ from synthorg.observability.events.persistence import (
 )
 
 if TYPE_CHECKING:
+    import aiosqlite
+    from psycopg_pool import AsyncConnectionPool
+
     from synthorg.persistence.charter_protocol import CharterRepository
     from synthorg.persistence.protocol import PersistenceBackend
 
@@ -61,12 +64,14 @@ def build_charter_repository(
             SQLiteCharterRepository,
         )
 
-        return SQLiteCharterRepository(handle, write_context=write_context)
+        return SQLiteCharterRepository(
+            cast("aiosqlite.Connection", handle), write_context=write_context
+        )
     from synthorg.persistence.postgres.charter_repo import (  # noqa: PLC0415
         PostgresCharterRepository,
     )
 
-    return PostgresCharterRepository(handle)
+    return PostgresCharterRepository(cast("AsyncConnectionPool", handle))
 
 
 __all__ = ["build_charter_repository"]

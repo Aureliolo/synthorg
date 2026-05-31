@@ -45,7 +45,7 @@ import sqlite3
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Final, Literal
+from typing import Final, Literal
 
 import psycopg
 from yoyo import get_backend, read_migrations  # type: ignore[import-untyped]
@@ -191,7 +191,7 @@ def _redact_url(url: str) -> str:
     return f"{url[:scheme_end]}://..."
 
 
-def _safe_close(b: Any, *, context: str) -> None:
+def _safe_close(b: object, *, context: str) -> None:
     """Close the yoyo backend connection without masking the caller's error.
 
     Yoyo's ``backend.connection.close()`` can raise driver-specific

@@ -5,7 +5,7 @@ import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal
 
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
@@ -78,7 +78,7 @@ def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
     return tuple(NotBlankStr(t) for t in parsed)
 
 
-def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
+def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
     """Reconstruct an ``OrgFact`` from a snapshot row.
 
     Returns:
@@ -127,7 +127,7 @@ def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
+def _row_to_operation_log_entry(row: aiosqlite.Row) -> OperationLogEntry:
     """Reconstruct an ``OperationLogEntry`` from a database row.
 
     Returns:
@@ -175,7 +175,7 @@ def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
         raise OrgMemoryQueryError(msg) from exc
 
 
-def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
+def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
     """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
 
     Returns:

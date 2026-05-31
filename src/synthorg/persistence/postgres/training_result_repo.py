@@ -4,10 +4,10 @@ Postgres-native port of the SQLite training result repository.  Uses
 JSONB for array/object columns and native TIMESTAMPTZ for timestamps.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -58,18 +58,18 @@ ON CONFLICT(id) DO UPDATE SET
 
 
 def _deserialize_count_tuples(
-    raw: list[list[Any]],
+    raw: list[list[object]],
 ) -> tuple[tuple[ContentType, int], ...]:
     """Convert JSONB list of ``[type, count]`` pairs.
 
     Returns:
         The matching collection.
     """
-    return tuple((ContentType(ct), n) for ct, n in raw)
+    return tuple((ContentType(cast("str", ct)), cast("int", n)) for ct, n in raw)
 
 
 def _deserialize_approvals(
-    raw: list[dict[str, Any]],
+    raw: list[DictRow],
 ) -> tuple[TrainingApprovalHandle, ...]:
     """Convert JSONB list of approval handle dicts.
 
@@ -86,7 +86,7 @@ def _deserialize_approvals(
     )
 
 
-def _row_to_result(row: dict[str, Any]) -> TrainingResult:
+def _row_to_result(row: DictRow) -> TrainingResult:
     """Reconstruct a ``TrainingResult`` from a Postgres dict_row.
 
     Postgres returns JSONB as Python lists/dicts, TIMESTAMPTZ as

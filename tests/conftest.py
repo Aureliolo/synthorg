@@ -71,9 +71,10 @@ Cross-worker coordination rule (read before adding a new fixture):
 # arrives too late.
 #
 # The hook install is COMMENTED out alongside the pyproject activation
-# flags because the source tree still carries import cycles whose
-# annotations cannot resolve at runtime. ADR-0006 Section F documents
-# the re-activation checklist.
+# flags: activation surfaces ~1,500 resolved-type mismatches plus the
+# ~1,055-module TYPE_CHECKING-guarded-signature class -- a dedicated
+# multi-PR programme, not a one-line uncomment. ADR-0006 Section F
+# documents the scope and tracks the follow-up work.
 import warnings as _warnings
 
 import typeguard

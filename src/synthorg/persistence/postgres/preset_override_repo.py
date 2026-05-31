@@ -1,9 +1,9 @@
 """Postgres repository for operator-authored preset overrides."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -101,7 +101,7 @@ class PostgresPresetOverrideRepo:
                 error=msg,
             )
             raise QueryError(msg)
-        params: tuple[Any, ...] = (
+        params: tuple[object, ...] = (
             override.preset_name,
             Jsonb([m.model_dump() for m in override.default_models])
             if override.default_models is not None
@@ -230,7 +230,7 @@ class PostgresPresetOverrideRepo:
             raise QueryError(msg) from exc
         return rowcount > 0
 
-    def _row_to_override(self, row: dict[str, Any]) -> PresetOverride:
+    def _row_to_override(self, row: DictRow) -> PresetOverride:
         """Deserialise a Postgres row into a ``PresetOverride``.
 
         Returns:
@@ -240,7 +240,7 @@ class PostgresPresetOverrideRepo:
             ProviderModelConfig as _ProviderModelConfig,
         )
 
-        def _list_or_none(raw: Any) -> list[Any] | None:
+        def _list_or_none(raw: object) -> list[object] | None:
             return raw if isinstance(raw, list) else None
 
         models_raw = _list_or_none(row["default_models"])
@@ -251,7 +251,7 @@ class PostgresPresetOverrideRepo:
         )
         auth_types_raw = _list_or_none(row["supported_auth_types"])
         auth_types: tuple[AuthType, ...] | None = (
-            tuple(AuthType(a) for a in auth_types_raw)
+            tuple(AuthType(cast("str", a)) for a in auth_types_raw)
             if auth_types_raw is not None
             else None
         )

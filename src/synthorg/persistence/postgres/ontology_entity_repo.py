@@ -2,7 +2,9 @@
 
 import json
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from psycopg.rows import BaseRowFactory, DictRow
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -35,11 +37,11 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -77,7 +79,7 @@ class PostgresOntologyEntityRepository:
         """
         return NotBlankStr("postgres")
 
-    def _row_to_entity(self, row: dict[str, Any]) -> EntityDefinition:
+    def _row_to_entity(self, row: DictRow) -> EntityDefinition:
         """Deserialize a psycopg dict row into an EntityDefinition.
 
         Postgres JSONB columns come back as already-parsed lists/dicts
@@ -405,7 +407,7 @@ class PostgresOntologyEntityRepository:
 
     def _rows_to_entities(
         self,
-        rows: Iterable[dict[str, Any]],
+        rows: Iterable[DictRow],
     ) -> tuple[EntityDefinition, ...]:
         """Deserialize rows, skipping corrupted entries.
 

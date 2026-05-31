@@ -1,10 +1,10 @@
 """Postgres repository implementation for :class:`DocMetadata`."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, TupleRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.enums import DocType
@@ -38,7 +38,7 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: int = 10_000
 
 
-def _row_to_metadata(row: dict[str, Any]) -> DocMetadata:
+def _row_to_metadata(row: DictRow) -> DocMetadata:
     """Reconstruct a :class:`DocMetadata` from a Postgres ``dict_row``.
 
     Returns:
@@ -81,7 +81,7 @@ class PostgresDocsRepository:
         )
 
     async def _safe_rollback(
-        self, conn: psycopg.AsyncConnection[Any], *, event: str
+        self, conn: psycopg.AsyncConnection[TupleRow], *, event: str
     ) -> None:
         """Safe rollback."""
         try:
@@ -352,9 +352,7 @@ class PostgresDocsRepository:
         )
         return count
 
-    def _rows_to_tuple(
-        self, rows: tuple[dict[str, Any], ...]
-    ) -> tuple[DocMetadata, ...]:
+    def _rows_to_tuple(self, rows: tuple[DictRow, ...]) -> tuple[DocMetadata, ...]:
         """Deserialise a row batch with one shared error path.
 
         Returns:

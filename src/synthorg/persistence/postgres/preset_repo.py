@@ -10,7 +10,7 @@ to the caller.
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _normalize_config_json(value: Any) -> str:
+def _normalize_config_json(value: object) -> str:
     """Serialize a JSONB dict back to a JSON string for protocol parity.
 
     SQLite's ``config_json`` is stored verbatim as TEXT, so the protocol
@@ -86,7 +86,7 @@ def _config_json_to_jsonb(raw: str) -> Jsonb:
         raise QueryError(msg) from exc
 
 
-def _normalize_timestamp(value: Any) -> str:
+def _normalize_timestamp(value: object) -> str:
     """Return an ISO 8601 string from a ``datetime`` or passthrough ``str``.
 
     Raises:

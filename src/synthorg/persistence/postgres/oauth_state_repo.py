@@ -6,10 +6,10 @@ table.  States are short-lived and consumed once on callback;
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -42,7 +42,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_state(row: dict[str, Any]) -> OAuthState:
+def _row_to_state(row: DictRow) -> OAuthState:
     """Deserialize a dict row into an :class:`OAuthState`.
 
     Returns:

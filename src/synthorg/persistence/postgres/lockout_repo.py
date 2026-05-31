@@ -9,7 +9,9 @@ synchronous ``is_locked`` checks on the auth hot path.
 import asyncio
 import threading
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from psycopg.rows import BaseRowFactory, DictRow
 
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -23,11 +25,11 @@ if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 

@@ -7,10 +7,10 @@ on SQLite) and TIMESTAMPTZ for ``occurred_at`` (vs ISO 8601 TEXT).
 """
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 
 from synthorg.core.persistence_errors import QueryError
@@ -85,7 +85,7 @@ class PostgresProviderAuditRepo:
         # ``model_dump(mode="json")`` so the field-serializer recursively
         # thaws nested containers back to plain builtins before insertion.
         serialized = event.model_dump(mode="json")
-        params: tuple[Any, ...] = (
+        params: tuple[object, ...] = (
             event.provider_name,
             event.event_type,
             event.actor.id,
@@ -135,7 +135,7 @@ class PostgresProviderAuditRepo:
             raise QueryError(msg)
 
         sql = _LIST_BASE_SQL
-        params: list[Any] = [provider_name]
+        params: list[object] = [provider_name]
         if after_id is not None:
             sql += " AND id < %s"
             params.append(after_id)
@@ -215,7 +215,7 @@ class PostgresProviderAuditRepo:
             QueryError: If the database query fails.
         """
         sql = _LIST_BASE_SQL
-        params: list[Any] = [filter_spec.provider_name]
+        params: list[object] = [filter_spec.provider_name]
         effective_offset = offset
         if filter_spec.after_id is not None:
             sql += " AND id < %s"
@@ -322,7 +322,7 @@ class PostgresProviderAuditRepo:
             raise QueryError(msg) from exc
         return rowcount
 
-    def _row_to_event(self, row: dict[str, Any]) -> ProviderAuditEvent:
+    def _row_to_event(self, row: DictRow) -> ProviderAuditEvent:
         """Deserialise a Postgres row dict into a ``ProviderAuditEvent``.
 
         Returns:

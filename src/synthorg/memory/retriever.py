@@ -9,8 +9,8 @@ import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import synthorg.memory.errors as memory_errors
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.memory import errors as memory_errors
 from synthorg.memory.filter import TagBasedMemoryFilter
 from synthorg.memory.formatter import format_memory_context_with_directive
 from synthorg.memory.injection import (

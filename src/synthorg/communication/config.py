@@ -13,8 +13,7 @@ from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
 )
-from synthorg.communication.meeting.config import MeetingProtocolConfig
-from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,
@@ -285,84 +284,6 @@ class MessageBusConfig(BaseModel):
         if self.backend == MessageBusBackend.NATS and self.nats is None:
             msg = "message_bus.nats must be provided when message_bus.backend is 'nats'"
             raise ValueError(msg)
-        return self
-
-
-class MeetingTypeConfig(BaseModel):
-    """Configuration for a single meeting type.
-
-    Maps to the Communication design page ``meetings.types[]``.  Exactly one of
-    ``frequency`` or ``trigger`` must be set.
-
-    Attributes:
-        name: Meeting type name (e.g. ``"daily_standup"``).
-        frequency: Recurrence schedule (mutually exclusive with trigger).
-        trigger: Event trigger (mutually exclusive with frequency).
-        participants: Participant role or agent identifiers.
-        duration_tokens: Token budget for the meeting.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    name: NotBlankStr = Field(description="Meeting type name")
-    frequency: MeetingFrequency | None = Field(
-        default=None,
-        description="Recurrence schedule",
-    )
-    trigger: NotBlankStr | None = Field(
-        default=None,
-        description="Event trigger",
-    )
-    participants: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="Participant role or agent identifiers",
-    )
-    duration_tokens: int = Field(
-        default=2000,
-        gt=0,
-        description="Token budget for the meeting",
-    )
-    protocol_config: MeetingProtocolConfig = Field(
-        default_factory=MeetingProtocolConfig,
-        description="Meeting protocol configuration",
-    )
-    min_interval_seconds: int | None = Field(
-        default=None,
-        ge=1,
-        description="Minimum seconds between event-triggered meetings of this type",
-    )
-
-    @model_validator(mode="after")
-    def _validate_frequency_or_trigger(self) -> Self:
-        """Exactly one of frequency or trigger must be set.
-
-        Returns:
-            The validated meeting-type config.
-
-        Raises:
-            ValueError: If both or neither of ``frequency`` / ``trigger``
-                are set, or ``min_interval_seconds`` is set without a
-                trigger.
-        """
-        if self.frequency is not None and self.trigger is not None:
-            msg = "Only one of frequency or trigger may be set, not both"
-            raise ValueError(msg)
-        if self.frequency is None and self.trigger is None:
-            msg = "Exactly one of frequency or trigger must be set"
-            raise ValueError(msg)
-        if self.min_interval_seconds is not None and self.trigger is None:
-            msg = "min_interval_seconds requires trigger-based meetings"
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_participants(self) -> Self:
-        """Ensure participant entries are unique.
-
-        Returns:
-            The validated meeting-type config.
-        """
-        validate_unique_strings(self.participants, "participants")
         return self
 
 

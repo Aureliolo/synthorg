@@ -13,10 +13,10 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, override
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, override
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import TypeAdapter
 
@@ -59,7 +59,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_escalation(row: dict[str, Any]) -> Escalation:
+def _row_to_escalation(row: DictRow) -> Escalation:
     """Deserialise a Postgres row dict into an :class:`Escalation`.
 
     ``conflict_json`` and ``decision_json`` arrive as native Python

@@ -61,7 +61,12 @@ _BACKEND_PATHS: Final[tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...]] 
     (
         "src/synthorg/persistence/postgres/backend.py",
         "PostgresPersistenceBackend",
-        (),
+        (
+            (
+                "src/synthorg/persistence/postgres/_backend_accessors.py",
+                "_PostgresBackendRepositoryAccessors",
+            ),
+        ),
     ),
 )
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: persistence-protocol-uniformity"

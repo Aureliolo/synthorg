@@ -9,7 +9,6 @@ from synthorg.communication.config import (
     HierarchyConfig,
     LoopPreventionConfig,
     MeetingsConfig,
-    MeetingTypeConfig,
     MessageBusConfig,
     MessageRetentionConfig,
     RateLimitConfig,
@@ -125,6 +124,7 @@ from synthorg.communication.meeting import (
     StructuredPhasesProtocol,
     TaskCreator,
 )
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.message import (
     DataPart,
     FilePart,

@@ -9,10 +9,10 @@ Read paths use ``psycopg.rows.dict_row`` so row access is by column
 name -- robust to accidental SELECT re-ordering.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
+def _row_to_installation(row: DictRow) -> McpInstallation:
     """Deserialize a dict row into an :class:`McpInstallation`.
 
     Returns:
