@@ -1,4 +1,4 @@
-"""META-MCP acceptance sweep for the full 241-tool MCP surface.
+"""META-MCP acceptance sweep for the full 242-tool MCP surface.
 
 The unit sweep in ``tests/unit/meta/mcp/test_all_handlers_wired.py``
 already asserts parity between the registry and the handler map, and
