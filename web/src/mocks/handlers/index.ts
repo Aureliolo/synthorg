@@ -63,6 +63,7 @@ import { fineTuningHandlers } from './fine-tuning'
 import { healthHandlers } from './health'
 import { integrationHealthHandlers } from './integration-health'
 import { knowledgeHandlers } from './knowledge'
+import { learningHandlers } from './learning'
 import { mcpCatalogDefaultHandlers } from './mcp-catalog'
 import { meetingsHandlers } from './meetings'
 import { messagesHandlers } from './messages'
@@ -121,6 +122,7 @@ export const defaultHandlers = [
   ...healthHandlers,
   ...integrationHealthHandlers,
   ...knowledgeHandlers,
+  ...learningHandlers,
   ...mcpCatalogDefaultHandlers,
   ...meetingsHandlers,
   ...messagesHandlers,

@@ -14,6 +14,7 @@ import {
   KeyRound,
   Layers,
   LayoutDashboard,
+  LineChart,
   LibraryBig,
   MessageSquare,
   Package,
@@ -60,6 +61,7 @@ export function SidebarNav({ collapsed }: SidebarNavProps) {
         <SidebarNavGroup>
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.TRAINING} icon={GraduationCap} label="Training" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.LEARNING_CURVE} icon={LineChart} label="Learning" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.WORKFLOWS} icon={Workflow} label="Workflows" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SUBWORKFLOWS} icon={Layers} label="Subworkflows" collapsed={collapsed} />
