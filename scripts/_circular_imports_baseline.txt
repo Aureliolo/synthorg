@@ -8,6 +8,3 @@
 #
 # Regenerate (rare; requires explicit user approval) by calling
 # write_baseline() via the gate's Python API.
-synthorg.memory -> synthorg.memory.retriever
-synthorg.observability -> synthorg.observability.correlation
-synthorg.persistence -> synthorg.persistence.factory -> synthorg.persistence.sqlite.backend
