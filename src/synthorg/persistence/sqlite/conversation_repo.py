@@ -11,11 +11,9 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from aiosqlite import Row
 
-from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.core.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import (
     get_logger,
@@ -30,9 +28,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONVERSATION_TURN_FAILED,
     PERSISTENCE_CONVERSATION_TURN_QUERIED,
 )
+from synthorg.persistence._conversation_marshalling import (
+    row_to_conversation,
+    row_to_turn,
+)
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    coerce_row_timestamp,
     format_iso_utc,
     validate_pagination_args,
 )
@@ -127,74 +128,6 @@ async def _safe_rollback(
             operation=operation,
             **log_context,
         )
-
-
-def _row_to_conversation(row: Row) -> Conversation:
-    """Convert a database row into a :class:`Conversation`.
-
-    Raises:
-        QueryError: If the row contains corrupt or unparseable data.
-
-    Returns:
-        Result of type ``Conversation``.
-    """
-    try:
-        return Conversation(
-            id=str(row["id"]),
-            created_by=str(row["created_by"]),
-            created_at=coerce_row_timestamp(row["created_at"]),
-            updated_at=coerce_row_timestamp(row["updated_at"]),
-            status=ConversationStatus(str(row["status"])),
-            kind=ConversationKind(str(row["kind"])),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversation row"
-        logger.warning(
-            PERSISTENCE_CONVERSATION_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
-
-
-def _row_to_turn(row: Row) -> ConversationTurn:
-    """Convert a database row into a :class:`ConversationTurn`.
-
-    Raises:
-        QueryError: If the row contains corrupt or unparseable data.
-
-    Returns:
-        Result of type ``ConversationTurn``.
-    """
-    try:
-        author_agent_id = row["author_agent_id"]
-        author_name = row["author_name"]
-        routed_topic = row["routed_topic"]
-        routing_confidence = row["routing_confidence"]
-        return ConversationTurn(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            sequence=int(row["sequence"]),
-            role=ConversationRole(str(row["role"])),
-            content=str(row["content"]),
-            author_agent_id=(None if author_agent_id is None else str(author_agent_id)),
-            author_name=None if author_name is None else str(author_name),
-            routed_topic=None if routed_topic is None else str(routed_topic),
-            routing_confidence=(
-                None if routing_confidence is None else float(routing_confidence)
-            ),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversation turn row"
-        logger.warning(
-            PERSISTENCE_CONVERSATION_TURN_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 class SQLiteConversationRepository:
@@ -297,7 +230,7 @@ class SQLiteConversationRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        conv = _row_to_conversation(row)
+        conv = row_to_conversation(row)
         logger.debug(PERSISTENCE_CONVERSATION_FETCHED, conversation_id=entity_id)
         return conv
 
@@ -329,7 +262,7 @@ class SQLiteConversationRepository:
         try:
             cursor = await self._db.execute(sql, (effective_limit, offset))
             rows = await cursor.fetchall()
-            items = tuple(_row_to_conversation(r) for r in rows)
+            items = tuple(row_to_conversation(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -611,7 +544,7 @@ class SQLiteConversationTurnRepository:
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
-            items = tuple(_row_to_turn(r) for r in rows)
+            items = tuple(row_to_turn(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:

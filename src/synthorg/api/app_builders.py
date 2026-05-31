@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
+    from synthorg.meta.chief_of_staff.routing import RoleRouter
     from synthorg.persistence.conversational_factory import (
         ConversationalRepositories,
     )
@@ -214,6 +215,7 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     repositories: ConversationalRepositories | None,
     cost_tracker: CostTracker | None,
     clock: Clock | None = None,
+    role_router: RoleRouter | None = None,
 ) -> ChiefOfStaffProposer | None:
     """Resolve a ChiefOfStaffProposer from config + wiring.
 
@@ -228,7 +230,9 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
 
     The provider is the first registered one (same convention as the
     explain-only chat backend); the propose model name in config is
-    provider-agnostic.
+    provider-agnostic. When *role_router* is supplied (concern routing,
+    #1969), the proposer also receives *provider_registry* so a routed
+    role agent answers on its own configured provider.
 
     Returns:
         The ``ChiefOfStaffProposer`` value when present, ``None`` otherwise.
@@ -269,6 +273,8 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
         approval_store=approval_store,
         clock=clock,
         cost_tracker=cost_tracker,
+        role_router=role_router,
+        provider_registry=provider_registry,
     )
 
 

@@ -27,6 +27,36 @@ if TYPE_CHECKING:
 _DEFAULT_PERSONA_FENCES: tuple[str, ...] = (TAG_TASK_DATA, TAG_PEER_CONTRIBUTION)
 
 
+def render_agent_persona_body(identity: AgentIdentity) -> str:
+    """Render the identity preamble for *identity* without any directive.
+
+    The role + department + seniority + personality lines that put the
+    model in character, with no untrusted-content directive appended.
+    Callers that already emit their own directive (the concern-routed
+    proposer, whose prompt template appends one) inject this preamble as
+    the identity line; callers building a standalone ``system`` prompt
+    use :func:`render_agent_system_prompt` instead.
+
+    Args:
+        identity: The agent whose persona drives the turn.
+
+    Returns:
+        The multi-line persona preamble (no trailing directive).
+    """
+    lines: list[str] = [
+        f"You are {identity.name}, a {identity.role} "
+        f"in the {identity.department} department.",
+        f"Seniority level: {identity.level.value}.",
+    ]
+    traits = identity.personality.traits
+    if traits:
+        lines.append("Personality traits: " + ", ".join(traits) + ".")
+    communication_style = identity.personality.communication_style
+    if communication_style:
+        lines.append(f"Communication style: {communication_style}.")
+    return "\n".join(lines)
+
+
 def render_agent_system_prompt(
     identity: AgentIdentity,
     *,
@@ -50,20 +80,9 @@ def render_agent_system_prompt(
         The rendered system prompt, including the untrusted-content
         directive.
     """
-    lines: list[str] = [
-        f"You are {identity.name}, a {identity.role} "
-        f"in the {identity.department} department.",
-        f"Seniority level: {identity.level.value}.",
-    ]
-    traits = identity.personality.traits
-    if traits:
-        lines.append("Personality traits: " + ", ".join(traits) + ".")
-    communication_style = identity.personality.communication_style
-    if communication_style:
-        lines.append(f"Communication style: {communication_style}.")
-    body = "\n".join(lines)
+    body = render_agent_persona_body(identity)
     directive = untrusted_content_directive(tuple(fences))
     return f"{body}\n\n{directive}"
 
 
-__all__ = ["render_agent_system_prompt"]
+__all__ = ["render_agent_persona_body", "render_agent_system_prompt"]

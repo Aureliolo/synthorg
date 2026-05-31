@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create, type StoreApi } from 'zustand'
 
 import {
   getMetaConfig,
@@ -6,8 +6,10 @@ import {
   listABTests,
   listProposals,
   postChat,
+  postChatPropose,
   type ABTestSummary,
   type ChatResponse,
+  type ConversationalProposeResponse,
   type MetaConfig,
   type ProposalSummary,
   type SignalsResponse,
@@ -18,6 +20,31 @@ import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
+
+type MetaSet = StoreApi<MetaState>['setState']
+
+async function runProposeConversation(
+  set: MetaSet,
+  message: string,
+  conversationId?: string,
+): Promise<ConversationalProposeResponse | null> {
+  set({ proposeLoading: true, error: null })
+  try {
+    return await postChatPropose(message, conversationId)
+  } catch (err) {
+    const msg = getErrorMessage(err)
+    log.error('Propose request failed', sanitizeForLog(err))
+    set({ error: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Propose request failed',
+      description: msg,
+    })
+    return null
+  } finally {
+    set({ proposeLoading: false })
+  }
+}
 
 interface MetaState {
   // Data
@@ -30,12 +57,17 @@ interface MetaState {
   loading: boolean
   error: string | null
   chatLoading: boolean
+  proposeLoading: boolean
 
   // Actions
   fetchAll: () => Promise<void>
   fetchProposals: () => Promise<void>
   fetchSignals: () => Promise<void>
   sendChat: (question: string) => Promise<ChatResponse | null>
+  proposeConversation: (
+    message: string,
+    conversationId?: string,
+  ) => Promise<ConversationalProposeResponse | null>
 }
 
 export const useMetaStore = create<MetaState>((set) => ({
@@ -46,6 +78,7 @@ export const useMetaStore = create<MetaState>((set) => ({
   loading: false,
   error: null,
   chatLoading: false,
+  proposeLoading: false,
 
   fetchAll: async () => {
     set({ loading: true, error: null })
@@ -111,4 +144,7 @@ export const useMetaStore = create<MetaState>((set) => ({
       set({ chatLoading: false })
     }
   },
+
+  proposeConversation: (message: string, conversationId?: string) =>
+    runProposeConversation(set, message, conversationId),
 }))

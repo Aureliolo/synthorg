@@ -476,6 +476,7 @@ async def _wire_chief_of_staff_proposer(
             persistent SQLite ApprovalStore (a combination that cannot
             durably persist conversational-intake approvals).
     """
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
@@ -531,12 +532,41 @@ async def _wire_chief_of_staff_proposer(
             approval_store_type=type(effective_approval_store).__name__,
         )
         raise ServiceUnavailableError(msg)
+    # Concern routing (#1969): build the role router when an agent
+    # registry is present so a routed turn answers as the right role
+    # agent. ``build_role_router`` returns None when routing is off or
+    # its strategy's deps are absent, leaving the proposer in v1 generic
+    # mode. Stored on the slice so the manifest treats it as wired.
+    role_router = None
+    agent_registry = app_state.slice(HrStateSlice).agent_registry
+    if agent_registry is not None:
+        from synthorg.meta.chief_of_staff.routing import (  # noqa: PLC0415
+            build_role_router,
+        )
+
+        role_router = build_role_router(
+            config=meta_self_improvement.chief_of_staff,
+            provider_registry=provider_registry,
+            agent_registry=agent_registry,
+            cost_tracker=cost_tracker,
+        )
+        if role_router is not None:
+            app_state.wire(MetaStateSlice, role_router=role_router)
+            logger.info(
+                API_APP_STARTUP,
+                service="chief_of_staff_proposer",
+                note="role router wired",
+                routing_strategy=str(
+                    meta_self_improvement.chief_of_staff.routing_strategy
+                ),
+            )
     proposer = build_chief_of_staff_proposer(
         meta_self_improvement.chief_of_staff,
         provider_registry=provider_registry,
         approval_store=effective_approval_store,
         repositories=repositories,
         cost_tracker=cost_tracker,
+        role_router=role_router,
     )
     if proposer is not None:
         app_state.wire(MetaStateSlice, chief_of_staff_proposer=proposer)

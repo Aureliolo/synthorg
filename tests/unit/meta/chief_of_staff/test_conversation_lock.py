@@ -35,8 +35,8 @@ class TestConversationLockRegistry:
                 order.append(f"{tag}-end")
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(worker("a"))
-            tg.create_task(worker("b"))
+            _ = tg.create_task(worker("a"))
+            _ = tg.create_task(worker("b"))
 
         # Each worker's start/end are adjacent: no interleaving.
         assert order.index("a-end") == order.index("a-start") + 1
@@ -55,7 +55,7 @@ class TestConversationLockRegistry:
                 gate.set()
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(worker("conv-x"))
-            tg.create_task(worker("conv-y"))
+            _ = tg.create_task(worker("conv-x"))
+            _ = tg.create_task(worker("conv-y"))
 
         assert gate.is_set()

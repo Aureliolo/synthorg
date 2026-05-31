@@ -67,6 +67,12 @@ export const metaHandlers = [
             priority: 'medium',
           },
         ],
+        // Concern routing (#1969) is off by default: the generic Chief
+        // of Staff answers, so no role attribution is carried.
+        responder_role: null,
+        responder_name: null,
+        routed_topic: null,
+        routing_confidence: null,
       }),
     )
   }),

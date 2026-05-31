@@ -39,6 +39,19 @@ _PROPOSE_MAX_PROPOSALS_MAX: int = 20
 _PROPOSE_MAX_CLARIFICATION_DEFAULT: int = 5
 _PROPOSE_MAX_CLARIFICATION_MIN: int = 1
 _PROPOSE_MAX_CLARIFICATION_MAX: int = 20
+# Concern routing runs a deterministic classification pass (temperature
+# 0.0) so the topic/role/confidence JSON is stable; the 0.0/2.0 bounds
+# mirror the same provider-agnostic sampler range as the propose path.
+_ROUTING_TEMPERATURE_DEFAULT: float = 0.0
+# A classification reply is a single small JSON object (topic + role +
+# confidence); 200 tokens fits it comfortably and 50 is the floor below
+# which even that minimal object risks truncation.
+_ROUTING_MAX_TOKENS_DEFAULT: int = 200
+_ROUTING_MAX_TOKENS_MIN: int = 50
+# Below 0.6 classifier confidence the request falls back to the generic
+# Chief of Staff rather than routing to a possibly-wrong role; the
+# 0.0/1.0 envelope is the natural probability range.
+_ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -80,6 +93,21 @@ class ChiefOfStaffConfig(BaseModel):
             turn (prevents an unbounded clarify loop).
         propose_default_risk_level: Risk level stamped on the approval
             item created for each proposed work item.
+        routing_enabled: Enable concern-routing in front of the
+            clarify-and-propose loop. When off, every turn is answered by
+            the generic Chief of Staff persona (v1 behaviour).
+        routing_strategy: Which ``RoleRouter`` strategy to build:
+            ``"llm"`` (a concern classifier) or ``"keyword"`` (a static
+            keyword-to-role map).
+        routing_model: LLM model identifier for the concern classifier.
+        routing_temperature: Sampling temperature for the classifier.
+        routing_max_tokens: Token budget for one classification reply.
+        routing_confidence_floor: Minimum classifier confidence (0-1) to
+            route to a role; below it the turn falls back to the generic
+            Chief of Staff.
+        routing_default_role: Role to try when the classifier is
+            confident but names a role with no active agent; falls back
+            to the generic persona when that role is also absent.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -134,3 +162,31 @@ class ChiefOfStaffConfig(BaseModel):
         le=_PROPOSE_MAX_CLARIFICATION_MAX,
     )
     propose_default_risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM
+
+    # ── Concern routing (#1969) ───────────────────────────────────
+
+    routing_enabled: bool = False
+    routing_strategy: Literal["llm", "keyword"] = "llm"
+    routing_model: NotBlankStr = Field(
+        default=NotBlankStr("example-small-001"),
+        description="Model for the concern-routing classifier LLM calls",
+    )
+    routing_temperature: float = Field(
+        default=_ROUTING_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    routing_max_tokens: int = Field(
+        default=_ROUTING_MAX_TOKENS_DEFAULT,
+        ge=_ROUTING_MAX_TOKENS_MIN,
+    )
+    routing_confidence_floor: float = Field(
+        default=_ROUTING_CONFIDENCE_FLOOR_DEFAULT,
+        ge=0.0,
+        le=1.0,
+    )
+    routing_default_role: NotBlankStr = Field(
+        default=NotBlankStr("CEO"),
+        description="Role to try when a confident classification names "
+        "a role with no active agent",
+    )

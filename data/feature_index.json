@@ -39,7 +39,8 @@
       "depends_on": [],
       "directory": "src/synthorg/api",
       "ghost_wired_symbols": [
-        "build_chief_of_staff_proposer"
+        "build_chief_of_staff_proposer",
+        "build_role_router"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -772,7 +773,8 @@
         "analytics_service",
         "chief_of_staff_proposer",
         "chief_of_staff_chat",
-        "conversational_proposal_repo"
+        "conversational_proposal_repo",
+        "role_router"
       ]
     },
     {
@@ -1176,6 +1178,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-30T23:28:38.740634Z",
+  "generated_at": "2026-05-31T11:43:00.118101Z",
   "schema_version": 1
 }

@@ -18,6 +18,7 @@ from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
+from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.meta.reports.service import ReportsService
 from synthorg.meta.service import SelfImprovementService
 from synthorg.meta.signals.service import SignalsService
@@ -43,6 +44,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     chief_of_staff_proposer: ChiefOfStaffProposer | None = None
     chief_of_staff_chat: ChiefOfStaffChat | None = None
     conversational_proposal_repo: ConversationalProposalRepository | None = None
+    role_router: RoleRouter | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:

@@ -240,7 +240,7 @@
     },
     {
       "kind": "code",
-      "loc": 446,
+      "loc": 451,
       "loc_cap": 500,
       "module": "src/synthorg/api/app_builders.py",
       "owning_feature": "api_core"
@@ -1514,7 +1514,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 532,
+      "loc": 556,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -3278,7 +3278,7 @@
     },
     {
       "kind": "code",
-      "loc": 292,
+      "loc": 272,
       "loc_cap": 500,
       "module": "src/synthorg/communication/meeting/agent_caller.py",
       "owning_feature": "communication"
@@ -4093,6 +4093,13 @@
       "loc": 254,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_resume.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 67,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/agent_persona.py",
       "owning_feature": "engine"
     },
     {
@@ -9795,9 +9802,23 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 142,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 38,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/conversation_lock.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 51,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/enums.py",
       "owning_feature": "meta"
     },
     {
@@ -9816,7 +9837,7 @@
     },
     {
       "kind": "code",
-      "loc": 391,
+      "loc": 424,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/models.py",
       "owning_feature": "meta"
@@ -9837,14 +9858,14 @@
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/prompts.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 677,
+      "loc": 699,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/propose.py",
       "owning_feature": "meta"
@@ -9858,9 +9879,30 @@
     },
     {
       "kind": "code",
+      "loc": 181,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/responder.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
       "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/role.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "service",
+      "loc": 426,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/routing.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 20,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/transcript.py",
       "owning_feature": "meta"
     },
     {
@@ -10922,7 +10964,7 @@
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/meta/state.py",
       "owning_feature": "meta"
@@ -11517,7 +11559,7 @@
     },
     {
       "kind": "code",
-      "loc": 33,
+      "loc": 36,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/chief_of_staff.py",
       "owning_feature": "observability"
@@ -12686,6 +12728,13 @@
     },
     {
       "kind": "code",
+      "loc": 85,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_conversation_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 223,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_generics.py",
@@ -13148,7 +13197,7 @@
     },
     {
       "kind": "code",
-      "loc": 497,
+      "loc": 459,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_repo.py",
       "owning_feature": "persistence"
@@ -13764,7 +13813,7 @@
     },
     {
       "kind": "code",
-      "loc": 564,
+      "loc": 530,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversation_repo.py",
       "owning_feature": "persistence"

@@ -12613,6 +12613,10 @@ export type components = {
             readonly conversation_id: string;
             /** @default [] */
             readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
+            readonly responder_name: string | null;
+            readonly responder_role: string | null;
+            readonly routed_topic: string | null;
+            readonly routing_confidence: number | null;
             /** @enum {string} */
             readonly status: "needs_clarification" | "proposed";
         };

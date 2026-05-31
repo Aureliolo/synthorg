@@ -57,6 +57,6 @@ FEATURE: FeatureModule = FeatureManifest(
     mcp_handlers=(),
     lifecycle_hooks=(),
     construction_wirer=wire_construction,
-    ghost_wired_symbols=("build_chief_of_staff_proposer",),
+    ghost_wired_symbols=("build_chief_of_staff_proposer", "build_role_router"),
     depends_on=(),
 )

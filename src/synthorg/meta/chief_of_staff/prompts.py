@@ -222,8 +222,17 @@ Be specific and cite which signals support your answer.
 
 # Clarify-or-propose prompt template. The model must return STRICT
 # JSON matching the ProposeDecision schema and nothing else.
+#
+# ``{responder_identity}`` is the identity preamble: the literal
+# ``"You are the Chief of Staff."`` for the generic responder, or a role
+# agent's persona body (via ``render_agent_persona_body``) when the turn
+# is concern-routed. Parametrising it -- rather than prepending a second
+# ``system`` message -- keeps a single, non-contradictory identity claim
+# in the prompt so a routed turn actually answers in the role's voice.
 CONVERSATIONAL_PROPOSE_PROMPT = """\
-You are the Chief of Staff. A human is asking the organisation to do
+{responder_identity}
+
+A human is asking the organisation to do
 work, in natural language. Your job for THIS turn is exactly one of:
 
 1. Ask ONE clarifying question, if the request is underspecified and
@@ -269,5 +278,44 @@ Rules:
   human has not named a project and you cannot infer one, ask a
   clarifying question instead of guessing.
 - Prefer asking a clarifying question over proposing vague work.
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))
+
+# Concern-routing classifier prompt. Picks the single best-fit role for
+# the latest human message from the live candidate roster. The model
+# must return STRICT JSON matching the ConcernClassification schema and
+# nothing else. ``{candidate_roles}`` is system-controlled (the active
+# agent roster) and is NOT fenced; ``{conversation_history}`` is human
+# content and MUST be wrapped via ``wrap_untrusted(TAG_TASK_DATA, ...)``.
+CONCERN_ROUTING_PROMPT = """\
+You are a routing classifier for a synthetic organisation. Read the
+conversation so far and decide which ONE role is best suited to answer
+the latest human message. Do not answer the message yourself.
+
+## Candidate roles
+
+{candidate_roles}
+
+## Conversation so far (oldest first)
+
+{conversation_history}
+
+## Output contract (STRICT)
+
+Return ONLY a single JSON object, no prose, no markdown fences, with
+exactly this shape:
+
+{{
+  "topic": <short concern label, e.g. "budget", "strategy", "technical">,
+  "role": <one role name copied EXACTLY from a candidate above>,
+  "confidence": <number between 0.0 and 1.0>
+}}
+
+Rules:
+- "role" MUST be copied exactly from one of the candidate role names.
+- "topic" is a short lower-case label describing the concern.
+- Set "confidence" to your certainty (0.0-1.0) that this role is the
+  best fit. If no role clearly fits, pick the closest and use a low
+  confidence so the request falls back to the Chief of Staff.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))

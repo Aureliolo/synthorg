@@ -480,6 +480,16 @@ class ProposeResult(BaseModel):
             ``status == "proposed"``.
         conversation_closed: ``True`` when the clarification cap was
             reached and the conversation was force-closed.
+        responder_role: Role of the agent that answered this turn when
+            the message was concern-routed; ``None`` for the generic
+            Chief of Staff responder (routing off or below the
+            confidence floor).
+        responder_name: Display name of the responding role agent when
+            routed; ``None`` for the generic persona.
+        routed_topic: Classified concern label that selected the
+            responding role; ``None`` when not routed.
+        routing_confidence: Classifier confidence (0-1) for the routed
+            topic; ``None`` when not routed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -489,6 +499,10 @@ class ProposeResult(BaseModel):
     clarifying_question: NotBlankStr | None = None
     proposals: tuple[ProposedApprovalSummary, ...] = ()
     conversation_closed: bool = False
+    responder_role: NotBlankStr | None = None
+    responder_name: NotBlankStr | None = None
+    routed_topic: NotBlankStr | None = None
+    routing_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _validate_status_payload(self) -> Self:

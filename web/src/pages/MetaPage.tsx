@@ -1,5 +1,6 @@
 import {
   Brain,
+  ClipboardList,
   FlaskConical,
   MessageCircle,
   RefreshCw,
@@ -18,6 +19,7 @@ import { useMetaData } from '@/hooks/useMetaData'
 
 import { MetaABTestView } from './meta/MetaABTestView'
 import { MetaChat } from './meta/MetaChat'
+import { MetaPropose } from './meta/MetaPropose'
 import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
@@ -98,9 +100,14 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
           <MetaProposalList proposals={proposals} />
         </SectionCard>
         {config?.chief_of_staff_enabled && (
-          <SectionCard title="Chief of Staff" icon={MessageCircle}>
-            <MetaChat />
-          </SectionCard>
+          <>
+            <SectionCard title="Chief of Staff" icon={MessageCircle}>
+              <MetaChat />
+            </SectionCard>
+            <SectionCard title="Conversational Intake" icon={ClipboardList}>
+              <MetaPropose />
+            </SectionCard>
+          </>
         )}
       </div>
     </ErrorBoundary>

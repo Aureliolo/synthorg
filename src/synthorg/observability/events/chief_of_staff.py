@@ -54,3 +54,9 @@ COS_PROPOSE_FAILED: Final[str] = "chief_of_staff.propose.failed"
 COS_CONVERSATION_STATUS_TRANSITIONED: Final[str] = (
     "chief_of_staff.conversation.status_transitioned"
 )
+
+# -- Concern routing ---------------------------------------------------
+
+COS_ROUTING_ROUTED: Final[str] = "chief_of_staff.routing.routed"
+COS_ROUTING_FALLBACK: Final[str] = "chief_of_staff.routing.fallback"
+COS_ROUTING_RESPONSE_INVALID: Final[str] = "chief_of_staff.routing.response_invalid"
