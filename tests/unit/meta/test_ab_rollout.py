@@ -1,6 +1,6 @@
 """Unit tests for A/B test rollout strategy."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -37,10 +37,22 @@ pytestmark = pytest.mark.unit
 # -- Helpers ---------------------------------------------------------------
 
 
+# assign_groups hashes ``agent_id:proposal_id`` per agent, so the control/
+# treatment split is a function of the proposal id. A random id leaves both
+# group sizes binomial -- ~0.2% of ids send all 10 roster agents to one group,
+# emptying the other and short-circuiting execute() to INCONCLUSIVE before the
+# applier runs. Pinning the id makes the split a constant (a verified, balanced
+# 5/5 over agent-0..agent-9 at control_fraction=0.5) so outcome-asserting tests
+# are deterministic instead of flaking ~1-in-500 runs.
+_FIXED_PROPOSAL_ID: UUID = UUID(int=1)
+
+
 def _proposal(
     strategy: RolloutStrategyType = RolloutStrategyType.AB_TEST,
+    proposal_id: UUID = _FIXED_PROPOSAL_ID,
 ) -> ImprovementProposal:
     return ImprovementProposal(
+        id=proposal_id,
         altitude=ProposalAltitude.CONFIG_TUNING,
         title="test ab proposal",
         description="test ab",
