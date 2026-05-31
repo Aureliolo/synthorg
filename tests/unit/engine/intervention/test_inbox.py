@@ -136,7 +136,9 @@ class TestSteeringInbox:
 
     async def test_read_failure_is_best_effort(self) -> None:
         class _BoomRepo:
-            async def list_current(self, *_args: object, **_kwargs: object) -> tuple:
+            async def list_current(
+                self, *_args: object, **_kwargs: object
+            ) -> tuple[object, ...]:
                 msg = "db down"
                 raise RuntimeError(msg)
 

@@ -9,7 +9,8 @@ a pending replan the Plan/Hybrid loops consume at the next step boundary.
 This module owns the steering message wrap, so ``loop_helpers`` (which must not
 wrap, per its module note) stays pure control flow. The directive text is stored
 raw in the brain and wrapped here with ``TAG_BRAIN_STATE`` at the injection
-boundary, mirroring the project-brain SEC-1 contract.
+boundary so untrusted operator text cannot break out of its fence into the
+trusted prompt frame.
 """
 
 from synthorg.core.critical_errors import reraise_critical

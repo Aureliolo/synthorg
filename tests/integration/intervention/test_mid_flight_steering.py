@@ -1,4 +1,4 @@
-"""Acceptance: a run is redirected mid-flight and the agent continues (#1997).
+"""Acceptance: a run is redirected mid-flight and the agent continues.
 
 Wires the real :class:`SteeringService` against the real project-brain engine
 (chunker + indexer + writer + service over an embedded git repo + a real

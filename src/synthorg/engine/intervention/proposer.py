@@ -12,6 +12,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.models import SteeringSupersessionProposal
@@ -22,12 +23,17 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import STEERING_PROPOSE_FAILED
+from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
     from synthorg.core.task import Task
     from synthorg.providers.protocol import CompletionProvider
+
+_PROPOSE_TASK_ID: NotBlankStr = NotBlankStr("system:steering:propose")
+_SYSTEM_AGENT_ID: NotBlankStr = NotBlankStr("system")
 
 logger = get_logger(__name__)
 
@@ -90,9 +96,11 @@ class LLMSupersessionProposer:
         provider: CompletionProvider,
         *,
         model: str,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
+        self._cost_tracker = cost_tracker
 
     async def propose(
         self,
@@ -118,15 +126,21 @@ class LLMSupersessionProposer:
             )
         candidate_ids = {str(t.id) for t in candidate_tasks}
         try:
-            response = await self._provider.complete(
-                messages=self._build_messages(directive_text, candidate_tasks),
-                model=self._model,
-                tools=None,
-                config=CompletionConfig(
-                    temperature=_PROPOSER_TEMPERATURE,
-                    max_tokens=_PROPOSER_MAX_TOKENS,
-                ),
-            )
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=_SYSTEM_AGENT_ID,
+                task_id=_PROPOSE_TASK_ID,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                response = await self._provider.complete(
+                    messages=self._build_messages(directive_text, candidate_tasks),
+                    model=self._model,
+                    tools=None,
+                    config=CompletionConfig(
+                        temperature=_PROPOSER_TEMPERATURE,
+                        max_tokens=_PROPOSER_MAX_TOKENS,
+                    ),
+                )
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
@@ -214,6 +228,7 @@ def build_supersession_proposer(
     *,
     model: str | None = None,
     enabled: bool = True,
+    cost_tracker: CostTracker | None = None,
 ) -> SteeringSupersessionProposer:
     """Select the supersession proposer implementation.
 
@@ -222,5 +237,5 @@ def build_supersession_proposer(
         feature flag are all present; otherwise a :class:`NoOpSupersessionProposer`.
     """
     if provider is not None and model is not None and enabled:
-        return LLMSupersessionProposer(provider, model=model)
+        return LLMSupersessionProposer(provider, model=model, cost_tracker=cost_tracker)
     return NoOpSupersessionProposer()

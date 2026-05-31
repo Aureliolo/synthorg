@@ -66,11 +66,13 @@ class TestBuildSteeringMessage:
     def test_redirect_message(self) -> None:
         msg = build_steering_message(_directive(kind=InterventionKind.REDIRECT))
         assert msg.role is MessageRole.USER
+        assert msg.content is not None
         assert "REDIRECT" in msg.content
         assert "use Postgres not Mongo" in msg.content
 
     def test_hint_message(self) -> None:
         msg = build_steering_message(_directive(kind=InterventionKind.HINT))
+        assert msg.content is not None
         assert "HINT" in msg.content
 
 

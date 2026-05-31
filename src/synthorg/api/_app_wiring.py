@@ -204,6 +204,7 @@ async def _wire_steering_service(
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
     from synthorg.settings.state import (  # noqa: PLC0415
         SettingsStateSlice,
+        config_resolver_of,
         settings_service_of,
     )
 
@@ -224,9 +225,9 @@ async def _wire_steering_service(
         and provider_registry is not None
     ):
         settings = settings_service_of(app_state)
-        enabled = (
-            await settings.get("cockpit", "steering_proposer_enabled")
-        ).value.strip().lower() == "true"
+        enabled = await config_resolver_of(app_state).get_bool(
+            "cockpit", "steering_proposer_enabled"
+        )
         model = (
             await settings.get("cockpit", "steering_proposer_model")
         ).value.strip() or None

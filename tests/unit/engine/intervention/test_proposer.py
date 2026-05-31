@@ -11,8 +11,7 @@ from synthorg.engine.intervention.proposer import (
     _parse_proposal,
     build_supersession_proposer,
 )
-from synthorg.providers.enums import FinishReason
-from synthorg.providers.models import CompletionResponse, TokenUsage
+from tests._shared.scripted_provider import ScriptedProvider, make_text_response
 
 
 def _task(task_id: str) -> Task:
@@ -27,19 +26,6 @@ def _task(task_id: str) -> Task:
         assigned_to="agent-1",
         status=TaskStatus.IN_PROGRESS,
     )
-
-
-class _StubProvider:
-    def __init__(self, content: str) -> None:
-        self._content = content
-
-    async def complete(self, **_kwargs: object) -> CompletionResponse:
-        return CompletionResponse(
-            content=self._content,
-            finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
-            model="test-model-001",
-        )
 
 
 @pytest.mark.unit
@@ -83,7 +69,11 @@ class TestLLMProposer:
     """The LLM proposer refines via the provider and is safe-by-default."""
 
     async def test_refines_from_provider(self) -> None:
-        provider = _StubProvider('{"obsolete_task_ids": ["t1"], "rationale": "fe"}')
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response('{"obsolete_task_ids": ["t1"], "rationale": "fe"}')
+            ]
+        )
         proposer = LLMSupersessionProposer(provider, model="test-model-001")
         proposal = await proposer.propose(
             directive_id=NotBlankStr("d1"),
@@ -95,7 +85,9 @@ class TestLLMProposer:
         assert proposal.rationale == "fe"
 
     async def test_no_candidates_returns_seed(self) -> None:
-        provider = _StubProvider('{"obsolete_task_ids": ["t9"]}')
+        provider = ScriptedProvider(
+            responses=[make_text_response('{"obsolete_task_ids": ["t9"]}')]
+        )
         proposer = LLMSupersessionProposer(provider, model="test-model-001")
         proposal = await proposer.propose(
             directive_id=NotBlankStr("d1"),
@@ -116,7 +108,7 @@ class TestFactory:
 
     def test_disabled_is_noop(self) -> None:
         proposer = build_supersession_proposer(
-            _StubProvider("{}"),  # type: ignore[arg-type]
+            ScriptedProvider(responses=[]),
             model="m",
             enabled=False,
         )
@@ -124,7 +116,7 @@ class TestFactory:
 
     def test_provider_and_model_is_llm(self) -> None:
         proposer = build_supersession_proposer(
-            _StubProvider("{}"),  # type: ignore[arg-type]
+            ScriptedProvider(responses=[]),
             model="m",
         )
         assert isinstance(proposer, LLMSupersessionProposer)

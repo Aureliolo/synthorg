@@ -12,8 +12,8 @@ from synthorg.core.task import Task
 from synthorg.engine.context import (
     DEFAULT_MAX_TURNS,
     AgentContext,
-    AgentContextSnapshot,
 )
+from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
