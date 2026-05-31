@@ -1599,8 +1599,22 @@ jobs:
             sleep 10
           done
           if [ "$FOUND" -ne 1 ]; then
-            echo "::error::GitHub release '$TAG' not available after 6 attempts"
-            exit 1
+            # A dev pre-release can be swept by a concurrent stable
+            # finalize-release cleanup before this slow retag+sign chain
+            # reaches here. With nothing to attach to, skip rather than
+            # red the run -- finalize-release.yml likewise skip-publishes a
+            # tag with no draft. Only dev tags are swept; a missing release
+            # for a real / rc / alpha / beta tag is a genuine error.
+            case "$TAG" in
+              *-dev.*)
+                echo "::warning::Dev pre-release '$TAG' not found after 6 attempts -- likely swept by a concurrent stable finalize-release cleanup. Skipping release-notes update."
+                exit 0
+                ;;
+              *)
+                echo "::error::GitHub release '$TAG' not available after 6 attempts"
+                exit 1
+                ;;
+            esac
           fi
 
           IMAGES=$(cat <<'BLOCK'

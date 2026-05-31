@@ -769,11 +769,18 @@ jobs:
           # Signal to subsequent steps that publish succeeded
           echo "published=true" >> "$GITHUB_OUTPUT"
 
-      # ── Clean up ALL dev pre-releases and tags after a stable release ──
-      # Deletes every release and tag matching the dev-tag regex, regardless
-      # of draft/published/pre-release status. Only runs when a stable release
-      # was just published (not for dev releases themselves). The already_published
-      # branch handles replays after a concurrent run won the publish race.
+      # ── Clean up superseded dev pre-releases and tags after a stable release ──
+      # Deletes dev releases and tags whose base version is <= the stable just
+      # published, matching the dev-tag regex regardless of draft/published/
+      # pre-release status. Dev builds of a FUTURE version (base version >
+      # the published stable) are kept: a main push can mint the next
+      # version's dev build (e.g. v0.8.10-dev.1) while the previous stable
+      # (v0.8.9) is still finalizing, and that dev build's downstream
+      # docker.yml run is still attaching assets to its draft. Deleting it
+      # here would 404 that in-flight run's update-release job. Only runs when
+      # a stable release was just published (not for dev releases themselves).
+      # The already_published branch handles replays after a concurrent run
+      # won the publish race.
       - name: Clean up dev pre-releases and tags
         if: >-
           (steps.publish.outputs.published == 'true'
@@ -797,10 +804,29 @@ jobs:
             exit 1
           fi
 
-          echo "Stable release $TAG is published -- cleaning up all dev pre-releases and tags"
+          echo "Stable release $TAG is published -- cleaning up superseded dev pre-releases and tags"
 
-          # 1. Delete all dev releases (draft, pre-release, or published) + their tags.
-          #    Use the API directly to ensure drafts are included.
+          # Base version of the stable just published (strip leading 'v').
+          # A dev tag vX.Y.Z-dev.N is superseded iff its X.Y.Z is <= this.
+          STABLE_VER=${TAG#v}
+
+          # True (exit 0) iff $1 <= $2 by semver ordering. `sort -V` is
+          # required over a string compare: lexically "0.8.10" < "0.8.9",
+          # which would wrongly mark the next version's dev build as
+          # superseded and delete it out from under its in-flight build.
+          ver_le() {
+            [ "$1" = "$2" ] && return 0
+            [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]
+          }
+
+          # Extract X.Y.Z from a vX.Y.Z-dev.N tag (strip 'v' prefix + '-dev.N').
+          dev_base_version() {
+            local base=${1#v}
+            printf '%s' "${base%%-dev.*}"
+          }
+
+          # 1. Delete superseded dev releases (draft, pre-release, or published)
+          #    + their tags. Use the API directly to ensure drafts are included.
           #    Strict regex: only match vX.Y.Z-dev.N (never stable tags).
           # Capture the API output to a variable BEFORE feeding mapfile.
           # `mapfile < <(cmd)` does NOT propagate cmd's exit code: a
@@ -823,6 +849,11 @@ jobs:
           fi
           release_failures=()
           for dev_tag in "${dev_releases[@]}"; do
+            dev_ver=$(dev_base_version "$dev_tag")
+            if ! ver_le "$dev_ver" "$STABLE_VER"; then
+              echo "Keeping future dev release (base $dev_ver > stable $STABLE_VER): $dev_tag"
+              continue
+            fi
             echo "Deleting dev release + tag: $dev_tag"
             if ! gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag; then
               echo "::warning::Failed to delete dev release $dev_tag"
@@ -849,6 +880,11 @@ jobs:
           fi
           tag_failures=()
           for dev_tag in "${orphan_tags[@]}"; do
+            dev_ver=$(dev_base_version "$dev_tag")
+            if ! ver_le "$dev_ver" "$STABLE_VER"; then
+              echo "Keeping future dev tag (base $dev_ver > stable $STABLE_VER): $dev_tag"
+              continue
+            fi
             echo "Deleting orphan dev tag: $dev_tag"
             if ! gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag"; then
               echo "::warning::Failed to delete orphan dev tag $dev_tag"
