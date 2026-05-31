@@ -99,6 +99,7 @@ class ConfirmSupersessionRequest(BaseModel):
 
     project_id: NotBlankStr = Field(description="Project the directive targets")
     task_ids: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
         description="Operator-confirmed obsolete tasks to cancel",
     )
 

@@ -41,7 +41,7 @@ export function SteeringProposalReview({
         <p className="mt-1 text-xs text-text-secondary">{proposal.rationale}</p>
       </div>
       <TagInput
-        label={`Tasks to cancel (${String(taskIds.length)})`}
+        label={`Tasks to cancel (${taskIds.length})`}
         value={taskIds}
         onChange={setTaskIds}
         disabled={confirming}

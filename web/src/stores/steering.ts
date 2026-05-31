@@ -108,6 +108,7 @@ async function confirmSupersessionImpl(
       title: `Superseded ${String(result.cancelled_task_ids.length)} task(s)`,
     })
     set({ pendingProposal: null })
+    await fetchDirectivesImpl(set, projectId)
     return result
   } catch (err) {
     log.error('supersede_failed', { error: sanitizeForLog(err) })

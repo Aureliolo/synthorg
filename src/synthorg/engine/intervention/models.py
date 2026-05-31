@@ -46,6 +46,10 @@ STEERABLE_KINDS: Final[frozenset[InterventionKind]] = frozenset(
     {InterventionKind.HINT, InterventionKind.REDIRECT},
 )
 
+#: Pre-computed value set for steering-kind tag parsing (avoids rebuilding the
+#: comprehension on every ``parse_steering_tags`` call).
+_STEERABLE_VALUES: Final[frozenset[str]] = frozenset(k.value for k in STEERABLE_KINDS)
+
 #: Metadata keys a ``CONVERSATIONAL_INTAKE`` approval carries when the Chief of
 #: Staff parks a steering directive. The approval-gate Flow 0 reads them to
 #: route an approved directive to ``SteeringService.issue``; the presence of
@@ -106,7 +110,7 @@ def parse_steering_tags(
             agent_ids.append(NotBlankStr(tag[len(_AGENT_NARROW_PREFIX) :]))
         elif tag.startswith(_KIND_TAG_PREFIX):
             value = tag[len(_KIND_TAG_PREFIX) :]
-            if value in {k.value for k in STEERABLE_KINDS}:
+            if value in _STEERABLE_VALUES:
                 kind = InterventionKind(value)
     return kind, tuple(task_ids), tuple(agent_ids)
 

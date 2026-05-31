@@ -102,7 +102,7 @@ export function TagInput({ value, onChange, label, disabled, placeholder, classN
           disabled && 'opacity-50',
           className,
         )}
-        onClick={() => inputRef.current?.focus()}
+        onClick={() => !disabled && inputRef.current?.focus()}
         role="group"
         aria-labelledby={labelledBy}
         aria-label={placeholder ?? 'Tags'}

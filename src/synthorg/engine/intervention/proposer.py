@@ -214,6 +214,10 @@ def _parse_proposal(
     except json.JSONDecodeError, ValueError:
         return (), ""
     raw_ids = parsed.get("obsolete_task_ids", []) if isinstance(parsed, dict) else []
+    if not isinstance(raw_ids, (list, tuple)):
+        # Untrusted LLM output: a non-sequence value (number, bool, null)
+        # would otherwise raise TypeError when iterated below.
+        raw_ids = []
     ids = tuple(
         str(i) for i in raw_ids if isinstance(i, str) and str(i) in candidate_ids
     )

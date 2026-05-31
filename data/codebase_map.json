@@ -1185,7 +1185,7 @@
     },
     {
       "kind": "code",
-      "loc": 197,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/steering.py",
       "owning_feature": "api_core"
@@ -5189,7 +5189,7 @@
     },
     {
       "kind": "code",
-      "loc": 180,
+      "loc": 181,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/models.py",
       "owning_feature": "engine"
@@ -5203,7 +5203,7 @@
     },
     {
       "kind": "code",
-      "loc": 211,
+      "loc": 213,
       "loc_cap": 500,
       "module": "src/synthorg/engine/intervention/proposer.py",
       "owning_feature": "engine"
@@ -9844,7 +9844,7 @@
     },
     {
       "kind": "code",
-      "loc": 261,
+      "loc": 263,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/_intake_parking.py",
       "owning_feature": "meta"

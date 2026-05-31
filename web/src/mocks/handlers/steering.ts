@@ -42,7 +42,12 @@ export const steeringHandlers = [
   http.post(
     '/api/v1/cockpit/steering/:directiveId/supersede',
     async ({ params, request }) => {
-      const body = (await request.json()) as SupersedeBody
+      let body: SupersedeBody
+      try {
+        body = (await request.json()) as SupersedeBody
+      } catch {
+        body = {}
+      }
       return HttpResponse.json(
         successFor<typeof confirmSupersession>({
           directive_id: String(params.directiveId),

@@ -23,10 +23,10 @@ function DirectiveKindBadge({ kind }: { kind: InterventionKind }) {
 function NarrowingLine({ directive }: { directive: ActiveSteeringDirective }) {
   const parts: string[] = []
   if (directive.narrow_task_ids.length > 0) {
-    parts.push(`${String(directive.narrow_task_ids.length)} task(s)`)
+    parts.push(`${directive.narrow_task_ids.length} task(s)`)
   }
   if (directive.narrow_agent_ids.length > 0) {
-    parts.push(`${String(directive.narrow_agent_ids.length)} agent(s)`)
+    parts.push(`${directive.narrow_agent_ids.length} agent(s)`)
   }
   if (parts.length === 0) return null
   return (

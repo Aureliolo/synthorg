@@ -211,6 +211,8 @@ def is_conversational_steering(item: ApprovalItem | None) -> TypeGuard[ApprovalI
         item is not None
         and item.source is ApprovalSource.CONVERSATIONAL_INTAKE
         and STEERING_INTAKE_KIND_KEY in item.metadata
+        and STEERING_INTAKE_PROJECT_KEY in item.metadata
+        and STEERING_INTAKE_TEXT_KEY in item.metadata
     )
 
 
