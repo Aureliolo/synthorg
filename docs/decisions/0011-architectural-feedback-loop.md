@@ -73,7 +73,7 @@ and as a CI step; both `scripts/architecture_report.py` and the gate carry
 
 - A module that becomes a coupling hub, or a service class that loses
   cohesion, fails at push with a message pointing at the fix (invert onto a
-  protocol; split the module; extract the incohesive responsibility) rather
+  protocol; split the module; extract the unrelated responsibility) rather
   than going unnoticed until it is a god-module.
 - The thresholds (30 fan-in, 20% budget zone, LCOM4 >= 2) are tunable in
   `_architecture_lib.py`; raising the bar later is a one-line change plus a

@@ -49,7 +49,7 @@ not to describe an aspirational architecture.
   import `api`.
 
 All three set `allow_indirect_imports = true` (they check DIRECT edges; the
-transitive graph legitimately reconverges through `config.schema` and the
+transitive graph legitimately converges again through `config.schema` and the
 `.state` hubs) and bless the handful of intentional direct back-edges in
 `ignore_imports`: the `persistence._construction` wiring seam, the per-domain
 `.state` slices (`-> api.state_slices`), `api.auth.system_user` (imported by
