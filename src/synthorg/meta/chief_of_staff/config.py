@@ -81,6 +81,13 @@ _GROUP_PER_AGENT_MAX_TOKENS_MIN: int = 100
 _GROUP_MAX_TOTAL_TURNS_DEFAULT: int = 60
 _GROUP_MAX_TOTAL_TURNS_MIN: int = 2
 _GROUP_MAX_TOTAL_TURNS_MAX: int = 500
+# Agent-initiated invites (#1971): an agent may request to bring another
+# agent in, gated by human consent. Two invites parked per round bounds
+# the consent-queue storm a single round can create; 1 is the floor and
+# 5 a generous ceiling that still stays well under the participant cap.
+_INVITE_MAX_PER_ROUND_DEFAULT: int = 2
+_INVITE_MAX_PER_ROUND_MIN: int = 1
+_INVITE_MAX_PER_ROUND_MAX: int = 5
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -151,6 +158,13 @@ class ChiefOfStaffConfig(BaseModel):
             round).
         group_chat_max_total_turns: Maximum total turns a single group
             conversation may accumulate over its lifetime.
+        invite_enabled: Enable agent-initiated invites in group chat
+            (an agent may request to bring another agent in, gated by
+            human consent). When off, contributions stay plain text.
+        invite_max_per_round: Maximum invites an agent may park behind
+            consent in a single round (storm/loop bound).
+        invite_default_risk_level: Risk level stamped on the consent
+            approval item raised for an agent-initiated invite.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -260,3 +274,13 @@ class ChiefOfStaffConfig(BaseModel):
         ge=_GROUP_MAX_TOTAL_TURNS_MIN,
         le=_GROUP_MAX_TOTAL_TURNS_MAX,
     )
+
+    # ── Agent-initiated invite (#1971) ────────────────────────────
+
+    invite_enabled: bool = False
+    invite_max_per_round: int = Field(
+        default=_INVITE_MAX_PER_ROUND_DEFAULT,
+        ge=_INVITE_MAX_PER_ROUND_MIN,
+        le=_INVITE_MAX_PER_ROUND_MAX,
+    )
+    invite_default_risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM

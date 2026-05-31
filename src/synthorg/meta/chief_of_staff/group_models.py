@@ -14,6 +14,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import (
+    ConversationInviteStatus,
     ConversationParticipantStatus,
     GroupChatTruncationReason,
 )
@@ -79,6 +80,108 @@ class AttributedContribution(BaseModel):
     output_tokens: int = Field(default=0, ge=0)
 
 
+class InviteRequest(BaseModel):
+    """An agent's parsed request to bring another agent into the chat.
+
+    The transient ask extracted from a structured contribution (#1971),
+    not yet persisted. ``target`` is the agent's free-text reference to
+    the agent it wants (a role label like ``CFO`` or a name); the
+    service resolves it to a registered identity before parking consent.
+
+    Attributes:
+        target: The agent's reference to the invitee (role or name).
+        reason: Why the agent wants this invitee, surfaced for consent.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    target: NotBlankStr
+    reason: NotBlankStr
+
+
+class GroupContribution(BaseModel):
+    """One agent's contribution parsed from a structured response (#1971).
+
+    When the invite feature is on, each agent is asked to answer with a
+    ``{"message": ..., "invite": {...} | null}`` envelope. ``message`` is
+    the spoken text persisted as the attributed turn; ``invite`` is a
+    non-null request to bring another agent in (gated behind consent).
+    A malformed or non-envelope response degrades to ``message=<raw>``
+    with no invite, so one bad response never drops a contribution.
+
+    Attributes:
+        message: The contribution text (may be empty -> skipped turn).
+        invite: An optional request to invite another agent.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    message: str
+    invite: InviteRequest | None = None
+
+
+class ConversationInvite(BaseModel):
+    """An agent-initiated invite parked behind a human consent decision.
+
+    Mirrors :class:`ConversationalProposal`: links one ``ApprovalItem``
+    (by ``approval_id``) to the requested membership change. On consent
+    the invited agent is added to the participant roster via a
+    ``PENDING -> ACCEPTED`` compare-and-set; on rejection membership is
+    left unchanged (``PENDING -> DECLINED``).
+
+    Attributes:
+        id: Unique invite identifier.
+        conversation_id: Owning group conversation id.
+        approval_id: The gating approval-queue item id.
+        requested_by_agent_id: The agent that requested the invite.
+        target_agent_id: The resolved invitee's identity id.
+        target_role: The invitee's role label, or ``None`` if unset.
+        reason: Why the invite was requested, surfaced for consent.
+        status: Lifecycle state (pending, accepted, declined).
+        created_at: When the invite was parked.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    conversation_id: NotBlankStr
+    approval_id: NotBlankStr
+    requested_by_agent_id: NotBlankStr
+    target_agent_id: NotBlankStr
+    target_role: NotBlankStr | None = None
+    reason: NotBlankStr
+    status: ConversationInviteStatus = ConversationInviteStatus.PENDING
+    created_at: AwareDatetime
+
+
+class PendingInviteSummary(BaseModel):
+    """A parked invite surfaced to the caller after a round (#1971).
+
+    Lets the UI render the inline consent prompt (who wants to bring in
+    whom, and why) with a CTA routing to the existing approvals action,
+    without re-querying the invite store.
+
+    Attributes:
+        approval_id: The gating approval-queue item id (consent target).
+        requested_by_agent_id: The agent that requested the invite.
+        requested_by_name: Display name of the requesting agent.
+        target_agent_id: The resolved invitee's identity id.
+        target_name: Display name of the invitee.
+        target_role: The invitee's role label, or ``None`` if unset.
+        reason: Why the invite was requested.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approval_id: NotBlankStr
+    requested_by_agent_id: NotBlankStr
+    requested_by_name: NotBlankStr
+    target_agent_id: NotBlankStr
+    target_name: NotBlankStr
+    target_role: NotBlankStr | None = None
+    reason: NotBlankStr
+
+
 class GroupConverseArgs(BaseModel):
     """Args model for one ``GroupChatService.converse`` round.
 
@@ -113,6 +216,9 @@ class GroupConverseResult(BaseModel):
             full. Surfaced so a truncated round never reads as complete.
         truncated_reason: Why the round stopped early, or ``None`` when
             every active participant contributed.
+        pending_invites: Agent-initiated invites parked behind consent
+            this round (empty unless the invite feature is on and an
+            agent requested one); surfaced for the inline consent prompt.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -122,11 +228,16 @@ class GroupConverseResult(BaseModel):
     participants: tuple[ConversationParticipant, ...] = ()
     participants_skipped: tuple[NotBlankStr, ...] = ()
     truncated_reason: GroupChatTruncationReason | None = None
+    pending_invites: tuple[PendingInviteSummary, ...] = ()
 
 
 __all__ = [
     "AttributedContribution",
+    "ConversationInvite",
     "ConversationParticipant",
+    "GroupContribution",
     "GroupConverseArgs",
     "GroupConverseResult",
+    "InviteRequest",
+    "PendingInviteSummary",
 ]

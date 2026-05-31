@@ -10145,6 +10145,8 @@ export type components = {
             readonly participants: readonly components["schemas"]["ConversationParticipant"][];
             /** @default [] */
             readonly participants_skipped: readonly string[];
+            /** @default [] */
+            readonly pending_invites: readonly components["schemas"]["PendingInviteSummary"][];
             /** @enum {string|null} */
             readonly truncated_reason: "token_budget_exhausted" | "max_total_turns_reached" | null;
         };
@@ -12344,6 +12346,16 @@ export type components = {
             readonly locator_kind: "pdf";
             /** @description 1-indexed page number */
             readonly page: number;
+        };
+        /** PendingInviteSummary */
+        readonly PendingInviteSummary: {
+            readonly approval_id: string;
+            readonly reason: string;
+            readonly requested_by_agent_id: string;
+            readonly requested_by_name: string;
+            readonly target_agent_id: string;
+            readonly target_name: string;
+            readonly target_role: string | null;
         };
         /** PerformanceSummary */
         readonly PerformanceSummary: {

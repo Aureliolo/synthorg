@@ -36,6 +36,7 @@ async def wire_group_chat_service(
     flag is off, no provider/agent registry is present, or persistence
     is absent. Idempotent: a second boot pass skips when already wired.
     """
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -59,6 +60,7 @@ async def wire_group_chat_service(
         agent_registry=agent_registry,
         repositories=repositories,
         cost_tracker=cost_tracker,
+        approval_store=app_state.slice(ApprovalStateSlice).store,
     )
     if service is not None:
         app_state.wire(MetaStateSlice, group_chat_service=service)

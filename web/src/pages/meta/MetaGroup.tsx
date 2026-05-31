@@ -1,4 +1,5 @@
 import { Users } from 'lucide-react'
+import { Link } from 'react-router'
 
 import type { ActiveAgentSummary, ConversationParticipant } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,23 @@ interface GroupBubbleProps {
   msg: GroupMessage
 }
 
+function InviteBubble({ msg }: GroupBubbleProps) {
+  const target = msg.targetRole
+    ? `${msg.targetName} (${msg.targetRole})`
+    : msg.targetName
+  return (
+    <div className="mx-4 space-y-1 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
+      <p>
+        <span className="text-foreground">{msg.requestedByName}</span> asked to
+        bring in <span className="text-foreground">{target}</span>: {msg.content}
+      </p>
+      <Button asChild variant="link" size="sm" className="h-auto p-0">
+        <Link to="/approvals">Review in Approvals</Link>
+      </Button>
+    </div>
+  )
+}
+
 function GroupBubble({ msg }: GroupBubbleProps) {
   if (msg.kind === 'notice') {
     return (
@@ -23,6 +41,9 @@ function GroupBubble({ msg }: GroupBubbleProps) {
         {msg.content}
       </div>
     )
+  }
+  if (msg.kind === 'invite') {
+    return <InviteBubble msg={msg} />
   }
   const isHuman = msg.kind === 'human'
   const isAttributed = Boolean(msg.agentName && msg.role)

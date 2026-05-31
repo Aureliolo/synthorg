@@ -18,6 +18,9 @@ from synthorg.observability.events.persistence import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.persistence.conversation_invite_protocol import (
+        ConversationInviteRepository,
+    )
     from synthorg.persistence.conversation_participant_protocol import (
         ConversationParticipantRepository,
     )
@@ -41,6 +44,7 @@ class ConversationalRepositories:
 
     __slots__ = (
         "conversation_repo",
+        "invite_repo",
         "participant_repo",
         "proposal_repo",
         "turn_repo",
@@ -53,11 +57,13 @@ class ConversationalRepositories:
         turn_repo: ConversationTurnRepository,
         proposal_repo: ConversationalProposalRepository,
         participant_repo: ConversationParticipantRepository,
+        invite_repo: ConversationInviteRepository,
     ) -> None:
         self.conversation_repo = conversation_repo
         self.turn_repo = turn_repo
         self.proposal_repo = proposal_repo
         self.participant_repo = participant_repo
+        self.invite_repo = invite_repo
 
 
 def build_conversational_repositories(
@@ -99,6 +105,9 @@ def build_conversational_repositories(
         )
         return None
     if name == _SQLITE:
+        from synthorg.persistence.sqlite.conversation_invite_repo import (  # noqa: PLC0415
+            SQLiteConversationInviteRepository,
+        )
         from synthorg.persistence.sqlite.conversation_participant_repo import (  # noqa: PLC0415
             SQLiteConversationParticipantRepository,
         )
@@ -123,7 +132,13 @@ def build_conversational_repositories(
             participant_repo=SQLiteConversationParticipantRepository(
                 handle, write_context=write_context
             ),
+            invite_repo=SQLiteConversationInviteRepository(
+                handle, write_context=write_context
+            ),
         )
+    from synthorg.persistence.postgres.conversation_invite_repo import (  # noqa: PLC0415
+        PostgresConversationInviteRepository,
+    )
     from synthorg.persistence.postgres.conversation_participant_repo import (  # noqa: PLC0415
         PostgresConversationParticipantRepository,
     )
@@ -140,6 +155,7 @@ def build_conversational_repositories(
         turn_repo=PostgresConversationTurnRepository(handle),
         proposal_repo=PostgresConversationalProposalRepository(handle),
         participant_repo=PostgresConversationParticipantRepository(handle),
+        invite_repo=PostgresConversationInviteRepository(handle),
     )
 
 

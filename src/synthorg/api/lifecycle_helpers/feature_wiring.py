@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
+    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.project_brain.factory import ProjectBrainRuntime
     from synthorg.providers.registry import ProviderRegistry
@@ -464,6 +465,50 @@ async def _wire_chief_of_staff_chat(
         logger.info(API_APP_STARTUP, service="chief_of_staff_chat", note="wired")
 
 
+def _guard_conversational_persistence(
+    config: ChiefOfStaffConfig,
+    persistence: PersistenceBackend | None,
+    approval_store: ApprovalStoreProtocol,
+) -> None:
+    """Fail fast on conversational features over a persistent SQLite store.
+
+    The SQLite ``approvals.source`` CHECK deliberately omits the
+    conversational sources (they stay in-memory there), so a propose- or
+    invite-produced approval cannot durably persist on SQLite. Block at
+    startup with an actionable message rather than letting a parked
+    approval silently fail to persist mid-conversation -- the invite
+    park's compensation would quietly drop it, which is worse than a
+    clear boot error the operator can fix.
+
+    Raises:
+        ServiceUnavailableError: When propose or invite is enabled
+            against a persistent SQLite ``ApprovalStore``.
+    """
+    store_has_persistent_repo = (
+        isinstance(approval_store, ApprovalStore) and approval_store.has_persistent_repo
+    )
+    if (
+        (config.propose_enabled or config.invite_enabled)
+        and persistence is not None
+        and persistence.backend_name == "sqlite"
+        and store_has_persistent_repo
+    ):
+        msg = (
+            "Chief of Staff propose/invite is enabled with a persistent "
+            "SQLite ApprovalStore. This combination cannot durably persist "
+            "conversational approvals. Switch the backend to Postgres, or "
+            "keep ApprovalStore in-memory on SQLite."
+        )
+        logger.error(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="blocked unsupported conversational persistence configuration",
+            backend_name=persistence.backend_name,
+            approval_store_type=type(approval_store).__name__,
+        )
+        raise ServiceUnavailableError(msg)
+
+
 async def _wire_chief_of_staff_proposer(
     app_state: AppState,
     *,
@@ -475,9 +520,9 @@ async def _wire_chief_of_staff_proposer(
     """Wire the Chief of Staff proposer behind propose_enabled + persistence.
 
     Raises:
-        ServiceUnavailableError: When propose is enabled against a
-            persistent SQLite ApprovalStore (a combination that cannot
-            durably persist conversational-intake approvals).
+        ServiceUnavailableError: When propose or invite is enabled against
+            a persistent SQLite ApprovalStore (a combination that cannot
+            durably persist conversational approvals).
     """
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
     from synthorg.meta.state import MetaStateSlice  # noqa: PLC0415
@@ -491,18 +536,23 @@ async def _wire_chief_of_staff_proposer(
     )
 
     # Repo wiring must run before the provider-missing early return: a
-    # conversational-intake approval from a previous boot still needs the
-    # repo to route approve/reject decisions, even without a provider.
+    # conversational-intake approval (or agent-invite consent) from a
+    # previous boot still needs its repo to route approve/reject
+    # decisions, even without a provider and even when the invite
+    # feature is now off -- so the invite repo wires here, ungated,
+    # alongside the proposal repo.
     repositories = build_conversational_repositories(persistence)
     if repositories is not None:
         app_state.wire(
             MetaStateSlice,
             conversational_proposal_repo=repositories.proposal_repo,
+            conversation_invite_repo=repositories.invite_repo,
+            conversation_participant_repo=repositories.participant_repo,
         )
         logger.info(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
-            note="conversational proposal repo wired",
+            note="conversational proposal + invite + participant repos wired",
         )
     if provider_registry is None:
         return
@@ -510,31 +560,11 @@ async def _wire_chief_of_staff_proposer(
         app_state.slice(SettingsStateSlice).settings_service,
     )
     # Hard-block the unsupported SQLite + persistent ApprovalStore combo:
-    # this schema cannot durably persist conversational-intake approvals.
-    store_has_persistent_repo = (
-        isinstance(effective_approval_store, ApprovalStore)
-        and effective_approval_store.has_persistent_repo
+    # this schema cannot durably persist conversational (propose/invite)
+    # approvals.
+    _guard_conversational_persistence(
+        meta_self_improvement.chief_of_staff, persistence, effective_approval_store
     )
-    if (
-        meta_self_improvement.chief_of_staff.propose_enabled
-        and persistence is not None
-        and persistence.backend_name == "sqlite"
-        and store_has_persistent_repo
-    ):
-        msg = (
-            "Chief of Staff propose is enabled with a persistent SQLite "
-            "ApprovalStore. This combination cannot durably persist "
-            "conversational-intake approvals. Switch the backend to "
-            "Postgres, or keep ApprovalStore in-memory on SQLite."
-        )
-        logger.error(
-            API_APP_STARTUP,
-            service="chief_of_staff_proposer",
-            note="blocked unsupported proposer configuration",
-            backend_name=persistence.backend_name,
-            approval_store_type=type(effective_approval_store).__name__,
-        )
-        raise ServiceUnavailableError(msg)
     # Concern routing (#1969): build the role router when an agent
     # registry is present so a routed turn answers as the right role
     # agent. ``build_role_router`` returns None when routing is off or

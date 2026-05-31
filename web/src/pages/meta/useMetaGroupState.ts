@@ -10,13 +10,22 @@ import { useMetaStore } from '@/stores/meta'
 export interface GroupMessage {
   id: number
   /** ``human`` = the operator's turn, ``agent`` = an attributed
-   *  contribution, ``notice`` = a system line (truncation / failure). */
-  kind: 'human' | 'agent' | 'notice'
+   *  contribution, ``notice`` = a system line (truncation / failure),
+   *  ``invite`` = an agent-initiated invite awaiting human consent. */
+  kind: 'human' | 'agent' | 'notice' | 'invite'
+  /** Bubble body. For ``invite`` bubbles this is the stated reason. */
   content: string
   /** Attributed agent name, on ``agent`` bubbles. */
   agentName?: string
   /** Attributed agent role, on ``agent`` bubbles. */
   role?: string
+  /** Inviting agent's name, on ``invite`` bubbles. */
+  requestedByName?: string
+  /** Invite target's name, on ``invite`` bubbles. */
+  targetName?: string
+  /** Invite target's role, on ``invite`` bubbles (``undefined`` when the
+   *  target was named directly rather than by role). */
+  targetRole?: string
 }
 
 export interface MetaGroupState {
@@ -134,6 +143,16 @@ function buildRoundMessages(
       kind: 'notice',
       content:
         TRUNCATION_NOTICE[result.truncated_reason] ?? 'Round stopped early.',
+    })
+  }
+  for (const invite of result.pending_invites) {
+    bubbles.push({
+      id: nextMsgId(),
+      kind: 'invite',
+      content: invite.reason,
+      requestedByName: invite.requested_by_name,
+      targetName: invite.target_name,
+      targetRole: invite.target_role ?? undefined,
     })
   }
   return bubbles

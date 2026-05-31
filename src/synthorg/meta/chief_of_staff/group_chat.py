@@ -38,11 +38,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.middleware.s1_constraints import AuthorityDeferenceGuard
-from synthorg.engine.prompt_safety import (
-    TAG_PEER_CONTRIBUTION,
-    TAG_TASK_DATA,
-    wrap_untrusted,
-)
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
@@ -51,11 +46,18 @@ from synthorg.meta.chief_of_staff.enums import (
     ConversationParticipantStatus,
     GroupChatTruncationReason,
 )
+from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
 from synthorg.meta.chief_of_staff.group_models import (
     AttributedContribution,
     ConversationParticipant,
     GroupConverseArgs,
     GroupConverseResult,
+    InviteRequest,
+    PendingInviteSummary,
+)
+from synthorg.meta.chief_of_staff.group_prompt import (
+    audit_authority,
+    build_group_prompt,
 )
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import GROUP_CONTRIBUTION_PROMPT
@@ -68,7 +70,6 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
-    COS_GROUP_AUTHORITY_CUES_DETECTED,
     COS_GROUP_CONTRIBUTION,
     COS_GROUP_CONTRIBUTION_FAILED,
     COS_GROUP_PARTICIPANTS_ADDED,
@@ -124,6 +125,9 @@ class GroupChatService:
             auditing; defaults to a fresh guard with the standard config.
         cost_tracker: Optional cost tracker (the caller dispatch records
             via the meeting chokepoint when wired).
+        invite_coordinator: Agent-initiated invite coordinator (#1971);
+            present only when the invite feature is on. When ``None`` the
+            round runs the plain-text contribution path unchanged.
     """
 
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired collaborators
@@ -138,6 +142,7 @@ class GroupChatService:
         clock: Clock | None = None,
         authority_guard: AuthorityDeferenceGuard | None = None,
         cost_tracker: CostTracker | None = None,
+        invite_coordinator: GroupInviteCoordinator | None = None,
     ) -> None:
         self._agent_caller = agent_caller
         self._agent_registry = agent_registry
@@ -148,6 +153,10 @@ class GroupChatService:
         self._clock: Clock = clock or SystemClock()
         self._authority_guard = authority_guard or AuthorityDeferenceGuard()
         self._cost_tracker = cost_tracker
+        # Present only when the invite feature is on (built into the
+        # service by ``build_group_chat_service``); ``None`` keeps the
+        # round on the literal plain-text contribution path.
+        self._invite_coordinator = invite_coordinator
         self._locks = ConversationLockRegistry()
 
     async def converse(self, args: GroupConverseArgs) -> GroupConverseResult:
@@ -356,6 +365,7 @@ class GroupChatService:
         tracker = TokenTracker(budget=budget)
         reserve = int(budget * self._config.group_chat_token_reserve_ratio)
         contributions: list[AttributedContribution] = []
+        pending_invites: list[PendingInviteSummary] = []
         skipped: list[NotBlankStr] = []
         truncated: GroupChatTruncationReason | None = None
         sequence = start_sequence
@@ -369,7 +379,7 @@ class GroupChatService:
                 self._config.group_chat_per_agent_max_tokens,
                 tracker.remaining - reserve,
             )
-            contribution = await self._dispatch_contribution(
+            contribution, invite_req = await self._dispatch_contribution(
                 conversation,
                 history,
                 contributions,
@@ -383,6 +393,9 @@ class GroupChatService:
                 skipped.append(participant.agent_id)
                 continue
             contributions.append(contribution)
+            await self._maybe_park_invite(
+                conversation, participant, invite_req, pending_invites, now
+            )
             sequence += 1
             total_turns += 1
         await self._conversation_repo.save(
@@ -395,7 +408,39 @@ class GroupChatService:
             participants=participants,
             participants_skipped=tuple(skipped),
             truncated_reason=truncated,
+            pending_invites=tuple(pending_invites),
         )
+
+    async def _maybe_park_invite(
+        self,
+        conversation: Conversation,
+        participant: ConversationParticipant,
+        invite_req: InviteRequest | None,
+        pending_invites: list[PendingInviteSummary],
+        now: datetime,
+    ) -> None:
+        """Park an agent-initiated invite if one was requested and uncapped.
+
+        No-op unless the invite feature is on, an invite was parsed this
+        turn, and the per-round park cap (``invite_max_per_round``) is
+        not yet reached. A parked invite is appended to *pending_invites*
+        so the round result can surface it for the inline consent prompt.
+        """
+        if (
+            invite_req is None
+            or self._invite_coordinator is None
+            or len(pending_invites) >= self._config.invite_max_per_round
+        ):
+            return
+        summary = await self._invite_coordinator.request_invite(
+            conversation_id=conversation.id,
+            requested_by_agent_id=participant.agent_id,
+            requested_by_name=participant.agent_name,
+            invite_request=invite_req,
+            now=now,
+        )
+        if summary is not None:
+            pending_invites.append(summary)
 
     def _round_bound(
         self, tracker: TokenTracker, reserve: int, total_turns: int
@@ -421,19 +466,48 @@ class GroupChatService:
         max_tokens: int,
         tracker: TokenTracker,
         now: datetime,
-    ) -> AttributedContribution | None:
+    ) -> tuple[AttributedContribution | None, InviteRequest | None]:
         """Dispatch one participant's turn and persist its attributed turn.
 
+        When the invite feature is on, the agent answers a structured
+        envelope: the parsed ``message`` is persisted as the turn (never
+        the raw JSON), and any parsed invite request is returned for the
+        round loop to park behind consent. When off, the raw reply is
+        the message and the invite is always ``None``.
+
         Returns:
-            The attributed contribution, or ``None`` when the agent
-            returned empty content (skipped, logged, surfaced).
+            ``(contribution, invite_request)``: the attributed
+            contribution (or ``None`` when the agent returned empty
+            content), paired with any parsed invite request (or ``None``).
 
         Raises:
             Exception: The agent dispatch failed (the round aborts; the
                 lock guarantees no interleaving with a concurrent round).
         """
-        prompt = self._build_prompt(history, prior_contributions)
-        self._audit_authority(conversation.id, participant, prior_contributions)
+        # The invite feature swaps in a structured-envelope template; the
+        # plain template stays the default so the feature-off path is
+        # unchanged. The structured-output ask lives with the invite
+        # coordinator, never the shared persona renderer.
+        template = (
+            self._invite_coordinator.contribution_prompt()
+            if self._invite_coordinator is not None
+            else GROUP_CONTRIBUTION_PROMPT
+        )
+        preamble: str | None = None
+        if self._invite_coordinator is not None:
+            preamble = await self._invite_coordinator.invited_preamble(
+                conversation.id,
+                participant.agent_id,
+                already_spoke=any(
+                    turn.author_agent_id == participant.agent_id for turn in history
+                ),
+            )
+        prompt = build_group_prompt(
+            history, prior_contributions, template=template, preamble=preamble
+        )
+        audit_authority(
+            self._authority_guard, conversation.id, participant, prior_contributions
+        )
         try:
             response = await self._agent_caller(
                 participant.agent_id, prompt, max_tokens, conversation.id
@@ -449,7 +523,9 @@ class GroupChatService:
             )
             raise
         tracker.record(response.input_tokens, response.output_tokens)
-        content = (response.content or "").strip()
+        content, invite_req = self._extract_contribution(
+            response.content, conversation.id, participant.agent_id
+        )
         if not content:
             logger.warning(
                 COS_GROUP_CONTRIBUTION_FAILED,
@@ -457,7 +533,7 @@ class GroupChatService:
                 agent_id=participant.agent_id,
                 detail="empty_content",
             )
-            return None
+            return None, None
         await self._turn_repo.append(
             ConversationTurn(
                 id=_new_id(),
@@ -476,99 +552,43 @@ class GroupChatService:
             agent_id=participant.agent_id,
             sequence=sequence,
         )
-        return AttributedContribution(
-            agent_id=participant.agent_id,
-            agent_name=participant.agent_name,
-            participant_role=participant.participant_role,
-            content=NotBlankStr(content),
-            sequence=sequence,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
+        return (
+            AttributedContribution(
+                agent_id=participant.agent_id,
+                agent_name=participant.agent_name,
+                participant_role=participant.participant_role,
+                content=NotBlankStr(content),
+                sequence=sequence,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+            ),
+            invite_req,
         )
 
-    def _build_prompt(
+    def _extract_contribution(
         self,
-        history: tuple[ConversationTurn, ...],
-        prior_contributions: list[AttributedContribution],
-    ) -> str:
-        """Assemble the fenced contribution prompt for one participant.
-
-        Returns:
-            The formatted prompt: history + human message fenced as
-            ``<task-data>``, this round's peer contributions fenced as
-            ``<peer-contribution>``.
-        """
-        history_block = wrap_untrusted(
-            TAG_TASK_DATA, self._render_group_history(history)
-        )
-        peer_block = wrap_untrusted(
-            TAG_PEER_CONTRIBUTION, self._render_round_contributions(prior_contributions)
-        )
-        return GROUP_CONTRIBUTION_PROMPT.format(
-            conversation_history=history_block,
-            prior_contributions=peer_block,
-        )
-
-    def _audit_authority(
-        self,
+        raw_content: str | None,
         conversation_id: NotBlankStr,
-        participant: ConversationParticipant,
-        prior_contributions: list[AttributedContribution],
-    ) -> None:
-        """Scan the peer-contribution block for authority cues (audit only).
+        agent_id: NotBlankStr,
+    ) -> tuple[str, InviteRequest | None]:
+        """Resolve one reply into its message text + optional invite.
 
-        Reuses the :class:`AuthorityDeferenceGuard` pattern scan so the
-        same cues the agent-middleware path logs are recorded here, where
-        a later participant could otherwise defer to an earlier peer's
-        claimed authority. Detection + logging only (no redaction); the
-        ``<peer-contribution>`` fencing is the injection defence.
-        """
-        if not prior_contributions:
-            return
-        peer_text = self._render_round_contributions(prior_contributions)
-        cue_count = self._authority_guard.scan(peer_text)
-        if cue_count > 0:
-            logger.info(
-                COS_GROUP_AUTHORITY_CUES_DETECTED,
-                conversation_id=conversation_id,
-                recipient_agent_id=participant.agent_id,
-                cue_count=cue_count,
-            )
-
-    @staticmethod
-    def _render_group_history(turns: tuple[ConversationTurn, ...]) -> str:
-        """Render attributed transcript lines for the group history.
+        With the invite feature on, the reply is a structured envelope:
+        the parsed ``message`` text and any invite are returned. When
+        off, this is the literal plain-text path -- the raw reply,
+        stripped, with no invite.
 
         Returns:
-            One ``Speaker: content`` line per turn (the human as
-            ``Human``, each agent by its attributed name).
+            ``(message_text, invite_request)``.
         """
-        lines: list[str] = []
-        for turn in turns:
-            if turn.role is ConversationRole.USER:
-                speaker = "Human"
-            elif turn.role is ConversationRole.AGENT:
-                speaker = turn.author_name or "Agent"
-            else:
-                speaker = "Assistant"
-            lines.append(f"{speaker}: {turn.content}")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _render_round_contributions(
-        contributions: list[AttributedContribution],
-    ) -> str:
-        """Render this round's peer contributions for the fenced block.
-
-        Returns:
-            One attributed line per contribution, or a placeholder when
-            no peer has spoken yet this round.
-        """
-        if not contributions:
-            return "(no contributions yet this round)"
-        return "\n".join(
-            f"{c.agent_name} ({c.participant_role}): {c.content}" for c in contributions
+        if self._invite_coordinator is None:
+            return (raw_content or "").strip(), None
+        parsed = self._invite_coordinator.parse_contribution(
+            raw_content or "",
+            conversation_id=conversation_id,
+            agent_id=agent_id,
         )
+        return parsed.message.strip(), parsed.invite
 
     async def _active_participants(
         self, conversation_id: NotBlankStr

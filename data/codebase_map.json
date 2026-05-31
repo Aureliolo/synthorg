@@ -513,16 +513,23 @@
     },
     {
       "kind": "code",
-      "loc": 368,
+      "loc": 374,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 566,
+      "loc": 331,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/_approval_review_gate.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 517,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
     },
     {
@@ -1332,7 +1339,7 @@
     },
     {
       "kind": "code",
-      "loc": 83,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/api/conversational_builders.py",
       "owning_feature": "api_core"
@@ -1528,7 +1535,7 @@
     },
     {
       "kind": "code",
-      "loc": 60,
+      "loc": 62,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
       "owning_feature": "api_core"
@@ -1542,7 +1549,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 565,
+      "loc": 587,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -9830,7 +9837,7 @@
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 209,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
@@ -9851,16 +9858,30 @@
     },
     {
       "kind": "service",
-      "loc": 571,
+      "loc": 586,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
     },
     {
+      "kind": "service",
+      "loc": 437,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/group_invite.py",
+      "owning_feature": "meta"
+    },
+    {
       "kind": "declarative",
-      "loc": 104,
+      "loc": 191,
       "loc_cap": null,
       "module": "src/synthorg/meta/chief_of_staff/group_models.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 116,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/group_prompt.py",
       "owning_feature": "meta"
     },
     {
@@ -9900,7 +9921,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/prompts.py",
       "owning_feature": "meta"
@@ -11006,7 +11027,7 @@
     },
     {
       "kind": "code",
-      "loc": 135,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/meta/state.py",
       "owning_feature": "meta"
@@ -11601,7 +11622,7 @@
     },
     {
       "kind": "code",
-      "loc": 49,
+      "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/chief_of_staff.py",
       "owning_feature": "observability"
@@ -11979,7 +12000,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 787,
+      "loc": 778,
       "loc_cap": null,
       "module": "src/synthorg/observability/events/persistence.py",
       "owning_feature": "observability"
@@ -12938,6 +12959,13 @@
     },
     {
       "kind": "code",
+      "loc": 125,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/conversation_invite_protocol.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 111,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/conversation_participant_protocol.py",
@@ -12952,7 +12980,7 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 142,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/conversational_factory.py",
       "owning_feature": "persistence"
@@ -13242,6 +13270,13 @@
       "loc": 113,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/connection_secret_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 376,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/conversation_invite_repo.py",
       "owning_feature": "persistence"
     },
     {
@@ -13865,6 +13900,13 @@
       "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/connection_secret_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 395,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/conversation_invite_repo.py",
       "owning_feature": "persistence"
     },
     {

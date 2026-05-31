@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { apiSuccess } from '@/mocks/handlers'
@@ -68,6 +69,7 @@ function _roundResult(
     ],
     participants_skipped: [],
     truncated_reason: null,
+    pending_invites: [],
     ...overrides,
   }
 }
@@ -134,6 +136,51 @@ describe('MetaGroup', () => {
     expect(screen.getAllByText('Casey').length).toBeGreaterThan(0)
     // The human turn is echoed into the transcript.
     expect(screen.getByText('should we move upmarket?')).toBeInTheDocument()
+  })
+
+  it('surfaces a pending invite with a consent CTA to approvals', async () => {
+    _useRoster()
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(
+          apiSuccess(
+            _roundResult({
+              pending_invites: [
+                {
+                  approval_id: 'appr-inv-1',
+                  requested_by_agent_id: 'a-ceo',
+                  requested_by_name: 'Dana',
+                  target_agent_id: 'a-cfo',
+                  target_name: 'Casey',
+                  target_role: 'CFO',
+                  reason: 'budget sign-off needed',
+                },
+              ],
+            }),
+          ),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <MetaGroup />
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Dana/ }))
+    await user.type(screen.getByLabelText('Message'), 'bring in finance')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/budget sign-off needed/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/asked to bring in/)).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /Review in Approvals/ })
+    expect(link).toHaveAttribute('href', '/approvals')
   })
 
   it('surfaces a truncation notice when a round stops early', async () => {

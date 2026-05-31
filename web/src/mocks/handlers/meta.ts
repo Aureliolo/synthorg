@@ -142,6 +142,9 @@ export const metaHandlers = [
         ],
         participants_skipped: [],
         truncated_reason: null,
+        // Agent-initiated invites (#1971) are off by default; the happy
+        // path parks none, so the consent surface stays empty.
+        pending_invites: [],
       }),
     )
   }),
