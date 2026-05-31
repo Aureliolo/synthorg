@@ -118,7 +118,7 @@ class BrainBackedSteeringInbox:
         for entry in rows:
             if entry.entry_id in already_adopted:
                 continue
-            directive = self._to_directive(entry)
+            directive = brain_entry_to_directive(entry)
             if directive is None:
                 continue
             if not directive.applies_to(task_id=task_id, agent_id=agent_id):
@@ -126,29 +126,29 @@ class BrainBackedSteeringInbox:
             directives.append(directive)
         return tuple(directives)
 
-    @staticmethod
-    def _to_directive(entry: BrainEntry) -> ActiveSteeringDirective | None:
-        """Map a steering brain entry to a typed directive.
 
-        Returns:
-            The directive, or ``None`` when the entry carries no recognised
-            steering kind tag or fails validation.
-        """
-        kind, narrow_tasks, narrow_agents = parse_steering_tags(entry.tags)
-        if kind is None:
-            return None
-        try:
-            return ActiveSteeringDirective(
-                entry_id=entry.entry_id,
-                kind=kind,
-                text=entry.rationale,
-                author=entry.author,
-                recorded_at=entry.recorded_at,
-                narrow_task_ids=narrow_tasks,
-                narrow_agent_ids=narrow_agents,
-            )
-        except ValidationError:
-            return None
+def brain_entry_to_directive(entry: BrainEntry) -> ActiveSteeringDirective | None:
+    """Map a steering brain entry to a typed directive.
+
+    Returns:
+        The directive, or ``None`` when the entry carries no recognised
+        steering kind tag or fails validation.
+    """
+    kind, narrow_tasks, narrow_agents = parse_steering_tags(entry.tags)
+    if kind is None:
+        return None
+    try:
+        return ActiveSteeringDirective(
+            entry_id=entry.entry_id,
+            kind=kind,
+            text=entry.rationale,
+            author=entry.author,
+            recorded_at=entry.recorded_at,
+            narrow_task_ids=narrow_tasks,
+            narrow_agent_ids=narrow_agents,
+        )
+    except ValidationError:
+        return None
 
 
 def build_steering_inbox(
