@@ -16,6 +16,7 @@ from synthorg.api.controllers.activities import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
+from synthorg.api.controllers.agent_roster import AgentRosterController
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.personalities import PersonalityPresetController
@@ -58,6 +59,7 @@ FEATURE: FeatureModule = FeatureManifest(
     state_slice=HrStateSlice,
     controllers=(
         AgentController,
+        AgentRosterController,
         AgentIdentityVersionController,
         ActivityController,
         PersonalityPresetController,

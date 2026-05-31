@@ -22,6 +22,9 @@ from synthorg.api.app_builders import (
     build_chief_of_staff_proposer,
 )
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.lifecycle_helpers.conversational_wiring import (
+    wire_group_chat_service,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
@@ -607,4 +610,10 @@ async def wire_features_on_startup(
         persistence=persistence,
         cost_tracker=cost_tracker,
         effective_approval_store=effective_approval_store,
+    )
+    await wire_group_chat_service(
+        app_state,
+        provider_registry=provider_registry,
+        persistence=persistence,
+        cost_tracker=cost_tracker,
     )

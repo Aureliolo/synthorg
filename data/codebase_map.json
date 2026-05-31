@@ -575,6 +575,13 @@
       "owning_feature": "api_core"
     },
     {
+      "kind": "controller",
+      "loc": 64,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/agent_roster.py",
+      "owning_feature": "api_core"
+    },
+    {
       "kind": "code",
       "loc": 549,
       "loc_cap": 500,
@@ -740,6 +747,13 @@
       "loc": 464,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/connections.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "controller",
+      "loc": 89,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/conversational.py",
       "owning_feature": "api_core"
     },
     {
@@ -1318,6 +1332,13 @@
     },
     {
       "kind": "code",
+      "loc": 83,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/conversational_builders.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
       "loc": 324,
       "loc_cap": 500,
       "module": "src/synthorg/api/cursor.py",
@@ -1416,7 +1437,7 @@
     },
     {
       "kind": "feature",
-      "loc": 58,
+      "loc": 62,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -1507,6 +1528,13 @@
     },
     {
       "kind": "code",
+      "loc": 60,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
       "loc": 105,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/feature_lifecycle.py",
@@ -1514,7 +1542,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 556,
+      "loc": 565,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -1724,7 +1752,7 @@
     },
     {
       "kind": "code",
-      "loc": 263,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/policies.py",
       "owning_feature": "api_core"
@@ -5315,7 +5343,7 @@
     },
     {
       "kind": "code",
-      "loc": 327,
+      "loc": 340,
       "loc_cap": 500,
       "module": "src/synthorg/engine/middleware/s1_constraints.py",
       "owning_feature": "engine"
@@ -7226,7 +7254,7 @@
     },
     {
       "kind": "feature",
-      "loc": 71,
+      "loc": 73,
       "loc_cap": 100,
       "module": "src/synthorg/hr/feature.py",
       "owning_feature": "hr"
@@ -9802,7 +9830,7 @@
     },
     {
       "kind": "code",
-      "loc": 142,
+      "loc": 192,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
@@ -9816,9 +9844,23 @@
     },
     {
       "kind": "code",
-      "loc": 51,
+      "loc": 66,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/enums.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "service",
+      "loc": 571,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "declarative",
+      "loc": 104,
+      "loc_cap": null,
+      "module": "src/synthorg/meta/chief_of_staff/group_models.py",
       "owning_feature": "meta"
     },
     {
@@ -9858,7 +9900,7 @@
     },
     {
       "kind": "code",
-      "loc": 178,
+      "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/prompts.py",
       "owning_feature": "meta"
@@ -9914,7 +9956,7 @@
     },
     {
       "kind": "code",
-      "loc": 210,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/meta/errors.py",
       "owning_feature": "meta"
@@ -9956,7 +9998,7 @@
     },
     {
       "kind": "feature",
-      "loc": 75,
+      "loc": 77,
       "loc_cap": 100,
       "module": "src/synthorg/meta/feature.py",
       "owning_feature": "meta"
@@ -10964,7 +11006,7 @@
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 135,
       "loc_cap": 500,
       "module": "src/synthorg/meta/state.py",
       "owning_feature": "meta"
@@ -11559,7 +11601,7 @@
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 49,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/chief_of_staff.py",
       "owning_feature": "observability"
@@ -11937,7 +11979,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 778,
+      "loc": 787,
       "loc_cap": null,
       "module": "src/synthorg/observability/events/persistence.py",
       "owning_feature": "observability"
@@ -12728,7 +12770,7 @@
     },
     {
       "kind": "code",
-      "loc": 85,
+      "loc": 122,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -12896,6 +12938,13 @@
     },
     {
       "kind": "code",
+      "loc": 111,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/conversation_participant_protocol.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 145,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/conversation_protocol.py",
@@ -12903,7 +12952,7 @@
     },
     {
       "kind": "code",
-      "loc": 106,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/conversational_factory.py",
       "owning_feature": "persistence"
@@ -13193,6 +13242,13 @@
       "loc": 113,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/connection_secret_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 302,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/conversation_participant_repo.py",
       "owning_feature": "persistence"
     },
     {
@@ -13809,6 +13865,13 @@
       "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/connection_secret_repo.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 330,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/conversation_participant_repo.py",
       "owning_feature": "persistence"
     },
     {

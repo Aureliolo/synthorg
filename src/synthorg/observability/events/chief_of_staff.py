@@ -60,3 +60,31 @@ COS_CONVERSATION_STATUS_TRANSITIONED: Final[str] = (
 COS_ROUTING_ROUTED: Final[str] = "chief_of_staff.routing.routed"
 COS_ROUTING_FALLBACK: Final[str] = "chief_of_staff.routing.fallback"
 COS_ROUTING_RESPONSE_INVALID: Final[str] = "chief_of_staff.routing.response_invalid"
+
+# -- Multi-agent group chat --------------------------------------------
+
+COS_GROUP_ROUND_STARTED: Final[str] = "chief_of_staff.group_chat.round_started"
+COS_GROUP_CONTRIBUTION: Final[str] = "chief_of_staff.group_chat.contribution"
+COS_GROUP_CONTRIBUTION_FAILED: Final[str] = (
+    "chief_of_staff.group_chat.contribution_failed"
+)
+COS_GROUP_ROUND_COMPLETED: Final[str] = "chief_of_staff.group_chat.round_completed"
+COS_GROUP_ROUND_TRUNCATED: Final[str] = "chief_of_staff.group_chat.round_truncated"
+COS_GROUP_AUTHORITY_CUES_DETECTED: Final[str] = (
+    "chief_of_staff.group_chat.authority_cues_detected"
+)
+COS_GROUP_PARTICIPANTS_ADDED: Final[str] = (
+    "chief_of_staff.group_chat.participants_added"
+)
+# Participant-roster repo events. Read/query markers + failure path only;
+# the persistence boundary forbids repos from emitting mutation lifecycle
+# events (the GroupChatService owns the membership audit hop).
+COS_GROUP_PARTICIPANT_FETCHED: Final[str] = (
+    "chief_of_staff.group_chat.participant_fetched"
+)
+COS_GROUP_PARTICIPANT_LISTED: Final[str] = (
+    "chief_of_staff.group_chat.participant_listed"
+)
+COS_GROUP_PARTICIPANT_FAILED: Final[str] = (
+    "chief_of_staff.group_chat.participant_failed"
+)

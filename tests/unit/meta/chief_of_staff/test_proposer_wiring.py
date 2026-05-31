@@ -37,6 +37,7 @@ def _repos() -> ConversationalRepositories:
         conversation_repo=object(),  # type: ignore[arg-type]
         turn_repo=object(),  # type: ignore[arg-type]
         proposal_repo=object(),  # type: ignore[arg-type]
+        participant_repo=object(),  # type: ignore[arg-type]
     )
 
 

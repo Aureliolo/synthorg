@@ -52,6 +52,35 @@ _ROUTING_MAX_TOKENS_MIN: int = 50
 # Chief of Staff rather than routing to a possibly-wrong role; the
 # 0.0/1.0 envelope is the natural probability range.
 _ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
+# Group chat (#1970): one human, several agents, round-robin turns. The
+# defaults below bound a single human turn so it cannot drive unbounded
+# fan-out cost; all are operator-tunable.
+# Five participants is a sensible default fan-out for a working group; 2
+# is the floor for a meaningful multi-agent round and 10 caps the
+# per-round LLM call count.
+_GROUP_MAX_PARTICIPANTS_DEFAULT: int = 5
+_GROUP_MAX_PARTICIPANTS_MIN: int = 2
+_GROUP_MAX_PARTICIPANTS_MAX: int = 10
+# 12000 tokens covers a five-agent round (prompt + reply per agent) with
+# headroom; 1000 is the floor below which even a single contribution
+# plus its reserve would not fit.
+_GROUP_ROUND_TOKEN_BUDGET_DEFAULT: int = 12000
+_GROUP_ROUND_TOKEN_BUDGET_MIN: int = 1000
+# A round keeps a 20% reserve so the budget check trips before the
+# tracker is fully drained, leaving margin for the in-flight call's
+# input tokens; 0.0..0.9 is the usable reserve envelope.
+_GROUP_TOKEN_RESERVE_RATIO_DEFAULT: float = 0.2
+_GROUP_TOKEN_RESERVE_RATIO_MAX: float = 0.9
+# 1500 output tokens per contribution keeps one verbose agent from
+# starving the rest of the round; 100 is the floor for a usable reply.
+_GROUP_PER_AGENT_MAX_TOKENS_DEFAULT: int = 1500
+_GROUP_PER_AGENT_MAX_TOKENS_MIN: int = 100
+# 60 total turns bounds the conversation's lifetime growth (one human
+# turn plus several agent turns per round, over several rounds); 2 is
+# the floor (one human + one agent) and 500 a generous ceiling.
+_GROUP_MAX_TOTAL_TURNS_DEFAULT: int = 60
+_GROUP_MAX_TOTAL_TURNS_MIN: int = 2
+_GROUP_MAX_TOTAL_TURNS_MAX: int = 500
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -108,6 +137,20 @@ class ChiefOfStaffConfig(BaseModel):
         routing_default_role: Role to try when the classifier is
             confident but names a role with no active agent; falls back
             to the generic persona when that role is also absent.
+        group_chat_enabled: Enable the multi-agent group chat
+            (``/meta/chat/group``). When off, the controller 503s.
+        group_chat_max_participants: Maximum agents in one group
+            conversation (bounds per-round fan-out).
+        group_chat_round_token_budget: Total token budget for one
+            round-robin round across all participants.
+        group_chat_token_reserve_ratio: Fraction of the round budget
+            held back so the budget check trips before the tracker is
+            fully drained.
+        group_chat_per_agent_max_tokens: Output-token cap for a single
+            participant's contribution (stops one agent starving the
+            round).
+        group_chat_max_total_turns: Maximum total turns a single group
+            conversation may accumulate over its lifetime.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -189,4 +232,31 @@ class ChiefOfStaffConfig(BaseModel):
         default=NotBlankStr("CEO"),
         description="Role to try when a confident classification names "
         "a role with no active agent",
+    )
+
+    # ── Multi-agent group chat (#1970) ────────────────────────────
+
+    group_chat_enabled: bool = False
+    group_chat_max_participants: int = Field(
+        default=_GROUP_MAX_PARTICIPANTS_DEFAULT,
+        ge=_GROUP_MAX_PARTICIPANTS_MIN,
+        le=_GROUP_MAX_PARTICIPANTS_MAX,
+    )
+    group_chat_round_token_budget: int = Field(
+        default=_GROUP_ROUND_TOKEN_BUDGET_DEFAULT,
+        ge=_GROUP_ROUND_TOKEN_BUDGET_MIN,
+    )
+    group_chat_token_reserve_ratio: float = Field(
+        default=_GROUP_TOKEN_RESERVE_RATIO_DEFAULT,
+        ge=0.0,
+        le=_GROUP_TOKEN_RESERVE_RATIO_MAX,
+    )
+    group_chat_per_agent_max_tokens: int = Field(
+        default=_GROUP_PER_AGENT_MAX_TOKENS_DEFAULT,
+        ge=_GROUP_PER_AGENT_MAX_TOKENS_MIN,
+    )
+    group_chat_max_total_turns: int = Field(
+        default=_GROUP_MAX_TOTAL_TURNS_DEFAULT,
+        ge=_GROUP_MAX_TOTAL_TURNS_MIN,
+        le=_GROUP_MAX_TOTAL_TURNS_MAX,
     )

@@ -145,6 +145,75 @@ class ConversationalProposeResponseInvalidError(ChiefOfStaffError):
     status_code: ClassVar[int] = 502
 
 
+class GroupChatUnavailableError(ChiefOfStaffError):
+    """Raised when the multi-agent group chat is not fully wired.
+
+    Surfaces when ``group_chat_enabled`` is off, no provider/agent
+    registry is available, or the conversational repositories were not
+    connected. The operator can fix the configuration and retry.
+    """
+
+    default_message: ClassVar[str] = "Group chat interface is unavailable"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    status_code: ClassVar[int] = 503
+
+
+class GroupParticipantUnknownError(ChiefOfStaffError):
+    """Raised when a requested participant agent id does not resolve.
+
+    The caller named an agent that is not in the registry; the group
+    conversation cannot enrol an agent that has no identity.
+
+    Attributes:
+        agent_id: The unresolved agent id.
+    """
+
+    default_message: ClassVar[str] = "Group chat participant not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
+
+    def __init__(self, *, agent_id: str) -> None:
+        super().__init__("Group chat participant not found")
+        self.agent_id: str = agent_id
+
+
+class GroupParticipantLimitError(ChiefOfStaffError):
+    """Raised when a group conversation would exceed its participant cap.
+
+    Bounds per-round fan-out: a single conversation may not enrol more
+    than ``group_chat_max_participants`` agents.
+
+    Attributes:
+        requested: The participant count the caller asked for.
+        limit: The configured maximum.
+    """
+
+    default_message: ClassVar[str] = "Group chat participant limit exceeded"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
+
+    def __init__(self, *, requested: int, limit: int) -> None:
+        super().__init__("Group chat participant limit exceeded")
+        self.requested: int = requested
+        self.limit: int = limit
+
+
+class GroupConversationEmptyError(ChiefOfStaffError):
+    """Raised when a new group conversation is opened with no participants.
+
+    A group conversation needs at least one agent to converse with; the
+    caller must name the initial participants when opening one.
+    """
+
+    default_message: ClassVar[str] = "Group chat needs at least one participant"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
+    status_code: ClassVar[int] = 422
+
+
 class CharterError(DomainError):
     """Base class for the deep CEO interview to project charter flow.
 

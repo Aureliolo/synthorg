@@ -12,9 +12,14 @@ from typing import Any, Protocol, runtime_checkable
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import QueryError
-from synthorg.meta.chief_of_staff.enums import ConversationKind
+from synthorg.meta.chief_of_staff.enums import (
+    ConversationKind,
+    ConversationParticipantStatus,
+)
+from synthorg.meta.chief_of_staff.group_models import ConversationParticipant
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.chief_of_staff import COS_GROUP_PARTICIPANT_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CONVERSATION_FAILED,
     PERSISTENCE_CONVERSATION_TURN_FAILED,
@@ -99,4 +104,40 @@ def row_to_turn(row: RowLike) -> ConversationTurn:
         raise QueryError(msg) from exc
 
 
-__all__ = ["RowLike", "row_to_conversation", "row_to_turn"]
+def row_to_participant(row: RowLike) -> ConversationParticipant:
+    """Convert a database row into a :class:`ConversationParticipant`.
+
+    Returns:
+        Result of type ``ConversationParticipant``.
+
+    Raises:
+        QueryError: If the row contains corrupt or unparseable data.
+    """
+    try:
+        return ConversationParticipant(
+            id=str(row["id"]),
+            conversation_id=str(row["conversation_id"]),
+            agent_id=str(row["agent_id"]),
+            agent_name=str(row["agent_name"]),
+            participant_role=str(row["participant_role"]),
+            status=ConversationParticipantStatus(str(row["status"])),
+            added_by=str(row["added_by"]),
+            added_at=coerce_row_timestamp(row["added_at"]),
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        msg = "Failed to parse conversation participant row"
+        logger.warning(
+            COS_GROUP_PARTICIPANT_FAILED,
+            operation="deserialize",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise QueryError(msg) from exc
+
+
+__all__ = [
+    "RowLike",
+    "row_to_conversation",
+    "row_to_participant",
+    "row_to_turn",
+]

@@ -633,6 +633,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/agents/active": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListActiveAgents */
+        readonly get: operations["ApiV1AgentsActiveListActiveAgents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/analytics/forecast": {
         readonly parameters: {
             readonly query?: never;
@@ -2452,6 +2469,23 @@ export type paths = {
         readonly put?: never;
         /** Chat */
         readonly post: operations["ApiV1MetaChatChat"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/chat/group": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ChatGroup */
+        readonly post: operations["ApiV1MetaChatGroupChatGroup"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4990,6 +5024,12 @@ export type components = {
             /** @description Project ID for created tasks */
             readonly project: string;
         };
+        /** ActiveAgentSummary */
+        readonly ActiveAgentSummary: {
+            readonly id: string;
+            readonly name: string;
+            readonly role: string;
+        };
         /** ActiveCeremonyStrategyResponse */
         readonly ActiveCeremonyStrategyResponse: {
             /** @description Active sprint ID, null if no sprint running */
@@ -5916,6 +5956,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[GroupConverseResult] */
+        readonly ApiResponse_GroupConverseResult_: {
+            readonly data: components["schemas"]["GroupConverseResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[HealthReport] */
         readonly ApiResponse_HealthReport_: {
             readonly data: components["schemas"]["HealthReport"] | null;
@@ -6592,6 +6645,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[tuple[ActiveAgentSummary, ...]] */
+        readonly "ApiResponse_tuple_ActiveAgentSummary_..._": {
+            readonly data: readonly components["schemas"]["ActiveAgentSummary"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[tuple[AgentConfig, ...]] */
         readonly "ApiResponse_tuple_AgentConfig_..._": {
             readonly data: readonly components["schemas"]["AgentConfig"][] | null;
@@ -7232,6 +7298,18 @@ export type components = {
         readonly AssignExperimentRequest: {
             /** @description Subject identifier (agent id, user id, project id, ...) */
             readonly subject_id: string;
+        };
+        /** AttributedContribution */
+        readonly AttributedContribution: {
+            readonly agent_id: string;
+            readonly agent_name: string;
+            readonly content: string;
+            /** @default 0 */
+            readonly input_tokens: number;
+            /** @default 0 */
+            readonly output_tokens: number;
+            readonly participant_role: string;
+            readonly sequence: number;
         };
         /** AuditEntry */
         readonly AuditEntry: {
@@ -8333,6 +8411,34 @@ export type components = {
             readonly message: string;
             readonly project?: string | null;
         };
+        /** ConversationParticipant */
+        readonly ConversationParticipant: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly added_at: string;
+            readonly added_by: string;
+            readonly agent_id: string;
+            readonly agent_name: string;
+            readonly conversation_id: string;
+            readonly id: string;
+            readonly participant_role: string;
+            readonly status: components["schemas"]["ConversationParticipantStatus"];
+        };
+        /**
+         * ConversationParticipantStatus
+         * @description Membership state of an agent in a group conversation.
+         *
+         *     Attributes:
+         *         ACTIVE: The agent participates in turn-taking and receives the
+         *             shared transcript.
+         *         REMOVED: The agent was removed from the conversation; retained
+         *             for audit but excluded from future rounds.
+         * @default active
+         * @enum {string}
+         */
+        readonly ConversationParticipantStatus: "active" | "removed";
         /** CookieSessionResponse */
         readonly CookieSessionResponse: {
             readonly expires_in: number;
@@ -10005,6 +10111,42 @@ export type components = {
             readonly role: components["schemas"]["OrgRole"];
             /** @default [] */
             readonly scoped_departments: readonly string[];
+        };
+        /** GroupChatRequest */
+        readonly GroupChatRequest: {
+            readonly conversation_id?: string | null;
+            readonly message: string;
+            /** @default [] */
+            readonly participants: readonly string[];
+        };
+        /**
+         * GroupChatTruncationReason
+         * @description Why a group-chat round stopped before every participant spoke.
+         *
+         *     A round is bounded so a single human turn cannot drive unbounded
+         *     cost. When a bound trips mid-round the remaining participants are
+         *     skipped and the reason is surfaced on the result (never silently);
+         *     ``None`` on the result means the round completed in full.
+         *
+         *     Attributes:
+         *         TOKEN_BUDGET_EXHAUSTED: The per-round token budget was consumed
+         *             before the remaining participants could contribute.
+         *         MAX_TOTAL_TURNS_REACHED: Appending a further contribution would
+         *             exceed the conversation's total-turn cap.
+         * @enum {string}
+         */
+        readonly GroupChatTruncationReason: "token_budget_exhausted" | "max_total_turns_reached";
+        /** GroupConverseResult */
+        readonly GroupConverseResult: {
+            /** @default [] */
+            readonly contributions: readonly components["schemas"]["AttributedContribution"][];
+            readonly conversation_id: string;
+            /** @default [] */
+            readonly participants: readonly components["schemas"]["ConversationParticipant"][];
+            /** @default [] */
+            readonly participants_skipped: readonly string[];
+            /** @enum {string|null} */
+            readonly truncated_reason: "token_budget_exhausted" | "max_total_turns_reached" | null;
         };
         /** HaltContext */
         readonly HaltContext: {
@@ -17130,6 +17272,30 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1AgentsActiveListActiveAgents: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_ActiveAgentSummary_..._"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1AnalyticsForecastGetForecast: {
         readonly parameters: {
             readonly query?: {
@@ -20950,6 +21116,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatGroupChatGroup: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GroupChatRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_GroupConverseResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

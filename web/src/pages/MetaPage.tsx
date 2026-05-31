@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Settings2,
   Shield,
+  Users,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import { useMetaData } from '@/hooks/useMetaData'
 
 import { MetaABTestView } from './meta/MetaABTestView'
 import { MetaChat } from './meta/MetaChat'
+import { MetaGroup } from './meta/MetaGroup'
 import { MetaPropose } from './meta/MetaPropose'
 import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
@@ -106,6 +108,9 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
             </SectionCard>
             <SectionCard title="Conversational Intake" icon={ClipboardList}>
               <MetaPropose />
+            </SectionCard>
+            <SectionCard title="Group Chat" icon={Users}>
+              <MetaGroup />
             </SectionCard>
           </>
         )}

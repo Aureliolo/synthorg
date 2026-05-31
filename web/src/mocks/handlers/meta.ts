@@ -5,9 +5,19 @@ import type {
   listABTests,
   listProposals,
   postChat,
+  postChatGroup,
   postChatPropose,
 } from '@/api/endpoints/meta'
 import { apiError, successFor } from './helpers'
+
+function _hasBlankMessage(body: unknown): boolean {
+  return (
+    !body ||
+    typeof body !== 'object' ||
+    typeof (body as { message?: unknown }).message !== 'string' ||
+    !(body as { message: string }).message.trim()
+  )
+}
 
 export const metaHandlers = [
   http.get('/api/v1/meta/config', () =>
@@ -42,12 +52,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as { message?: unknown }).message !== 'string' ||
-      !(body as { message: string }).message.trim()
-    ) {
+    if (_hasBlankMessage(body)) {
       return HttpResponse.json(apiError('Message must not be blank'), {
         status: 400,
       })
@@ -73,6 +78,70 @@ export const metaHandlers = [
         responder_name: null,
         routed_topic: null,
         routing_confidence: null,
+      }),
+    )
+  }),
+  http.post('/api/v1/meta/chat/group', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    if (_hasBlankMessage(body)) {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof postChatGroup>({
+        conversation_id: 'conv-grp-mock-001',
+        contributions: [
+          {
+            agent_id: 'agent-ceo-mock',
+            agent_name: 'Dana',
+            participant_role: 'CEO',
+            content: 'We should prioritise the enterprise segment.',
+            sequence: 1,
+            input_tokens: 80,
+            output_tokens: 30,
+          },
+          {
+            agent_id: 'agent-cfo-mock',
+            agent_name: 'Casey',
+            participant_role: 'CFO',
+            content: 'That needs a larger sales budget; I can model it.',
+            sequence: 2,
+            input_tokens: 90,
+            output_tokens: 28,
+          },
+        ],
+        participants: [
+          {
+            id: 'part-ceo-mock',
+            conversation_id: 'conv-grp-mock-001',
+            agent_id: 'agent-ceo-mock',
+            agent_name: 'Dana',
+            participant_role: 'CEO',
+            status: 'active',
+            added_by: 'user-mock',
+            added_at: '2026-05-19T09:00:00Z',
+          },
+          {
+            id: 'part-cfo-mock',
+            conversation_id: 'conv-grp-mock-001',
+            agent_id: 'agent-cfo-mock',
+            agent_name: 'Casey',
+            participant_role: 'CFO',
+            status: 'active',
+            added_by: 'user-mock',
+            added_at: '2026-05-19T09:00:00.000001Z',
+          },
+        ],
+        participants_skipped: [],
+        truncated_reason: null,
       }),
     )
   }),

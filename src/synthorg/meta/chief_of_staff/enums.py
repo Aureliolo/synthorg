@@ -61,8 +61,28 @@ class ConversationInviteStatus(StrEnum):
     DECLINED = "declined"
 
 
+class GroupChatTruncationReason(StrEnum):
+    """Why a group-chat round stopped before every participant spoke.
+
+    A round is bounded so a single human turn cannot drive unbounded
+    cost. When a bound trips mid-round the remaining participants are
+    skipped and the reason is surfaced on the result (never silently);
+    ``None`` on the result means the round completed in full.
+
+    Attributes:
+        TOKEN_BUDGET_EXHAUSTED: The per-round token budget was consumed
+            before the remaining participants could contribute.
+        MAX_TOTAL_TURNS_REACHED: Appending a further contribution would
+            exceed the conversation's total-turn cap.
+    """
+
+    TOKEN_BUDGET_EXHAUSTED = "token_budget_exhausted"  # noqa: S105 -- enum label, not a secret
+    MAX_TOTAL_TURNS_REACHED = "max_total_turns_reached"
+
+
 __all__ = [
     "ConversationInviteStatus",
     "ConversationKind",
     "ConversationParticipantStatus",
+    "GroupChatTruncationReason",
 ]

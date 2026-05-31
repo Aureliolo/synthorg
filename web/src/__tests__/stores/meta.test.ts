@@ -11,10 +11,12 @@ function resetStore() {
     proposals: [],
     abTests: [],
     signals: null,
+    activeAgents: [],
     loading: false,
     error: null,
     chatLoading: false,
     proposeLoading: false,
+    groupChatLoading: false,
   })
   useToastStore.setState({ toasts: [] })
 }
@@ -196,5 +198,88 @@ describe('proposeConversation', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Propose request failed')
+  })
+})
+
+describe('fetchActiveAgents', () => {
+  it('stores the active roster and clears error on success', async () => {
+    const roster = [{ id: 'a-1', name: 'Dana', role: 'CEO' }]
+    server.use(
+      http.get('/api/v1/agents/active', () =>
+        HttpResponse.json(apiSuccess(roster)),
+      ),
+    )
+    useMetaStore.setState({ error: 'stale' })
+
+    await useMetaStore.getState().fetchActiveAgents()
+
+    expect(useMetaStore.getState().activeAgents).toEqual(roster)
+    expect(useMetaStore.getState().error).toBeNull()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('sets error state on API failure without toasting (list-read pattern)', async () => {
+    server.use(
+      http.get('/api/v1/agents/active', () =>
+        HttpResponse.json(apiError('boom')),
+      ),
+    )
+
+    await useMetaStore.getState().fetchActiveAgents()
+
+    expect(useMetaStore.getState().error).toBe('boom')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+})
+
+describe('converseGroup', () => {
+  it('returns the round result and forwards message + participant ids', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/meta/chat/group', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json(
+          apiSuccess({
+            conversation_id: 'conv-grp-1',
+            contributions: [],
+            participants: [],
+            participants_skipped: [],
+            truncated_reason: null,
+          }),
+        )
+      }),
+    )
+
+    const result = await useMetaStore
+      .getState()
+      .converseGroup('kick off', ['a-1', 'a-2'])
+
+    expect(result?.conversation_id).toBe('conv-grp-1')
+    expect(useMetaStore.getState().groupChatLoading).toBe(false)
+    expect(requestBodies[0]).toEqual({
+      message: 'kick off',
+      conversation_id: null,
+      participants: ['a-1', 'a-2'],
+    })
+  })
+
+  it('returns null, sets error, and emits an error toast on API failure', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(apiError('nope')),
+      ),
+    )
+
+    const result = await useMetaStore
+      .getState()
+      .converseGroup('hi', ['a-1'])
+
+    expect(result).toBeNull()
+    const state = useMetaStore.getState()
+    expect(state.groupChatLoading).toBe(false)
+    expect(state.error).toBe('nope')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Group chat request failed')
   })
 })

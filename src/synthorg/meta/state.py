@@ -15,6 +15,7 @@ from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.experiments import ExperimentService
 from synthorg.meta.analytics.service import AnalyticsService
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
@@ -45,6 +46,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     chief_of_staff_chat: ChiefOfStaffChat | None = None
     conversational_proposal_repo: ConversationalProposalRepository | None = None
     role_router: RoleRouter | None = None
+    group_chat_service: GroupChatService | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -160,4 +162,16 @@ def conversational_proposal_repo_of(
     return require_service(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
+    )
+
+
+def group_chat_service_of(app_state: AppStateSliceMixin) -> GroupChatService:
+    """Resolve the multi-agent group chat service from its slice, or raise 503.
+
+    Returns:
+        The wired group chat service.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).group_chat_service,
+        "Group Chat Service",
     )

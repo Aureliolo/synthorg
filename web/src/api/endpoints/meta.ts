@@ -7,6 +7,8 @@
 
 import type {
   ConversationalProposeRequest,
+  GroupChatRequest,
+  GroupConverseResult,
   ProposeResult,
 } from '../types'
 import type { ApiResponse } from '../types/http'
@@ -135,6 +137,39 @@ export async function postChatPropose(
       'Idempotency-Key': crypto.randomUUID(),
     },
   })
+  return unwrap(response)
+}
+
+export async function postChatGroup(
+  message: string,
+  agentIds: readonly string[],
+  conversationId?: string,
+): Promise<GroupConverseResult> {
+  const trimmed = message.trim()
+  if (!trimmed) {
+    throw new Error('Message must not be blank')
+  }
+  // The /meta/chat/group endpoint is rate-limited via
+  // ``per_op_rate_limit_from_policy("meta.chat.group", key="user")``
+  // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
+  // interceptor retries after Retry-After; a server replay of the same
+  // key is a no-op, so a retry never double-runs a round.
+  const body: GroupChatRequest = {
+    message: trimmed,
+    conversation_id: conversationId ?? null,
+    // Initial roster ids (registry UUIDs from /agents/active); ignored
+    // by the server when continuing an existing conversation.
+    participants: agentIds,
+  }
+  const response = await apiClient.post<ApiResponse<GroupConverseResult>>(
+    `${BASE}/chat/group`,
+    body,
+    {
+      headers: {
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+    },
+  )
   return unwrap(response)
 }
 

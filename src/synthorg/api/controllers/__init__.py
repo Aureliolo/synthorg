@@ -13,6 +13,7 @@ from synthorg.api.controllers.activities import ActivityController
 from synthorg.api.controllers.agent_identity_versions import (
     AgentIdentityVersionController,
 )
+from synthorg.api.controllers.agent_roster import AgentRosterController
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsController
@@ -40,6 +41,7 @@ from synthorg.api.controllers.company_versions import (
     CompanyVersionController,
 )
 from synthorg.api.controllers.connections import ConnectionsController
+from synthorg.api.controllers.conversational import ConversationalController
 from synthorg.api.controllers.coordination import CoordinationController
 from synthorg.api.controllers.coordination_metrics import (
     CoordinationMetricsController,
@@ -156,6 +158,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     CapabilitiesController,
     CompanyController,
     AgentController,
+    AgentRosterController,
     AgentIdentityVersionController,
     ActivityController,
     DepartmentController,
@@ -231,6 +234,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ScalingController,
     TrainingController,
     MetaController,
+    ConversationalController,
     MetaAnalyticsController,
     CustomRuleController,
     CockpitController,
@@ -312,6 +316,7 @@ __all__ = [
     "ActivityController",
     "AgentController",
     "AgentIdentityVersionController",
+    "AgentRosterController",
     "AnalyticsController",
     "ApprovalsDecisionsController",
     "ApprovalsQueryController",
@@ -335,6 +340,7 @@ __all__ = [
     "CompanyVersionController",
     "ConnectionsController",
     "Controller",
+    "ConversationalController",
     "CoordinationController",
     "CoordinationMetricsController",
     "CustomRuleController",
