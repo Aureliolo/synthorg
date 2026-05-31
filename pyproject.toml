@@ -170,6 +170,7 @@ dev = [
     "codespell==2.4.2",
     "sqlfluff==4.2.1",
     "yamllint==1.38.0",
+    "import-linter==2.11",
     {include-group = "test"},
     {include-group = "docs"},
 ]
