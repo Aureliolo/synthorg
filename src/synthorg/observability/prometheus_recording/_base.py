@@ -6,11 +6,8 @@ family mixins consume them. Declaring them on one base keeps the
 metric inventory in a single place.
 """
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from prometheus_client import Counter as PromCounter
-    from prometheus_client import Gauge, Histogram
+from prometheus_client import Counter as PromCounter
+from prometheus_client import Gauge, Histogram
 
 
 class _RecordingMetricsBase:

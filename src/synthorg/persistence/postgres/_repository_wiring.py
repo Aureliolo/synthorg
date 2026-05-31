@@ -13,13 +13,13 @@ linearly with the repository count and the construction contract
 (``self._pool``) is uniform across them all.
 """
 
-from typing import TYPE_CHECKING
-
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.company import Company
+from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.role import Role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -180,9 +180,6 @@ from synthorg.persistence.postgres.workflow_execution_repo import (
     PostgresWorkflowExecutionRepository,
 )
 
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
 
 class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
     """Mixin: construct and reset every Postgres repository slot.
@@ -262,8 +259,15 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._webhook_receipts = None
 
     def _create_repositories(self) -> None:
-        """Instantiate all repository objects from the active pool."""
-        assert self._pool is not None  # noqa: S101
+        """Instantiate all repository objects from the active pool.
+
+        Raises:
+            PersistenceConnectionError: If called before the backend's
+                connection pool has been established.
+        """
+        if self._pool is None:
+            msg = "Not connected -- call connect() before creating repositories"
+            raise PersistenceConnectionError(msg)
         pool = self._pool
 
         # Core domain repositories.

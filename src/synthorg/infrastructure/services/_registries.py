@@ -9,10 +9,11 @@ so concurrent MCP handler calls cannot race on the in-memory dict.
 
 import asyncio
 import copy
+from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.infrastructure import (
     PROJECT_CREATED_VIA_MCP,
@@ -24,11 +25,6 @@ from synthorg.observability.events.template import (
     TEMPLATE_PACK_INSTALLED_VIA_MCP,
     TEMPLATE_PACK_UNINSTALLED_VIA_MCP,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 

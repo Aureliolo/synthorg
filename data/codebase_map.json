@@ -7989,7 +7989,7 @@
     },
     {
       "kind": "service",
-      "loc": 417,
+      "loc": 415,
       "loc_cap": 600,
       "module": "src/synthorg/infrastructure/services/_registries.py",
       "owning_feature": "facades"
@@ -8003,7 +8003,7 @@
     },
     {
       "kind": "service",
-      "loc": 204,
+      "loc": 203,
       "loc_cap": 600,
       "module": "src/synthorg/infrastructure/services/_status_facades.py",
       "owning_feature": "facades"
@@ -12399,7 +12399,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 43,
+      "loc": 41,
       "loc_cap": null,
       "module": "src/synthorg/observability/prometheus_recording/_base.py",
       "owning_feature": "observability"
@@ -12777,7 +12777,7 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 161,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_project_brain_sql.py",
       "owning_feature": "persistence"
@@ -13134,7 +13134,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 333,
+      "loc": 338,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/postgres/_repository_wiring.py",
       "owning_feature": "persistence"
@@ -13302,7 +13302,7 @@
     },
     {
       "kind": "code",
-      "loc": 16,
+      "loc": 14,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/decision/_base.py",
       "owning_feature": "persistence"
@@ -13323,7 +13323,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 85,
+      "loc": 84,
       "loc_cap": null,
       "module": "src/synthorg/persistence/postgres/decision/_sql.py",
       "owning_feature": "persistence"
@@ -13442,7 +13442,7 @@
     },
     {
       "kind": "code",
-      "loc": 43,
+      "loc": 41,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/ontology_versioning.py",
       "owning_feature": "persistence"
@@ -13995,7 +13995,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 99,
+      "loc": 98,
       "loc_cap": null,
       "module": "src/synthorg/persistence/sqlite/decision/_sql.py",
       "owning_feature": "persistence"

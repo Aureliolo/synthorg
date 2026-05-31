@@ -145,7 +145,7 @@ class _InfraRecordingMixin(_RecordingMetricsBase):
         )
         logger.debug(
             MCP_HANDLER_OUTCOME,
-            tool=tool,
+            tool=bounded_tool,
             outcome=outcome,
             duration_sec=duration_sec,
         )

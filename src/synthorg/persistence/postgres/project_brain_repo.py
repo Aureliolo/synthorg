@@ -470,9 +470,7 @@ class PostgresProjectBrainRepository:
                 raise QueryError(msg) from exc
             return removed
 
-    async def _fetch_one(
-        self, sql: str, params: tuple[object, ...]
-    ) -> dict[str, object] | None:
+    async def _fetch_one(self, sql: str, params: tuple[object, ...]) -> DictRow | None:
         """Run a single-row SELECT.
 
         Returns:

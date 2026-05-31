@@ -12,19 +12,17 @@ only its connection handling.
 import json
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from psycopg.rows import DictRow
 
 from synthorg.persistence._shared import coerce_row_timestamp
+from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.project_brain.models import (
     BrainEntry,
     BrainEntryKind,
     BrainEntryStatus,
 )
-
-if TYPE_CHECKING:
-    from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 
 BRAIN_COLUMNS = (
     "project_id, entry_id, revision, entry_kind, title, rationale, status, "
@@ -37,7 +35,7 @@ BRAIN_COLUMNS = (
 def row_to_entry(
     row: DictRow,
     *,
-    load_json: Callable[[str], object],
+    load_json: Callable[[object], object],
 ) -> BrainEntry:
     """Reconstruct a :class:`BrainEntry` from a DB row.
 

@@ -17,20 +17,17 @@ descriptions read better on one line for grep-ability than broken
 across multiple.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Mapping
+from datetime import datetime
+from typing import Any, cast
 
+from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.types import NotBlankStr
 from synthorg.infrastructure.services._shared import _DEFAULT_LIMIT, _require_callable
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from datetime import datetime
-
-    from synthorg.client.simulation_state import ClientSimulationState
-    from synthorg.communication.event_stream.stream import EventStreamHub
-    from synthorg.core.types import NotBlankStr
-    from synthorg.integrations.health.prober import HealthProberService
-    from synthorg.security.audit import AuditLog
+from synthorg.integrations.health.prober import HealthProberService
+from synthorg.security.audit import AuditLog
 
 
 class SetupFacadeService:

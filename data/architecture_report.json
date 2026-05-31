@@ -308,8 +308,8 @@
     },
     "src/synthorg/communication/config.py": {
       "cap": 500,
-      "loc": 490,
-      "ratio": 0.98,
+      "loc": 422,
+      "ratio": 0.844,
       "tier": "code"
     },
     "src/synthorg/communication/conflict_resolution/escalation/notify.py": {
@@ -1004,20 +1004,20 @@
     },
     "src/synthorg/persistence/postgres/charter_repo.py": {
       "cap": 500,
-      "loc": 552,
-      "ratio": 1.104,
+      "loc": 551,
+      "ratio": 1.102,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
-      "loc": 497,
-      "ratio": 0.994,
+      "loc": 496,
+      "ratio": 0.992,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/cost_forecast_repo.py": {
       "cap": 500,
-      "loc": 519,
-      "ratio": 1.038,
+      "loc": 518,
+      "ratio": 1.036,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/escalation_repo.py": {
@@ -1034,20 +1034,20 @@
     },
     "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
       "cap": 500,
-      "loc": 409,
-      "ratio": 0.818,
+      "loc": 410,
+      "ratio": 0.82,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 680,
-      "ratio": 1.36,
+      "loc": 677,
+      "ratio": 1.354,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
-      "loc": 497,
-      "ratio": 0.994,
+      "loc": 495,
+      "ratio": 0.99,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/session_repo.py": {
@@ -1172,8 +1172,8 @@
     },
     "src/synthorg/persistence/sqlite/session_repo.py": {
       "cap": 500,
-      "loc": 433,
-      "ratio": 0.866,
+      "loc": 432,
+      "ratio": 0.864,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/settings_repo.py": {
@@ -1202,8 +1202,8 @@
     },
     "src/synthorg/persistence/sqlite/webhook_receipt_repo.py": {
       "cap": 500,
-      "loc": 415,
-      "ratio": 0.83,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/workflow_definition_repo.py": {
@@ -1505,7 +1505,7 @@
     "synthorg.core.enums": 461,
     "synthorg.core.error_taxonomy": 57,
     "synthorg.core.normalization": 71,
-    "synthorg.core.persistence_errors": 161,
+    "synthorg.core.persistence_errors": 162,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 78,
     "synthorg.core.types": 977,
@@ -1539,7 +1539,7 @@
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 58,
-    "synthorg.observability": 1369,
+    "synthorg.observability": 1368,
     "synthorg.observability.events.api": 138,
     "synthorg.observability.events.client": 22,
     "synthorg.observability.events.communication": 25,
@@ -1566,7 +1566,7 @@
     "synthorg.persistence._shared": 123,
     "synthorg.persistence._shared.pagination": 55,
     "synthorg.persistence.ontology_protocol": 20,
-    "synthorg.persistence.protocol": 36,
+    "synthorg.persistence.protocol": 37,
     "synthorg.persistence.sqlite._shared": 64,
     "synthorg.persistence.state": 54,
     "synthorg.providers.cost_recording": 32,

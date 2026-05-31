@@ -15,6 +15,8 @@ scales linearly with the repository count and the
 
 from typing import TYPE_CHECKING
 
+from psycopg_pool import AsyncConnectionPool
+
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.company import Company
@@ -93,8 +95,6 @@ from synthorg.persistence.postgres.webhook_receipt_repo import (
 )
 
 if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
     from synthorg.hr.persistence_protocol import (
         CollaborationMetricRepository,
         LifecycleEventRepository,

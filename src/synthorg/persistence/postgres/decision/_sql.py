@@ -11,17 +11,15 @@ only one wins; the loser retries (see ``_cas._execute_insert``).
 
 from datetime import UTC
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from psycopg.types.json import Jsonb
 from pydantic import AwareDatetime
 
 from synthorg.core.enums import DecisionOutcome
+from synthorg.core.types import NotBlankStr
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-
-_MAX_PAGE_LIMIT: int = 1_000
+_MAX_PAGE_LIMIT: Final[int] = 1_000
 
 
 _COLS = (

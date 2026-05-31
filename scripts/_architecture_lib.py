@@ -124,15 +124,30 @@ def _class_loc(node: ast.ClassDef, lines: list[str]) -> int:
 
 
 def _method_touches(method: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Return the ``self.X`` attribute/method names a method references."""
+    """Return the ``self.X`` attribute/method names a method references.
+
+    Nested class definitions are pruned from the walk: inside a nested
+    class ``self`` rebinds to that class's instance, so its attribute
+    accesses must not count toward the enclosing method's touches (which
+    would corrupt the LCOM4 cohesion metric). Nested functions / closures
+    are deliberately not pruned because they still capture the enclosing
+    method's ``self``.
+    """
     touched: set[str] = set()
-    for sub in ast.walk(method):
-        if (
-            isinstance(sub, ast.Attribute)
-            and isinstance(sub.value, ast.Name)
-            and sub.value.id == "self"
-        ):
-            touched.add(sub.attr)
+
+    def _collect(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                continue
+            if (
+                isinstance(child, ast.Attribute)
+                and isinstance(child.value, ast.Name)
+                and child.value.id == "self"
+            ):
+                touched.add(child.attr)
+            _collect(child)
+
+    _collect(method)
     return touched
 
 

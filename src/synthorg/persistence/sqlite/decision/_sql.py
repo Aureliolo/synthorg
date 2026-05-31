@@ -11,16 +11,14 @@ import json
 import sqlite3
 from datetime import UTC
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from pydantic import AwareDatetime
 
 from synthorg.core.enums import DecisionOutcome
+from synthorg.core.types import NotBlankStr
 
-if TYPE_CHECKING:
-    from synthorg.core.types import NotBlankStr
-
-_MAX_PAGE_LIMIT: int = 1_000
+_MAX_PAGE_LIMIT: Final[int] = 1_000
 
 
 _COLS = (

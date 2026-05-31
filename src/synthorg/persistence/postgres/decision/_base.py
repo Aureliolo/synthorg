@@ -1,10 +1,7 @@
 # module-kind: code
 """Shared base for the Postgres decision-repository aspect mixins."""
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool
 
 
 class _DecisionRepoBase:

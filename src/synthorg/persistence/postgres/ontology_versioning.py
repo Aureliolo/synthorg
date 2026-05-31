@@ -7,17 +7,13 @@ over :class:`EntityDefinition`; the dependency arrow points
 persistence -> ontology, never the other way around.
 """
 
-from typing import TYPE_CHECKING
+from psycopg_pool import AsyncConnectionPool
 
+from synthorg.ontology.models import EntityDefinition
 from synthorg.ontology.versioning import _safe_deserialize_snapshot_dict
 from synthorg.persistence.postgres.version_repo import PostgresVersionRepository
+from synthorg.persistence.version_protocol import VersionRepository
 from synthorg.versioning.service import VersioningService
-
-if TYPE_CHECKING:
-    from psycopg_pool import AsyncConnectionPool
-
-    from synthorg.ontology.models import EntityDefinition
-    from synthorg.persistence.version_protocol import VersionRepository
 
 
 def create_postgres_ontology_version_repo(
