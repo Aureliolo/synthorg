@@ -15,6 +15,7 @@ from synthorg.meta.mcp.domains._common_args import (
 )
 
 FineTuneBackend = Literal["in-process", "docker"]
+FineTuneDataSource = Literal["directory", "trajectory"]
 
 
 class FineTuneExecutionConfig(_ArgsBase):
@@ -72,7 +73,20 @@ class FineTuneExecutionConfig(_ArgsBase):
 class _FineTunePlanFields(_ArgsBase):
     """Shared shape for ``memory.start_fine_tune`` / ``run_preflight``."""
 
-    source_dir: NotBlankStr = Field(description="Directory containing org documents")
+    data_source: FineTuneDataSource = Field(
+        default="directory",
+        description=(
+            "Where training pairs are drawn from: 'directory' (scan"
+            " source_dir) or 'trajectory' (harvest org working history)"
+        ),
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Directory containing org documents (required in directory mode,"
+            " ignored in trajectory mode)"
+        ),
+    )
     base_model: NotBlankStr | None = Field(
         default=None,
         description="Base model to fine-tune (None = active model)",
@@ -118,6 +132,27 @@ class _FineTunePlanFields(_ArgsBase):
         default=None,
         description="Optional runner-backend execution config",
     )
+
+    @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` at the wire boundary in directory mode.
+
+        Mirrors the canonical invariant on
+        :class:`synthorg.memory.fine_tune_plan.FineTunePlan` so an MCP
+        caller that omits ``source_dir`` in directory mode is rejected
+        with an ``invalid_argument`` envelope at the invoker boundary
+        rather than reaching the handler-side re-parse.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if self.data_source == "directory" and self.source_dir is None:
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
 
 
 class MemoryStartFineTuneArgs(_FineTunePlanFields, AdminGuardrailFields):

@@ -43,9 +43,21 @@ if TYPE_CHECKING:
 _NON_BLANK_STRING_PATTERN: str = r".*\S.*"
 
 _FINE_TUNE_PLAN_PROPERTIES: dict[str, object] = {
-    "source_dir": {
+    "data_source": {
         "type": "string",
-        "description": "Directory containing org documents for training",
+        "enum": ["directory", "trajectory"],
+        "default": "directory",
+        "description": (
+            "Where training pairs are drawn from: 'directory' (scan "
+            "source_dir) or 'trajectory' (harvest the org's working history)"
+        ),
+    },
+    "source_dir": {
+        "type": ["string", "null"],
+        "description": (
+            "Directory containing org documents for training "
+            "(required in directory mode, ignored in trajectory mode)"
+        ),
         "minLength": 1,
         "pattern": _NON_BLANK_STRING_PATTERN,
     },
@@ -157,7 +169,10 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "start_fine_tune",
         "Start a memory fine-tuning pipeline (privileged; requires confirm).",
         {**_FINE_TUNE_PLAN_PROPERTIES, **ADMIN_GUARDRAIL_PROPERTIES},
-        required=("source_dir", *ADMIN_GUARDRAIL_REQUIRED),
+        # ``source_dir`` is required only in directory mode; the args-model
+        # validator enforces that coupling so it stays out of the static
+        # required list (trajectory mode legitimately omits it).
+        required=(*ADMIN_GUARDRAIL_REQUIRED,),
         args_model=MemoryStartFineTuneArgs,
     ),
     admin_tool(
@@ -190,7 +205,9 @@ MEMORY_TOOLS: tuple[MCPToolDef, ...] = (
         "run_preflight",
         "Run preflight checks before fine-tuning.",
         _FINE_TUNE_PLAN_PROPERTIES,
-        required=("source_dir",),
+        # ``source_dir`` is conditionally required (directory mode only);
+        # enforced by the args-model validator, so no static required field.
+        required=(),
         args_model=MemoryRunPreflightArgs,
     ),
     # --- Checkpoints ---

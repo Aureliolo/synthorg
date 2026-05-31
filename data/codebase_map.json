@@ -9130,14 +9130,14 @@
     },
     {
       "kind": "complex_service",
-      "loc": 383,
+      "loc": 385,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/fine_tune_admin_service.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 215,
+      "loc": 249,
       "loc_cap": 500,
       "module": "src/synthorg/memory/fine_tune_plan.py",
       "owning_feature": "memory"
@@ -10131,7 +10131,7 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/_remaining_args/_memory_finetune.py",
       "owning_feature": "meta"
@@ -10257,7 +10257,7 @@
     },
     {
       "kind": "code",
-      "loc": 256,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/memory.py",
       "owning_feature": "meta"
@@ -10341,7 +10341,7 @@
     },
     {
       "kind": "code",
-      "loc": 116,
+      "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/_memory_finetune_parse.py",
       "owning_feature": "meta"

@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneDataSourceType,
     FineTuneExecutionConfig,
     FineTuneRequest,
 )
@@ -122,7 +123,12 @@ class FineTunePlan(BaseModel):
     never hand the runner a partially-validated dict.
 
     Attributes:
+        data_source: Where training pairs are drawn from -- a static
+            document directory (``DIRECTORY``) or the org's real working
+            history (``TRAJECTORY``). Defaults to ``DIRECTORY``.
         source_dir: Directory containing org documents for training.
+            Required in directory mode; ``None`` (ignored) in trajectory
+            mode, which harvests from persisted org history instead.
         base_model: Base embedding model to fine-tune (``None`` = use
             current active model).
         output_dir: Directory to save checkpoints (``None`` = default).
@@ -140,8 +146,16 @@ class FineTunePlan(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    source_dir: NotBlankStr = Field(
-        description="Directory containing org documents for training",
+    data_source: FineTuneDataSourceType = Field(
+        default=FineTuneDataSourceType.DIRECTORY,
+        description="Where training pairs are drawn from",
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Directory containing org documents (required in directory mode,"
+            " ignored in trajectory mode)"
+        ),
     )
     base_model: NotBlankStr | None = Field(
         default=None,
@@ -192,6 +206,29 @@ class FineTunePlan(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` when sourcing from a directory.
+
+        Mirrors the runner request's invariant
+        (:class:`FineTuneRequest`): directory mode needs a corpus path,
+        trajectory mode harvests from persisted org history and ignores
+        ``source_dir``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if (
+            self.data_source is FineTuneDataSourceType.DIRECTORY
+            and self.source_dir is None
+        ):
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _reject_path_traversal(self) -> Self:
         """Reject parent-directory traversal, backslashes, drive letters.
 
@@ -237,6 +274,7 @@ class FineTunePlan(BaseModel):
             Result of type ``FineTuneRequest``.
         """
         return FineTuneRequest(
+            data_source=self.data_source,
             source_dir=self.source_dir,
             base_model=self.base_model,
             output_dir=self.output_dir,

@@ -10,9 +10,9 @@ re-entered lifespan does not double-wire and a missing collaborator
 leaves the feature's controllers to 503 rather than poisoning startup.
 
 ``wire_features_on_startup`` runs them in dependency order (docs,
-knowledge, research, charter, chat, proposer): research reads the
-knowledge service, and the chief-of-staff proposer expects the chat
-backend's conventions.
+project_brain, knowledge, fine_tune, research, charter, chat,
+proposer): research reads the knowledge service, and the chief-of-staff
+proposer expects the chat backend's conventions.
 """
 
 from typing import TYPE_CHECKING

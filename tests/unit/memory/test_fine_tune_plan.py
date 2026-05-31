@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneDataSourceType,
     FineTuneExecutionConfig,
     FineTuneRequest,
 )
@@ -31,11 +32,43 @@ class TestFineTunePlan:
     def test_minimal_construction(self) -> None:
         plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
         assert plan.source_dir == "/data/org-docs"
+        assert plan.data_source is FineTuneDataSourceType.DIRECTORY
         assert plan.base_model is None
         assert plan.output_dir is None
         assert plan.resume_run_id is None
         assert plan.epochs is None
         assert plan.execution is None
+
+    def test_default_data_source_is_directory(self) -> None:
+        """Omitting ``data_source`` defaults to directory mode."""
+        plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
+        assert plan.data_source is FineTuneDataSourceType.DIRECTORY
+
+    def test_trajectory_mode_omits_source_dir(self) -> None:
+        """Trajectory mode harvests org history, so ``source_dir`` is optional."""
+        plan = FineTunePlan(data_source=FineTuneDataSourceType.TRAJECTORY)
+        assert plan.data_source is FineTuneDataSourceType.TRAJECTORY
+        assert plan.source_dir is None
+
+    def test_directory_mode_requires_source_dir(self) -> None:
+        """Directory mode without a ``source_dir`` is rejected."""
+        with pytest.raises(ValidationError) as info:
+            FineTunePlan(data_source=FineTuneDataSourceType.DIRECTORY)
+        assert "source_dir is required" in str(info.value)
+
+    def test_to_request_forwards_trajectory_data_source(self) -> None:
+        """``to_request`` carries trajectory mode (and a ``None`` source_dir)."""
+        plan = FineTunePlan(data_source=FineTuneDataSourceType.TRAJECTORY)
+        request = plan.to_request()
+        assert request.data_source is FineTuneDataSourceType.TRAJECTORY
+        assert request.source_dir is None
+
+    def test_to_request_defaults_directory_data_source(self) -> None:
+        """A directory-mode plan forwards ``DIRECTORY`` to the runner request."""
+        plan = FineTunePlan(source_dir=NotBlankStr("/data/org-docs"))
+        request = plan.to_request()
+        assert request.data_source is FineTuneDataSourceType.DIRECTORY
+        assert request.source_dir == "/data/org-docs"
 
     def test_full_construction(self) -> None:
         execution = FineTuneExecutionConfig(

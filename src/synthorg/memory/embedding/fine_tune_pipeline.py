@@ -73,7 +73,8 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
     cfg = run.config
     # ``output_dir`` is contractually POSIX (``FineTuneRequest`` rejects drive
     # letters); ``PurePosixPath`` joins the run subpath without emitting Windows
-    # separators that the forward-slash f-strings below would not match.
+    # separators, keeping the ``out_dir`` string the stage runners receive
+    # POSIX regardless of host platform.
     out_dir = str(PurePosixPath(cfg.output_dir) / "runs" / run.id)
     completed = set(run.stages_completed)
 
@@ -91,8 +92,8 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         )
         run = await complete_stage(run, "generating_data")
     else:
-        train_path = Path(f"{out_dir}/training.jsonl")
-        val_path = Path(f"{out_dir}/validation.jsonl")
+        train_path = Path(out_dir) / "training.jsonl"
+        val_path = Path(out_dir) / "validation.jsonl"
 
     # Stage 2: Mine hard negatives.
     if "mining_negatives" not in completed:
@@ -107,7 +108,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         )
         run = await complete_stage(run, "mining_negatives")
     else:
-        triples_path = Path(f"{out_dir}/training_triples.jsonl")
+        triples_path = Path(out_dir) / "training_triples.jsonl"
 
     # Stage 3: Contrastive fine-tuning.
     if "training" not in completed:
@@ -125,7 +126,7 @@ async def run_fine_tune_stages(  # noqa: PLR0913 -- pipeline collaborators threa
         )
         run = await complete_stage(run, "training")
     else:
-        checkpoint_path = Path(f"{out_dir}/checkpoint")
+        checkpoint_path = Path(out_dir) / "checkpoint"
 
     # Stage 4: Evaluation. Re-run when deploy is still pending so the
     # promotion gate always has a fresh measured A/B (evaluation is cheap
