@@ -18,6 +18,7 @@ from synthorg.engine._validation import (
     validate_task,
     validate_task_metadata,
 )
+from synthorg.engine.agent_engine_chat_action import AgentEngineChatActionMixin
 from synthorg.engine.agent_engine_context import AgentEngineContextMixin
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
@@ -153,6 +154,7 @@ type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None
 
 
 class AgentEngine(
+    AgentEngineChatActionMixin,
     AgentEngineContextMixin,
     AgentEngineErrorsMixin,
     AgentEngineFactoriesMixin,
@@ -351,6 +353,15 @@ class AgentEngine(
     def coordinator(self) -> MultiAgentCoordinator | None:
         """Return the multi-agent coordinator, or ``None`` if not configured."""
         return self._coordinator
+
+    @property
+    def has_mcp_self_consumer(self) -> bool:
+        """Whether trust-scoped SynthOrg MCP tools are wired into agents.
+
+        Gates the direct-MCP conversational actor: with no self-consumer
+        an acting agent has no MCP tools, so ``/meta/chat/act`` 503s.
+        """
+        return self._mcp_self_consumer is not None
 
     async def coordinate(
         self,

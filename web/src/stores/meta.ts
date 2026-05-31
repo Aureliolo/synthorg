@@ -6,6 +6,7 @@ import {
   listABTests,
   listProposals,
   postChat,
+  postChatAct,
   postChatGroup,
   postChatPropose,
   type ABTestSummary,
@@ -16,7 +17,11 @@ import {
   type SignalsResponse,
 } from '@/api/endpoints/meta'
 import { listActiveAgents } from '@/api/endpoints/agents'
-import type { ActiveAgentSummary, GroupConverseResult } from '@/api/types'
+import type {
+  ActiveAgentSummary,
+  ConversationalActResult,
+  GroupConverseResult,
+} from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
@@ -70,6 +75,30 @@ async function runConverseGroup(
     return null
   } finally {
     set({ groupChatLoading: false })
+  }
+}
+
+async function runAct(
+  set: MetaSet,
+  instruction: string,
+  agent: string,
+  conversationId?: string,
+): Promise<ConversationalActResult | null> {
+  set({ actionLoading: true, error: null })
+  try {
+    return await postChatAct(instruction, agent, conversationId)
+  } catch (err) {
+    const msg = getErrorMessage(err)
+    log.error('Direct action request failed', sanitizeForLog(err))
+    set({ error: msg })
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Direct action request failed',
+      description: msg,
+    })
+    return null
+  } finally {
+    set({ actionLoading: false })
   }
 }
 
@@ -162,6 +191,7 @@ interface MetaState {
   chatLoading: boolean
   proposeLoading: boolean
   groupChatLoading: boolean
+  actionLoading: boolean
 
   // Actions
   fetchAll: () => Promise<void>
@@ -178,6 +208,11 @@ interface MetaState {
     agentIds: readonly string[],
     conversationId?: string,
   ) => Promise<GroupConverseResult | null>
+  runAction: (
+    instruction: string,
+    agent: string,
+    conversationId?: string,
+  ) => Promise<ConversationalActResult | null>
 }
 
 export const useMetaStore = create<MetaState>((set) => ({
@@ -191,6 +226,7 @@ export const useMetaStore = create<MetaState>((set) => ({
   chatLoading: false,
   proposeLoading: false,
   groupChatLoading: false,
+  actionLoading: false,
 
   fetchAll: () => runFetchAll(set),
   fetchProposals: () => runFetchProposals(set),
@@ -204,4 +240,6 @@ export const useMetaStore = create<MetaState>((set) => ({
     agentIds: readonly string[],
     conversationId?: string,
   ) => runConverseGroup(set, message, agentIds, conversationId),
+  runAction: (instruction: string, agent: string, conversationId?: string) =>
+    runAct(set, instruction, agent, conversationId),
 }))

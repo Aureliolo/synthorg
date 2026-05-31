@@ -1,4 +1,4 @@
-"""SQLite repository for group-chat participant rosters (#1970).
+"""SQLite repository for group-chat participant rosters.
 
 ``SQLiteConversationParticipantRepository`` backs the
 ``conversation_participants`` table: id-keyed CRUD, an atomic

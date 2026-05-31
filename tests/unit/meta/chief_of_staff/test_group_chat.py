@@ -1,4 +1,4 @@
-"""Unit tests for the multi-agent group-chat service (#1970)."""
+"""Unit tests for the multi-agent group-chat service."""
 
 import asyncio
 from typing import override

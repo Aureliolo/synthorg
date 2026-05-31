@@ -852,6 +852,17 @@ export const TERMINAL_ACCESS_VALUES = [
 ] as const
 export type TerminalAccess = (typeof TERMINAL_ACCESS_VALUES)[number]
 
+export const TERMINATION_REASON_VALUES = [
+    'completed',
+    'max_turns',
+    'budget_exhausted',
+    'shutdown',
+    'parked',
+    'stagnation',
+    'error',
+] as const
+export type TerminationReason = (typeof TERMINATION_REASON_VALUES)[number]
+
 export const TIMEOUT_ACTION_TYPE_VALUES = [
     'wait',
     'approve',

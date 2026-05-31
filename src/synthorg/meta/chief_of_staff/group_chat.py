@@ -1,10 +1,10 @@
 # module-kind: service
-"""Multi-agent group-chat service (#1970).
+"""Multi-agent group-chat service.
 
 One human talks to several agents in a ``kind='group'`` conversation.
 Each human turn drives ONE round-robin round: every active participant
 contributes once, in stable enrolment order, seeing the shared
-transcript (prior turns + the human message, SEC-1 fenced as
+transcript (prior turns + the human message, untrusted-content fenced as
 ``<task-data>``) plus this round's earlier peer contributions (fenced
 as ``<peer-contribution>``). Contributions are attributed and persisted
 as ``AGENT`` turns. There is no synthesis or weighting -- the human
@@ -22,7 +22,7 @@ same round, which is the deference vector the
 :class:`AuthorityDeferenceGuard` exists for. This service reuses that
 guard's pattern scan to audit the peer-contribution block before each
 dispatch (detect-and-log, matching the guard's own contract); the
-SEC-1 ``<peer-contribution>`` fencing in the persona prompt is the
+untrusted-content ``<peer-contribution>`` fencing in the persona prompt is the
 injection defence.
 """
 
@@ -113,7 +113,7 @@ class GroupChatService:
     """Round-robin multi-agent group chat over the shared conversation store.
 
     Args:
-        agent_caller: Per-agent LLM dispatch (persona + SEC-1 directive),
+        agent_caller: Per-agent LLM dispatch (persona + untrusted-content directive),
             built via ``build_meeting_agent_caller``.
         agent_registry: Source of truth for participant identities.
         config: Chief of Staff configuration (group-chat bounds).
@@ -125,7 +125,7 @@ class GroupChatService:
             auditing; defaults to a fresh guard with the standard config.
         cost_tracker: Optional cost tracker (the caller dispatch records
             via the meeting chokepoint when wired).
-        invite_coordinator: Agent-initiated invite coordinator (#1971);
+        invite_coordinator: Agent-initiated invite coordinator;
             present only when the invite feature is on. When ``None`` the
             round runs the plain-text contribution path unchanged.
     """

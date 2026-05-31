@@ -7,7 +7,7 @@ registered into the runtime registry. This surface reads the REGISTRY's
 active agents and exposes each one's stable runtime ``AgentIdentity.id``
 (a UUID) so the dashboard can reference a specific agent by id rather
 than by its mutable, non-unique display name. The multi-agent group
-chat (#1970) participant picker is the first consumer: it sends the
+chat participant picker is the first consumer: it sends the
 selected ids to ``POST /meta/chat/group``.
 
 Kept out of :class:`AgentController` (config-time, name-addressed, and

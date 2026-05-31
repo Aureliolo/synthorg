@@ -1,4 +1,4 @@
-"""Unit tests for concern routing (#1969)."""
+"""Unit tests for concern routing."""
 
 from datetime import UTC, datetime
 

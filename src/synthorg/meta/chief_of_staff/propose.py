@@ -143,7 +143,7 @@ class ChiefOfStaffProposer:
         approval_store: Human approval queue.
         clock: Injectable time source (defaults to ``SystemClock``).
         cost_tracker: Optional cost tracker for LLM accounting.
-        role_router: Optional concern router (#1969). When present, each
+        role_router: Optional concern router. When present, each
             turn is classified to a role agent; ``None`` keeps the v1
             generic Chief of Staff behaviour.
         provider_registry: Optional provider registry used to resolve a

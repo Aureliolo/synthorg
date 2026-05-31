@@ -1,4 +1,4 @@
-"""Repository protocol for group-chat participant rosters (#1970).
+"""Repository protocol for group-chat participant rosters.
 
 A :class:`ConversationParticipant` row records one agent's membership
 in a ``kind='group'`` conversation. The repository composes

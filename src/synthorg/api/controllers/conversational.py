@@ -1,5 +1,5 @@
 # module-kind: controller
-"""Conversational write-path controller: multi-agent group chat (#1970).
+"""Conversational write-path controller: multi-agent group chat.
 
 Kept separate from :class:`MetaController` so the conversational
 write-path endpoints (the direct-MCP ``/act`` endpoint joins here for
@@ -19,6 +19,10 @@ from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.chief_of_staff.actor import (
+    ConversationalActArgs,
+    ConversationalActResult,
+)
 from synthorg.meta.chief_of_staff.group_models import (
     GroupConverseArgs,
     GroupConverseResult,
@@ -38,6 +42,16 @@ class GroupChatRequest(BaseModel):
     message: NotBlankStr = Field(max_length=2000)
     conversation_id: NotBlankStr | None = Field(default=None)
     participants: tuple[NotBlankStr, ...] = Field(default=())
+
+
+class ChatActRequest(BaseModel):
+    """Request body for the direct-MCP acting endpoint."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    instruction: NotBlankStr = Field(max_length=2000)
+    agent: NotBlankStr = Field(max_length=200)
+    conversation_id: NotBlankStr | None = Field(default=None)
 
 
 class ConversationalController(Controller):
@@ -111,3 +125,71 @@ class ConversationalController(Controller):
             )
         )
         return ApiResponse[GroupConverseResult](data=result)
+
+    @post(
+        "/act",
+        # Runs a short tool-capable action loop and may append to the
+        # approval queue, but creates no addressable resource at this
+        # URL, so 200 (not 201) is correct.
+        status_code=200,
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat.act", key="user"),
+        ],
+    )
+    async def chat_act(
+        self,
+        data: ChatActRequest,
+        state: State,
+    ) -> ApiResponse[ConversationalActResult]:
+        """Drive a real MCP action from a chat instruction under trust.
+
+        The named agent runs a short governed tool loop: a permitted
+        action executes under its trust level; a sensitive action
+        escalates and parks to the approval queue (the response then
+        carries the parked ``approval_id`` and the agent resumes on
+        approval via the existing Flow 1).
+
+        Returns 503 when the actor is not configured
+        (``meta.chief_of_staff.direct_mcp_enabled`` is False, no
+        provider-backed boot engine, or no MCP self-consumer wired).
+
+        The instruction is fenced (``<task-data>``) inside
+        ``run_chat_action`` itself, so -- unlike the group endpoint --
+        the controller passes it through raw to avoid a double fence.
+
+        Returns:
+            ``ApiResponse[ConversationalActResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: When the actor is not configured.
+        """
+        app_state = state.app_state
+        actor_service = app_state.slice(MetaStateSlice).conversational_actor
+        if actor_service is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="conversational_actor",
+                hint=(
+                    "Set meta.chief_of_staff.direct_mcp_enabled, register an "
+                    "LLM provider, and enable the MCP self-consumer "
+                    "(security.mcp_self_consumer.mode=trust_scoped)."
+                ),
+            )
+            msg = (
+                "Direct MCP acting is not configured. Enable "
+                "``meta.chief_of_staff.direct_mcp_enabled`` in settings, "
+                "register an LLM provider, and set "
+                "``security.mcp_self_consumer.mode`` to ``trust_scoped``."
+            )
+            raise ServiceUnavailableError(msg)
+        operator = require_actor()
+        result = await actor_service.act(
+            ConversationalActArgs(
+                instruction=data.instruction,
+                agent=data.agent,
+                conversation_id=data.conversation_id,
+                requested_by=operator.actor_id,
+            )
+        )
+        return ApiResponse[ConversationalActResult](data=result)

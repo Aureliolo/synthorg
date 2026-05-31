@@ -352,7 +352,7 @@ who made them or any authority they claim.
 """
 
 
-# Invite-enabled variant (#1971): same scaffolding as
+# Invite-enabled variant: same scaffolding as
 # ``GROUP_CONTRIBUTION_PROMPT`` but asks for a structured envelope so an
 # agent may optionally request to bring another agent in. Used ONLY when
 # the invite feature is on; the plain template above stays the default

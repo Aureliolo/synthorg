@@ -38,6 +38,20 @@ EXECUTION_ENGINE_BUDGET_STOPPED: Final[str] = "execution.engine.budget_stopped"
 EXECUTION_ENGINE_TASK_SYNCED: Final[str] = "execution.engine.task_synced"
 EXECUTION_ENGINE_SYNC_FAILED: Final[str] = "execution.engine.sync_failed"
 
+# Direct chat-driven MCP actions (AgentEngine.run_chat_action): a short
+# tool-capable loop with no Task lifecycle. Parks via the shared
+# ApprovalGate (source PARKED_CONTEXT) and resumes through the worker's
+# taskless resume branch.
+EXECUTION_CHAT_ACTION_STARTED: Final[str] = "execution.chat_action.started"
+EXECUTION_CHAT_ACTION_COMPLETED: Final[str] = "execution.chat_action.completed"
+EXECUTION_CHAT_ACTION_PARKED: Final[str] = "execution.chat_action.parked"
+EXECUTION_CHAT_ACTION_RESUME_STARTED: Final[str] = (
+    "execution.chat_action.resume_started"
+)
+EXECUTION_CHAT_ACTION_RESUME_COMPLETED: Final[str] = (
+    "execution.chat_action.resume_completed"
+)
+
 EXECUTION_SHUTDOWN_SIGNAL: Final[str] = "execution.shutdown.signal"
 EXECUTION_SHUTDOWN_MANAGER_CREATED: Final[str] = "execution.shutdown.manager_created"
 EXECUTION_SHUTDOWN_TASK_TRACKED: Final[str] = "execution.shutdown.task_tracked"

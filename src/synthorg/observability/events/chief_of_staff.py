@@ -88,13 +88,13 @@ COS_GROUP_PARTICIPANT_LISTED: Final[str] = (
 COS_GROUP_PARTICIPANT_FAILED: Final[str] = (
     "chief_of_staff.group_chat.participant_failed"
 )
-# Agent-invite repo events (#1971). Read/query markers + failure path
+# Agent-invite repo events. Read/query markers + failure path
 # only; the persistence boundary forbids repos from emitting mutation
 # lifecycle events (the invite park / consent flows own that audit hop).
 COS_GROUP_INVITE_FETCHED: Final[str] = "chief_of_staff.group_chat.invite_fetched"
 COS_GROUP_INVITE_LISTED: Final[str] = "chief_of_staff.group_chat.invite_listed"
 COS_GROUP_INVITE_FAILED: Final[str] = "chief_of_staff.group_chat.invite_failed"
-# Agent-invite lifecycle events (#1971): park (consent requested),
+# Agent-invite lifecycle events: park (consent requested),
 # skip (a bound tripped), malformed structured response, and the
 # consent-resume outcomes.
 COS_GROUP_INVITE_REQUESTED: Final[str] = "chief_of_staff.group_chat.invite_requested"
@@ -107,3 +107,10 @@ COS_GROUP_INVITE_PARK_FAILED: Final[str] = (
 )
 COS_GROUP_INVITE_ACCEPTED: Final[str] = "chief_of_staff.group_chat.invite_accepted"
 COS_GROUP_INVITE_DECLINED: Final[str] = "chief_of_staff.group_chat.invite_declined"
+
+# -- Direct MCP acting under trust -------------------------------------
+
+COS_ACT_REQUESTED: Final[str] = "chief_of_staff.act.requested"
+COS_ACT_COMPLETED: Final[str] = "chief_of_staff.act.completed"
+COS_ACT_PARKED: Final[str] = "chief_of_staff.act.parked"
+COS_ACT_FAILED: Final[str] = "chief_of_staff.act.failed"

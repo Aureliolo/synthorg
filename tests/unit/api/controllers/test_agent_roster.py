@@ -1,4 +1,4 @@
-"""Unit tests for the runtime agent-roster controller (#1970).
+"""Unit tests for the runtime agent-roster controller.
 
 Calls ``list_active_agents`` directly with a fake ``State`` (the
 ``test_budget_forecast_controller`` pattern) so the handler logic --

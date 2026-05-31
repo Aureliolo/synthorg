@@ -41,7 +41,8 @@
       "ghost_wired_symbols": [
         "build_chief_of_staff_proposer",
         "build_role_router",
-        "build_group_chat_service"
+        "build_group_chat_service",
+        "build_conversational_actor"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -780,7 +781,8 @@
         "conversation_invite_repo",
         "conversation_participant_repo",
         "role_router",
-        "group_chat_service"
+        "group_chat_service",
+        "conversational_actor"
       ]
     },
     {
@@ -1184,6 +1186,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-31T17:48:10.907272Z",
+  "generated_at": "2026-05-31T21:47:06.748607Z",
   "schema_version": 1
 }

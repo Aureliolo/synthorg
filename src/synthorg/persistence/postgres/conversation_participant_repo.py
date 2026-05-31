@@ -1,4 +1,4 @@
-"""Postgres repository for group-chat participant rosters (#1970).
+"""Postgres repository for group-chat participant rosters.
 
 Sibling of the SQLite implementation, backed by
 ``psycopg_pool.AsyncConnectionPool``. ``TIMESTAMPTZ`` ``added_at``

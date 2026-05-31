@@ -1,4 +1,4 @@
-"""Unit tests for the conversational write-path controller (#1970).
+"""Unit tests for the conversational write-path controller.
 
 Mirrors the propose-route coverage in ``test_api.py``: route presence,
 rate-limit policy registration, request-model validation, plus a direct

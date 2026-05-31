@@ -1,4 +1,4 @@
-"""Repository protocol for agent-initiated conversation invites (#1971).
+"""Repository protocol for agent-initiated conversation invites.
 
 A :class:`ConversationInvite` links one approval-queue item to a
 requested membership change in a ``kind='group'`` conversation. The

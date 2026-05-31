@@ -1,4 +1,4 @@
-"""Integration tests: concern routing in front of the propose loop (#1969)."""
+"""Integration tests: concern routing in front of the propose loop."""
 
 import pytest
 

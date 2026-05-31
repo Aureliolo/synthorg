@@ -2475,6 +2475,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/act": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ChatAct */
+        readonly post: operations["ApiV1MetaChatActChatAct"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/chat/group": {
         readonly parameters: {
             readonly query?: never;
@@ -5684,6 +5701,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[ConversationalActResult] */
+        readonly ApiResponse_ConversationalActResult_: {
+            readonly data: components["schemas"]["ConversationalActResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[CookieSessionResponse] */
         readonly ApiResponse_CookieSessionResponse_: {
             readonly data: components["schemas"]["CookieSessionResponse"] | null;
@@ -8002,6 +8032,30 @@ export type components = {
          * @enum {string}
          */
         readonly CharterStatus: "drafted" | "approved" | "cancelled";
+        /**
+         * ChatActionResult
+         * @description The engine's chat-action outcome
+         */
+        readonly ChatActionResult: {
+            /** @description Approval id of the parked decision (PARKED only) */
+            readonly approval_id: string | null;
+            /** @description The agent's final assistant message, if any */
+            readonly final_message: string | null;
+            /** @description Whether the action parked for human approval */
+            readonly parked: boolean;
+            readonly termination_reason: components["schemas"]["TerminationReason"];
+            /**
+             * @description Tools the action executed this run, in order
+             * @default []
+             */
+            readonly tool_calls: readonly components["schemas"]["ExecutedToolCall"][];
+        };
+        /** ChatActRequest */
+        readonly ChatActRequest: {
+            readonly agent: string;
+            readonly conversation_id?: string | null;
+            readonly instruction: string;
+        };
         /** ChatRequest */
         readonly ChatRequest: {
             /** Format: uuid */
@@ -8405,6 +8459,16 @@ export type components = {
          * @enum {string}
          */
         readonly ContentType: "procedural" | "semantic" | "tool_patterns";
+        /** ConversationalActResult */
+        readonly ConversationalActResult: {
+            readonly action: components["schemas"]["ChatActionResult"];
+            /** @description Id of the agent that acted */
+            readonly agent_id: string;
+            /** @description Name of the agent that acted */
+            readonly agent_name: string;
+            /** @description The correlated conversation id, if supplied */
+            readonly conversation_id: string | null;
+        };
         /** ConversationalProposeRequest */
         readonly ConversationalProposeRequest: {
             readonly conversation_id?: string | null;
@@ -9695,6 +9759,15 @@ export type components = {
              * @description Signature timestamp
              */
             readonly signed_at: string;
+        };
+        /** ExecutedToolCall */
+        readonly ExecutedToolCall: {
+            /** @description Whether the tool reported an error */
+            readonly is_error: boolean;
+            /** @description The tool result content (already untrusted-fenced) */
+            readonly result: string;
+            /** @description Name of the invoked tool */
+            readonly tool_name: string;
         };
         /** ExecuteTaskRequest */
         readonly ExecuteTaskRequest: {
@@ -14443,6 +14516,12 @@ export type components = {
          * @enum {string}
          */
         readonly TerminalAccess: "none" | "restricted_commands" | "full";
+        /**
+         * TerminationReason
+         * @description Why the execution loop terminated.
+         * @enum {string}
+         */
+        readonly TerminationReason: "completed" | "max_turns" | "budget_exhausted" | "shutdown" | "parked" | "stagnation" | "error";
         /** TestConnectionRequest */
         readonly TestConnectionRequest: {
             readonly model?: string | null;
@@ -21128,6 +21207,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatActChatAct: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ChatActRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ConversationalActResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

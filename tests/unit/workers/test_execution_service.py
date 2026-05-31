@@ -323,6 +323,7 @@ class _StubEngine:
     def __init__(self, gate: object) -> None:
         self._approval_gate = gate
         self.resume_parked_run = AsyncMock(return_value=_run_result())
+        self.resume_parked_chat_action = AsyncMock()
 
 
 class TestDispatchResume:
@@ -370,6 +371,41 @@ class TestDispatchResume:
         kwargs = call.kwargs
         assert kwargs["parked_context"] is ctx
         assert kwargs["approval_id"] == "approval-1"
+        assert kwargs["decision_message"] == "[SYSTEM: APPROVED]"
+
+    async def test_dispatch_resumes_taskless_chat_action(self) -> None:
+        """A taskless parked context routes to the chat-action resume.
+
+        Direct-MCP chat actions park a context with no
+        ``task_execution``; the worker must dispatch them to
+        ``resume_parked_chat_action`` (which skips the task-only
+        workspace/sandbox provisioning) rather than ``resume_parked_run``
+        (which rejects taskless contexts).
+        """
+        from synthorg.engine.context import AgentContext
+
+        identity = make_e2e_identity()
+        ctx = AgentContext.from_identity(identity)
+        assert ctx.task_execution is None
+        gate = _StubGate(resumed=(ctx, "parked-chat-1"))
+        engine = _StubEngine(gate)
+        service = self._service(engine)
+
+        await service.dispatch_resume(
+            approval_id="appr-chat-1",
+            approved=True,
+            decided_by="operator-1",
+            decision_reason=None,
+        )
+        await service.drain_resume_tasks()
+
+        engine.resume_parked_run.assert_not_awaited()
+        engine.resume_parked_chat_action.assert_awaited_once()
+        call = engine.resume_parked_chat_action.await_args
+        assert call is not None
+        kwargs = call.kwargs
+        assert kwargs["parked_context"] is ctx
+        assert kwargs["approval_id"] == "appr-chat-1"
         assert kwargs["decision_message"] == "[SYSTEM: APPROVED]"
 
     async def test_dispatch_no_parked_context_is_noop(self) -> None:

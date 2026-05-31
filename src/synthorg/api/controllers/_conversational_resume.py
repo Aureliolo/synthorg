@@ -4,7 +4,7 @@
 Extracted from ``_approval_review_gate.py`` (which keeps the
 parked-context + review-gate flows and the ``signal_resume_intent``
 dispatcher) so each resume concern stays within its size tier as the
-agent-invite flow (#1971) joins the conversational-intake flow (#1968).
+agent-invite flow joins the conversational-intake flow.
 
 Two flows live here, both keyed off the persisted
 :attr:`ApprovalItem.source` discriminator and both repo-direct (never

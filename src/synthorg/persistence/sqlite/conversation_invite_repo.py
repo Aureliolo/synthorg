@@ -1,4 +1,4 @@
-"""SQLite repository for agent-initiated conversation invites (#1971).
+"""SQLite repository for agent-initiated conversation invites.
 
 Satisfies ``ConversationInviteRepository`` structurally: id-keyed CRUD,
 atomic status compare-and-set (``PENDING -> ACCEPTED/DECLINED`` driven

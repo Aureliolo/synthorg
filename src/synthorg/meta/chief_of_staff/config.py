@@ -52,7 +52,7 @@ _ROUTING_MAX_TOKENS_MIN: int = 50
 # Chief of Staff rather than routing to a possibly-wrong role; the
 # 0.0/1.0 envelope is the natural probability range.
 _ROUTING_CONFIDENCE_FLOOR_DEFAULT: float = 0.6
-# Group chat (#1970): one human, several agents, round-robin turns. The
+# Group chat: one human, several agents, round-robin turns. The
 # defaults below bound a single human turn so it cannot drive unbounded
 # fan-out cost; all are operator-tunable.
 # Five participants is a sensible default fan-out for a working group; 2
@@ -81,13 +81,21 @@ _GROUP_PER_AGENT_MAX_TOKENS_MIN: int = 100
 _GROUP_MAX_TOTAL_TURNS_DEFAULT: int = 60
 _GROUP_MAX_TOTAL_TURNS_MIN: int = 2
 _GROUP_MAX_TOTAL_TURNS_MAX: int = 500
-# Agent-initiated invites (#1971): an agent may request to bring another
+# Agent-initiated invites: an agent may request to bring another
 # agent in, gated by human consent. Two invites parked per round bounds
 # the consent-queue storm a single round can create; 1 is the floor and
 # 5 a generous ceiling that still stays well under the participant cap.
 _INVITE_MAX_PER_ROUND_DEFAULT: int = 2
 _INVITE_MAX_PER_ROUND_MIN: int = 1
 _INVITE_MAX_PER_ROUND_MAX: int = 5
+# Direct MCP acting: a chat instruction drives a real MCP action
+# under the agent's trust level. Six turns bounds a short act/observe
+# loop (request approval -> on grant perform the action -> confirm); 1
+# is the floor and 20 a generous ceiling past which the loop is clearly
+# stuck rather than working.
+_DIRECT_MCP_MAX_TURNS_DEFAULT: int = 6
+_DIRECT_MCP_MAX_TURNS_MIN: int = 1
+_DIRECT_MCP_MAX_TURNS_MAX: int = 20
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -165,6 +173,14 @@ class ChiefOfStaffConfig(BaseModel):
             consent in a single round (storm/loop bound).
         invite_default_risk_level: Risk level stamped on the consent
             approval item raised for an agent-initiated invite.
+        direct_mcp_enabled: Enable direct MCP acting under trust
+            (``/meta/chat/act``): a chat instruction drives a real MCP
+            action under the acting agent's trust level, with sensitive
+            actions gated to the approval queue. When off, the
+            controller 503s.
+        direct_mcp_max_turns: Hard turn cap for one chat-driven action
+            loop (bounds the act/observe fan-out a single instruction
+            can drive).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -220,7 +236,7 @@ class ChiefOfStaffConfig(BaseModel):
     )
     propose_default_risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM
 
-    # ── Concern routing (#1969) ───────────────────────────────────
+    # ── Concern routing ───────────────────────────────────
 
     routing_enabled: bool = False
     routing_strategy: Literal["llm", "keyword"] = "llm"
@@ -248,7 +264,7 @@ class ChiefOfStaffConfig(BaseModel):
         "a role with no active agent",
     )
 
-    # ── Multi-agent group chat (#1970) ────────────────────────────
+    # ── Multi-agent group chat ────────────────────────────
 
     group_chat_enabled: bool = False
     group_chat_max_participants: int = Field(
@@ -275,7 +291,7 @@ class ChiefOfStaffConfig(BaseModel):
         le=_GROUP_MAX_TOTAL_TURNS_MAX,
     )
 
-    # ── Agent-initiated invite (#1971) ────────────────────────────
+    # ── Agent-initiated invite ────────────────────────────
 
     invite_enabled: bool = False
     invite_max_per_round: int = Field(
@@ -284,3 +300,12 @@ class ChiefOfStaffConfig(BaseModel):
         le=_INVITE_MAX_PER_ROUND_MAX,
     )
     invite_default_risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM
+
+    # ── Direct MCP acting under trust ─────────────────────
+
+    direct_mcp_enabled: bool = False
+    direct_mcp_max_turns: int = Field(
+        default=_DIRECT_MCP_MAX_TURNS_DEFAULT,
+        ge=_DIRECT_MCP_MAX_TURNS_MIN,
+        le=_DIRECT_MCP_MAX_TURNS_MAX,
+    )

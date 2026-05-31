@@ -1,4 +1,4 @@
-"""Acceptance (#1969): topic-tagged prompts reach the right role agent.
+"""Acceptance: topic-tagged prompts reach the right role agent.
 
 Drives the real ``ChiefOfStaffProposer`` with a real
 ``LlmConcernRouter`` over a single ``ScriptedProvider`` -- zero LLM

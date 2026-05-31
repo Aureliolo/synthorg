@@ -1,9 +1,9 @@
 # module-kind: code
-"""Prompt + transcript rendering for the multi-agent group chat (#1970).
+"""Prompt + transcript rendering for the multi-agent group chat.
 
 Extracted from ``group_chat.py`` so the round-loop service stays within
-its size tier as the invite feature (#1971) grows it. Pure rendering +
-SEC-1 fencing: the shared transcript and this round's peer contributions
+its size tier as the invite feature grows it. Pure rendering +
+Untrusted-content fencing: the shared transcript and this round's peer contributions
 are fenced (``<task-data>`` / ``<peer-contribution>``) before injection,
 and the peer block is scanned for authority cues (detect-and-log, the
 :class:`AuthorityDeferenceGuard` contract).
@@ -79,7 +79,7 @@ def build_group_prompt(
         template: The contribution prompt template (plain or invite
             variant), selected by the caller.
         preamble: A pre-fenced handover block prepended above the
-            prompt on an invited agent's first turn (#1971); ``None``
+            prompt on an invited agent's first turn; ``None``
             for every other participant and the feature-off path.
 
     Returns:

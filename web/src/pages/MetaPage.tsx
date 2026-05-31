@@ -7,6 +7,7 @@ import {
   Settings2,
   Shield,
   Users,
+  Zap,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,7 @@ import { SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton'
 import { useMetaData } from '@/hooks/useMetaData'
 
 import { MetaABTestView } from './meta/MetaABTestView'
+import { MetaAct } from './meta/MetaAct'
 import { MetaChat } from './meta/MetaChat'
 import { MetaGroup } from './meta/MetaGroup'
 import { MetaPropose } from './meta/MetaPropose'
@@ -111,6 +113,9 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
             </SectionCard>
             <SectionCard title="Group Chat" icon={Users}>
               <MetaGroup />
+            </SectionCard>
+            <SectionCard title="Direct Action" icon={Zap}>
+              <MetaAct />
             </SectionCard>
           </>
         )}

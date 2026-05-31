@@ -758,7 +758,7 @@
     },
     {
       "kind": "controller",
-      "loc": 89,
+      "loc": 158,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/conversational.py",
       "owning_feature": "api_core"
@@ -1339,7 +1339,7 @@
     },
     {
       "kind": "code",
-      "loc": 129,
+      "loc": 171,
       "loc_cap": 500,
       "module": "src/synthorg/api/conversational_builders.py",
       "owning_feature": "api_core"
@@ -1444,7 +1444,7 @@
     },
     {
       "kind": "feature",
-      "loc": 62,
+      "loc": 63,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -1535,7 +1535,7 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 107,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
       "owning_feature": "api_core"
@@ -1549,7 +1549,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 587,
+      "loc": 589,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -1759,7 +1759,7 @@
     },
     {
       "kind": "code",
-      "loc": 264,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/policies.py",
       "owning_feature": "api_core"
@@ -4083,9 +4083,16 @@
     },
     {
       "kind": "adapter",
-      "loc": 681,
+      "loc": 690,
       "loc_cap": 700,
       "module": "src/synthorg/engine/agent_engine.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "service",
+      "loc": 240,
+      "loc_cap": 600,
+      "module": "src/synthorg/engine/agent_engine_chat_action.py",
       "owning_feature": "engine"
     },
     {
@@ -4352,6 +4359,13 @@
       "loc": 182,
       "loc_cap": 500,
       "module": "src/synthorg/engine/brownfield/source_resolver.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "declarative",
+      "loc": 50,
+      "loc_cap": null,
+      "module": "src/synthorg/engine/chat_action.py",
       "owning_feature": "engine"
     },
     {
@@ -9822,6 +9836,13 @@
       "owning_feature": "meta"
     },
     {
+      "kind": "service",
+      "loc": 160,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/actor.py",
+      "owning_feature": "meta"
+    },
+    {
       "kind": "code",
       "loc": 123,
       "loc_cap": 500,
@@ -9837,7 +9858,7 @@
     },
     {
       "kind": "code",
-      "loc": 209,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
@@ -11027,7 +11048,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 182,
       "loc_cap": 500,
       "module": "src/synthorg/meta/state.py",
       "owning_feature": "meta"
@@ -11622,7 +11643,7 @@
     },
     {
       "kind": "code",
-      "loc": 71,
+      "loc": 75,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/chief_of_staff.py",
       "owning_feature": "observability"
@@ -11832,7 +11853,7 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 107,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/execution.py",
       "owning_feature": "observability"
@@ -17908,7 +17929,14 @@
     },
     {
       "kind": "service",
-      "loc": 804,
+      "loc": 216,
+      "loc_cap": 600,
+      "module": "src/synthorg/workers/execution_resume.py",
+      "owning_feature": "runtime"
+    },
+    {
+      "kind": "service",
+      "loc": 686,
       "loc_cap": 600,
       "module": "src/synthorg/workers/execution_service.py",
       "owning_feature": "runtime"

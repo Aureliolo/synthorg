@@ -1,4 +1,4 @@
-"""Acceptance (#1970): one human, several agents, attributed round-robin.
+"""Acceptance: one human, several agents, attributed round-robin.
 
 Drives the REAL :class:`GroupChatService` over the REAL meeting agent
 caller (``build_meeting_agent_caller``) backed by a single
@@ -10,7 +10,7 @@ contributions in enrolment order (CEO, then CFO, then CTO).
 The acceptance bar is the shared, growing context: contribution N's
 prompt must contain every contribution < N (and the human message),
 correctly attributed, and the persisted turns must carry the agent
-attribution. The SEC-1 fencing (``<task-data>`` history,
+attribution. The untrusted-content fencing (``<task-data>`` history,
 ``<peer-contribution>`` peers) is asserted on the wire each agent saw,
 captured by a recording strategy wrapping the sequenced replay.
 """

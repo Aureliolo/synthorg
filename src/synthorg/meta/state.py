@@ -14,6 +14,7 @@ from pydantic import ConfigDict
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.experiments import ExperimentService
 from synthorg.meta.analytics.service import AnalyticsService
+from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.propose import (
@@ -55,6 +56,7 @@ class MetaStateSlice(BaseFeatureStateSlice):
     conversation_participant_repo: ConversationParticipantRepository | None = None
     role_router: RoleRouter | None = None
     group_chat_service: GroupChatService | None = None
+    conversational_actor: ConversationalActor | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -182,6 +184,18 @@ def group_chat_service_of(app_state: AppStateSliceMixin) -> GroupChatService:
     return require_service(
         app_state.slice(MetaStateSlice).group_chat_service,
         "Group Chat Service",
+    )
+
+
+def conversational_actor_of(app_state: AppStateSliceMixin) -> ConversationalActor:
+    """Resolve the direct-MCP conversational actor from its slice, or raise 503.
+
+    Returns:
+        The wired conversational actor.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).conversational_actor,
+        "Conversational Actor",
     )
 
 

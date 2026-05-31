@@ -1,4 +1,4 @@
-"""Postgres repository for agent-initiated conversation invites (#1971).
+"""Postgres repository for agent-initiated conversation invites.
 
 Sibling of ``SQLiteConversationInviteRepository`` backed by
 ``psycopg_pool.AsyncConnectionPool``. Satisfies

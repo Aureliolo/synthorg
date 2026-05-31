@@ -1,5 +1,5 @@
 # module-kind: service
-"""Concern routing for the conversational org interface (#1969).
+"""Concern routing for the conversational org interface.
 
 Classifies each human turn to the best-fit role agent so a budget
 question reaches the CFO, a strategy question reaches the CEO, and a
@@ -18,7 +18,7 @@ Two pluggable strategies, selected by ``ChiefOfStaffConfig.routing_strategy``:
   deployments that prefer no extra LLM call.
 
 Both share role resolution against the registry; the LLM classifier
-fences the conversation history as untrusted content (SEC-1) and records
+fences the conversation history as untrusted content (via wrap_untrusted) and records
 its spend through the cost chokepoint.
 """
 

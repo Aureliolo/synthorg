@@ -5,6 +5,7 @@ import type {
   listABTests,
   listProposals,
   postChat,
+  postChatAct,
   postChatGroup,
   postChatPropose,
 } from '@/api/endpoints/meta'
@@ -145,6 +146,44 @@ export const metaHandlers = [
         // Agent-initiated invites (#1971) are off by default; the happy
         // path parks none, so the consent surface stays empty.
         pending_invites: [],
+      }),
+    )
+  }),
+  http.post('/api/v1/meta/chat/act', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Instruction must not be blank'), {
+        status: 400,
+      })
+    }
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof (body as { instruction?: unknown }).instruction !== 'string' ||
+      !(body as { instruction: string }).instruction.trim()
+    ) {
+      return HttpResponse.json(apiError('Instruction must not be blank'), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof postChatAct>({
+        agent_id: 'agent-cfo-mock',
+        agent_name: 'Casey',
+        conversation_id: 'conv-act-mock-001',
+        // Direct MCP acting (#1972) is off by default; the happy path
+        // performs a permitted action under trust and completes.
+        action: {
+          termination_reason: 'completed',
+          final_message: 'Done -- revenue is up 4% this week.',
+          tool_calls: [
+            { tool_name: 'query_metrics', is_error: false, result: 'revenue +4%' },
+          ],
+          approval_id: null,
+          parked: false,
+        },
       }),
     )
   }),

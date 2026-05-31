@@ -23,6 +23,7 @@ from synthorg.api.app_builders import (
 )
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
+    wire_conversational_actor,
     wire_group_chat_service,
 )
 from synthorg.core.critical_errors import reraise_critical
@@ -565,7 +566,7 @@ async def _wire_chief_of_staff_proposer(
     _guard_conversational_persistence(
         meta_self_improvement.chief_of_staff, persistence, effective_approval_store
     )
-    # Concern routing (#1969): build the role router when an agent
+    # Concern routing: build the role router when an agent
     # registry is present so a routed turn answers as the right role
     # agent. ``build_role_router`` returns None when routing is off or
     # its strategy's deps are absent, leaving the proposer in v1 generic
@@ -647,3 +648,4 @@ async def wire_features_on_startup(
         persistence=persistence,
         cost_tracker=cost_tracker,
     )
+    await wire_conversational_actor(app_state)

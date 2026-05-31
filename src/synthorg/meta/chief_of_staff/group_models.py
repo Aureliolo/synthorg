@@ -1,5 +1,5 @@
 # module-kind: declarative
-"""Domain + boundary models for the multi-agent group chat (#1970).
+"""Domain + boundary models for the multi-agent group chat.
 
 Kept separate from ``models.py`` (the v1 clarify-and-propose models) so
 the group-chat / invite surfaces can grow their schema without pushing
@@ -24,7 +24,7 @@ class ConversationParticipant(BaseModel):
     """An agent enrolled in a group conversation.
 
     The roster row mutated by the group-chat round loop (initial
-    enrolment) and the agent-invite consent flow (#1971). ``status``
+    enrolment) and the agent-invite consent flow. ``status``
     flips ``active`` <-> ``removed`` via the repository compare-and-set
     so membership changes are atomic.
 
@@ -83,7 +83,7 @@ class AttributedContribution(BaseModel):
 class InviteRequest(BaseModel):
     """An agent's parsed request to bring another agent into the chat.
 
-    The transient ask extracted from a structured contribution (#1971),
+    The transient ask extracted from a structured contribution,
     not yet persisted. ``target`` is the agent's free-text reference to
     the agent it wants (a role label like ``CFO`` or a name); the
     service resolves it to a registered identity before parking consent.
@@ -100,7 +100,7 @@ class InviteRequest(BaseModel):
 
 
 class GroupContribution(BaseModel):
-    """One agent's contribution parsed from a structured response (#1971).
+    """One agent's contribution parsed from a structured response.
 
     When the invite feature is on, each agent is asked to answer with a
     ``{"message": ..., "invite": {...} | null}`` envelope. ``message`` is
@@ -155,7 +155,7 @@ class ConversationInvite(BaseModel):
 
 
 class PendingInviteSummary(BaseModel):
-    """A parked invite surfaced to the caller after a round (#1971).
+    """A parked invite surfaced to the caller after a round.
 
     Lets the UI render the inline consent prompt (who wants to bring in
     whom, and why) with a CTA routing to the existing approvals action,

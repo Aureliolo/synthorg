@@ -1,5 +1,5 @@
 # module-kind: service
-"""Agent-initiated invite coordinator for group chat (#1971).
+"""Agent-initiated invite coordinator for group chat.
 
 Owns the PARK half of the agent-initiated invite flow: it parses a
 structured group-chat contribution into a message + optional invite

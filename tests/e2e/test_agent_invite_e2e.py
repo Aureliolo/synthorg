@@ -1,4 +1,4 @@
-"""Acceptance (#1971): agent-initiated invite, human consent, handover.
+"""Acceptance: agent-initiated invite, human consent, handover.
 
 Drives the REAL :class:`GroupChatService` + :class:`GroupInviteCoordinator`
 over the REAL meeting agent caller (``build_meeting_agent_caller``)
@@ -199,7 +199,7 @@ class TestAgentInviteE2E:
             registry, strategy
         )
 
-        # Round 1: the CEO requests the CFO; the invite parks, the agent
+        # First round: the CEO requests the CFO; the invite parks, the agent
         # is NOT yet a participant, and the parsed message is the turn.
         round_one = await service.converse(
             GroupConverseArgs(
@@ -231,7 +231,7 @@ class TestAgentInviteE2E:
         roster = list(participant_repo.items.values())
         assert any(p.agent_name == "Fiona" for p in roster)
 
-        # Round 2: the CFO takes its genuine first turn; its prompt
+        # Second round: the CFO takes its genuine first turn; its prompt
         # carries the fenced inviter+reason handover, prepended above the
         # transcript. The established CEO never re-sees it.
         round_two = await service.converse(
@@ -288,7 +288,7 @@ class TestAgentInviteE2E:
         # Declined: the CFO never joined.
         assert all(p.agent_name != "Fiona" for p in participant_repo.items.values())
 
-        # Round 2: only the CEO is present, so only the CEO contributes.
+        # Second round: only the CEO is present, so only the CEO contributes.
         round_two = await service.converse(
             GroupConverseArgs(
                 message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, "Continue")),

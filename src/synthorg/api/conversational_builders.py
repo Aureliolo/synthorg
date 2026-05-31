@@ -1,7 +1,7 @@
 # module-kind: code
 """Builders for the conversational write-path services.
 
-Constructs the multi-agent group chat (#1970) from config + wiring.
+Constructs the multi-agent group chat from config + wiring.
 Kept out of :mod:`synthorg.api.app_builders` so the conversational
 write-path builders grow cohesively (the direct-MCP actor builder joins
 here) without pushing the general builder collection past its size tier.
@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.clock import Clock
+    from synthorg.engine.agent_engine import AgentEngine
     from synthorg.hr.registry import AgentRegistryService
+    from synthorg.meta.chief_of_staff.actor import ConversationalActor
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.meta.chief_of_staff.group_chat import GroupChatService
     from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
         ConversationalRepositories,
     )
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
 
@@ -41,7 +44,7 @@ def build_group_chat_service(  # noqa: PLR0913 -- DI builder seam
     approval_store: ApprovalStoreProtocol | None = None,
     clock: Clock | None = None,
 ) -> GroupChatService | None:
-    """Resolve a GroupChatService from config + wiring (#1970).
+    """Resolve a GroupChatService from config + wiring.
 
     Returns ``None`` -- and ``POST /meta/chat/group`` then surfaces
     503 -- when:
@@ -148,4 +151,50 @@ def _build_invite_coordinator(
     )
 
 
-__all__ = ["build_group_chat_service"]
+def build_conversational_actor(
+    chief_of_staff_config: ChiefOfStaffConfig,
+    *,
+    engine: AgentEngine,
+    agent_registry: AgentRegistryService,
+    autonomy_resolver: AutonomyResolver | None,
+) -> ConversationalActor | None:
+    """Resolve a ConversationalActor from config + the boot engine.
+
+    Returns ``None`` -- and ``POST /meta/chat/act`` then surfaces 503 --
+    when:
+
+    - ``chief_of_staff_config.direct_mcp_enabled`` is False (opt-in
+      default), or
+    - the boot ``AgentEngine`` has no MCP self-consumer wired (no MCP
+      tools for an agent to act with, so the feature is inert).
+
+    The actor reuses the SHARED boot engine so a sensitive action parks
+    on the same ``ApprovalGate`` the ``/approvals`` controller resumes,
+    and the same ``AutonomyResolver`` the worker uses so a chat action
+    and a task resolve identical effective autonomy for an agent.
+
+    Returns:
+        The ``ConversationalActor`` value when present, ``None`` otherwise.
+    """
+    from synthorg.meta.chief_of_staff.actor import (  # noqa: PLC0415
+        ConversationalActor,
+    )
+
+    if not chief_of_staff_config.direct_mcp_enabled:
+        return None
+    if not engine.has_mcp_self_consumer:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Direct MCP acting enabled but no MCP self-consumer wired",
+        )
+        return None
+    logger.info(API_APP_STARTUP, note="Direct MCP acting configured")
+    return ConversationalActor(
+        engine=engine,
+        agent_registry=agent_registry,
+        autonomy_resolver=autonomy_resolver,
+        config=chief_of_staff_config,
+    )
+
+
+__all__ = ["build_conversational_actor", "build_group_chat_service"]

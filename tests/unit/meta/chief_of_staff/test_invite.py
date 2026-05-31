@@ -1,5 +1,5 @@
 # module-kind: tests
-"""Unit tests for the agent-initiated invite flow (#1971).
+"""Unit tests for the agent-initiated invite flow.
 
 Covers the three seams of the feature:
 
@@ -600,7 +600,7 @@ class TestGroupChatInviteIntegration:
         )
         opened = await service.converse(
             GroupConverseArgs(
-                message=NotBlankStr("Round 0"),
+                message=NotBlankStr("Turn 0"),
                 created_by=NotBlankStr("user-1"),
                 participants=(NotBlankStr(str(ceo.id)),),
             )
@@ -636,7 +636,7 @@ class TestGroupChatInviteIntegration:
         caller.calls.clear()
         await service.converse(
             GroupConverseArgs(
-                message=NotBlankStr("Round 1"),
+                message=NotBlankStr("Turn 1"),
                 created_by=NotBlankStr("user-1"),
                 conversation_id=conversation_id,
             )
