@@ -5210,7 +5210,7 @@
     },
     {
       "kind": "service",
-      "loc": 375,
+      "loc": 396,
       "loc_cap": 600,
       "module": "src/synthorg/engine/intervention/service.py",
       "owning_feature": "engine"
@@ -11622,7 +11622,7 @@
     },
     {
       "kind": "code",
-      "loc": 27,
+      "loc": 29,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/cockpit.py",
       "owning_feature": "observability"

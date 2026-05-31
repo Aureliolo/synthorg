@@ -38,7 +38,9 @@ from synthorg.engine.intervention.models import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ISSUED,
+    STEERING_DIRECTIVE_REJECTED,
     STEERING_SUPERSESSION_PROPOSED,
+    STEERING_TASK_SCOPE_REJECTED,
     STEERING_TASK_SUPERSEDE_FAILED,
     STEERING_TASKS_SUPERSEDED,
 )
@@ -126,9 +128,21 @@ class SteeringService:
             ("author", author),
         ):
             if not field_value.strip():
+                logger.warning(
+                    STEERING_DIRECTIVE_REJECTED,
+                    project_id=project_id,
+                    field=field_name,
+                    reason="blank_field",
+                )
                 msg = f"steering directive {field_name} must not be blank"
                 raise SteeringDirectiveFieldError(msg)
         if kind not in STEERABLE_KINDS:
+            logger.warning(
+                STEERING_DIRECTIVE_REJECTED,
+                project_id=project_id,
+                kind=kind.value,
+                reason="non_steerable_kind",
+            )
             msg = f"{kind.value!r} is not a steerable directive kind"
             raise SteeringKindError(msg)
         directive_id = await self._record_directive(
@@ -316,6 +330,13 @@ class SteeringService:
         for task_id in task_ids:
             task = await self._task_engine.get_task(task_id)
             if task is not None and task.project != project_id:
+                logger.warning(
+                    STEERING_TASK_SCOPE_REJECTED,
+                    project_id=project_id,
+                    directive_id=directive_id,
+                    task_id=task_id,
+                    task_project=task.project,
+                )
                 msg = (
                     f"task {task_id!r} belongs to project {task.project!r}, "
                     f"not {project_id!r}"
