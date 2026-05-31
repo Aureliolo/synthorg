@@ -806,9 +806,14 @@ jobs:
 
           echo "Stable release $TAG is published -- cleaning up superseded dev pre-releases and tags"
 
-          # Base version of the stable just published (strip leading 'v').
-          # A dev tag vX.Y.Z-dev.N is superseded iff its X.Y.Z is <= this.
+          # Base version of the stable just published (strip leading 'v' and
+          # any pre-release suffix). A dev tag vX.Y.Z-dev.N is superseded iff
+          # its X.Y.Z is <= this. Stripping the suffix keeps STABLE_VER a pure
+          # X.Y.Z even if this step is ever reached for an rc/alpha/beta stable
+          # tag (the step's `if` only excludes `-dev.`), so `sort -V` never has
+          # to order a pre-release suffix whose ranking is implementation-defined.
           STABLE_VER=${TAG#v}
+          STABLE_VER=${STABLE_VER%%-*}
 
           # True (exit 0) iff $1 <= $2 by semver ordering. `sort -V` is
           # required over a string compare: lexically "0.8.10" < "0.8.9",
