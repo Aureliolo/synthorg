@@ -5,8 +5,9 @@ Declares the memory feature's surface: its settings namespace, state slice
 (shared backend + fine-tune orchestrator), the per-sub-domain memory-admin
 REST controllers (fine-tune, checkpoints, entries, embedder) each guarded
 for the CEO / SYSTEM role, and the memory MCP domain. The backend is wired
-during the training-service auto-wire path; the feature has no ghost-wired
-symbols of its own here.
+during the training-service auto-wire path; the fine-tune orchestrator is
+wired on startup by ``_wire_fine_tune_orchestrator`` once persistence
+connects, so ``FineTuneOrchestrator`` is ghost-wired here.
 """
 
 from collections.abc import Mapping
@@ -51,6 +52,6 @@ FEATURE: FeatureModule = FeatureManifest(
         ),
     ),
     lifecycle_hooks=(),
-    ghost_wired_symbols=(),
+    ghost_wired_symbols=("FineTuneOrchestrator",),
     depends_on=(),
 )

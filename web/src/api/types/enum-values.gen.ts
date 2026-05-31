@@ -388,6 +388,12 @@ export const FILE_SYSTEM_SCOPE_VALUES = [
 ] as const
 export type FileSystemScope = (typeof FILE_SYSTEM_SCOPE_VALUES)[number]
 
+export const FINE_TUNE_DATA_SOURCE_TYPE_VALUES = [
+    'directory',
+    'trajectory',
+] as const
+export type FineTuneDataSourceType = (typeof FINE_TUNE_DATA_SOURCE_TYPE_VALUES)[number]
+
 export const FINE_TUNE_STAGE_VALUES = [
     'idle',
     'generating_data',

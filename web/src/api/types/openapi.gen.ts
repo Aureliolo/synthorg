@@ -9503,6 +9503,11 @@ export type components = {
              * @default 5
              */
             readonly pattern_weakness_threshold: number;
+            /**
+             * @description Mark a cycle training-triggered when it proposes actions
+             * @default false
+             */
+            readonly training_on_actions: boolean;
         };
         /** EvalMetrics */
         readonly EvalMetrics: {
@@ -9724,12 +9729,25 @@ export type components = {
          * @enum {string}
          */
         readonly FileSystemScope: "workspace_only" | "project_directory" | "full";
+        /**
+         * FineTuneDataSourceType
+         * @description Where the finetune draws its training pairs from.
+         *
+         *     ``DIRECTORY`` scans a static document directory (``source_dir``);
+         *     ``TRAJECTORY`` harvests the org's real working history (completed-task
+         *     deliverables, EPISODIC distillation trajectories, and PROCEDURAL failure
+         *     lessons) and curates by the golden-benchmark score.
+         * @default directory
+         * @enum {string}
+         */
+        readonly FineTuneDataSourceType: "directory" | "trajectory";
         /** FineTuneRequest */
         readonly FineTuneRequest: {
             /** @description Base model to fine-tune (None = active model) */
             readonly base_model?: string | null;
             /** @description Override training batch size */
             readonly batch_size?: number | null;
+            readonly data_source?: components["schemas"]["FineTuneDataSourceType"];
             /** @description Override training epochs */
             readonly epochs?: number | null;
             /** @description Override learning rate */
@@ -9738,8 +9756,8 @@ export type components = {
             readonly output_dir?: string | null;
             /** @description Resume a previous failed/cancelled run */
             readonly resume_run_id?: string | null;
-            /** @description Directory containing org documents */
-            readonly source_dir: string;
+            /** @description Directory containing org documents (required in directory mode, ignored in trajectory mode) */
+            readonly source_dir?: string | null;
             /** @description Override InfoNCE temperature */
             readonly temperature?: number | null;
             /** @description Override hard negative count per query */
@@ -9792,6 +9810,7 @@ export type components = {
              * @default 128
              */
             readonly batch_size: number;
+            readonly data_source: components["schemas"]["FineTuneDataSourceType"];
             /**
              * @description Training epochs
              * @default 3
@@ -9804,8 +9823,8 @@ export type components = {
             readonly learning_rate: number;
             /** @description Checkpoint output directory */
             readonly output_dir: string;
-            /** @description Source document directory */
-            readonly source_dir: string;
+            /** @description Source document directory (directory mode only) */
+            readonly source_dir: string | null;
             /**
              * @description InfoNCE temperature
              * @default 0.02
