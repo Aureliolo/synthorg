@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.models import (
+    OrgBenchmarkSummary,
     OrgBudgetSummary,
     OrgCoordinationSummary,
     OrgErrorSummary,
@@ -27,6 +28,7 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.meta.signals.benchmark import BenchmarkSignalAggregator
     from synthorg.meta.signals.budget import BudgetSignalAggregator
     from synthorg.meta.signals.coordination import (
         CoordinationSignalAggregator,
@@ -64,6 +66,7 @@ _EMPTY_SCALING = OrgScalingSummary()
 _EMPTY_ERRORS = OrgErrorSummary()
 _EMPTY_EVOLUTION = OrgEvolutionSummary()
 _EMPTY_TELEMETRY = OrgTelemetrySummary()
+_EMPTY_BENCHMARK = OrgBenchmarkSummary()
 
 
 class SnapshotBuilder:
@@ -81,6 +84,9 @@ class SnapshotBuilder:
         errors: Error signal aggregator.
         evolution: Evolution signal aggregator.
         telemetry: Telemetry signal aggregator.
+        benchmark: Golden-benchmark signal aggregator. Optional because
+            the benchmark is an opt-in / offline signal; when ``None``
+            the snapshot carries an empty benchmark summary.
     """
 
     def __init__(  # noqa: PLR0913
@@ -93,6 +99,7 @@ class SnapshotBuilder:
         errors: ErrorSignalAggregator,
         evolution: EvolutionSignalAggregator,
         telemetry: TelemetrySignalAggregator,
+        benchmark: BenchmarkSignalAggregator | None = None,
     ) -> None:
         self._performance = performance
         self._budget = budget
@@ -101,6 +108,7 @@ class SnapshotBuilder:
         self._errors = errors
         self._evolution = evolution
         self._telemetry = telemetry
+        self._benchmark = benchmark
 
     async def build(
         self,
@@ -181,6 +189,13 @@ class SnapshotBuilder:
                     self._telemetry.aggregate(since=since, until=until),
                 )
             )
+            if self._benchmark is not None:
+                tg.create_task(
+                    _run(
+                        "bench",
+                        self._benchmark.aggregate(since=since, until=until),
+                    )
+                )
 
         perf = results.get("perf", _EMPTY_PERFORMANCE)
         budget = results.get("budget", _EMPTY_BUDGET)
@@ -189,6 +204,7 @@ class SnapshotBuilder:
         err = results.get("err", _EMPTY_ERRORS)
         evo = results.get("evo", _EMPTY_EVOLUTION)
         telem = results.get("telem", _EMPTY_TELEMETRY)
+        bench = results.get("bench", _EMPTY_BENCHMARK)
 
         snapshot = OrgSignalSnapshot(
             performance=perf,  # type: ignore[arg-type]
@@ -198,6 +214,7 @@ class SnapshotBuilder:
             errors=err,  # type: ignore[arg-type]
             evolution=evo,  # type: ignore[arg-type]
             telemetry=telem,  # type: ignore[arg-type]
+            benchmark=bench,  # type: ignore[arg-type]
         )
 
         logger.info(

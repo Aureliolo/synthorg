@@ -28,7 +28,7 @@ class TestBuildRuleEngine:
     def test_all_rules_enabled_by_default(self) -> None:
         cfg = SelfImprovementConfig(enabled=True)
         engine = build_rule_engine(cfg)
-        assert engine.rule_count == 9
+        assert engine.rule_count == 10
 
     def test_disabled_rules_excluded(self) -> None:
         from synthorg.meta.config import RuleConfig
@@ -40,7 +40,7 @@ class TestBuildRuleEngine:
             ),
         )
         engine = build_rule_engine(cfg)
-        assert engine.rule_count == 7
+        assert engine.rule_count == 8
         assert "quality_declining" not in engine.rule_names
         assert "budget_overrun" not in engine.rule_names
 
@@ -57,6 +57,7 @@ class TestBuildRuleEngine:
             "redundancy",
             "scaling_failure",
             "error_spike",
+            "benchmark_regression",
         )
         cfg = SelfImprovementConfig(
             enabled=True,

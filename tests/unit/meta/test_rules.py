@@ -271,9 +271,9 @@ class TestErrorSpikeRule:
 class TestDefaultRules:
     """Default rules set tests."""
 
-    def test_returns_9_rules(self) -> None:
+    def test_returns_10_rules(self) -> None:
         rules = default_rules()
-        assert len(rules) == 9
+        assert len(rules) == 10
 
     def test_all_have_unique_names(self) -> None:
         rules = default_rules()
@@ -334,8 +334,9 @@ class TestRuleEngine:
     def test_rule_count_and_names(self) -> None:
         rules = default_rules()
         engine = RuleEngine(rules=rules)
-        assert engine.rule_count == 9
+        assert engine.rule_count == 10
         assert "quality_declining" in engine.rule_names
+        assert "benchmark_regression" in engine.rule_names
 
     def test_exception_in_rule_does_not_crash(self) -> None:
         """A failing rule should not prevent other rules from running."""
