@@ -5,15 +5,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
-from psycopg.rows import BaseRowFactory, DictRow
+from psycopg.rows import BaseRowFactory, DictRow, TupleRow
 from pydantic import AwareDatetime, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    AutonomyLevel,
-    OrgFactCategory,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
@@ -41,7 +37,6 @@ from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
 
 if TYPE_CHECKING:
     import psycopg
-    from psycopg.rows import TupleRow
     from psycopg_pool import AsyncConnectionPool
 
 
