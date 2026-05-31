@@ -689,7 +689,9 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/memory",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "FineTuneOrchestrator"
+      ],
       "mcp_tool_names": [
         "synthorg_memory_start_fine_tune",
         "synthorg_memory_resume_fine_tune",
@@ -731,7 +733,8 @@
         "MetaAnalyticsController",
         "AnalyticsController",
         "ExperimentsController",
-        "CustomRuleController"
+        "CustomRuleController",
+        "LearningController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/meta",
@@ -1176,6 +1179,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-31T19:15:57.036355Z",
+  "generated_at": "2026-05-31T15:42:34.681028Z",
   "schema_version": 1
 }
