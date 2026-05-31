@@ -1,5 +1,6 @@
 """Domain models for the fine-tuning pipeline."""
 
+from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal, Self
 
@@ -14,6 +15,19 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
+
+
+class FineTuneDataSourceType(StrEnum):
+    """Where the finetune draws its training pairs from.
+
+    ``DIRECTORY`` scans a static document directory (``source_dir``);
+    ``TRAJECTORY`` harvests the org's real working history (completed-task
+    deliverables, EPISODIC distillation trajectories, and PROCEDURAL failure
+    lessons) and curates by the golden-benchmark score.
+    """
+
+    DIRECTORY = "directory"
+    TRAJECTORY = "trajectory"
 
 
 class FineTuneRequest(BaseModel):
@@ -35,8 +49,16 @@ class FineTuneRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    source_dir: NotBlankStr = Field(
-        description="Directory containing org documents",
+    data_source: FineTuneDataSourceType = Field(
+        default=FineTuneDataSourceType.DIRECTORY,
+        description="Where training pairs are drawn from",
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Directory containing org documents (required in directory mode,"
+            " ignored in trajectory mode)"
+        ),
     )
     base_model: NotBlankStr | None = Field(
         default=None,
@@ -81,6 +103,24 @@ class FineTuneRequest(BaseModel):
         lt=1.0,
         description="Fraction of data held out for evaluation",
     )
+
+    @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` when sourcing from a directory.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if (
+            self.data_source is FineTuneDataSourceType.DIRECTORY
+            and self.source_dir is None
+        ):
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _reject_path_traversal(self) -> Self:
@@ -237,7 +277,14 @@ class FineTuneRunConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    source_dir: NotBlankStr = Field(description="Source document directory")
+    data_source: FineTuneDataSourceType = Field(
+        default=FineTuneDataSourceType.DIRECTORY,
+        description="Where training pairs are drawn from",
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description="Source document directory (directory mode only)",
+    )
     base_model: NotBlankStr = Field(description="Base embedding model")
     output_dir: NotBlankStr = Field(description="Checkpoint output directory")
     epochs: int = Field(default=3, ge=1, description="Training epochs")
@@ -251,6 +298,24 @@ class FineTuneRunConfig(BaseModel):
         lt=1.0,
         description="Fraction held out for evaluation",
     )
+
+    @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` when sourcing from a directory.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if (
+            self.data_source is FineTuneDataSourceType.DIRECTORY
+            and self.source_dir is None
+        ):
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
 
 
 # ── Pipeline run record ─────────────────────────────────────────

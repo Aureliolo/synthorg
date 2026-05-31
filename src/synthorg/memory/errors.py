@@ -71,3 +71,11 @@ class FineTuneDependencyError(MemoryError):
 
 class FineTuneCancelledError(MemoryError):
     """Raised when a fine-tuning pipeline run is cancelled."""
+
+
+class FineTuneDataSourceError(MemoryError):
+    """Raised when the selected finetune training-data source is unavailable.
+
+    Trajectory mode requires a wired :class:`TrainingDataSource`; this signals
+    the run was started in trajectory mode without one.
+    """

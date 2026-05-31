@@ -105,6 +105,8 @@ MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
 MEMORY_FINE_TUNE_CHECKPOINT_REJECTED: Final[str] = (
     "memory.fine_tune.checkpoint_rejected"
 )
+MEMORY_TRAINING_SOURCE_HARVESTED: Final[str] = "memory.training_source.harvested"
+MEMORY_TRAINING_SOURCE_DEGRADED: Final[str] = "memory.training_source.degraded"
 MEMORY_FINE_TUNE_CHECKPOINT_ROLLED_BACK: Final[str] = (
     "memory.fine_tune.checkpoint_rolled_back"
 )

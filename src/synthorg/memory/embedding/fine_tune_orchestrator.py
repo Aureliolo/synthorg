@@ -26,12 +26,14 @@ from synthorg.memory.embedding.fine_tune import (
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
     EvalMetrics,
+    FineTuneDataSourceType,
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
 )
 from synthorg.memory.embedding.promotion import should_promote
-from synthorg.memory.errors import FineTuneCancelledError
+from synthorg.memory.embedding.training_writer import split_and_write_pairs
+from synthorg.memory.errors import FineTuneCancelledError, FineTuneDataSourceError
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -52,6 +54,7 @@ if TYPE_CHECKING:
     from synthorg.memory.embedding.fine_tune_models import (
         FineTuneRequest,
     )
+    from synthorg.memory.embedding.training_sources import TrainingDataSource
     from synthorg.persistence.fine_tune_protocol import (
         FineTuneCheckpointRepository,
         FineTuneRunRepository,
@@ -83,6 +86,9 @@ class FineTuneOrchestrator:
         settings_service: Runtime settings (for deploy stage).
         channels_plugin: WS plugin exposing ``publish(data, channels=...)``.
         llm_provider: Optional LLM provider for data generation.
+        training_data_source: Optional real-trajectory data source. Required
+            only when a run selects ``data_source=trajectory``; directory mode
+            needs no source.
     """
 
     def __init__(  # noqa: PLR0913 -- pluggable dependencies threaded for testability
@@ -93,6 +99,7 @@ class FineTuneOrchestrator:
         settings_service: object | None = None,
         channels_plugin: ChannelsPlugin | None = None,
         llm_provider: object | None = None,
+        training_data_source: TrainingDataSource | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._run_repo = run_repo
@@ -100,6 +107,7 @@ class FineTuneOrchestrator:
         self._settings_service = settings_service
         self._channels_plugin = channels_plugin
         self._llm_provider = llm_provider
+        self._training_data_source = training_data_source
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
@@ -404,6 +412,54 @@ class FineTuneOrchestrator:
                 error=safe_error,
             )
 
+    async def _generate_training_data(
+        self,
+        cfg: FineTuneRunConfig,
+        out_dir: str,
+        run: FineTuneRun,
+    ) -> tuple[Path, Path]:
+        """Produce stage-1 train/validation files for the run's source mode.
+
+        Returns:
+            ``(training_path, validation_path)``.
+
+        Raises:
+            FineTuneDataSourceError: If trajectory mode is selected without a
+                wired data source.
+            ValueError: If directory mode is selected without a ``source_dir``
+                (guarded upstream by the config validator).
+        """
+        if cfg.data_source is FineTuneDataSourceType.TRAJECTORY:
+            if self._training_data_source is None:
+                msg = "trajectory data source selected but none is wired"
+                raise FineTuneDataSourceError(msg)
+            pairs = await self._training_data_source.collect()
+            records = [
+                {
+                    "query": str(pair.query),
+                    "positive_passage": str(pair.positive_passage),
+                }
+                for pair in pairs
+            ]
+            return await split_and_write_pairs(
+                records,
+                out_dir,
+                validation_split=cfg.validation_split,
+            )
+        if cfg.source_dir is None:
+            # Unreachable: the FineTuneRunConfig validator requires source_dir
+            # in directory mode. Guard so the type-checker can narrow.
+            msg = "source_dir is required in directory mode"
+            raise ValueError(msg)
+        return await generate_training_data(
+            source_dir=cfg.source_dir,
+            output_dir=out_dir,
+            llm_provider=self._llm_provider,
+            validation_split=cfg.validation_split,
+            progress_callback=self._make_progress_cb(run),
+            cancellation=self._cancellation,
+        )
+
     async def _run_stages(
         self,
         run: FineTuneRun,
@@ -417,20 +473,14 @@ class FineTuneOrchestrator:
         out_dir = f"{cfg.output_dir}/runs/{run.id}"
         completed = set(run.stages_completed)
 
-        # Stage 1: Generate training data.
+        # Stage 1: Generate training data (directory scan or real-trajectory
+        # harvest, selected by the run's data_source).
         if "generating_data" not in completed:
             run = await self._enter_stage(
                 run,
                 FineTuneStage.GENERATING_DATA,
             )
-            train_path, val_path = await generate_training_data(
-                source_dir=cfg.source_dir,
-                output_dir=out_dir,
-                llm_provider=self._llm_provider,
-                validation_split=cfg.validation_split,
-                progress_callback=self._make_progress_cb(run),
-                cancellation=self._cancellation,
-            )
+            train_path, val_path = await self._generate_training_data(cfg, out_dir, run)
             run = await self._complete_stage(
                 run,
                 "generating_data",

@@ -12,9 +12,11 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
+from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     EvalMetrics,
+    FineTuneDataSourceType,
     FineTuneRequest,
     FineTuneRun,
     FineTuneRunConfig,
@@ -22,6 +24,10 @@ from synthorg.memory.embedding.fine_tune_models import (
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     _PROGRESS_THROTTLE_SEC,
     FineTuneOrchestrator,
+)
+from synthorg.memory.embedding.training_sources import (
+    QueryPassagePair,
+    TrainingPairSource,
 )
 from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.persistence.sqlite.fine_tune_repo import (
@@ -400,6 +406,169 @@ class TestPromotionGate:
         )
         status = await orchestrator.get_status()
         assert status.stage == FineTuneStage.COMPLETE
+
+
+# -- Training-data source selection (#1990) ---------------------------
+
+
+class _FakeTrainingDataSource:
+    """Returns a fixed set of harvested pairs without touching real repos."""
+
+    def __init__(self, pairs: tuple[QueryPassagePair, ...]) -> None:
+        self._pairs = pairs
+        self.collect_calls = 0
+
+    @property
+    def name(self) -> str:
+        return "fake-trajectory"
+
+    async def collect(self) -> tuple[QueryPassagePair, ...]:
+        self.collect_calls += 1
+        return self._pairs
+
+
+_HARVESTED_PAIRS = (
+    QueryPassagePair(
+        query=NotBlankStr("Build checkout"),
+        positive_passage=NotBlankStr("Resilient checkout deliverable"),
+        source=TrainingPairSource.ARTIFACT,
+    ),
+    QueryPassagePair(
+        query=NotBlankStr("Handle timeout"),
+        positive_passage=NotBlankStr("Retry with backoff lesson"),
+        source=TrainingPairSource.FAILURE_LESSON,
+    ),
+)
+
+_ORCH = "synthorg.memory.embedding.fine_tune_orchestrator"
+
+
+@contextlib.contextmanager
+def _mock_stages_2_to_5() -> Any:
+    """Mock stages 2-5, leaving stage 1 (data generation) real."""
+
+    async def _mine(**kwargs: Any) -> Path:
+        return Path("training_triples.jsonl")
+
+    async def _train(**kwargs: Any) -> Path:
+        return Path("checkpoint")
+
+    async def _eval(**kwargs: Any) -> EvalMetrics:
+        return EvalMetrics(
+            ndcg_at_10=0.6,
+            recall_at_10=0.7,
+            base_ndcg_at_10=0.5,
+            base_recall_at_10=0.6,
+        )
+
+    async def _deploy(**kwargs: Any) -> str | None:
+        return None
+
+    with (
+        patch(f"{_ORCH}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{_ORCH}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{_ORCH}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{_ORCH}.deploy_checkpoint", side_effect=_deploy),
+    ):
+        yield
+
+
+@pytest.mark.unit
+class TestTrainingDataSourceSelection:
+    """Stage 1 dispatches to the configured training-data source (#1990)."""
+
+    async def test_trajectory_mode_harvests_from_the_source(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+    ) -> None:
+        """Trajectory mode writes the harvested pairs and skips the scan."""
+        source = _FakeTrainingDataSource(_HARVESTED_PAIRS)
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+            training_data_source=source,
+        )
+        written: list[list[dict[str, str]]] = []
+
+        async def _spy_writer(
+            records: list[dict[str, str]],
+            output_dir: str,
+            *,
+            validation_split: float,
+        ) -> tuple[Path, Path]:
+            written.append(records)
+            return Path("training.jsonl"), Path("validation.jsonl")
+
+        req = FineTuneRequest(data_source=FineTuneDataSourceType.TRAJECTORY)
+        with (
+            _mock_stages_2_to_5(),
+            patch(f"{_ORCH}.split_and_write_pairs", side_effect=_spy_writer),
+            patch(f"{_ORCH}.generate_training_data") as scan,
+        ):
+            await orchestrator.start(req)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+        assert source.collect_calls == 1
+        scan.assert_not_called()
+        assert written == [
+            [
+                {
+                    "query": "Build checkout",
+                    "positive_passage": "Resilient checkout deliverable",
+                },
+                {
+                    "query": "Handle timeout",
+                    "positive_passage": "Retry with backoff lesson",
+                },
+            ]
+        ]
+
+    async def test_directory_mode_uses_the_document_scan(
+        self,
+        run_repo: SQLiteFineTuneRunRepository,
+        cp_repo: SQLiteFineTuneCheckpointRepository,
+        tmp_path: Path,
+    ) -> None:
+        """Directory mode (the default) still calls the document scan."""
+        orchestrator = FineTuneOrchestrator(
+            run_repo=run_repo,
+            checkpoint_repo=cp_repo,
+        )
+
+        async def _scan(**kwargs: Any) -> tuple[Path, Path]:
+            return Path("training.jsonl"), Path("validation.jsonl")
+
+        req = _request(tmp_path)
+        assert req.data_source is FineTuneDataSourceType.DIRECTORY
+        with (
+            _mock_stages_2_to_5(),
+            patch(f"{_ORCH}.generate_training_data", side_effect=_scan) as scan,
+            patch(f"{_ORCH}.split_and_write_pairs") as writer,
+        ):
+            await orchestrator.start(req)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+        scan.assert_called_once()
+        writer.assert_not_called()
+
+    async def test_trajectory_mode_without_source_fails_the_run(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        run_repo: SQLiteFineTuneRunRepository,
+    ) -> None:
+        """Selecting trajectory mode with no wired source fails the run."""
+        req = FineTuneRequest(data_source=FineTuneDataSourceType.TRAJECTORY)
+        with _mock_stages_2_to_5():
+            run = await orchestrator.start(req)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
+
+        fetched = await run_repo.get(run.id)
+        assert fetched is not None
+        assert fetched.stage == FineTuneStage.FAILED
 
 
 # -- Helpers ----------------------------------------------------------

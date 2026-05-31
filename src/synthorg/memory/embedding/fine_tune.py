@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.embedding.training_writer import split_and_write_pairs
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -426,16 +427,7 @@ async def generate_training_data(  # noqa: PLR0913
         msg = f"No documents found in {source_dir}"
         raise ValueError(msg)
 
-    if validation_split <= 0.0 or validation_split >= 1.0:
-        msg = (
-            f"validation_split must be between 0 and 1 exclusive, "
-            f"got {validation_split}"
-        )
-        raise ValueError(msg)
-
-    out = _ensure_dir(output_dir)
     all_pairs: list[dict[str, str]] = []
-
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
             cancellation.check()
@@ -448,23 +440,11 @@ async def generate_training_data(  # noqa: PLR0913
         if progress_callback:
             progress_callback((i + 1) / len(docs))
 
-    if len(all_pairs) < 2:  # noqa: PLR2004
-        msg = (
-            f"Need at least 2 query-document pairs for "
-            f"train/validation split, got {len(all_pairs)}"
-        )
-        raise ValueError(msg)
-    raw_split = int(len(all_pairs) * (1 - validation_split))
-    split_idx = max(1, min(len(all_pairs) - 1, raw_split))
-    training = all_pairs[:split_idx]
-    validation = all_pairs[split_idx:]
-
-    train_path = out / "training.jsonl"
-    val_path = out / "validation.jsonl"
-    await asyncio.to_thread(_write_jsonl_any, train_path, training)
-    await asyncio.to_thread(_write_jsonl_any, val_path, validation)
-
-    return train_path, val_path
+    return await split_and_write_pairs(
+        all_pairs,
+        output_dir,
+        validation_split=validation_split,
+    )
 
 
 def _generate_query(
