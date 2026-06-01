@@ -7,13 +7,14 @@ deterministically from the request so an identical request reproduces the
 same run id (idempotent re-run, replay-friendly).
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, override
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
 )
 
 from synthorg.api.boundary import parse_typed
@@ -174,7 +175,7 @@ class ResearchTool(BaseTool):
         self._clock = clock if clock is not None else SystemClock()
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
         """Run the research pipeline and return the cited report.
 
         Returns:

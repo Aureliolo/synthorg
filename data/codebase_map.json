@@ -15472,7 +15472,7 @@
     },
     {
       "kind": "code",
-      "loc": 193,
+      "loc": 194,
       "loc_cap": 500,
       "module": "src/synthorg/research/tool.py",
       "owning_feature": "research"
