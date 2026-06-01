@@ -119,10 +119,46 @@ jobs:
             exit 0
           fi
 
-          # Skip if a Release-As trailer is already queued between last stable and HEAD.
-          # Handles both our own rollover commits and manual overrides (feature-PR
-          # body Release-As trailers land here via squash-merge).
-          if git log "${LAST_STABLE}..HEAD" --format=%B | grep -qE '^Release-As:'; then
+          # Compute the rollover target now so the dedup guards can reference it.
+          NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
+          ROLLOVER_BRANCH="chore/auto-rollover-v${NEXT_VERSION}"
+
+          # Primary dedup guard (history-INDEPENDENT). A prior run may have
+          # already merged -- or left open -- the rollover PR for this exact
+          # version. The git-log range check below can miss the trailer when a
+          # run's checkout does not fully materialise the tag<->HEAD
+          # connection, and that check fails OPEN; relying on it alone let a
+          # duplicate rollover PR through once (the .9 -> .0 trailer was in
+          # history yet `git log ${LAST_STABLE}..HEAD` came up empty in a
+          # single run). This query reads GitHub state directly, so it holds
+          # regardless of local git history. The branch name carries the
+          # version, so a merged v0.(X+1).0 rollover never suppresses the next
+          # version's rollover. A CLOSED-not-merged rollover (e.g. a manual
+          # cancel) is intentionally NOT a skip: it never took effect.
+          PRIOR_ROLLOVER=$(gh pr list --state all --head "$ROLLOVER_BRANCH" \
+            --json number,state \
+            --jq '[.[] | select(.state == "MERGED" or .state == "OPEN")] | .[0].number // ""')
+          if [ -n "$PRIOR_ROLLOVER" ]; then
+            echo "Rollover PR #${PRIOR_ROLLOVER} for v${NEXT_VERSION} already merged/open; skipping."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Secondary guard: a Release-As trailer already queued between last
+          # stable and HEAD (our own rollover commit, or a manual override in
+          # a feature-PR body that landed via squash-merge). Fail CLOSED: if
+          # the range cannot be computed (incomplete history / tag not
+          # fetched), skip this run rather than rolling over. A missed
+          # rollover self-heals on the next push to main; a spurious PR does
+          # not. Capturing into a variable separates a `git log` failure (skip)
+          # from a genuine no-match (fall through) -- the inline `git log | grep`
+          # form previously conflated them under `set -o pipefail`.
+          if ! UNRELEASED_BODIES=$(git log "${LAST_STABLE}..HEAD" --format=%B); then
+            echo "::warning::Could not compute ${LAST_STABLE}..HEAD range; skipping rollover this run."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s' "$UNRELEASED_BODIES" | grep -qE '^Release-As:'; then
             echo "Release-As trailer already present in unreleased commits; skipping."
             echo "needed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -140,7 +176,6 @@ jobs:
             exit 0
           fi
 
-          NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
           echo "Rollover target: $NEXT_VERSION"
           echo "needed=true" >> "$GITHUB_OUTPUT"
           echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
