@@ -29,6 +29,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.intervention.models import STEERABLE_KINDS
+from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 
 # ── Proposal outcome learning ─────────────────────────────────────
@@ -261,6 +262,9 @@ class Conversation(BaseModel):
         created_at: When the conversation was opened.
         updated_at: When the most recent turn was appended.
         status: Lifecycle state (active, proposed, closed).
+        kind: Conversation shape (direct, routed, group). Fixed at
+            creation; discriminates the v1 1:1 thread from the
+            concern-routed and multi-agent group surfaces.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -270,6 +274,7 @@ class Conversation(BaseModel):
     created_at: AwareDatetime
     updated_at: AwareDatetime
     status: ConversationStatus = ConversationStatus.ACTIVE
+    kind: ConversationKind = ConversationKind.DIRECT
 
 
 class ConversationTurn(BaseModel):
@@ -282,8 +287,18 @@ class ConversationTurn(BaseModel):
         id: Unique turn identifier.
         conversation_id: Owning conversation id.
         sequence: Zero-based position within the conversation.
-        role: Who authored the turn (user or assistant).
+        role: Who authored the turn (user, assistant, or agent).
         content: The turn text.
+        author_agent_id: For ``AGENT`` turns (and routed ``ASSISTANT``
+            turns), the id of the responding role agent; ``None`` for
+            the generic Chief of Staff persona.
+        author_name: Human-readable name of the responding agent, when
+            attributed; ``None`` for the generic persona.
+        routed_topic: For a concern-routed turn, the classified topic
+            label that selected the responding role; ``None`` when not
+            routed.
+        routing_confidence: Classifier confidence (0-1) for the routed
+            topic; ``None`` when not routed.
         created_at: When the turn was appended.
     """
 
@@ -294,6 +309,10 @@ class ConversationTurn(BaseModel):
     sequence: int = Field(ge=0)
     role: ConversationRole
     content: NotBlankStr
+    author_agent_id: NotBlankStr | None = None
+    author_name: NotBlankStr | None = None
+    routed_topic: NotBlankStr | None = None
+    routing_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     created_at: AwareDatetime
 
 
@@ -526,6 +545,16 @@ class ProposeResult(BaseModel):
             ``status == "proposed"``.
         conversation_closed: ``True`` when the clarification cap was
             reached and the conversation was force-closed.
+        responder_role: Role of the agent that answered this turn when
+            the message was concern-routed; ``None`` for the generic
+            Chief of Staff responder (routing off or below the
+            confidence floor).
+        responder_name: Display name of the responding role agent when
+            routed; ``None`` for the generic persona.
+        routed_topic: Classified concern label that selected the
+            responding role; ``None`` when not routed.
+        routing_confidence: Classifier confidence (0-1) for the routed
+            topic; ``None`` when not routed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -536,6 +565,10 @@ class ProposeResult(BaseModel):
     proposals: tuple[ProposedApprovalSummary, ...] = ()
     steering: tuple[SteeringProposalSummary, ...] = ()
     conversation_closed: bool = False
+    responder_role: NotBlankStr | None = None
+    responder_name: NotBlankStr | None = None
+    routed_topic: NotBlankStr | None = None
+    routing_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @model_validator(mode="after")
     def _validate_status_payload(self) -> Self:

@@ -36,6 +36,7 @@ from synthorg.meta.chief_of_staff._intake_parking import (
     unwind_parked_steering,
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.models import (
     Conversation,
     ConversationalProposal,
@@ -49,6 +50,16 @@ from synthorg.meta.chief_of_staff.models import (
     SteeringProposalSummary,
 )
 from synthorg.meta.chief_of_staff.prompts import CONVERSATIONAL_PROPOSE_PROMPT
+from synthorg.meta.chief_of_staff.responder import (
+    Responder,
+    RoutingDecision,
+    build_attributed_assistant_turn,
+    mark_conversation_routed,
+    resolve_responder_provider,
+    select_responder,
+)
+from synthorg.meta.chief_of_staff.routing import RoleRouter
+from synthorg.meta.chief_of_staff.transcript import render_turns_transcript
 from synthorg.meta.errors import (
     ConversationalProposeResponseInvalidError,
     ConversationClosedError,
@@ -80,6 +91,7 @@ from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -105,15 +117,6 @@ def _new_id() -> NotBlankStr:
         ``NotBlankStr`` instance.
     """
     return NotBlankStr(str(uuid.uuid4()))
-
-
-def _render_history(turns: tuple[ConversationTurn, ...]) -> str:
-    """Render chronological turns into a prompt-ready transcript.
-
-    Returns:
-        Resulting string.
-    """
-    return "\n".join(f"{turn.role.value.upper()}: {turn.content}" for turn in turns)
 
 
 def _summarise_decision(
@@ -147,6 +150,12 @@ class ChiefOfStaffProposer:
         approval_store: Human approval queue.
         clock: Injectable time source (defaults to ``SystemClock``).
         cost_tracker: Optional cost tracker for LLM accounting.
+        role_router: Optional concern router. When present, each
+            turn is classified to a role agent; ``None`` keeps the v1
+            generic Chief of Staff behaviour.
+        provider_registry: Optional provider registry used to resolve a
+            routed responder's own provider; falls back to ``provider``
+            when absent. Required only when ``role_router`` is wired.
     """
 
     def __init__(  # noqa: PLR0913 -- DI seam: independently-wired protocols
@@ -160,6 +169,8 @@ class ChiefOfStaffProposer:
         approval_store: ApprovalStoreProtocol,
         clock: Clock | None = None,
         cost_tracker: CostTracker | None = None,
+        role_router: RoleRouter | None = None,
+        provider_registry: ProviderRegistry | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
@@ -169,6 +180,8 @@ class ChiefOfStaffProposer:
         self._approval_store = approval_store
         self._clock: Clock = clock or SystemClock()
         self._cost_tracker = cost_tracker
+        self._role_router = role_router
+        self._provider_registry = provider_registry
         # Per-conversation locks serialise the whole turn pipeline
         # (resolve -> ordered_turns -> append user -> run model ->
         # append assistant + proposals -> update conversation) so two
@@ -177,34 +190,7 @@ class ChiefOfStaffProposer:
         # turns the other side never saw. New conversations
         # (``args.conversation_id is None``) skip the lock because no
         # other caller can address the id before it's assigned.
-        # ``_conversation_locks_guard`` is lazy-initialised on first
-        # use so the lock binds to the request-handling event loop
-        # rather than whichever loop ran ``__init__``.
-        self._conversation_locks: dict[str, asyncio.Lock] = {}
-        self._conversation_locks_guard: asyncio.Lock | None = None
-
-    async def _lock_for(self, conversation_id: str) -> asyncio.Lock:
-        """Return the asyncio.Lock for *conversation_id*, creating it once.
-
-        Lazy-initialises ``_conversation_locks_guard`` so the guard
-        lock binds to the live request-handling loop rather than the
-        loop that built the proposer. Subsequent callers re-use the
-        same per-conversation lock instance through the guarded
-        dict lookup; a tight race on first guard-init merely wastes
-        a Lock() instance (the loser drops its instance after
-        observing the populated guard).
-
-        Returns:
-            ``asyncio.Lock`` instance.
-        """
-        if self._conversation_locks_guard is None:
-            self._conversation_locks_guard = asyncio.Lock()
-        async with self._conversation_locks_guard:
-            lock = self._conversation_locks.get(conversation_id)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._conversation_locks[conversation_id] = lock
-            return lock
+        self._locks = ConversationLockRegistry()
 
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
@@ -247,7 +233,7 @@ class ChiefOfStaffProposer:
         # (a deletion otherwise lets a concurrent caller mint a fresh
         # lock while a queued waiter on the old one is still pending),
         # which v1 does not need at its expected scale.
-        async with await self._lock_for(conversation.id):
+        async with await self._locks.acquire_for(conversation.id):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(
@@ -309,14 +295,26 @@ class ChiefOfStaffProposer:
             return await self._cap_conversation(conversation, next_sequence + 1, now)
 
         history = (*prior_turns, user_turn)
-        decision = await self._run_decision(history)
+        routing = (
+            await self._role_router.route(history)
+            if self._role_router is not None
+            else None
+        )
+        responder = select_responder(routing, propose_model=self._config.propose_model)
+        # Advance a still-direct conversation to ``routed`` on its first
+        # routed turn so the kind discriminator reflects the surface.
+        routed_conversation = mark_conversation_routed(conversation, routing)
+        if routed_conversation is not None:
+            conversation = routed_conversation
+            await self._conversation_repo.save(conversation)
+        decision = await self._run_decision(history, responder)
 
         if decision.needs_clarification:
             return await self._record_clarification(
-                conversation, decision, next_sequence + 1, now
+                conversation, decision, routing, next_sequence + 1, now
             )
         return await self._record_proposals(
-            conversation, args, decision, next_sequence + 1, now
+            conversation, args, decision, routing, next_sequence + 1, now
         )
 
     async def _resolve_conversation(
@@ -375,9 +373,14 @@ class ChiefOfStaffProposer:
         return tuple(sorted(newest_first, key=lambda turn: turn.sequence))
 
     async def _run_decision(
-        self, history: tuple[ConversationTurn, ...]
+        self, history: tuple[ConversationTurn, ...], responder: Responder
     ) -> ProposeDecision:
         """Call the model and parse its structured clarify/propose output.
+
+        The *responder* sets the identity preamble injected into the
+        prompt, the model id, and the provider; the structured-output
+        discipline (temperature, token budget, JSON contract) stays the
+        proposer's so routing never weakens the decision schema.
 
         Returns:
             ``ProposeDecision`` instance.
@@ -388,8 +391,9 @@ class ChiefOfStaffProposer:
                 response failed validation.
         """
         prompt = CONVERSATIONAL_PROPOSE_PROMPT.format(
+            responder_identity=responder.persona,
             conversation_history=wrap_untrusted(
-                TAG_TASK_DATA, _render_history(history)
+                TAG_TASK_DATA, render_turns_transcript(history)
             ),
             max_proposals=self._config.propose_max_proposals_per_turn,
         )
@@ -398,17 +402,25 @@ class ChiefOfStaffProposer:
             temperature=self._config.propose_temperature,
             max_tokens=self._config.propose_max_tokens,
         )
+        provider = resolve_responder_provider(
+            responder,
+            default=self._provider,
+            registry=self._provider_registry,
+        )
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                agent_id=NotBlankStr("system"),
+                agent_id=responder.agent_id or NotBlankStr("system"),
                 task_id=NotBlankStr("system:cos:propose"),
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
-                    messages,
-                    self._config.propose_model,
-                    config=completion_config,
+                response = await asyncio.wait_for(
+                    provider.complete(
+                        messages,
+                        responder.model,
+                        config=completion_config,
+                    ),
+                    timeout=self._config.agent_call_timeout_seconds,
                 )
         except Exception as exc:
             reraise_critical(exc)
@@ -438,6 +450,7 @@ class ChiefOfStaffProposer:
         self,
         conversation: Conversation,
         decision: ProposeDecision,
+        routing: RoutingDecision | None,
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
@@ -451,13 +464,12 @@ class ChiefOfStaffProposer:
         # clarification branch; assert for the type-checker only.
         assert question is not None  # noqa: S101
         await self._turn_repo.append(
-            ConversationTurn(
-                id=_new_id(),
+            build_attributed_assistant_turn(
                 conversation_id=conversation.id,
                 sequence=sequence,
-                role=ConversationRole.ASSISTANT,
                 content=question,
-                created_at=now,
+                routing=routing,
+                now=now,
             )
         )
         await self._conversation_repo.save(
@@ -468,13 +480,18 @@ class ChiefOfStaffProposer:
             conversation_id=conversation.id,
             status="needs_clarification",
             clarifying_question=question,
+            responder_role=routing.responder.role if routing is not None else None,
+            responder_name=routing.responder.name if routing is not None else None,
+            routed_topic=routing.topic if routing is not None else None,
+            routing_confidence=routing.confidence if routing is not None else None,
         )
 
-    async def _record_proposals(
+    async def _record_proposals(  # noqa: PLR0913 -- one turn's full record context
         self,
         conversation: Conversation,
         args: ProposeArgs,
         decision: ProposeDecision,
+        routing: RoutingDecision | None,
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
@@ -561,15 +578,14 @@ class ChiefOfStaffProposer:
             raise
 
         await self._turn_repo.append(
-            ConversationTurn(
-                id=_new_id(),
+            build_attributed_assistant_turn(
                 conversation_id=conversation.id,
                 sequence=sequence,
-                role=ConversationRole.ASSISTANT,
                 content=NotBlankStr(
                     _summarise_decision(decision.proposals, decision.steering)
                 ),
-                created_at=now,
+                routing=routing,
+                now=now,
             )
         )
         transitioned = await self._conversation_repo.transition_if(
@@ -607,6 +623,10 @@ class ChiefOfStaffProposer:
             status="proposed",
             proposals=tuple(summaries),
             steering=tuple(steering_summaries),
+            responder_role=routing.responder.role if routing is not None else None,
+            responder_name=routing.responder.name if routing is not None else None,
+            routed_topic=routing.topic if routing is not None else None,
+            routing_confidence=routing.confidence if routing is not None else None,
         )
 
     async def _park_proposal(

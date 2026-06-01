@@ -13,7 +13,11 @@ Exposes:
 
 from typing import TYPE_CHECKING
 
-from synthorg._core.features import require_service
+from synthorg.api.controllers._conversational_resume import (
+    _reread_approval_item,
+    try_conversational_intake_resume,
+    try_conversational_invite_resume,
+)
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.critical_errors import reraise_critical
@@ -30,17 +34,12 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
-from synthorg.engine.state import EngineStateSlice
-from synthorg.meta.state import MetaStateSlice
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
 )
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-    APPROVAL_GATE_CONVERSATIONAL_FAILED,
-    APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -53,43 +52,9 @@ from synthorg.workers.state import worker_execution_service_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.core.approval import ApprovalItem
     from synthorg.engine.review_gate import ReviewGateService
-    from synthorg.meta.chief_of_staff.models import ConversationalProposal
 
 logger = get_logger(__name__)
-
-
-async def _reread_approval_item(
-    app_state: AppState,
-    approval_id: str,
-) -> ApprovalItem | None:
-    """Re-read the just-decided approval, degrading to ``None`` on error.
-
-    The decision is already persisted by the caller; a failed reread
-    must not 500 the request. ``None`` routes the caller through the
-    flow chain so each flow can apply its own ownership probe
-    (Flow 0: yields to later flows; Flow 1: parked-context gate
-    probe; Flow 2: review-gate is a no-op without ``task_id``).
-
-    Returns:
-        The ``ApprovalItem`` value when present, ``None`` otherwise.
-    """
-    try:
-        store = require_service(
-            app_state.slice(ApprovalStateSlice).store, "Approval Store"
-        )
-        return await store.get(approval_id)
-    except Exception as exc:
-        reraise_critical(exc)
-        logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note="approval reread failed; falling back to parked-context probe",
-        )
-        return None
 
 
 async def try_mid_execution_resume(
@@ -201,239 +166,6 @@ async def try_mid_execution_resume(
             approval_id=approval_id,
             note="resume dispatch failed",
         )
-    return True
-
-
-async def _load_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-) -> tuple[bool, ConversationalProposal | None]:
-    """Resolve a conversational-intake proposal for *approval_id*.
-
-    Returns a (owns_decision, proposal_or_none) tuple:
-
-    * ``(False, None)``: the approval is NOT a conversational-intake
-      one (or the source could not be determined); the caller falls
-      through to other resume flows. ``try_mid_execution_resume``
-      owns the parked-context probe for the unreadable case, so
-      yielding here is the safe default rather than raising and
-      breaking that fallback.
-    * ``(True, None)``: this flow owns the decision but there is no
-      proposal row to act on (a logged no-op); the caller returns
-      ``True`` without further work.
-    * ``(True, proposal)``: this flow owns the decision and has a
-      proposal to transition.
-
-    Raises:
-        ServiceUnavailableError: When the source is confirmed
-            CONVERSATIONAL_INTAKE but the proposal repo is not wired.
-            A hard misconfiguration -- swallowing it would silently
-            strand a decided conversational approval.
-
-    Returns:
-        The ``tuple[bool, object]`` value when present, ``None`` otherwise.
-    """
-    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
-    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
-        ConversationalProposalFilterSpec,
-    )
-
-    item = await _reread_approval_item(app_state, approval_id)
-    if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
-        return False, None
-    # This flow now owns the decision regardless of outcome.
-    if app_state.slice(MetaStateSlice).conversational_proposal_repo is None:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            note="conversational proposal repo not wired",
-        )
-        msg = "Conversational proposal repository unavailable"
-        raise ServiceUnavailableError(msg)
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
-    proposals = await repo.query(
-        ConversationalProposalFilterSpec(approval_id=approval_id),
-    )
-    if not proposals:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
-            approval_id=approval_id,
-        )
-        return True, None
-    return True, proposals[0]
-
-
-async def _execute_conversational_proposal(
-    app_state: AppState,
-    approval_id: str,
-    proposal: ConversationalProposal,
-) -> None:
-    """Acquire EXECUTING via CAS, run pipeline, finalize EXECUTED.
-
-    On pipeline failure the EXECUTING state reverts to PENDING so
-    the proposal stays retryable rather than locked in EXECUTING.
-
-    Raises:
-        ServiceUnavailableError: When the work pipeline is not wired
-            at all (cannot run approved work without it).
-        MemoryError: Raised on the corresponding failure path.
-        RecursionError: Raised on the corresponding failure path.
-    """
-    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
-    from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
-
-    repo = require_service(
-        app_state.slice(MetaStateSlice).conversational_proposal_repo,
-        "Conversational Proposal Repository",
-    )
-    proposal_id = proposal.id
-    work_item_json = proposal.work_item_json
-
-    if app_state.slice(EngineStateSlice).work_pipeline is None:
-        # Approved work can never run without a pipeline. Surface it
-        # rather than marking the approval handled while the work is
-        # silently stranded.
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="work pipeline not configured",
-        )
-        msg = "Work pipeline unavailable"
-        raise ServiceUnavailableError(msg)
-
-    # PENDING -> EXECUTING CAS first, so concurrent decisions cannot
-    # both drive the pipeline for the same proposal. Only the winner
-    # of this transition runs the pipeline; the loser returns without
-    # side-effects.
-    acquired = await repo.transition_if(
-        proposal_id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.EXECUTING,
-    )
-    if not acquired:
-        logger.warning(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="proposal already transitioned (execute-acquire path)",
-        )
-        return
-
-    try:
-        work_item = WorkItem.model_validate_json(work_item_json)
-        work_pipeline = require_service(
-            app_state.slice(EngineStateSlice).work_pipeline, "Work Pipeline"
-        )
-        await work_pipeline.run(work_item)
-    except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
-        raise
-    except Exception as exc:
-        # The approve decision is already persisted; a pipeline failure
-        # must not 5xx the response. Revert EXECUTING -> PENDING so the
-        # proposal is retryable rather than stuck in EXECUTING forever.
-        reverted = await repo.transition_if(
-            proposal_id,
-            ConversationalProposalStatus.EXECUTING,
-            ConversationalProposalStatus.PENDING,
-        )
-        log_exception_redacted(
-            logger,
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            exc,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-            note="pipeline run failed; proposal reverted to pending"
-            if reverted
-            else "pipeline run failed; proposal left in EXECUTING (revert lost race)",
-        )
-        return
-
-    transitioned = await repo.transition_if(
-        proposal_id,
-        ConversationalProposalStatus.EXECUTING,
-        ConversationalProposalStatus.EXECUTED,
-    )
-    if transitioned:
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-            approval_id=approval_id,
-            proposal_id=proposal_id,
-        )
-        return
-    # The acquire CAS guarantees we are the only caller that ran the
-    # pipeline, so this only happens if a non-approval-gate writer
-    # mutated the proposal mid-flight (operator override, future
-    # admin endpoint). Surface the no-op so the log doesn't claim a
-    # CAS success we didn't make.
-    logger.warning(
-        APPROVAL_GATE_CONVERSATIONAL_FAILED,
-        approval_id=approval_id,
-        proposal_id=proposal_id,
-        note=(
-            "proposal mutated mid-execute (executing->executed CAS "
-            "failed); pipeline run still succeeded"
-        ),
-    )
-
-
-async def try_conversational_intake_resume(
-    app_state: AppState,
-    approval_id: str,
-    *,
-    approved: bool,
-) -> bool:
-    """Run a decided conversational-intake proposal, if this is one.
-
-    Deterministic routing off the persisted
-    :attr:`ApprovalItem.source` discriminator: only
-    ``CONVERSATIONAL_INTAKE`` approvals are owned here; everything else
-    returns ``False`` so the caller falls through to the parked-context
-    / review-gate flows. Once owned, the decision is fully resolved on
-    this path and ``True`` is returned even on failure so the approval
-    is never double-handled.
-
-    On approval the parked ``WorkItem`` is rebuilt from the proposal
-    and driven through the work pipeline (still gated -- it only runs
-    because a human approved); the proposal is then marked EXECUTED. On
-    rejection the proposal is marked REJECTED and the pipeline is never
-    touched.
-
-    Raises:
-        ServiceUnavailableError: When the approval store read fails,
-            the proposal repo is not wired, or the work pipeline is
-            missing on approve. All three are hard misconfigurations
-            the operator must fix.
-
-    Returns:
-        ``True`` or ``False`` reflecting the condition.
-    """
-    from synthorg.meta.chief_of_staff._intake_parking import (  # noqa: PLC0415
-        reject_conversational_proposal,
-        resume_conversational_steering,
-    )
-
-    # A steering directive rides in the approval metadata, not a proposal row.
-    item = await _reread_approval_item(app_state, approval_id)
-    if await resume_conversational_steering(app_state, item, approved=approved):
-        return True
-
-    owns_decision, proposal = await _load_conversational_proposal(
-        app_state, approval_id
-    )
-    if not owns_decision:
-        return False
-    if proposal is None:
-        return True
-    if not approved:
-        await reject_conversational_proposal(app_state, approval_id, proposal)
-        return True
-    await _execute_conversational_proposal(app_state, approval_id, proposal)
     return True
 
 
@@ -589,8 +321,12 @@ async def signal_resume_intent(  # noqa: PLR0913
 ) -> None:
     """Execute the resume or review-gate flow for a decided approval.
 
-    Two flows depending on whether a parked context exists:
+    Routed deterministically off the persisted ``ApprovalItem.source``:
 
+    0. **Conversational intake** (:func:`try_conversational_intake_resume`):
+       run / reject a parked work proposal.
+    0.5. **Agent invite** (:func:`try_conversational_invite_resume`):
+       add / decline an agent-initiated invite on consent.
     1. **Mid-execution parking** (:func:`try_mid_execution_resume`):
        resume a parked context if one exists.
     2. **Review gate** (:func:`try_review_gate_transition`):
@@ -620,6 +356,17 @@ async def signal_resume_intent(  # noqa: PLR0913
         app_state,
         approval_id,
         approved=approved,
+    ):
+        return
+
+    # Flow 0.5: agent-initiated invite consent. Inert for every
+    # non-invite approval. Repo-direct + ungated, so consent resolves
+    # even after the invite feature is toggled off.
+    if await try_conversational_invite_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
     ):
         return
 

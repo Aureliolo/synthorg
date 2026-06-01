@@ -5,6 +5,7 @@ import type {
   getAgentHistory,
   getAgentPerformance,
   getAutonomy,
+  listActiveAgents,
   listAgents,
   setAutonomy,
 } from '@/api/endpoints/agents'
@@ -102,6 +103,11 @@ function buildPerformance(name: string): AgentPerformanceSummary {
 export const agentsHandlers = [
   http.get('/api/v1/agents', () =>
     HttpResponse.json(paginatedFor<typeof listAgents>(emptyPage<AgentConfig>())),
+  ),
+  // Registered BEFORE ``/agents/:name`` so the literal ``active`` path
+  // is not captured as an agent name (MSW matches in registration order).
+  http.get('/api/v1/agents/active', () =>
+    HttpResponse.json(successFor<typeof listActiveAgents>([])),
   ),
   http.get('/api/v1/agents/:name', ({ params }) =>
     HttpResponse.json(

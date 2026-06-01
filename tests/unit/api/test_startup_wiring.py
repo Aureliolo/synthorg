@@ -20,16 +20,21 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.lifecycle_helpers.feature_wiring import (
+    _guard_conversational_persistence,
+)
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
 from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSource
 from synthorg.memory.state import MemoryStateSlice
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -38,6 +43,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_WIRING_FAILED,
 )
 from synthorg.ontology.state import OntologyStateSlice
+from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
@@ -302,6 +308,73 @@ class TestTunnelUnconditionalWiring:
             and e.get("service") == "tunnel_provider"
         ]
         assert len(tunnel_logs) == 1
+
+
+@dataclass
+class _FakeBackend:
+    """Minimal PersistenceBackend stand-in carrying only ``backend_name``."""
+
+    backend_name: str
+
+
+def _persistent_store() -> ApprovalStore:
+    """Build an ApprovalStore whose ``has_persistent_repo`` is ``True``.
+
+    Returns:
+        A store wired to a spec'd durable repository double.
+    """
+    return ApprovalStore(repo=mock_of[ApprovalRepository]())
+
+
+@pytest.mark.unit
+class TestConversationalPersistenceGuard:
+    """The propose/invite + persistent-SQLite combo fails fast at startup.
+
+    The SQLite ``approvals.source`` CHECK omits the conversational
+    sources, so a propose- or invite-produced approval cannot durably
+    persist there. The guard raises rather than letting the invite park's
+    compensation silently drop a parked approval mid-conversation.
+    """
+
+    def test_raises_when_invite_enabled_on_persistent_sqlite(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _guard_conversational_persistence(
+                ChiefOfStaffConfig(invite_enabled=True),
+                _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+                _persistent_store(),
+            )
+
+    def test_raises_when_propose_enabled_on_persistent_sqlite(self) -> None:
+        with pytest.raises(ServiceUnavailableError):
+            _guard_conversational_persistence(
+                ChiefOfStaffConfig(propose_enabled=True),
+                _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+                _persistent_store(),
+            )
+
+    def test_allows_in_memory_store_on_sqlite(self) -> None:
+        # The default in-memory ApprovalStore never persists, so a
+        # conversational source never reaches the SQLite table.
+        _guard_conversational_persistence(
+            ChiefOfStaffConfig(invite_enabled=True),
+            _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+            ApprovalStore(),
+        )
+
+    def test_allows_persistent_store_on_postgres(self) -> None:
+        # Postgres widened its source CHECK, so the durable store is fine.
+        _guard_conversational_persistence(
+            ChiefOfStaffConfig(invite_enabled=True),
+            _FakeBackend(backend_name="postgres"),  # type: ignore[arg-type]
+            _persistent_store(),
+        )
+
+    def test_allows_when_both_features_off(self) -> None:
+        _guard_conversational_persistence(
+            ChiefOfStaffConfig(),
+            _FakeBackend(backend_name="sqlite"),  # type: ignore[arg-type]
+            _persistent_store(),
+        )
 
 
 class _NoFineTuneBackend(FakePersistenceBackend):

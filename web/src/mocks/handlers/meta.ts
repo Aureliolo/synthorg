@@ -5,9 +5,17 @@ import type {
   listABTests,
   listProposals,
   postChat,
+  postChatAct,
+  postChatGroup,
   postChatPropose,
 } from '@/api/endpoints/meta'
 import { apiError, successFor } from './helpers'
+
+function _hasBlankField(body: unknown, field: string): boolean {
+  if (!body || typeof body !== 'object') return true
+  const value = (body as Record<string, unknown>)[field]
+  return typeof value !== 'string' || !value.trim()
+}
 
 export const metaHandlers = [
   http.get('/api/v1/meta/config', () =>
@@ -42,12 +50,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as { message?: unknown }).message !== 'string' ||
-      !(body as { message: string }).message.trim()
-    ) {
+    if (_hasBlankField(body, 'message')) {
       return HttpResponse.json(apiError('Message must not be blank'), {
         status: 400,
       })
@@ -67,7 +70,113 @@ export const metaHandlers = [
             priority: 'medium',
           },
         ],
+        // Concern routing is off by default: the generic Chief
+        // of Staff answers, so no role attribution is carried.
+        responder_role: null,
+        responder_name: null,
+        routed_topic: null,
+        routing_confidence: null,
         steering: [],
+      }),
+    )
+  }),
+  http.post('/api/v1/meta/chat/group', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    if (_hasBlankField(body, 'message')) {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof postChatGroup>({
+        conversation_id: 'conv-grp-mock-001',
+        contributions: [
+          {
+            agent_id: 'agent-ceo-mock',
+            agent_name: 'Dana',
+            participant_role: 'CEO',
+            content: 'We should prioritise the enterprise segment.',
+            sequence: 1,
+            input_tokens: 80,
+            output_tokens: 30,
+          },
+          {
+            agent_id: 'agent-cfo-mock',
+            agent_name: 'Casey',
+            participant_role: 'CFO',
+            content: 'That needs a larger sales budget; I can model it.',
+            sequence: 2,
+            input_tokens: 90,
+            output_tokens: 28,
+          },
+        ],
+        participants: [
+          {
+            id: 'part-ceo-mock',
+            conversation_id: 'conv-grp-mock-001',
+            agent_id: 'agent-ceo-mock',
+            agent_name: 'Dana',
+            participant_role: 'CEO',
+            status: 'active',
+            added_by: 'user-mock',
+            added_at: '2026-05-19T09:00:00Z',
+          },
+          {
+            id: 'part-cfo-mock',
+            conversation_id: 'conv-grp-mock-001',
+            agent_id: 'agent-cfo-mock',
+            agent_name: 'Casey',
+            participant_role: 'CFO',
+            status: 'active',
+            added_by: 'user-mock',
+            added_at: '2026-05-19T09:00:00.000001Z',
+          },
+        ],
+        participants_skipped: [],
+        truncated_reason: null,
+        // Agent-initiated invites are off by default; the happy
+        // path parks none, so the consent surface stays empty.
+        pending_invites: [],
+      }),
+    )
+  }),
+  http.post('/api/v1/meta/chat/act', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Instruction must not be blank'), {
+        status: 400,
+      })
+    }
+    if (_hasBlankField(body, 'instruction')) {
+      return HttpResponse.json(apiError('Instruction must not be blank'), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof postChatAct>({
+        agent_id: 'agent-cfo-mock',
+        agent_name: 'Casey',
+        conversation_id: 'conv-act-mock-001',
+        // Direct MCP acting is off by default; the happy path
+        // performs a permitted action under trust and completes.
+        action: {
+          termination_reason: 'completed',
+          final_message: 'Done -- revenue is up 4% this week.',
+          tool_calls: [
+            { tool_name: 'query_metrics', is_error: false, result: 'revenue +4%' },
+          ],
+          approval_id: null,
+          parked: false,
+        },
       }),
     )
   }),
@@ -80,12 +189,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as { question?: unknown }).question !== 'string' ||
-      !(body as { question: string }).question.trim()
-    ) {
+    if (_hasBlankField(body, 'question')) {
       return HttpResponse.json(apiError('Question must not be blank'), {
         status: 400,
       })

@@ -41,6 +41,7 @@ export const APPROVAL_SOURCE_VALUES = [
     'parked_context',
     'review_gate',
     'conversational_intake',
+    'conversational_invite',
 ] as const
 export type ApprovalSource = (typeof APPROVAL_SOURCE_VALUES)[number]
 
@@ -281,6 +282,12 @@ export const CONTENT_TYPE_VALUES = [
 ] as const
 export type ContentType = (typeof CONTENT_TYPE_VALUES)[number]
 
+export const CONVERSATION_PARTICIPANT_STATUS_VALUES = [
+    'active',
+    'removed',
+] as const
+export type ConversationParticipantStatus = (typeof CONVERSATION_PARTICIPANT_STATUS_VALUES)[number]
+
 export const COORDINATION_TOPOLOGY_VALUES = [
     'sas',
     'centralized',
@@ -429,6 +436,12 @@ export const GIT_ACCESS_VALUES = [
     'full',
 ] as const
 export type GitAccess = (typeof GIT_ACCESS_VALUES)[number]
+
+export const GROUP_CHAT_TRUNCATION_REASON_VALUES = [
+    'token_budget_exhausted',
+    'max_total_turns_reached',
+] as const
+export type GroupChatTruncationReason = (typeof GROUP_CHAT_TRUNCATION_REASON_VALUES)[number]
 
 export const HUMAN_ROLE_VALUES = [
     'ceo',
@@ -851,6 +864,18 @@ export const TERMINAL_ACCESS_VALUES = [
     'full',
 ] as const
 export type TerminalAccess = (typeof TERMINAL_ACCESS_VALUES)[number]
+
+export const TERMINATION_REASON_VALUES = [
+    'completed',
+    'max_turns',
+    'budget_exhausted',
+    'shutdown',
+    'parked',
+    'stagnation',
+    'cancelled',
+    'error',
+] as const
+export type TerminationReason = (typeof TERMINATION_REASON_VALUES)[number]
 
 export const TIMEOUT_ACTION_TYPE_VALUES = [
     'wait',

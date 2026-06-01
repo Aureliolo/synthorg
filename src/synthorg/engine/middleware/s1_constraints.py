@@ -65,6 +65,24 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
         self._config = config or AuthorityDeferenceConfig()
         self._compiled = tuple(re.compile(p) for p in self._config.patterns)
 
+    def scan(self, text: str) -> int:
+        """Count authority cues in *text* across all configured patterns.
+
+        Pure detection (no redaction), exposed so callers outside the
+        agent-middleware path -- the interactive group chat, where prior
+        contributions (possibly an authority-bearing role's) are fed to
+        later participants in the same round -- can audit the same cues
+        the middleware logs, reusing this guard's compiled patterns
+        rather than rebuilding them. Returns ``0`` when the guard is
+        disabled.
+
+        Returns:
+            Total number of authority-cue matches in *text*.
+        """
+        if not self._config.enabled:
+            return 0
+        return sum(len(pattern.findall(text)) for pattern in self._compiled)
+
     @override
     async def before_agent(
         self,
@@ -81,11 +99,9 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
             return ctx
 
         # Detect authority cues in conversation messages
-        detected_count = 0
-        for msg in ctx.agent_context.conversation:
-            for pattern in self._compiled:
-                matches = pattern.findall(msg.content or "")
-                detected_count += len(matches)
+        detected_count = sum(
+            self.scan(msg.content or "") for msg in ctx.agent_context.conversation
+        )
 
         if detected_count > 0:
             logger.info(

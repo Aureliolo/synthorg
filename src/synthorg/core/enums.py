@@ -810,39 +810,40 @@ class ApprovalSource(StrEnum):
 
     Routing of a decided approval (mid-execution resume vs. review
     gate) keys off this persisted discriminator rather than a live
-    parked-context probe, so the flow is deterministic even when the
-    parked-context backend is momentarily unavailable.
+    parked-context probe, keeping the flow deterministic.
 
     Attributes:
         PARKED_CONTEXT: Backs a parked agent execution context (SecOps
-            escalation or the ``request_human_approval`` tool); the
-            decision resumes the parked run.
+            escalation or ``request_human_approval``); resumes the run.
         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
-            pruning, scaling, training, signals, ...); the decision
-            drives the review-gate transition. Default.
-        CONVERSATIONAL_INTAKE: A work item proposed through the
-            conversational interface (Chief of Staff clarify + propose);
-            approval reconstructs the ``WorkItem`` and runs it through
-            the work pipeline. Rejection records the proposal as
-            declined and never touches the pipeline.
+            scaling, ...); drives the review-gate transition. Default.
+        CONVERSATIONAL_INTAKE: A work item proposed via the
+            conversational interface; approval rebuilds the ``WorkItem``
+            and runs it through the pipeline, rejection declines it.
+        CONVERSATIONAL_INVITE: An agent's request to add another agent
+            to a group conversation; approval adds the participant +
+            hands over the transcript, rejection leaves membership.
     """
 
     PARKED_CONTEXT = "parked_context"
     REVIEW_GATE = "review_gate"
     CONVERSATIONAL_INTAKE = "conversational_intake"
+    CONVERSATIONAL_INVITE = "conversational_invite"
 
 
 class ConversationRole(StrEnum):
     """Author of a single conversational turn.
 
     Attributes:
-        USER: A human message into the Chief of Staff conversation.
-        ASSISTANT: A Chief of Staff reply (clarifying question or a
-            summary of the proposed work items).
+        USER: A human message into the conversation.
+        ASSISTANT: A Chief of Staff reply (generic 1:1 + routed paths).
+        AGENT: A named role agent's group-chat contribution; the author
+            is recorded in the turn's ``author_agent_id`` / name fields.
     """
 
     USER = "user"
     ASSISTANT = "assistant"
+    AGENT = "agent"
 
 
 class ConversationStatus(StrEnum):
@@ -850,8 +851,8 @@ class ConversationStatus(StrEnum):
 
     Attributes:
         ACTIVE: Open for further turns; the clarify loop may continue.
-        PROPOSED: At least one work item has been proposed into the
-            approval queue from this conversation.
+        PROPOSED: At least one work item proposed into the approval
+            queue from this conversation.
         CLOSED: Terminal; no further turns are accepted.
     """
 
@@ -865,11 +866,10 @@ class ConversationalProposalStatus(StrEnum):
 
     Attributes:
         PENDING: Awaiting the human approval decision.
-        EXECUTING: Approved and the pipeline run is in flight. Acquired
-            via PENDING -> EXECUTING CAS so only one concurrent decision
-            ever drives the pipeline for a given proposal; reverted back
-            to PENDING on pipeline failure (retryable) or advanced to
-            EXECUTED on success.
+        EXECUTING: Approved, pipeline run in flight. Acquired via
+            PENDING -> EXECUTING CAS so only one concurrent decision
+            drives the pipeline; reverted to PENDING on failure
+            (retryable) or advanced to EXECUTED on success.
         EXECUTED: Approved; the work item ran through the pipeline.
         REJECTED: Declined; the work item never reached the pipeline.
     """

@@ -244,6 +244,18 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   })
 }
 
+// jsdom does not implement Element.scrollTo; the meta conversational
+// surfaces call it in a requestAnimationFrame callback after appending a
+// turn. Without a shim that rAF callback throws an unhandled error after
+// the test completes. A no-op keeps the scroll-to-bottom behaviour inert
+// under jsdom while real browsers use the native implementation.
+if (
+  typeof Element !== 'undefined' &&
+  typeof Element.prototype.scrollTo !== 'function'
+) {
+  Element.prototype.scrollTo = () => {}
+}
+
 // Toast store schedules a `setTimeout` per auto-dismiss (success / info toasts
 // with a real timer). Without a global teardown hook these timers survive the
 // test boundary and the active-handle gate fails the test. `dismissAll()`

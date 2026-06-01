@@ -14,13 +14,22 @@ from pydantic import ConfigDict
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.experiments import ExperimentService
 from synthorg.meta.analytics.service import AnalyticsService
+from synthorg.meta.chief_of_staff.actor import ConversationalActor
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
+from synthorg.meta.chief_of_staff.group_chat import GroupChatService
 from synthorg.meta.chief_of_staff.propose import (
     ChiefOfStaffProposer,
 )
+from synthorg.meta.chief_of_staff.routing import RoleRouter
 from synthorg.meta.reports.service import ReportsService
 from synthorg.meta.service import SelfImprovementService
 from synthorg.meta.signals.service import SignalsService
+from synthorg.persistence.conversation_invite_protocol import (
+    ConversationInviteRepository,
+)
+from synthorg.persistence.conversation_participant_protocol import (
+    ConversationParticipantRepository,
+)
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalRepository,
 )
@@ -43,6 +52,11 @@ class MetaStateSlice(BaseFeatureStateSlice):
     chief_of_staff_proposer: ChiefOfStaffProposer | None = None
     chief_of_staff_chat: ChiefOfStaffChat | None = None
     conversational_proposal_repo: ConversationalProposalRepository | None = None
+    conversation_invite_repo: ConversationInviteRepository | None = None
+    conversation_participant_repo: ConversationParticipantRepository | None = None
+    role_router: RoleRouter | None = None
+    group_chat_service: GroupChatService | None = None
+    conversational_actor: ConversationalActor | None = None
 
 
 def signals_service_of(app_state: AppStateSliceMixin) -> SignalsService:
@@ -158,4 +172,64 @@ def conversational_proposal_repo_of(
     return require_service(
         app_state.slice(MetaStateSlice).conversational_proposal_repo,
         "Conversational Proposal Repository",
+    )
+
+
+def group_chat_service_of(app_state: AppStateSliceMixin) -> GroupChatService:
+    """Resolve the multi-agent group chat service from its slice, or raise 503.
+
+    Returns:
+        The wired group chat service.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).group_chat_service,
+        "Group Chat Service",
+    )
+
+
+def conversational_actor_of(app_state: AppStateSliceMixin) -> ConversationalActor:
+    """Resolve the direct-MCP conversational actor from its slice, or raise 503.
+
+    Returns:
+        The wired conversational actor.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).conversational_actor,
+        "Conversational Actor",
+    )
+
+
+def conversation_invite_repo_of(
+    app_state: AppStateSliceMixin,
+) -> ConversationInviteRepository:
+    """Resolve the conversation invite repo from its slice, or raise 503.
+
+    Persistence-factory wired (ungated), so the invite-consent resume
+    flow can decide a parked invite even after the invite feature is
+    toggled off.
+
+    Returns:
+        The wired conversation invite repository.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).conversation_invite_repo,
+        "Conversation Invite Repository",
+    )
+
+
+def conversation_participant_repo_of(
+    app_state: AppStateSliceMixin,
+) -> ConversationParticipantRepository:
+    """Resolve the conversation participant repo from its slice, or raise 503.
+
+    Persistence-factory wired (ungated), so the invite-consent resume
+    flow can add the invited agent to the roster even after the invite
+    feature is toggled off.
+
+    Returns:
+        The wired conversation participant repository.
+    """
+    return require_service(
+        app_state.slice(MetaStateSlice).conversation_participant_repo,
+        "Conversation Participant Repository",
     )

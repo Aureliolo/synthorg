@@ -36,11 +36,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import (
-    TAG_PEER_CONTRIBUTION,
-    TAG_TASK_DATA,
-    untrusted_content_directive,
-)
+from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import (
@@ -208,34 +204,18 @@ def _build_messages(
 def _render_system_prompt(identity: AgentIdentity) -> str:
     """Render a compact system prompt from an :class:`AgentIdentity`.
 
-    Appends the canonical ``untrusted_content_directive`` listing
-    every fence the meeting protocols may emit (``<task-data>`` for
-    the agenda payload, ``<peer-contribution>`` for upstream agent
-    turns). The agent_caller is the single place that builds the
-    meeting agent's system prompt, so every protocol gets the
-    directive for free regardless of which one builds the user
-    message.
+    Thin wrapper over the shared
+    :func:`synthorg.engine.agent_persona.render_agent_system_prompt`
+    so the meeting caller, the routed-responder proposer, and the
+    group chat all build identical persona prompts (role + personality
+    preamble plus the ``<task-data>`` / ``<peer-contribution>``
+    untrusted-content directive).
 
     Returns:
         The rendered system prompt string, including the untrusted-
         content directive.
     """
-    lines: list[str] = [
-        f"You are {identity.name}, a {identity.role} "
-        f"in the {identity.department} department.",
-        f"Seniority level: {identity.level.value}.",
-    ]
-    traits = identity.personality.traits
-    if traits:
-        lines.append("Personality traits: " + ", ".join(traits) + ".")
-    communication_style = identity.personality.communication_style
-    if communication_style:
-        lines.append(f"Communication style: {communication_style}.")
-    body = "\n".join(lines)
-    directive = untrusted_content_directive(
-        (TAG_TASK_DATA, TAG_PEER_CONTRIBUTION),
-    )
-    return f"{body}\n\n{directive}"
+    return render_agent_system_prompt(identity)
 
 
 class MeetingAgentCallerNotConfiguredError(DomainError):

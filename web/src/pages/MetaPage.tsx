@@ -1,10 +1,13 @@
 import {
   Brain,
+  ClipboardList,
   FlaskConical,
   MessageCircle,
   RefreshCw,
   Settings2,
   Shield,
+  Users,
+  Zap,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -17,7 +20,10 @@ import { SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton'
 import { useMetaData } from '@/hooks/useMetaData'
 
 import { MetaABTestView } from './meta/MetaABTestView'
+import { MetaAct } from './meta/MetaAct'
 import { MetaChat } from './meta/MetaChat'
+import { MetaGroup } from './meta/MetaGroup'
+import { MetaPropose } from './meta/MetaPropose'
 import { MetaProposalList } from './meta/MetaProposalList'
 import { MetaRuleStatus } from './meta/MetaRuleStatus'
 import { MetaSignalOverview } from './meta/MetaSignalOverview'
@@ -98,9 +104,20 @@ function MetaPageReady({ data }: MetaPageReadyProps) {
           <MetaProposalList proposals={proposals} />
         </SectionCard>
         {config?.chief_of_staff_enabled && (
-          <SectionCard title="Chief of Staff" icon={MessageCircle}>
-            <MetaChat />
-          </SectionCard>
+          <>
+            <SectionCard title="Chief of Staff" icon={MessageCircle}>
+              <MetaChat />
+            </SectionCard>
+            <SectionCard title="Conversational Intake" icon={ClipboardList}>
+              <MetaPropose />
+            </SectionCard>
+            <SectionCard title="Group Chat" icon={Users}>
+              <MetaGroup />
+            </SectionCard>
+            <SectionCard title="Direct Action" icon={Zap}>
+              <MetaAct />
+            </SectionCard>
+          </>
         )}
       </div>
     </ErrorBoundary>

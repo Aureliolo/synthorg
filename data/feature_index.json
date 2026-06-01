@@ -39,7 +39,10 @@
       "depends_on": [],
       "directory": "src/synthorg/api",
       "ghost_wired_symbols": [
-        "build_chief_of_staff_proposer"
+        "build_chief_of_staff_proposer",
+        "build_role_router",
+        "build_group_chat_service",
+        "build_conversational_actor"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -543,6 +546,7 @@
     {
       "controllers": [
         "AgentController",
+        "AgentRosterController",
         "AgentIdentityVersionController",
         "ActivityController",
         "PersonalityPresetController",
@@ -735,6 +739,7 @@
     {
       "controllers": [
         "MetaController",
+        "ConversationalController",
         "MetaAnalyticsController",
         "AnalyticsController",
         "ExperimentsController",
@@ -780,7 +785,12 @@
         "analytics_service",
         "chief_of_staff_proposer",
         "chief_of_staff_chat",
-        "conversational_proposal_repo"
+        "conversational_proposal_repo",
+        "conversation_invite_repo",
+        "conversation_participant_repo",
+        "role_router",
+        "group_chat_service",
+        "conversational_actor"
       ]
     },
     {
@@ -1184,6 +1194,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-31T22:13:21.420459Z",
+  "generated_at": "2026-06-01T08:41:03.358155Z",
   "schema_version": 1
 }

@@ -1,4 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import type { ActiveAgentSummary } from '../types'
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,
@@ -11,6 +12,15 @@ import type { AutonomyLevelRequest, AutonomyLevelResponse } from '../types/syste
 export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<DashboardAgentConfig>> {
   const response = await apiClient.get<PaginatedResponse<DashboardAgentConfig>>('/agents', { params })
   return unwrapPaginated<DashboardAgentConfig>(response)
+}
+
+// Active registered agents WITH their stable runtime UUIDs (the
+// config-sourced ``listAgents`` carries no id). Backs the group-chat
+// participant picker, which sends the selected ids to /meta/chat/group.
+export async function listActiveAgents(): Promise<readonly ActiveAgentSummary[]> {
+  const response =
+    await apiClient.get<ApiResponse<readonly ActiveAgentSummary[]>>('/agents/active')
+  return unwrap(response)
 }
 
 export async function getAgent(name: string): Promise<DashboardAgentConfig> {

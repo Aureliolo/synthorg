@@ -1,55 +1,11 @@
-import { MessageCircle, Send } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
-import { InputField } from '@/components/ui/input-field'
 import { LiveRegion } from '@/components/ui/live-region'
 import { cn } from '@/lib/utils'
 
+import { ChatInputArea } from './ChatInputArea'
 import { useMetaChatState, type MetaChatMessage } from './useMetaChatState'
-
-interface ChatInputAreaProps {
-  value: string
-  onChange: (value: string) => void
-  onSend: () => void
-  disabled: boolean
-  className?: string
-}
-
-function ChatInputArea({
-  value,
-  onChange,
-  onSend,
-  disabled,
-  className,
-}: ChatInputAreaProps) {
-  return (
-    <div className={cn('flex gap-2', className)}>
-      <div className="flex-1">
-        <InputField
-          label="Chat message"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Ask about signals, proposals..."
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              onSend()
-            }
-          }}
-        />
-      </div>
-      <Button
-        size="sm"
-        onClick={onSend}
-        disabled={!value.trim() || disabled}
-        aria-label="Send message"
-      >
-        <Send className="h-4 w-4" />
-      </Button>
-    </div>
-  )
-}
 
 interface MessageBubbleProps {
   msg: MetaChatMessage
@@ -89,6 +45,8 @@ export function MetaChat() {
           onChange={ctrl.setInput}
           onSend={ctrl.triggerSend}
           disabled={ctrl.chatLoading}
+          label="Chat message"
+          placeholder="Ask about signals, proposals..."
         />
       </div>
     )
@@ -117,6 +75,8 @@ export function MetaChat() {
         onChange={ctrl.setInput}
         onSend={ctrl.triggerSend}
         disabled={ctrl.chatLoading}
+        label="Chat message"
+        placeholder="Ask about signals, proposals..."
       />
     </div>
   )

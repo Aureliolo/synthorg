@@ -10,9 +10,9 @@ them (and any legacy ISO strings) to UTC-aware values. Satisfy the
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg.rows import dict_row
 
-from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.core.enums import ConversationStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.observability import get_logger, safe_error_description
@@ -24,11 +24,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_CONVERSATION_TURN_FAILED,
     PERSISTENCE_CONVERSATION_TURN_QUERIED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    coerce_row_timestamp,
-    validate_pagination_args,
+from synthorg.persistence._conversation_marshalling import (
+    row_to_conversation,
+    row_to_turn,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import validate_pagination_args
 from synthorg.persistence.conversation_protocol import (
     ConversationTurnFilterSpec,
 )
@@ -46,20 +47,31 @@ _MAX_PAGE_LIMIT: int = 1_000
 _ALLOWED_TRANSITION_KEYS: frozenset[str] = frozenset({"updated_at"})
 
 _CONVERSATIONS_UPSERT_SQL = """
-    INSERT INTO conversations (id, created_by, created_at, updated_at, status)
-    VALUES (%s, %s, %s, %s, %s)
+    INSERT INTO conversations
+        (id, created_by, created_at, updated_at, status, kind)
+    VALUES (%s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         created_by = EXCLUDED.created_by,
         created_at = EXCLUDED.created_at,
         updated_at = EXCLUDED.updated_at,
-        status = EXCLUDED.status
+        status = EXCLUDED.status,
+        kind = EXCLUDED.kind
 """
+
+_CONVERSATION_COLUMNS = "id, created_by, created_at, updated_at, status, kind"
 
 _TURN_INSERT_SQL = """
     INSERT INTO conversation_turns
-        (id, conversation_id, sequence, role, content, created_at)
-    VALUES (%s, %s, %s, %s, %s, %s)
+        (id, conversation_id, sequence, role, content,
+         author_agent_id, author_name, routed_topic, routing_confidence,
+         created_at)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
+
+_TURN_COLUMNS = (
+    "id, conversation_id, sequence, role, content, "
+    "author_agent_id, author_name, routed_topic, routing_confidence, created_at"
+)
 
 _TURN_NEXT_SEQUENCE_SQL = """
     SELECT COALESCE(MAX(sequence), -1) + 1 FROM conversation_turns
@@ -75,63 +87,6 @@ _TURN_NEXT_SEQUENCE_SQL = """
 _TURN_APPEND_MAX_RETRIES: int = 3
 # Postgres exposes the named constraint via diag.constraint_name.
 _TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
-
-
-def _row_to_conversation(row: DictRow) -> Conversation:
-    """Convert a Postgres dict row into a :class:`Conversation`.
-
-    Returns:
-        Result of type ``Conversation``.
-
-    Raises:
-        QueryError: If row deserialization or validation fails.
-    """
-    try:
-        return Conversation(
-            id=str(row["id"]),
-            created_by=str(row["created_by"]),
-            created_at=coerce_row_timestamp(row["created_at"]),
-            updated_at=coerce_row_timestamp(row["updated_at"]),
-            status=ConversationStatus(str(row["status"])),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversation row"
-        logger.warning(
-            PERSISTENCE_CONVERSATION_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
-
-
-def _row_to_turn(row: DictRow) -> ConversationTurn:
-    """Convert a Postgres dict row into a :class:`ConversationTurn`.
-
-    Returns:
-        Result of type ``ConversationTurn``.
-
-    Raises:
-        QueryError: If the database query fails.
-    """
-    try:
-        return ConversationTurn(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            sequence=int(row["sequence"]),
-            role=ConversationRole(str(row["role"])),
-            content=str(row["content"]),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversation turn row"
-        logger.warning(
-            PERSISTENCE_CONVERSATION_TURN_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 class PostgresConversationRepository:
@@ -157,6 +112,7 @@ class PostgresConversationRepository:
             entity.created_at,
             entity.updated_at,
             entity.status.value,
+            entity.kind.value,
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -196,10 +152,7 @@ class PostgresConversationRepository:
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        sql = (
-            "SELECT id, created_by, created_at, updated_at, status "
-            "FROM conversations WHERE id = %s"
-        )
+        sql = f"SELECT {_CONVERSATION_COLUMNS} FROM conversations WHERE id = %s"  # noqa: S608 -- fixed column list
         try:
             async with (
                 self._pool.connection() as conn,
@@ -219,7 +172,7 @@ class PostgresConversationRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        conv = _row_to_conversation(row)
+        conv = row_to_conversation(row)
         logger.debug(PERSISTENCE_CONVERSATION_FETCHED, conversation_id=entity_id)
         return conv
 
@@ -248,13 +201,13 @@ class PostgresConversationRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT id, created_by, created_at, updated_at, status "
+                    f"SELECT {_CONVERSATION_COLUMNS} "  # noqa: S608 -- fixed column list
                     "FROM conversations ORDER BY created_at DESC, id DESC "
                     "LIMIT %s OFFSET %s",
                     (effective_limit, offset),
                 )
                 rows = await cur.fetchall()
-                items = tuple(_row_to_conversation(r) for r in rows)
+                items = tuple(row_to_conversation(r) for r in rows)
         except psycopg.Error as exc:
             msg = "Failed to list conversations"
             logger.warning(
@@ -387,6 +340,16 @@ class PostgresConversationTurnRepository:
                 conflicts after the retry budget.
             QueryError: On other database errors.
         """
+        # Unlike the SQLite sibling, which holds one serialising write
+        # lock (``_write_context``) across the whole read-then-insert,
+        # each Postgres attempt below takes a fresh pool connection for
+        # the insert AND another for the re-sequence read, so the
+        # re-sequence and the retry insert are NOT serialised: a
+        # concurrent appender can claim the just-read sequence again
+        # between the two. Correctness rests on the unique constraint
+        # (which rejects the collision) plus the bounded retry (which
+        # resolves it), not on serialisation; the retry narrows the race
+        # window rather than closing it.
         current = event
         for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
             params = (
@@ -395,6 +358,10 @@ class PostgresConversationTurnRepository:
                 current.sequence,
                 current.role.value,
                 current.content,
+                current.author_agent_id,
+                current.author_name,
+                current.routed_topic,
+                current.routing_confidence,
                 current.created_at,
             )
             try:
@@ -500,8 +467,8 @@ class PostgresConversationTurnRepository:
         where = " AND ".join(clauses) if clauses else "TRUE"
         params.extend([effective_limit, offset])
         sql = (
-            "SELECT id, conversation_id, sequence, role, content, "  # noqa: S608
-            f"created_at FROM conversation_turns WHERE {where} "
+            f"SELECT {_TURN_COLUMNS} "  # noqa: S608 -- fixed columns + closed predicate set
+            f"FROM conversation_turns WHERE {where} "
             "ORDER BY sequence DESC, id DESC LIMIT %s OFFSET %s"
         )
         try:
@@ -511,7 +478,7 @@ class PostgresConversationTurnRepository:
             ):
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
-                items = tuple(_row_to_turn(r) for r in rows)
+                items = tuple(row_to_turn(r) for r in rows)
         except psycopg.Error as exc:
             msg = "Failed to query conversation turns"
             logger.warning(

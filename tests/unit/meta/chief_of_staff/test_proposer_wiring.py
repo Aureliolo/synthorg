@@ -1,3 +1,4 @@
+# module-kind: tests
 """Unit tests for the proposer build + persistence-factory wiring."""
 
 import pytest
@@ -37,6 +38,8 @@ def _repos() -> ConversationalRepositories:
         conversation_repo=object(),  # type: ignore[arg-type]
         turn_repo=object(),  # type: ignore[arg-type]
         proposal_repo=object(),  # type: ignore[arg-type]
+        participant_repo=object(),  # type: ignore[arg-type]
+        invite_repo=object(),  # type: ignore[arg-type]
     )
 
 
