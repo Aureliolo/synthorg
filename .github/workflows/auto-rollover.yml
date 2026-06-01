@@ -76,7 +76,7 @@ jobs:
           # Threshold lives in release-please-config.json under the
           # custom key `__synthorg_rollover_at_patch` so release pipeline
           # configuration stays in one place. Default 9 preserves the
-          # pre-#1555 behaviour; RP itself ignores the field.
+          # historical threshold; RP itself ignores the field.
           RAW_ROLLOVER_AT=$(jq -r '.packages["."].__synthorg_rollover_at_patch // null' \
             .github/release-please-config.json)
           if [ "$RAW_ROLLOVER_AT" = "null" ]; then
@@ -123,18 +123,16 @@ jobs:
           NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
           ROLLOVER_BRANCH="chore/auto-rollover-v${NEXT_VERSION}"
 
-          # Primary dedup guard (history-INDEPENDENT). A prior run may have
-          # already merged -- or left open -- the rollover PR for this exact
-          # version. The git-log range check below can miss the trailer when a
-          # run's checkout does not fully materialise the tag<->HEAD
-          # connection, and that check fails OPEN; relying on it alone let a
-          # duplicate rollover PR through once (the .9 -> .0 trailer was in
-          # history yet `git log ${LAST_STABLE}..HEAD` came up empty in a
-          # single run). This query reads GitHub state directly, so it holds
-          # regardless of local git history. The branch name carries the
-          # version, so a merged v0.(X+1).0 rollover never suppresses the next
-          # version's rollover. A CLOSED-not-merged rollover (e.g. a manual
-          # cancel) is intentionally NOT a skip: it never took effect.
+          # Primary dedup guard (history-INDEPENDENT, and the definitive one).
+          # The git-log range check below fails OPEN: when a run's checkout
+          # does not fully materialise the tag<->HEAD connection the range can
+          # come up empty even though the trailer is in history, so a rollover
+          # PR for this version could be opened a second time. This query reads
+          # GitHub state directly, so it holds regardless of local git history.
+          # The branch name carries the version, so a merged v0.(X+1).0
+          # rollover never suppresses the next version's rollover. A
+          # CLOSED-not-merged rollover (e.g. a manual cancel) is intentionally
+          # NOT a skip: it never took effect.
           PRIOR_ROLLOVER=$(gh pr list --state all --head "$ROLLOVER_BRANCH" \
             --json number,state \
             --jq '[.[] | select(.state == "MERGED" or .state == "OPEN")] | .[0].number // ""')
@@ -151,8 +149,9 @@ jobs:
           # fetched), skip this run rather than rolling over. A missed
           # rollover self-heals on the next push to main; a spurious PR does
           # not. Capturing into a variable separates a `git log` failure (skip)
-          # from a genuine no-match (fall through) -- the inline `git log | grep`
-          # form previously conflated them under `set -o pipefail`.
+          # from a genuine no-match (fall through); a piped `git log | grep`
+          # would mask the git-log exit status under `set -o pipefail` and
+          # conflate the two.
           if ! UNRELEASED_BODIES=$(git log "${LAST_STABLE}..HEAD" --format=%B); then
             echo "::warning::Could not compute ${LAST_STABLE}..HEAD range; skipping rollover this run."
             echo "needed=false" >> "$GITHUB_OUTPUT"
