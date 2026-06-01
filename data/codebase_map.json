@@ -240,7 +240,7 @@
     },
     {
       "kind": "code",
-      "loc": 451,
+      "loc": 455,
       "loc_cap": 500,
       "module": "src/synthorg/api/app_builders.py",
       "owning_feature": "api_core"
