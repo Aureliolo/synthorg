@@ -13,7 +13,7 @@ sources:
   - "https://docs.together.ai"
   - "https://docs.fireworks.ai"
   - "https://platform.moonshot.ai"
-  - "https://platform.deepseek.com"
+  - "https://api-docs.deepseek.com"
   - "https://www.alibabacloud.com/help/en/model-studio"
   - "https://docs.cohere.com"
   - "https://docs.perplexity.ai"
@@ -309,7 +309,7 @@ Primary sources, retrieved 2026-04-27:
 10. [Together AI docs](https://docs.together.ai)
 11. [Fireworks AI docs](https://docs.fireworks.ai)
 12. [Moonshot AI platform](https://platform.moonshot.ai)
-13. [DeepSeek platform](https://platform.deepseek.com)
+13. [DeepSeek API docs](https://api-docs.deepseek.com)
 14. [Alibaba DashScope](https://www.alibabacloud.com/help/en/model-studio)
 15. [Cohere docs](https://docs.cohere.com)
 16. [Perplexity docs](https://docs.perplexity.ai)
