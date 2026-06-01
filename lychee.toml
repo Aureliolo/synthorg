@@ -55,6 +55,11 @@ exclude = [
     # Anti-bot: returns 403 to lychee's UA; live URL works in a browser.
     '^https?://medium\.com/',
     '^https?://platform\.openai\.com/',
+    # DeepSeek's login-gated developer console answers lychee's HEAD/UA with
+    # 403 (a browser GET returns a 202 challenge); the console is real and
+    # reachable for any signed-in user. Same anti-bot shape as the platforms
+    # above.
+    '^https?://platform\.deepseek\.com(/|$)',
     # Cloudflare dashboard requires login (always 403 to unauthenticated
     # HEAD probes); the URL is real and reachable for any logged-in user
     # following the fork-setup guide.
