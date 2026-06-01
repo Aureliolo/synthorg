@@ -93,7 +93,7 @@
     },
     {
       "kind": "code",
-      "loc": 388,
+      "loc": 391,
       "loc_cap": 500,
       "module": "src/synthorg/a2a/client.py",
       "owning_feature": "a2a"
@@ -128,7 +128,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 733,
+      "loc": 734,
       "loc_cap": 1100,
       "module": "src/synthorg/a2a/gateway.py",
       "owning_feature": "a2a"
@@ -191,7 +191,7 @@
     },
     {
       "kind": "code",
-      "loc": 340,
+      "loc": 346,
       "loc_cap": 500,
       "module": "src/synthorg/a2a/well_known.py",
       "owning_feature": "a2a"
