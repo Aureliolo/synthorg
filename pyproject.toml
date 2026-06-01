@@ -695,10 +695,6 @@ disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
-module = "synthorg.research.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.security.*"
 disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
