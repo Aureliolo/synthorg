@@ -582,7 +582,7 @@ def _to_float(value: object) -> float:
         Float value, or ``0.0`` for ``None`` or unconvertible strings
         (typically Jinja2 placeholders).
     """
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, (int, float, str)) and not isinstance(value, bool):
         try:
             return float(value)
         except ValueError:

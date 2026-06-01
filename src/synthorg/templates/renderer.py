@@ -12,7 +12,7 @@ each template's Jinja2 is rendered independently, then configs are
 merged via :func:`~synthorg.templates.merge.merge_template_configs`.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import yaml
 from jinja2 import TemplateError as Jinja2TemplateError
@@ -563,10 +563,11 @@ def _validate_list(
                 got=type(item).__name__,
             )
             raise TemplateRenderError(msg)
-    # Every item was just asserted to be a dict above; the comprehension
-    # is a no-op at runtime but narrows the element type from the list's
-    # ``object`` members to ``dict[str, object]`` for the return signature.
-    return [item for item in raw if isinstance(item, dict)]
+    # Every item was just asserted to be a dict above, so narrow the
+    # element type from the list's ``object`` members to
+    # ``dict[str, object]`` for the return signature without the runtime
+    # overhead of re-filtering.
+    return cast("list[dict[str, object]]", raw)
 
 
 def _extract_numeric_config(
