@@ -1,5 +1,7 @@
 """Tests for the diagram generator tool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -124,7 +126,7 @@ class TestDiagramGeneratorTool:
         ids=["invalid_diagram_type", "invalid_output_format"],
     )
     async def test_execute_invalid_inputs(
-        self, args: dict[str, str], expected_msg: str
+        self, args: dict[str, Any], expected_msg: str
     ) -> None:
         tool = DiagramGeneratorTool()
         result = await tool.execute(arguments=args)
@@ -151,5 +153,6 @@ class TestDiagramGeneratorTool:
         tool = DiagramGeneratorTool()
         schema = tool.parameters_schema
         assert schema is not None
-        assert "diagram_type" in schema["required"]
-        assert "description" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "diagram_type" in required
+        assert "description" in required

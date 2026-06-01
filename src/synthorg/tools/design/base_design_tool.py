@@ -5,7 +5,8 @@ a shared configuration reference.
 """
 
 from abc import ABC
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools.base import BaseTool
@@ -24,7 +25,7 @@ class BaseDesignTool(BaseTool, ABC):
         *,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         action_type: str | None = None,
         config: DesignToolsConfig | None = None,
     ) -> None:

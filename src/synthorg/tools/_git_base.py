@@ -25,7 +25,9 @@ import re
 from abc import ABC
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
@@ -147,7 +149,7 @@ class _BaseGitTool(BaseTool, ABC):
         *,
         name: str,
         description: str,
-        parameters_schema: dict[str, Any],
+        parameters_schema: dict[str, JsonValue],
         workspace: Path,
         sandbox: SandboxBackend | None = None,
         action_type: str | None = None,
@@ -456,10 +458,7 @@ class _BaseGitTool(BaseTool, ABC):
                 content=sanitized_stderr or sanitized_stdout or "Unknown git error",
                 is_error=True,
             )
-        logger.debug(
-            GIT_COMMAND_SUCCESS,
-            command=_sanitize_command(["git", *args]),
-        )
+        logger.debug(GIT_COMMAND_SUCCESS, command=_sanitize_command(["git", *args]))
         return ToolExecutionResult(content=stdout)
 
     @staticmethod
@@ -516,10 +515,7 @@ class _BaseGitTool(BaseTool, ABC):
                 content=(sanitized_stderr or sanitized_stdout or "Unknown git error"),
                 is_error=True,
             )
-        logger.debug(
-            GIT_COMMAND_SUCCESS,
-            command=_sanitize_command(["git", *args]),
-        )
+        logger.debug(GIT_COMMAND_SUCCESS, command=_sanitize_command(["git", *args]))
         return ToolExecutionResult(content=result.stdout)
 
     async def _run_git(

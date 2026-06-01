@@ -1,6 +1,6 @@
 """Tests for the template formatter tool."""
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -207,6 +207,7 @@ class TestTemplateFormatterTool:
         tool = TemplateFormatterTool()
         schema = tool.parameters_schema
         assert schema is not None
-        assert "template" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "template" in required
         # ``variables`` now has a default_factory so it's not required.
-        assert "variables" not in schema["required"]
+        assert "variables" not in required

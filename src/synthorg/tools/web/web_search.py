@@ -6,9 +6,9 @@ a provider at construction time (e.g. via MCP bridge or a custom
 implementation).
 """
 
-from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -117,7 +117,7 @@ class WebSearchTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Execute a web search.
 
@@ -127,8 +127,8 @@ class WebSearchTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with formatted search results.
         """
-        query: str = arguments["query"]
-        max_results: int = arguments.get("max_results", 10)
+        query = cast("str", arguments["query"])
+        max_results = cast("int", arguments.get("max_results", 10))
 
         logger.info(WEB_SEARCH_START, query=query, max_results=max_results)
 

@@ -1,5 +1,7 @@
 """Tests for EchoTool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.providers.models import ToolCall, ToolDefinition
@@ -25,7 +27,7 @@ class TestEchoToolProperties:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        assert "message" in schema["properties"]
+        assert "message" in cast("dict[str, Any]", schema)["properties"]
         assert schema["required"] == ["message"]
         assert schema["additionalProperties"] is False
 

@@ -12,9 +12,9 @@ Discovery tools signal load/unload state changes via
 """
 
 import json
-from typing import Any, ClassVar, Protocol, override, runtime_checkable
+from typing import ClassVar, Protocol, override, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.core.tool_disclosure import (
@@ -92,6 +92,26 @@ METADATA_SHOULD_LOAD_RESOURCE: str = "should_load_resource"
 """Set by ``LoadToolResourceTool`` to signal ``DisclosureMiddleware``."""
 
 
+def _require_str(arguments: dict[str, JsonValue], key: str) -> str:
+    """Return ``arguments[key]`` narrowed to ``str``.
+
+    Args:
+        arguments: Pre-validated tool arguments.
+        key: Argument name to extract.
+
+    Returns:
+        The argument value as a string.
+
+    Raises:
+        TypeError: If the value is not a string.
+    """
+    value = arguments[key]
+    if not isinstance(value, str):
+        msg = f"{key} must be a string"
+        raise TypeError(msg)
+    return value
+
+
 class ListToolsTool(BaseTool):
     """Return L1 metadata for all permitted tools.
 
@@ -114,7 +134,7 @@ class ListToolsTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Return JSON array of L1 metadata.
 
@@ -161,14 +181,14 @@ class LoadToolTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Return L2 body JSON for the requested tool.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        tool_name: str = arguments["tool_name"]
+        tool_name = _require_str(arguments, "tool_name")
         l2 = self._manager.get_l2_body(tool_name)
         if l2 is None:
             return ToolExecutionResult(
@@ -212,15 +232,15 @@ class LoadToolResourceTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Return L3 resource content.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        tool_name: str = arguments["tool_name"]
-        resource_id: str = arguments["resource_id"]
+        tool_name = _require_str(arguments, "tool_name")
+        resource_id = _require_str(arguments, "resource_id")
         resource = self._manager.get_l3_resource(tool_name, resource_id)
         if resource is None:
             return ToolExecutionResult(
@@ -236,7 +256,7 @@ class LoadToolResourceTool(BaseTool):
         return ToolExecutionResult(
             content=json.dumps(payload),
             metadata={
-                METADATA_SHOULD_LOAD_RESOURCE: (tool_name, resource_id),
+                METADATA_SHOULD_LOAD_RESOURCE: [tool_name, resource_id],
             },
         )
 

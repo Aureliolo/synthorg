@@ -1,7 +1,7 @@
 """Docker sandbox configuration model."""
 
 import re
-from typing import Any, Final, Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -313,7 +313,7 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _resolve_network_presets(cls, data: Any) -> Any:
+    def _resolve_network_presets(cls, data: object) -> object:
         """Resolve preset names and merge into ``allowed_hosts``.
 
         Runs as a before-validator so the frozen model is constructed
@@ -321,7 +321,7 @@ class DockerSandboxConfig(BaseModel):
         mutation needed.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
 
         Raises:
             ValueError: If an argument fails domain validation.

@@ -6,9 +6,9 @@ the results into human-readable reports in text, markdown, or JSON.
 
 import asyncio
 import json
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -109,7 +109,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Generate an analytics report.
 
@@ -153,7 +153,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 content="'period' must be a string.",
                 is_error=True,
             )
-        output_format: str = arguments.get("format", "markdown")
+        output_format = cast("str", arguments.get("format", "markdown"))
 
         if report_type not in _REPORT_TYPES:
             logger.warning(
@@ -297,7 +297,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
     def _format_report(
         report_type: str,
         period: str,
-        data: dict[str, Any],
+        data: dict[str, JsonValue],
         output_format: str,
     ) -> str:
         """Format report data into the requested output format.

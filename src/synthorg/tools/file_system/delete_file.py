@@ -1,9 +1,9 @@
 """Delete file tool: removes a single file from the workspace."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -80,7 +80,7 @@ class DeleteFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Delete a file from the workspace.
 
@@ -90,7 +90,7 @@ class DeleteFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming deletion or an error.
         """
-        user_path: str = arguments["path"]
+        user_path = cast("str", arguments["path"])
 
         try:
             resolved = self.path_validator.validate(user_path)

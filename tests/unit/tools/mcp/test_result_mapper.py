@@ -1,5 +1,7 @@
 """Tests for MCP result mapping (ADR-002 D18)."""
 
+from typing import Any, cast
+
 import pytest
 from mcp.types import (
     AudioContent,
@@ -59,7 +61,7 @@ class TestImageContentMapping:
         )
         result = map_call_tool_result(raw)
         assert result.content == "[image: image/png]"
-        attachments = result.metadata["attachments"]
+        attachments = cast("list[dict[str, Any]]", result.metadata["attachments"])
         assert len(attachments) == 1
         assert attachments[0]["type"] == "image"
         assert attachments[0]["mimeType"] == "image/png"
@@ -81,7 +83,7 @@ class TestAudioContentMapping:
         )
         result = map_call_tool_result(raw)
         assert result.content == "[audio: audio/mp3]"
-        attachments = result.metadata["attachments"]
+        attachments = cast("list[dict[str, Any]]", result.metadata["attachments"])
         assert len(attachments) == 1
         assert attachments[0]["type"] == "audio"
         assert attachments[0]["mimeType"] == "audio/mp3"
@@ -192,7 +194,7 @@ class TestMixedContent:
         assert lines[0] == "header"
         assert lines[1] == "[image: image/jpeg]"
         assert lines[2] == "footer"
-        assert len(result.metadata["attachments"]) == 1
+        assert len(cast("list[dict[str, Any]]", result.metadata["attachments"])) == 1
 
     def test_image_and_audio_combined(self) -> None:
         raw = MCPRawResult(
@@ -212,4 +214,4 @@ class TestMixedContent:
         result = map_call_tool_result(raw)
         assert "[image: image/png]" in result.content
         assert "[audio: audio/wav]" in result.content
-        assert len(result.metadata["attachments"]) == 2
+        assert len(cast("list[dict[str, Any]]", result.metadata["attachments"])) == 2

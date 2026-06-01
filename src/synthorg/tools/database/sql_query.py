@@ -16,10 +16,10 @@ prevent filesystem escape regardless of read_only setting.
 import asyncio
 import re
 import urllib.parse
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
 import aiosqlite
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
@@ -31,7 +31,7 @@ from synthorg.observability.events.database import (
     DB_WRITE_BLOCKED,
 )
 from synthorg.tools.base import ToolExecutionResult
-from synthorg.tools.database._args import SqlQueryArgs
+from synthorg.tools.database._args import SqlBindValue, SqlQueryArgs
 from synthorg.tools.database.base_db_tool import BaseDatabaseTool
 from synthorg.tools.database.config import DatabaseConnectionConfig
 
@@ -138,7 +138,7 @@ class SqlQueryTool(BaseDatabaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Execute a SQL query.
 
@@ -148,8 +148,11 @@ class SqlQueryTool(BaseDatabaseTool):
         Returns:
             A ``ToolExecutionResult`` with formatted query results.
         """
-        query: str = arguments["query"]
-        parameters: list[Any] = arguments.get("parameters") or []
+        query = cast("str", arguments["query"])
+        parameters: list[SqlBindValue] = cast(
+            "list[SqlBindValue]",
+            arguments.get("parameters") or [],
+        )
 
         keyword = _classify_statement(query)
         if not keyword:
@@ -204,7 +207,7 @@ class SqlQueryTool(BaseDatabaseTool):
     async def _execute_query(
         self,
         query: str,
-        parameters: list[Any],
+        parameters: list[SqlBindValue],
         keyword: str,
         is_write: bool,  # noqa: FBT001  -- private method
     ) -> ToolExecutionResult:
@@ -249,7 +252,7 @@ class SqlQueryTool(BaseDatabaseTool):
     async def _run_query(
         self,
         query: str,
-        parameters: list[Any],
+        parameters: list[SqlBindValue],
         keyword: str,
         is_write: bool,  # noqa: FBT001  -- private method
     ) -> ToolExecutionResult:
@@ -307,6 +310,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 )
 
             columns = [d[0] for d in (desc or [])]
+            columns_meta = cast("list[JsonValue]", columns)
             content = self._format_results(columns, rows)
             if row_truncated:
                 content += f"\n\n[Truncated: result exceeded {limit:,} rows]"
@@ -322,7 +326,7 @@ class SqlQueryTool(BaseDatabaseTool):
                 metadata={
                     "keyword": keyword,
                     "row_count": len(rows),
-                    "columns": columns,
+                    "columns": columns_meta,
                     "truncated": row_truncated,
                 },
             )
@@ -330,7 +334,7 @@ class SqlQueryTool(BaseDatabaseTool):
     @staticmethod
     def _format_results(
         columns: list[str],
-        rows: list[Any],
+        rows: list[aiosqlite.Row],
     ) -> str:
         """Format query results as a table.
 

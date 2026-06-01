@@ -4,11 +4,11 @@ Uses Jinja2 ``SandboxedEnvironment`` for safe variable substitution
 with no arbitrary code execution.
 """
 
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, override
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -85,7 +85,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Render a template with variables.
 

@@ -9,9 +9,7 @@ This layer sits between category-level permission gating and
 tool execution in the ``ToolInvoker`` pipeline.
 """
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.types import NotBlankStr
@@ -104,7 +102,7 @@ class SubConstraintEnforcer:
         tool_name: str,
         category: ToolCategory,
         action_type: str,
-        arguments: dict[str, Any],  # noqa: ARG002  -- reserved for filesystem scope checks
+        arguments: dict[str, JsonValue],  # noqa: ARG002  -- reserved for filesystem scope checks
     ) -> SubConstraintViolation | None:
         """Check a tool invocation against all sub-constraint dimensions.
 

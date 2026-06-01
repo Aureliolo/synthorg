@@ -1,5 +1,7 @@
 """Tests for the data aggregator tool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -203,5 +205,6 @@ class TestDataAggregatorTool:
         tool = DataAggregatorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "metrics" in schema["required"]
-        assert "period" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "metrics" in required
+        assert "period" in required

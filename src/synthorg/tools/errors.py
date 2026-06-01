@@ -7,7 +7,9 @@ flag -- retry decisions are made at higher layers.
 
 import copy
 from types import MappingProxyType
-from typing import Any, ClassVar, override
+from typing import ClassVar, override
+
+from pydantic import JsonValue
 
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -38,7 +40,7 @@ class ToolError(DomainError):
         self,
         message: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: dict[str, JsonValue] | None = None,
     ) -> None:
         """Initialize a tool error.
 
@@ -52,7 +54,7 @@ class ToolError(DomainError):
         # shared with the caller after the exception is raised; the
         # ``MappingProxyType`` wrapper also prevents top-level mutation
         # of the attribute itself (CLAUDE.md immutability rule).
-        self.context: MappingProxyType[str, Any] = MappingProxyType(
+        self.context: MappingProxyType[str, JsonValue] = MappingProxyType(
             copy.deepcopy(context) if context else {},
         )
         super().__init__(message)

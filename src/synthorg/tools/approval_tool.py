@@ -7,10 +7,10 @@ until the approval decision arrives.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
@@ -82,7 +82,7 @@ class RequestHumanApprovalTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Create an approval item and signal parking.
 

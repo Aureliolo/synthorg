@@ -6,9 +6,9 @@ design artifacts.
 """
 
 import copy
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -37,31 +37,20 @@ _VALID_ACTIONS: Final[frozenset[str]] = frozenset(
     }
 )
 
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": sorted(_VALID_ACTIONS),
-            "description": "Asset operation to perform",
-        },
-        "asset_id": {
-            "type": "string",
-            "description": "Asset identifier (required for get/delete)",
-        },
-        "tags": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Tags for filtering (used with list/search)",
-        },
-        "query": {
-            "type": "string",
-            "description": "Search query for asset metadata",
-        },
-    },
-    "required": ["action"],
-    "additionalProperties": False,
-}
+
+def _str_tags(meta: dict[str, JsonValue]) -> set[str]:
+    """Return the string-valued ``tags`` entries of an asset's metadata.
+
+    Asset metadata is an open JSON bag, so ``tags`` may be absent or a
+    non-list value; this narrows it to the set of string tags.
+
+    Returns:
+        Set of string tags (empty if ``tags`` is missing or not a list).
+    """
+    raw = meta.get("tags")
+    if not isinstance(raw, list):
+        return set()
+    return {tag for tag in raw if isinstance(tag, str)}
 
 
 class AssetManagerTool(BaseDesignTool):
@@ -90,7 +79,7 @@ class AssetManagerTool(BaseDesignTool):
         self,
         *,
         config: DesignToolsConfig | None = None,
-        assets: dict[str, dict[str, Any]] | None = None,
+        assets: dict[str, dict[str, JsonValue]] | None = None,
     ) -> None:
         """Initialize the asset manager tool.
 
@@ -107,14 +96,14 @@ class AssetManagerTool(BaseDesignTool):
             action_type=ActionType.DOCS_WRITE,
             config=config,
         )
-        self._assets: dict[str, dict[str, Any]] = (
+        self._assets: dict[str, dict[str, JsonValue]] = (
             copy.deepcopy(assets) if assets else {}
         )
 
     def register_asset(
         self,
         asset_id: str,
-        metadata: dict[str, Any],
+        metadata: dict[str, JsonValue],
     ) -> None:
         """Register an asset in the internal registry.
 
@@ -142,7 +131,7 @@ class AssetManagerTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Execute an asset management operation.
 
@@ -188,7 +177,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_list(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """List assets, optionally filtered by tags.
 
@@ -210,9 +199,7 @@ class AssetManagerTool(BaseDesignTool):
             matching = {
                 aid: meta
                 for aid, meta in self._assets.items()
-                if tag_set.issubset(
-                    {t for t in (meta.get("tags") or []) if isinstance(t, str)}
-                )
+                if tag_set.issubset(_str_tags(meta))
             }
         else:
             matching = self._assets
@@ -239,7 +226,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_get(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Retrieve a specific asset by ID.
 
@@ -286,7 +273,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_delete(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Delete an asset by ID.
 
@@ -330,7 +317,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_search(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Search assets by query string in metadata values.
 
@@ -355,14 +342,12 @@ class AssetManagerTool(BaseDesignTool):
         tags = [t for t in raw_list if isinstance(t, str)]
         tag_set = set(tags)
 
-        matching: dict[str, dict[str, Any]] = {}
+        matching: dict[str, dict[str, JsonValue]] = {}
         for aid, meta in self._assets.items():
             searchable = " ".join(str(v).lower() for v in meta.values())
             if query not in searchable:
                 continue
-            if tag_set and not tag_set.issubset(
-                {t for t in (meta.get("tags") or []) if isinstance(t, str)}
-            ):
+            if tag_set and not tag_set.issubset(_str_tags(meta)):
                 continue
             matching[aid] = meta
 

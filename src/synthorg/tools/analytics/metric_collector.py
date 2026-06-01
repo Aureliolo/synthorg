@@ -6,9 +6,9 @@ users inject a sink at construction time.
 """
 
 import math
-from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
@@ -50,32 +50,6 @@ class MetricSink(Protocol):
             unit: Optional measurement unit.
         """
         ...
-
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "metric_name": {
-            "type": "string",
-            "description": "Name of the metric to record",
-        },
-        "value": {
-            "type": "number",
-            "description": "Metric value",
-        },
-        "tags": {
-            "type": "object",
-            "additionalProperties": {"type": "string"},
-            "description": "Optional key-value tags",
-        },
-        "unit": {
-            "type": "string",
-            "description": "Optional measurement unit (e.g. 'seconds', 'bytes')",
-        },
-    },
-    "required": ["metric_name", "value"],
-    "additionalProperties": False,
-}
 
 
 class MetricCollectorTool(BaseAnalyticsTool):
@@ -131,7 +105,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Record a metric data point.
 
@@ -178,7 +152,9 @@ class MetricCollectorTool(BaseAnalyticsTool):
             )
         value = float(value)
         raw_tags = arguments.get("tags")
-        tags: dict[str, str] = raw_tags if isinstance(raw_tags, dict) else {}
+        tags: dict[str, str] = (
+            cast("dict[str, str]", raw_tags) if isinstance(raw_tags, dict) else {}
+        )
         unit = arguments.get("unit")
         if unit is not None and not isinstance(unit, str):
             logger.warning(
@@ -242,12 +218,13 @@ class MetricCollectorTool(BaseAnalyticsTool):
         )
 
         unit_suffix = f" {unit}" if unit else ""
+        tag_metadata = cast("dict[str, JsonValue]", dict(tags))
         return ToolExecutionResult(
             content=(f"Metric recorded: {metric_name} = {value}{unit_suffix}"),
             metadata={
                 "metric_name": metric_name,
                 "value": value,
-                "tags": tags,
+                "tags": tag_metadata,
                 "unit": unit,
             },
         )

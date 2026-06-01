@@ -13,7 +13,9 @@ access, requires_approval) against the tool invocation.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import TYPE_CHECKING, ClassVar, Self
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolAccessLevel, ToolCategory
 from synthorg.core.normalization import normalize_identifier
@@ -237,7 +239,7 @@ class ToolPermissionChecker:
         tool_name: str,
         category: ToolCategory,
         action_type: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> SubConstraintViolation | None:
         """Check granular sub-constraints for a tool invocation.
 

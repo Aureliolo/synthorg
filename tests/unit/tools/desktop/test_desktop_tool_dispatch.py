@@ -7,7 +7,7 @@ so the host-side flow can be exercised without booting Xvfb or Docker.
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -108,8 +108,9 @@ class TestDesktopToolDispatch:
             arguments={"mode": "screenshot", "screenshot_name": "shot"},
         )
         assert result.is_error is False
-        assert result.metadata["sha256"] == "a" * 64
-        assert result.metadata["saved_path"].endswith("shot.png")
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["sha256"] == "a" * 64
+        assert meta["saved_path"].endswith("shot.png")
 
     async def test_screenshot_stamps_injected_clock(self, workspace: Path) -> None:
         fixed = datetime(2026, 5, 21, 7, 0, tzinfo=UTC)

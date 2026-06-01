@@ -4,9 +4,9 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
@@ -229,7 +229,7 @@ class WriteFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Write content to a file.
 
@@ -240,9 +240,9 @@ class WriteFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming the write or an error.
         """
-        user_path: str = arguments["path"]
-        content: str = arguments["content"]
-        create_dirs: bool = arguments.get("create_directories", False)
+        user_path = cast("str", arguments["path"])
+        content = cast("str", arguments["content"])
+        create_dirs = cast("bool", arguments.get("create_directories", False))
 
         if err := self._validate_write_args(user_path, content):
             return err

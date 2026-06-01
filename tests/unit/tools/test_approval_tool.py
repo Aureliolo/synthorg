@@ -1,5 +1,6 @@
 """Tests for RequestHumanApprovalTool."""
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -50,9 +51,10 @@ class TestToolCreation:
     def test_has_parameters_schema(self, tool: RequestHumanApprovalTool) -> None:
         schema = tool.parameters_schema
         assert schema is not None
-        assert "action_type" in schema["properties"]
-        assert "title" in schema["properties"]
-        assert "description" in schema["properties"]
+        props = cast("dict[str, Any]", schema)["properties"]
+        assert "action_type" in props
+        assert "title" in props
+        assert "description" in props
         assert schema["required"] == ["action_type", "title", "description"]
 
 
@@ -76,7 +78,9 @@ class TestExecute:
         assert "approval_id" in result.metadata
 
         # Verify item was created in store
-        item = await approval_store.get(result.metadata["approval_id"])
+        item = await approval_store.get(
+            cast("dict[str, Any]", result.metadata)["approval_id"]
+        )
         assert item is not None
         assert item.action_type == "deploy:production"
         assert item.title == "Deploy v2.0"
@@ -123,7 +127,7 @@ class TestExecute:
                 "description": "Full deployment",
             },
         )
-        assert result.metadata["approval_id"] in result.content
+        assert cast("dict[str, Any]", result.metadata)["approval_id"] in result.content
 
     async def test_no_task_id(
         self,
@@ -142,7 +146,9 @@ class TestExecute:
             },
         )
         assert not result.is_error
-        item = await approval_store.get(result.metadata["approval_id"])
+        item = await approval_store.get(
+            cast("dict[str, Any]", result.metadata)["approval_id"]
+        )
         assert item is not None
         assert item.task_id is None
 

@@ -4,9 +4,9 @@ import asyncio
 import itertools
 import re
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
@@ -235,7 +235,7 @@ class ListDirectoryTool(BaseFileSystemTool):
         lines: list[str],
         *,
         raw_capped: bool,
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[str, dict[str, JsonValue]]:
         """Build output text and metadata from listing lines.
 
         Args:
@@ -245,7 +245,7 @@ class ListDirectoryTool(BaseFileSystemTool):
                 ``MAX_ENTRIES`` limit (directory may contain more).
 
         Returns:
-            Tuple ``(str, dict[str, Any])``.
+            Tuple ``(str, dict[str, JsonValue])``.
         """
         total = len(lines)
         dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))
@@ -259,7 +259,7 @@ class ListDirectoryTool(BaseFileSystemTool):
                     f"\n\n[Truncated: showing {total} entries;"
                     " directory may contain more]"
                 )
-        metadata = {
+        metadata: dict[str, JsonValue] = {
             "path": user_path,
             "total_entries": total,
             "directories": dir_count,
@@ -272,7 +272,7 @@ class ListDirectoryTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """List directory contents.
 
@@ -283,9 +283,9 @@ class ListDirectoryTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` with the listing or an error.
         """
-        user_path: str = arguments.get("path", ".")
-        pattern: str | None = arguments.get("pattern")
-        recursive: bool = arguments.get("recursive", False)
+        user_path = cast("str", arguments.get("path", "."))
+        pattern = cast("str | None", arguments.get("pattern"))
+        recursive = cast("bool", arguments.get("recursive", False))
 
         if err := self._validate_list_args(pattern, recursive=recursive):
             return err

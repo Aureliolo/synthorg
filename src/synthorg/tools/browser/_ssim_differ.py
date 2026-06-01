@@ -11,7 +11,7 @@ event loop responsive when multiple specs run concurrently.
 
 import asyncio
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -21,7 +21,28 @@ from synthorg.observability.events.browser import (
 from synthorg.tools.browser._constants import SSIM_DATA_RANGE
 from synthorg.tools.browser.errors import BrowserDiffError
 
+if TYPE_CHECKING:
+    import numpy as np
+
 logger = get_logger(__name__)
+
+
+class _StructuralSimilarity(Protocol):
+    """Call signature for scikit-image's ``structural_similarity``.
+
+    scikit-image ships no annotations for this entry point, so binding
+    it to this Protocol gives the ``full=True`` call path a precise,
+    non-``Any`` return type for the downstream heatmap maths.
+    """
+
+    def __call__(
+        self,
+        im1: object,
+        im2: object,
+        *,
+        data_range: float,
+        full: bool,
+    ) -> tuple[float, np.ndarray[tuple[int, ...], np.dtype[np.float64]]]: ...
 
 
 class SSIMDiffer:
@@ -103,15 +124,15 @@ def _compare_sync(
                 raise BrowserDiffError(
                     "Screenshot dimensions differ",
                     context={
-                        "baseline_size": a_img.size,
-                        "current_size": b_img.size,
+                        "baseline_size": [a_img.size[0], a_img.size[1]],
+                        "current_size": [b_img.size[0], b_img.size[1]],
                     },
                 )
             gray_a = np.asarray(a_img.convert("L"))
             gray_b = np.asarray(b_img.convert("L"))
 
-        ssim_call = cast("Any", structural_similarity)
-        score, per_pixel = ssim_call(
+        ssim_compute: _StructuralSimilarity = structural_similarity
+        score, per_pixel = ssim_compute(
             gray_a,
             gray_b,
             data_range=SSIM_DATA_RANGE,

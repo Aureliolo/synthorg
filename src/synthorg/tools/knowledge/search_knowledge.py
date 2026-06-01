@@ -7,9 +7,9 @@ any source type -- may carry injected instructions.
 """
 
 import builtins
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory
@@ -61,7 +61,7 @@ class SearchKnowledgeTool(BaseTool):
         self._project_id = project_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
         """Dispatch a ``search_knowledge`` invocation to the service.
 
         Returns:
@@ -106,12 +106,10 @@ class SearchKnowledgeTool(BaseTool):
             project_id=self._project_id,
             hit_count=len(hits),
         )
+        citations: list[JsonValue] = [_citation_dict(h.citation) for h in hits]
         return ToolExecutionResult(
             content=_format_hits(hits),
-            metadata={
-                "hit_count": len(hits),
-                "citations": tuple(_citation_dict(h.citation) for h in hits),
-            },
+            metadata={"hit_count": len(hits), "citations": citations},
         )
 
 
@@ -133,11 +131,11 @@ def _format_citation(citation: Citation) -> str:
     return f"{citation.title} ({citation.source_type.value}, {where})"
 
 
-def _citation_dict(citation: Citation) -> dict[str, Any]:
+def _citation_dict(citation: Citation) -> dict[str, JsonValue]:
     """Structured citation for tool metadata (programmatic consumers).
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``JsonValue``.
     """
     return {
         "source_id": citation.source_id,

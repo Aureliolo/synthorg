@@ -1,5 +1,7 @@
 """Tests for the asset manager tool."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -148,7 +150,7 @@ class TestAssetManagerTool:
         assert "img-001" in result.content
 
     def test_initial_assets_are_deep_copied(self) -> None:
-        original = {"img-001": {"type": "image"}}
+        original: dict[str, dict[str, Any]] = {"img-001": {"type": "image"}}
         tool = AssetManagerTool(assets=original)
         tool._assets["img-001"]["type"] = "modified"
         assert original["img-001"]["type"] == "image"

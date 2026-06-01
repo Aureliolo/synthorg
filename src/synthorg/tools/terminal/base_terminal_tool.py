@@ -7,7 +7,9 @@ and command allow/blocklist validation.
 
 import re
 from abc import ABC
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.core.normalization import (
@@ -38,7 +40,7 @@ class BaseTerminalTool(BaseTool, ABC):
         *,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         action_type: str | None = None,
         sandbox: SandboxBackend | None = None,
         config: TerminalConfig | None = None,

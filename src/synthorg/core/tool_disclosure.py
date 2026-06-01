@@ -10,7 +10,7 @@ See ``docs/design/tools.md`` (Progressive Tool Disclosure section).
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -72,7 +72,7 @@ class ToolL2Body(BaseModel):
         min_length=1,
         description="Detailed usage instructions",
     )
-    parameter_schema: dict[str, object] = Field(
+    parameter_schema: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="JSON Schema for tool parameters",
     )

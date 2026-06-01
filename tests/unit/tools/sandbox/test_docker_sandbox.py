@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 if TYPE_CHECKING:
@@ -26,6 +26,12 @@ from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 _DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
+
+
+def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> dict[str, Any]:
+    """Return the built container config as a freely-indexable mapping."""
+    return cast("dict[str, Any]", sandbox._build_container_config(**kwargs))
+
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -403,7 +409,8 @@ class TestDockerSandboxContainerConfig:
     def test_mount_mode_rw(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(mount_mode="rw")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=("hi",),
             container_cwd="/workspace",
@@ -415,7 +422,8 @@ class TestDockerSandboxContainerConfig:
     def test_mount_mode_ro(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(mount_mode="ro")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=("hi",),
             container_cwd="/workspace",
@@ -427,7 +435,8 @@ class TestDockerSandboxContainerConfig:
     def test_runtime_included_when_set(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(runtime="runsc")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -441,7 +450,8 @@ class TestDockerSandboxContainerConfig:
     ) -> None:
         config = DockerSandboxConfig(runtime=None)
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -452,7 +462,8 @@ class TestDockerSandboxContainerConfig:
     def test_network_mode_set(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(network="bridge")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -629,7 +640,8 @@ class TestDockerSandboxHardening:
 
     def test_tmpfs_mount_for_tmp(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        config = sandbox._build_container_config(
+        config = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -639,7 +651,8 @@ class TestDockerSandboxHardening:
 
     def test_pids_limit_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        config = sandbox._build_container_config(
+        config = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -649,7 +662,8 @@ class TestDockerSandboxHardening:
 
     def test_readonly_rootfs_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        config = sandbox._build_container_config(
+        config = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -659,7 +673,8 @@ class TestDockerSandboxHardening:
 
     def test_cap_drop_all(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        config = sandbox._build_container_config(
+        config = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",

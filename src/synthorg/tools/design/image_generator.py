@@ -7,9 +7,9 @@ inject a provider at construction time.
 
 import asyncio
 import base64
-from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -137,7 +137,7 @@ class ImageGeneratorTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Generate an image from a text prompt.
 
@@ -161,11 +161,11 @@ class ImageGeneratorTool(BaseDesignTool):
                 is_error=True,
             )
 
-        prompt: str = arguments["prompt"]
-        style: str = arguments.get("style", "realistic")
-        width: int = arguments.get("width", 1024)
-        height: int = arguments.get("height", 1024)
-        quality: str = arguments.get("quality", "standard")
+        prompt = cast("str", arguments["prompt"])
+        style = cast("str", arguments.get("style", "realistic"))
+        width = cast("int", arguments.get("width", 1024))
+        height = cast("int", arguments.get("height", 1024))
+        quality = cast("str", arguments.get("quality", "standard"))
 
         if not (_MIN_DIMENSION <= width <= _MAX_DIMENSION) or not (
             _MIN_DIMENSION <= height <= _MAX_DIMENSION

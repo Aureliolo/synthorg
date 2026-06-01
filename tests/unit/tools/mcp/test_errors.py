@@ -1,5 +1,7 @@
 """Tests for the MCP error hierarchy."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.tools.errors import ToolError
@@ -56,7 +58,7 @@ class TestMCPErrorContext:
     """Context propagation through the error hierarchy."""
 
     def test_context_propagated(self) -> None:
-        ctx = {"server": "test", "tool": "foo"}
+        ctx: dict[str, Any] = {"server": "test", "tool": "foo"}
         err = MCPInvocationError("failed", context=ctx)
         assert err.context["server"] == "test"
         assert err.context["tool"] == "foo"

@@ -1,8 +1,6 @@
 """Sandbox execution result model."""
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field
 
 from synthorg.core.types import NotBlankStr
 
@@ -33,7 +31,7 @@ class SandboxResult(BaseModel):
     # Docker-specific fields (optional, backward compat with SubprocessSandbox)
     container_id: NotBlankStr | None = None
     sidecar_id: NotBlankStr | None = None
-    sidecar_logs: tuple[dict[str, Any], ...] = ()
+    sidecar_logs: tuple[dict[str, JsonValue], ...] = ()
     agent_id: NotBlankStr | None = None
     execution_time_ms: int | None = Field(default=None, ge=0)
 

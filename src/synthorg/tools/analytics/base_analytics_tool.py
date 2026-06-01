@@ -6,7 +6,8 @@ helper.
 """
 
 from abc import ABC
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools.analytics.config import AnalyticsToolsConfig
@@ -25,7 +26,7 @@ class BaseAnalyticsTool(BaseTool, ABC):
         *,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         action_type: str | None = None,
         config: AnalyticsToolsConfig | None = None,
     ) -> None:

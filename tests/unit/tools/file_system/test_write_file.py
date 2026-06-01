@@ -1,7 +1,7 @@
 """Tests for WriteFileTool."""
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -84,7 +84,7 @@ class TestWriteFileExecution:
             arguments={"path": "sized.txt", "content": "hello"}
         )
         assert not result.is_error
-        assert result.metadata["bytes_written"] > 0
+        assert cast("dict[str, Any]", result.metadata)["bytes_written"] > 0
 
     async def test_write_to_directory_errors(self, write_tool: WriteFileTool) -> None:
         """Writing to a path that is a directory returns an error."""

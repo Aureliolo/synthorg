@@ -7,9 +7,9 @@ directly.  The execution loop detects the directive and invokes
 compaction at the turn boundary.
 """
 
-from typing import Any, ClassVar, override
+from typing import ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.sanitization import sanitize_message
@@ -55,7 +55,7 @@ class CompactContextTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Signal compaction directive via metadata.
 
@@ -66,9 +66,9 @@ class CompactContextTool(BaseTool):
         Returns:
             Result with ``compaction_directive`` metadata key.
         """
-        strategy = arguments.get("strategy", "summarize")
-        reason = arguments.get("reason", "")
-        preserve_markers = arguments.get("preserve_markers", True)
+        strategy = cast("str", arguments.get("strategy", "summarize"))
+        reason = cast("str", arguments.get("reason", ""))
+        preserve_markers = cast("bool", arguments.get("preserve_markers", True))
         sanitized_reason = sanitize_message(reason, max_length=256)
 
         logger.info(

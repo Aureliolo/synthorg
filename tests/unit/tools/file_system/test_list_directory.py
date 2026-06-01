@@ -2,7 +2,7 @@
 
 import os
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -39,7 +39,7 @@ class TestListDirectoryExecution:
         result = await list_tool.execute(arguments={"path": "subdir"})
         assert not result.is_error
         assert "nested.py" in result.content
-        assert result.metadata["files"] >= 1
+        assert cast("dict[str, Any]", result.metadata)["files"] >= 1
 
     async def test_glob_pattern(self, list_tool: ListDirectoryTool) -> None:
         result = await list_tool.execute(arguments={"path": ".", "pattern": "*.txt"})
@@ -96,8 +96,9 @@ class TestListDirectoryExecution:
     async def test_metadata_counts(self, list_tool: ListDirectoryTool) -> None:
         result = await list_tool.execute(arguments={"path": "."})
         assert not result.is_error
-        assert result.metadata["directories"] >= 1
-        assert result.metadata["files"] >= 1
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["directories"] >= 1
+        assert meta["files"] >= 1
 
     async def test_file_shows_size(self, list_tool: ListDirectoryTool) -> None:
         result = await list_tool.execute(arguments={"path": "."})

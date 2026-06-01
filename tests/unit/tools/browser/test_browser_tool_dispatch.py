@@ -7,7 +7,7 @@ booting Playwright or Docker.
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -397,10 +397,11 @@ class TestA11yPayloadShape:
             },
         )
         assert result.is_error is False, result.content
-        assert result.metadata["passed"] is False
-        assert len(result.metadata["violations"]) == 1
-        assert result.metadata["violations"][0]["impact"] == "critical"
-        assert len(result.metadata["warnings"]) == 1
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["passed"] is False
+        assert len(meta["violations"]) == 1
+        assert meta["violations"][0]["impact"] == "critical"
+        assert len(meta["warnings"]) == 1
 
 
 class TestPathTraversalRejection:

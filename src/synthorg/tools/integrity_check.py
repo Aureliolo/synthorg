@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,6 +28,8 @@ from synthorg.observability.events.tool import (
     TOOL_REGISTRY_INTEGRITY_CHECK_START,
     TOOL_REGISTRY_INTEGRITY_VIOLATION,
 )
+from synthorg.providers.models import ToolDefinition
+from synthorg.tools.base import BaseTool
 
 logger = get_logger(__name__)
 
@@ -110,7 +112,7 @@ class ToolIntegrityReport(BaseModel):
         return self
 
 
-def compute_tool_hash(tool_def: Any) -> str:
+def compute_tool_hash(tool_def: ToolDefinition) -> str:
     """Compute a deterministic SHA-256 hash of a ToolDefinition.
 
     Serializes the tool's ``name``, ``description``, and
@@ -152,7 +154,7 @@ class ToolIntegrityChecker:
         self._prior = dict(prior_hashes) if prior_hashes else {}
         self._fail_on_violation = fail_on_violation
 
-    def check(self, tools: tuple[Any, ...]) -> ToolIntegrityReport:
+    def check(self, tools: tuple[BaseTool, ...]) -> ToolIntegrityReport:
         """Check tool definitions and return an integrity report.
 
         Args:

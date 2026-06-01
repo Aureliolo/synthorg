@@ -47,7 +47,38 @@ import subprocess
 import sys
 import time
 from pathlib import Path, PurePosixPath
-from typing import Any, Final
+from typing import Final, TypedDict
+
+
+class _SessionPayload(TypedDict, total=False):
+    """Nested ``session`` block of the decoded desktop payload."""
+
+    display: str
+    screen_width: int
+    screen_height: int
+    color_depth: int
+    enable_vnc: bool
+    vnc_port: int
+
+
+class _DesktopPayload(TypedDict, total=False):
+    """Decoded ``DESKTOP_TOOL_ARGS_JSON`` payload (host-validated shape)."""
+
+    operation: str
+    session: _SessionPayload
+    app_command: str
+    launch_timeout_seconds: float
+    x: int
+    y: int
+    button: int
+    double: bool
+    text: str
+    keys: str
+    direction: str
+    amount: int
+    screenshot_path: str
+    settle_delay_seconds: float
+
 
 _SANDBOX_ROOT: Final[str] = "/workspace"
 _SESSION_STATE_PATH: Final[str] = "/workspace/.synthorg/desktop/session.json"
@@ -181,7 +212,7 @@ def _display_up(display: str) -> bool:
     return completed.returncode == 0
 
 
-def _start_session(session: dict[str, Any]) -> None:
+def _start_session(session: _SessionPayload) -> None:
     """Bring up Xvfb (and optional x11vnc) idempotently for the session.
 
     Raises:
@@ -295,7 +326,7 @@ def _app_running() -> bool:
     return pid is not None and _pid_alive(pid)
 
 
-_APP_NOT_RUNNING_ENVELOPE: Final[dict[str, str]] = {
+_APP_NOT_RUNNING_ENVELOPE: Final[dict[str, object]] = {
     "status": "error",
     "error_type": "DesktopAppNotRunningError",
     "message": "No GUI application is running",
@@ -323,11 +354,11 @@ def _run_xdotool(args: list[str], env: dict[str, str]) -> None:
         raise RuntimeError(f"xdotool {args[0]} failed")
 
 
-def _launch(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _launch(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Launch.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
 
     Raises:
         ValueError: If an argument fails domain validation.
@@ -395,11 +426,11 @@ def _has_window(env: dict[str, str]) -> bool:
     return completed.returncode == 0 and bool(completed.stdout.strip())
 
 
-def _click(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _click(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Click.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     x = int(payload["x"])
     y = int(payload["y"])
@@ -410,33 +441,33 @@ def _click(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
     return {"action": "click", "detail": f"button {button} at ({x}, {y})"}
 
 
-def _type(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _type(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Type.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     text = str(payload.get("text") or "")
     _run_xdotool(["type", "--clearmodifiers", "--", text], env)
     return {"action": "type", "detail": f"{len(text)} chars"}
 
 
-def _key(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _key(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Key.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     keys = str(payload["keys"])
     _run_xdotool(["key", "--clearmodifiers", keys], env)
     return {"action": "key", "detail": keys}
 
 
-def _scroll(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _scroll(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Scroll.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     direction = str(payload.get("direction") or "down")
     amount = int(payload.get("amount") or 1)
@@ -462,11 +493,11 @@ def _png_dimensions(data: bytes) -> tuple[int, int]:
     return width, height
 
 
-def _screenshot(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+def _screenshot(payload: _DesktopPayload, env: dict[str, str]) -> dict[str, object]:
     """Screenshot.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
 
     Raises:
         RuntimeError: If the operation fails at runtime.
@@ -503,16 +534,16 @@ _DISPATCH = {
 }
 
 
-def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
+def _dispatch(payload: _DesktopPayload) -> dict[str, object]:
     """Dispatch.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
 
     Raises:
         ValueError: If an argument fails domain validation.
     """
-    session = payload.get("session") or {}
+    session: _SessionPayload = payload.get("session") or {}
     _start_session(session)
     display = _validated_display(session.get("display"))
     env = _display_env(display)

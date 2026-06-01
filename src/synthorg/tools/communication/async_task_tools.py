@@ -5,9 +5,9 @@ supervisor-facing async task operations as LLM-callable tools.
 """
 
 import json
-from typing import Any, ClassVar, override
+from typing import ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService
@@ -58,7 +58,7 @@ class StartAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Start an async task and return the task ID.
 
@@ -67,9 +67,9 @@ class StartAsyncTaskTool(BaseTool):
         """
         try:
             spec = TaskSpec(
-                title=arguments["title"],
-                description=arguments["description"],
-                agent_id=arguments["agent_id"],
+                title=cast("str", arguments["title"]),
+                description=cast("str", arguments["description"]),
+                agent_id=cast("str", arguments["agent_id"]),
                 parent_task_id=self._supervisor_task_id,
             )
             task_id = await self._service.start_async_task(
@@ -110,7 +110,7 @@ class CheckAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Check task status.
 
@@ -119,7 +119,7 @@ class CheckAsyncTaskTool(BaseTool):
         """
         try:
             status = await self._service.check_async_task(
-                arguments["task_id"],
+                cast("str", arguments["task_id"]),
             )
         except LookupError as exc:
             safe_error = safe_error_description(exc)
@@ -155,7 +155,7 @@ class UpdateAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Update task with new instructions.
 
@@ -164,8 +164,8 @@ class UpdateAsyncTaskTool(BaseTool):
         """
         try:
             status = await self._service.update_async_task(
-                task_id=arguments["task_id"],
-                instructions=arguments["instructions"],
+                task_id=cast("str", arguments["task_id"]),
+                instructions=cast("str", arguments["instructions"]),
             )
         except LookupError as exc:
             safe_error = safe_error_description(exc)
@@ -207,7 +207,7 @@ class CancelAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Cancel a task.
 
@@ -216,7 +216,7 @@ class CancelAsyncTaskTool(BaseTool):
         """
         try:
             status = await self._service.cancel_async_task(
-                task_id=arguments["task_id"],
+                task_id=cast("str", arguments["task_id"]),
                 supervisor_id=self._supervisor_id,
             )
         except Exception as exc:
@@ -259,16 +259,16 @@ class ListAsyncTasksTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """List async tasks.
 
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        task_id = arguments.get(
-            "supervisor_task_id",
-            self._supervisor_task_id,
+        task_id = cast(
+            "str",
+            arguments.get("supervisor_task_id", self._supervisor_task_id),
         )
         children = await self._service.list_async_tasks(task_id)
         return ToolExecutionResult(

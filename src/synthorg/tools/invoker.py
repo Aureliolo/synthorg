@@ -12,7 +12,9 @@ import asyncio
 import copy
 from contextlib import nullcontext
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from pydantic import JsonValue
 
 from synthorg.approval.models import EscalationInfo
 from synthorg.core.critical_errors import reraise_critical
@@ -186,7 +188,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             tool.name,
             tool.category,
             tool.action_type,
-            safe_args,
+            cast("dict[str, JsonValue]", safe_args),
         )
         if violation is None:
             return None
@@ -638,7 +640,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 return deepcopied
             safe_args = deepcopied
         try:
-            return await tool.execute(arguments=safe_args)
+            return await tool.execute(
+                arguments=cast("dict[str, JsonValue]", safe_args),
+            )
         except (MemoryError, RecursionError) as exc:
             logger.warning(
                 TOOL_INVOKE_NON_RECOVERABLE,
@@ -715,7 +719,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                         result.metadata.get("action_type", tool.action_type),
                     ),
                     risk_level=ApprovalRiskLevel(
-                        result.metadata.get("risk_level", "high"),
+                        str(result.metadata.get("risk_level", "high")),
                     ),
                     reason="Agent requested human approval",
                 ),

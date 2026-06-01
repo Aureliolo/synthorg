@@ -17,7 +17,7 @@ chunks the agent could quote.
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import override
+from typing import Any, cast, override
 
 import pytest
 
@@ -169,7 +169,7 @@ class TestKnowledgeAgentToolAcceptance:
         # The tool result is the agent's deliverable input: text +
         # structured citations the agent would quote in its answer.
         assert "idempotency" in result.content.lower()
-        citations = result.metadata["citations"]
+        citations = cast("list[dict[str, Any]]", result.metadata["citations"])
         assert citations  # hits resolved through the substrate
         # Every citation carries a verifiable source chunk handle.
         source_types_returned = {c["source_type"] for c in citations}

@@ -8,9 +8,9 @@ validation shared by all tools.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -89,7 +89,7 @@ class GitStatusTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Run ``git status``.
 
@@ -147,7 +147,7 @@ class GitLogTool(_BaseGitTool):
 
     def _build_filter_args(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> list[str] | ToolExecutionResult:
         """Validate and build ``--author``, ``--since``, ``--until`` args.
 
@@ -164,7 +164,7 @@ class GitLogTool(_BaseGitTool):
             ("until", "--until"),
         ):
             if value := arguments.get(param):
-                if err := self._check_git_arg(value, param=param):
+                if err := self._check_git_arg(cast("str", value), param=param):
                     return err
                 filter_args.append(f"{flag}={value}")
         return filter_args
@@ -173,7 +173,7 @@ class GitLogTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Run ``git log``.
 
@@ -185,7 +185,7 @@ class GitLogTool(_BaseGitTool):
             A ``ToolExecutionResult`` with the log output.
         """
         max_count = min(
-            arguments.get("max_count", 10),
+            cast("int", arguments.get("max_count", 10)),
             self._MAX_COUNT_LIMIT,
         )
         args = ["log", f"--max-count={max_count}"]
@@ -199,11 +199,11 @@ class GitLogTool(_BaseGitTool):
         args.extend(filter_args)
 
         if ref := arguments.get("ref"):
-            if err := self._check_git_arg(ref, param="ref"):
+            if err := self._check_git_arg(cast("str", ref), param="ref"):
                 return err
-            args.append(ref)
+            args.append(cast("str", ref))
 
-        paths: list[str] = arguments.get("paths", [])
+        paths: list[str] = cast("list[str]", arguments.get("paths", []))
         if paths:
             if err := self._check_paths(paths):
                 return err
@@ -257,7 +257,7 @@ class GitDiffTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Run ``git diff``.
 
@@ -277,20 +277,20 @@ class GitDiffTool(_BaseGitTool):
             args.append("--stat")
 
         if ref1 := arguments.get("ref1"):
-            if err := self._check_git_arg(ref1, param="ref1"):
+            if err := self._check_git_arg(cast("str", ref1), param="ref1"):
                 return err
-            args.append(ref1)
+            args.append(cast("str", ref1))
         if ref2 := arguments.get("ref2"):
             if not ref1:
                 return ToolExecutionResult(
                     content="ref2 requires ref1 to be specified",
                     is_error=True,
                 )
-            if err := self._check_git_arg(ref2, param="ref2"):
+            if err := self._check_git_arg(cast("str", ref2), param="ref2"):
                 return err
-            args.append(ref2)
+            args.append(cast("str", ref2))
 
-        paths: list[str] = arguments.get("paths", [])
+        paths: list[str] = cast("list[str]", arguments.get("paths", []))
         if paths:
             if err := self._check_paths(paths):
                 return err
@@ -356,7 +356,7 @@ class GitBranchTool(_BaseGitTool):
     async def _create_branch(
         self,
         name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Create a branch, optionally from a start point.
 
@@ -364,7 +364,7 @@ class GitBranchTool(_BaseGitTool):
             Result of type ``ToolExecutionResult``.
         """
         args = ["branch", name]
-        if start_point := arguments.get("start_point"):
+        if start_point := cast("str | None", arguments.get("start_point")):
             if err := self._check_git_arg(start_point, param="start_point"):
                 return err
             args.append(start_point)
@@ -374,7 +374,7 @@ class GitBranchTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Run a branch operation.
 
@@ -384,8 +384,8 @@ class GitBranchTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the operation output.
         """
-        action: str = arguments.get("action", "list")
-        name: str | None = arguments.get("name")
+        action = cast("str", arguments.get("action", "list"))
+        name = cast("str | None", arguments.get("name"))
 
         if action in self._ACTIONS_REQUIRING_NAME and not name:
             return ToolExecutionResult(
@@ -397,7 +397,7 @@ class GitBranchTool(_BaseGitTool):
             return await self._list_branches()
 
         # Narrowing: guaranteed non-None by guard above.
-        branch_name: str = name  # type: ignore[assignment]
+        branch_name = cast("str", name)
 
         if err := self._check_git_arg(branch_name, param="name"):
             return err
@@ -459,7 +459,7 @@ class GitCommitTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Stage and commit changes.
 
@@ -469,9 +469,9 @@ class GitCommitTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the commit output.
         """
-        message: str = arguments["message"]
-        paths: list[str] = arguments.get("paths", [])
-        stage_all: bool = arguments.get("all", False)
+        message = cast("str", arguments["message"])
+        paths: list[str] = cast("list[str]", arguments.get("paths", []))
+        stage_all = cast("bool", arguments.get("all", False))
 
         if paths:
             if err := self._check_paths(paths):
@@ -605,7 +605,7 @@ class GitCloneTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Clone a repository.
 
@@ -620,7 +620,7 @@ class GitCloneTool(_BaseGitTool):
         Returns:
             A ``ToolExecutionResult`` with the clone output.
         """
-        url: str = arguments["url"]
+        url = cast("str", arguments["url"])
 
         if not is_allowed_clone_scheme(url):
             logger.warning(
@@ -639,7 +639,7 @@ class GitCloneTool(_BaseGitTool):
 
         args = ["clone"]
 
-        if branch := arguments.get("branch"):
+        if branch := cast("str | None", arguments.get("branch")):
             if err := self._check_git_arg(branch, param="branch"):
                 return err
             args.extend(["--branch", branch])
@@ -650,7 +650,7 @@ class GitCloneTool(_BaseGitTool):
         args.append("--")
         args.append(url)
 
-        if directory := arguments.get("directory"):
+        if directory := cast("str | None", arguments.get("directory")):
             if err := self._check_paths([directory]):
                 return err
             args.append(directory)

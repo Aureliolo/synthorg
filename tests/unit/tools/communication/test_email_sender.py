@@ -1,5 +1,6 @@
 """Tests for the email sender tool."""
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -155,5 +156,6 @@ class TestEmailSenderTool:
         tool = EmailSenderTool(config=comm_config)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "to" in schema["required"]
-        assert "subject" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "to" in required
+        assert "subject" in required

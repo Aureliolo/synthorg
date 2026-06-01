@@ -11,7 +11,7 @@ suite (`tests/integration/docs_engine/`).
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -72,31 +72,30 @@ class TestWriteLivingDocTool:
         try:
             write_tool, _ = tools
             assert isinstance(write_tool, WriteLivingDocTool)
-            result = await write_tool.execute(
-                arguments={
-                    "title": "Q2 Status",
-                    "doc_type": "status_report",
-                    "body": (
-                        {
-                            "block_kind": "heading",
-                            "level": 2,
-                            "text": "Summary",
-                        },
-                        {
-                            "block_kind": "prose",
-                            "text": "Checkout improved by 5%.",
-                        },
-                        {
-                            "block_kind": "decision",
-                            "decision": "Hold rewrite",
-                            "rationale": "A/B still ramping",
-                        },
-                    ),
-                },
-            )
+            arguments: dict[str, Any] = {
+                "title": "Q2 Status",
+                "doc_type": "status_report",
+                "body": (
+                    {
+                        "block_kind": "heading",
+                        "level": 2,
+                        "text": "Summary",
+                    },
+                    {
+                        "block_kind": "prose",
+                        "text": "Checkout improved by 5%.",
+                    },
+                    {
+                        "block_kind": "decision",
+                        "decision": "Hold rewrite",
+                        "rationale": "A/B still ramping",
+                    },
+                ),
+            }
+            result = await write_tool.execute(arguments=arguments)
             assert result.is_error is False
             assert result.metadata["doc_type"] == "status_report"
-            assert "q2-status" in result.metadata["slug"]
+            assert "q2-status" in cast("dict[str, Any]", result.metadata)["slug"]
         finally:
             await backend.disconnect()
 
@@ -140,7 +139,7 @@ class TestSearchLivingDocsTool:
                 arguments={"query": "checkout"},
             )
             assert result.is_error is False
-            assert result.metadata["hit_count"] >= 1
+            assert cast("dict[str, Any]", result.metadata)["hit_count"] >= 1
             assert "checkout-fix" in result.content
         finally:
             await backend.disconnect()

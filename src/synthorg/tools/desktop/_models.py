@@ -7,10 +7,22 @@ is also placed into ``content`` so the LLM-facing surface stays plain
 text.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.types import NotBlankStr
 from synthorg.tools.desktop._constants import SHA256_HEX_PATTERN
+
+
+class ExecutorEnvelope(TypedDict, total=False):
+    """Top-level JSON envelope returned by the in-sandbox desktop executor."""
+
+    status: str
+    result: dict[str, JsonValue]
+    error_type: str
+    message: str
+
 
 _RESPONSE_CONFIG = ConfigDict(
     frozen=True,

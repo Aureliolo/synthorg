@@ -6,9 +6,9 @@ truncated at ``max_output_bytes``.
 """
 
 from pathlib import Path
-from typing import Any, ClassVar, override
+from typing import ClassVar, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
@@ -20,7 +20,9 @@ from synthorg.observability.events.terminal import (
 from synthorg.tools._misc_args import ShellCommandArgs
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
+from synthorg.tools.terminal.config import TerminalConfig
 
 logger = get_logger(__name__)
 
@@ -44,14 +46,18 @@ class ShellCommandTool(BaseTerminalTool):
 
     args_model: ClassVar[type[BaseModel] | None] = ShellCommandArgs
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        sandbox: SandboxBackend | None = None,
+        config: TerminalConfig | None = None,
+    ) -> None:
         """Initialize the shell command tool.
 
         Args:
-            **kwargs: Forwarded to :class:`BaseTerminalTool`. Typically
-                includes ``sandbox`` (sandboxed execution backend) and
-                ``config`` (terminal-tool configuration with
-                allowlist/blocklist + timeouts).
+            sandbox: Sandboxed execution backend.
+            config: Terminal-tool configuration with allowlist /
+                blocklist and timeouts.
         """
         super().__init__(
             name="shell_command",
@@ -60,7 +66,8 @@ class ShellCommandTool(BaseTerminalTool):
                 "Output is captured and returned."
             ),
             parameters_schema=ShellCommandArgs.model_json_schema(),
-            **kwargs,
+            sandbox=sandbox,
+            config=config,
         )
 
     @staticmethod
@@ -109,7 +116,7 @@ class ShellCommandTool(BaseTerminalTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Execute a shell command.
 
@@ -120,11 +127,13 @@ class ShellCommandTool(BaseTerminalTool):
         Returns:
             A ``ToolExecutionResult`` with command output.
         """
-        command: str = arguments["command"]
-        working_dir: str | None = arguments.get("working_directory")
+        command = cast("str", arguments["command"])
+        working_dir = cast("str | None", arguments.get("working_directory"))
         raw_timeout = arguments.get("timeout")
         timeout: float = (
-            raw_timeout if raw_timeout is not None else self._config.default_timeout
+            cast("float", raw_timeout)
+            if raw_timeout is not None
+            else self._config.default_timeout
         )
 
         if not command.strip():

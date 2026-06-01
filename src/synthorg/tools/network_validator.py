@@ -13,7 +13,8 @@ before checking.  Unparseable IPs are blocked (fail-closed).
 
 import asyncio
 import ipaddress
-from typing import Any, Final
+from collections.abc import Sequence
+from typing import Final
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -109,11 +110,11 @@ class NetworkPolicy(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _normalize_allowlist(cls, data: Any) -> Any:
+    def _normalize_allowlist(cls, data: object) -> object:
         """Lowercase and deduplicate allowlist entries before construction.
 
         Returns:
-            Result of type ``Any``.
+            Result of type ``object``.
         """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
@@ -260,10 +261,16 @@ def _dns_failure(
     return message
 
 
+# A single ``socket.getaddrinfo`` entry; the last element is the sockaddr.
+type _AddrInfo = tuple[
+    object, object, object, object, tuple[str, int] | tuple[str, int, int, int]
+]
+
+
 async def resolve_dns(
     hostname: str,
     dns_timeout: float,
-) -> str | list[tuple[Any, ...]]:
+) -> str | Sequence[_AddrInfo]:
     """Resolve *hostname* via async DNS.
 
     Args:
@@ -318,7 +325,7 @@ async def resolve_dns(
 
 def check_resolved_ips(
     hostname: str,
-    results: list[tuple[Any, ...]],
+    results: Sequence[_AddrInfo],
 ) -> str | tuple[str, ...]:
     """Validate resolved IPs and return deduplicated public addresses.
 

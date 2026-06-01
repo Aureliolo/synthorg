@@ -7,9 +7,9 @@ shipped -- users inject a provider at construction time.
 
 import asyncio
 from datetime import datetime
-from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -50,7 +50,7 @@ class AnalyticsProvider(Protocol):
         group_by: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Query analytics data.
 
         Args:
@@ -64,40 +64,6 @@ class AnalyticsProvider(Protocol):
             Query results as a dictionary.
         """
         ...
-
-
-_PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
-    "type": "object",
-    "properties": {
-        "metrics": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Metric names to aggregate (e.g. 'total_cost', 'task_completion_rate')"
-            ),
-        },
-        "period": {
-            "type": "string",
-            "enum": sorted(_VALID_PERIODS),
-            "description": "Time period for aggregation",
-        },
-        "group_by": {
-            "type": "string",
-            "enum": sorted(_VALID_GROUP_BY),
-            "description": "Optional grouping dimension",
-        },
-        "start_date": {
-            "type": "string",
-            "description": "Start date for custom period (ISO 8601)",
-        },
-        "end_date": {
-            "type": "string",
-            "description": "End date for custom period (ISO 8601)",
-        },
-    },
-    "required": ["metrics", "period"],
-    "additionalProperties": False,
-}
 
 
 class DataAggregatorTool(BaseAnalyticsTool):
@@ -246,7 +212,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> ToolExecutionResult:
         """Query analytics data.
 
@@ -290,12 +256,13 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 content="'period' must be a non-empty string.",
                 is_error=True,
             )
-        group_by: str | None = arguments.get("group_by")
-        start_date: str | None = arguments.get("start_date")
-        end_date: str | None = arguments.get("end_date")
+        metric_names = cast("list[str]", metrics)
+        group_by = cast("str | None", arguments.get("group_by"))
+        start_date = cast("str | None", arguments.get("start_date"))
+        end_date = cast("str | None", arguments.get("end_date"))
 
         error = self._validate_query_params(
-            metrics,
+            metric_names,
             period,
             group_by,
             start_date,
@@ -314,7 +281,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
         try:
             data = await asyncio.wait_for(
                 self._provider.query(
-                    metrics=metrics,
+                    metrics=metric_names,
                     period=period,
                     group_by=group_by,
                     start_date=start_date,

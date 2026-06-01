@@ -2,6 +2,7 @@
 
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -55,7 +56,7 @@ class TestDockerImageOverride:
             image_override=NotBlankStr("synthorg-project-p:abc123"),
         )
         assert config["Image"] == "synthorg-project-p:abc123"
-        assert "FOO=bar" in config["Env"]
+        assert "FOO=bar" in cast("dict[str, Any]", config)["Env"]
 
     def test_build_container_config_default_image(self, tmp_path: Path) -> None:
         cfg = DockerSandboxConfig()

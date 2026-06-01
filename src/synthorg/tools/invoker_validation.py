@@ -48,7 +48,7 @@ def _no_remote_retrieve(uri: str) -> Never:
     raise NoSuchResource(uri)
 
 
-SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg]
+SAFE_REGISTRY = JsonSchemaRegistry(  # type: ignore[call-arg]
     retrieve=_no_remote_retrieve,
 )
 

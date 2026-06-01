@@ -7,12 +7,13 @@ tool discovery and invocation through the MCP protocol.
 import asyncio
 import copy
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, NoReturn, Self
+from typing import TYPE_CHECKING, NoReturn, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
+from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -306,7 +307,7 @@ class MCPClient:
     async def call_tool(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, JsonValue],
     ) -> MCPRawResult:
         """Invoke a tool on the connected server.
 
