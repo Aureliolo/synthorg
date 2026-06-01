@@ -27,7 +27,10 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.group_chat import GroupChatService
-from synthorg.meta.chief_of_staff.group_models import GroupConverseArgs
+from synthorg.meta.chief_of_staff.group_models import (
+    GroupConverseArgs,
+    GroupConverseResult,
+)
 from synthorg.providers.drivers.scripted import (
     ScriptedDriver,
     SequencedResponseStrategy,
@@ -90,6 +93,73 @@ class _RecordingSequencedStrategy:
         return self._inner.next_response(messages, model, tools, config)
 
 
+def _assert_round_robin_contributions(
+    result: GroupConverseResult,
+    strategy: _RecordingSequencedStrategy,
+) -> None:
+    """All three agents contributed once, in enrolment order, attributed."""
+    assert len(strategy.user_prompts) == 3
+    assert result.truncated_reason is None
+    assert result.participants_skipped == ()
+    assert [c.agent_name for c in result.contributions] == [
+        "Dana",
+        "Casey",
+        "Tomas",
+    ]
+    assert [c.participant_role for c in result.contributions] == [
+        "CEO",
+        "CFO",
+        "CTO",
+    ]
+    assert [c.content for c in result.contributions] == [
+        _CEO_SAYS,
+        _CFO_SAYS,
+        _CTO_SAYS,
+    ]
+    assert [c.sequence for c in result.contributions] == [1, 2, 3]
+
+
+def _assert_growing_context(
+    strategy: _RecordingSequencedStrategy,
+    message: str,
+) -> None:
+    """The shared, growing context each agent saw in its user prompt.
+
+    Every agent sees the fenced human question; contribution N's prompt
+    contains every prior contribution and none of its own / later ones
+    (the round-robin invariant), with peers attributed by name + role.
+    """
+    ceo_prompt, cfo_prompt, cto_prompt = strategy.user_prompts
+
+    assert message in ceo_prompt
+    assert message in cfo_prompt
+    assert message in cto_prompt
+    assert TAG_TASK_DATA in ceo_prompt
+    assert TAG_PEER_CONTRIBUTION in ceo_prompt
+
+    assert _CEO_SAYS not in ceo_prompt
+    assert _CEO_SAYS in cfo_prompt
+    assert _CFO_SAYS not in cfo_prompt
+    assert _CEO_SAYS in cto_prompt
+    assert _CFO_SAYS in cto_prompt
+    assert "Dana (CEO)" in cfo_prompt
+    assert "Casey (CFO)" in cto_prompt
+
+
+def _assert_persisted_attribution(turn_repo: FakeTurnRepo) -> None:
+    """One USER turn then three attributed AGENT turns persisted."""
+    roles = [t.role for t in sorted(turn_repo.turns, key=lambda t: t.sequence)]
+    assert roles == [
+        ConversationRole.USER,
+        ConversationRole.AGENT,
+        ConversationRole.AGENT,
+        ConversationRole.AGENT,
+    ]
+    agent_turns = [t for t in turn_repo.turns if t.role is ConversationRole.AGENT]
+    assert all(t.author_agent_id is not None for t in agent_turns)
+    assert {t.author_name for t in agent_turns} == {"Dana", "Casey", "Tomas"}
+
+
 class TestGroupChatE2E:
     async def test_three_agents_share_growing_context(self) -> None:
         ceo = make_identity(name="Dana", role="CEO")
@@ -136,55 +206,8 @@ class TestGroupChatE2E:
         )
 
         # All three contributed once, in enrolment order, fully attributed.
-        assert len(strategy.user_prompts) == 3
-        assert result.truncated_reason is None
-        assert result.participants_skipped == ()
-        assert [c.agent_name for c in result.contributions] == [
-            "Dana",
-            "Casey",
-            "Tomas",
-        ]
-        assert [c.participant_role for c in result.contributions] == [
-            "CEO",
-            "CFO",
-            "CTO",
-        ]
-        assert [c.content for c in result.contributions] == [
-            _CEO_SAYS,
-            _CFO_SAYS,
-            _CTO_SAYS,
-        ]
-        assert [c.sequence for c in result.contributions] == [1, 2, 3]
-
-        # The shared, growing context: the user prompt each agent saw.
-        ceo_prompt, cfo_prompt, cto_prompt = strategy.user_prompts
-
-        # Every agent sees the human question (fenced as <task-data>).
-        assert message in ceo_prompt
-        assert message in cfo_prompt
-        assert message in cto_prompt
-        assert TAG_TASK_DATA in ceo_prompt
-        assert TAG_PEER_CONTRIBUTION in ceo_prompt
-
-        # Contribution N's prompt contains every prior contribution and
-        # none of its own / later ones (the round-robin invariant).
-        assert _CEO_SAYS not in ceo_prompt
-        assert _CEO_SAYS in cfo_prompt
-        assert _CFO_SAYS not in cfo_prompt
-        assert _CEO_SAYS in cto_prompt
-        assert _CFO_SAYS in cto_prompt
-        # Peers are attributed by name + role in the fenced peer block.
-        assert "Dana (CEO)" in cfo_prompt
-        assert "Casey (CFO)" in cto_prompt
-
+        _assert_round_robin_contributions(result, strategy)
+        # The shared, growing context each agent saw in its user prompt.
+        _assert_growing_context(strategy, message)
         # Persistence: one USER turn then three attributed AGENT turns.
-        roles = [t.role for t in sorted(turn_repo.turns, key=lambda t: t.sequence)]
-        assert roles == [
-            ConversationRole.USER,
-            ConversationRole.AGENT,
-            ConversationRole.AGENT,
-            ConversationRole.AGENT,
-        ]
-        agent_turns = [t for t in turn_repo.turns if t.role is ConversationRole.AGENT]
-        assert all(t.author_agent_id is not None for t in agent_turns)
-        assert {t.author_name for t in agent_turns} == {"Dana", "Casey", "Tomas"}
+        _assert_persisted_attribution(turn_repo)

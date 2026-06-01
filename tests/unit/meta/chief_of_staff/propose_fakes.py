@@ -119,10 +119,25 @@ class FakeConversationRepo:
         to_state: ConversationStatus,
         **updates: object,
     ) -> bool:
+        # Mirror the real ConversationRepository contract: ``updated_at``
+        # (an ISO-8601 string) is the only supported update key. Reject
+        # any other key rather than silently dropping it, matching the
+        # group-chat participant/invite doubles' strictness.
+        unexpected = set(updates) - {"updated_at"}
+        if unexpected:
+            msg = (
+                "conversation transition_if got unsupported update keys: "
+                f"{sorted(unexpected)}"
+            )
+            raise ValueError(msg)
         current = self.items.get(entity_id)
         if current is None or current.status is not from_state:
             return False
-        self.items[entity_id] = current.model_copy(update={"status": to_state})
+        changes: dict[str, object] = {"status": to_state}
+        raw_updated_at = updates.get("updated_at")
+        if raw_updated_at is not None:
+            changes["updated_at"] = datetime.fromisoformat(str(raw_updated_at))
+        self.items[entity_id] = current.model_copy(update=changes)
         return True
 
 

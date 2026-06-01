@@ -80,6 +80,10 @@ export function useMetaActState(): MetaActState {
     scrollToBottom(scrollRef)
   }, [input, loading, selectedAgentId, runAction, nextMsgId])
 
+  // ``handleSend`` cannot reject: its only awaited call is the
+  // ``runAction`` store mutation, which owns its error UX (catches
+  // internally and returns ``null`` on failure). Voiding the promise is
+  // therefore safe -- there is no rejection path to leak.
   const triggerSend = useCallback(() => void handleSend(), [handleSend])
 
   return {

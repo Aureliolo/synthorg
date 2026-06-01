@@ -31,6 +31,20 @@ ALTER TABLE conversation_turns ADD COLUMN author_name TEXT;
 ALTER TABLE conversation_turns ADD COLUMN routed_topic TEXT;
 ALTER TABLE conversation_turns ADD COLUMN routing_confidence DOUBLE PRECISION;
 
+-- Per-turn author attribution invariant: an 'agent' turn must carry a
+-- non-blank author, a 'user' turn must carry none, and an 'assistant'
+-- turn may carry either (generic Chief of Staff vs. routed role agent),
+-- with author_agent_id / author_name always set or cleared together.
+-- Added after the columns exist; pre-existing v1 rows are user/assistant
+-- with NULL author, so they all satisfy it.
+ALTER TABLE conversation_turns ADD CONSTRAINT ck_ct_author_attribution CHECK (
+    (author_agent_id IS NULL) = (author_name IS NULL)
+    AND (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0)
+    AND (author_name IS NULL OR LENGTH(TRIM(author_name)) > 0)
+    AND (role <> 'agent' OR author_agent_id IS NOT NULL)
+    AND (role <> 'user' OR author_agent_id IS NULL)
+);
+
 -- Group-chat participant roster.
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),

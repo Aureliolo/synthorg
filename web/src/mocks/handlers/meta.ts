@@ -11,13 +11,10 @@ import type {
 } from '@/api/endpoints/meta'
 import { apiError, successFor } from './helpers'
 
-function _hasBlankMessage(body: unknown): boolean {
-  return (
-    !body ||
-    typeof body !== 'object' ||
-    typeof (body as { message?: unknown }).message !== 'string' ||
-    !(body as { message: string }).message.trim()
-  )
+function _hasBlankField(body: unknown, field: string): boolean {
+  if (!body || typeof body !== 'object') return true
+  const value = (body as Record<string, unknown>)[field]
+  return typeof value !== 'string' || !value.trim()
 }
 
 export const metaHandlers = [
@@ -53,7 +50,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (_hasBlankMessage(body)) {
+    if (_hasBlankField(body, 'message')) {
       return HttpResponse.json(apiError('Message must not be blank'), {
         status: 400,
       })
@@ -92,7 +89,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (_hasBlankMessage(body)) {
+    if (_hasBlankField(body, 'message')) {
       return HttpResponse.json(apiError('Message must not be blank'), {
         status: 400,
       })
@@ -159,12 +156,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as { instruction?: unknown }).instruction !== 'string' ||
-      !(body as { instruction: string }).instruction.trim()
-    ) {
+    if (_hasBlankField(body, 'instruction')) {
       return HttpResponse.json(apiError('Instruction must not be blank'), {
         status: 400,
       })
@@ -197,12 +189,7 @@ export const metaHandlers = [
         status: 400,
       })
     }
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      typeof (body as { question?: unknown }).question !== 'string' ||
-      !(body as { question: string }).question.trim()
-    ) {
+    if (_hasBlankField(body, 'question')) {
       return HttpResponse.json(apiError('Question must not be blank'), {
         status: 400,
       })

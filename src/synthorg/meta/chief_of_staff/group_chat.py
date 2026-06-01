@@ -311,6 +311,15 @@ class GroupChatService:
         truncated: GroupChatTruncationReason | None = None
         sequence = start_sequence
         total_turns = len(history)
+        # ``history`` is the round's frozen baseline (prior turns + this
+        # round's user turn); it deliberately does NOT grow as agents
+        # speak. Intra-round growth flows through ``contributions``, which
+        # ``_dispatch_contribution`` passes to ``build_group_prompt`` as
+        # ``prior_contributions`` so each agent still sees its peers'
+        # earlier turns. Keeping ``history`` static is load-bearing for the
+        # invited-agent ``already_spoke`` check there: it must detect a
+        # PRIOR-round appearance to gate the one-time invited preamble, so
+        # folding the current round into ``history`` would mis-fire it.
         for index, participant in enumerate(participants):
             truncated = self._round_bound(tracker, reserve, total_turns)
             if truncated is not None:

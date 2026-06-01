@@ -1,3 +1,4 @@
+# module-kind: tests
 """Unit tests for the proposer build + persistence-factory wiring."""
 
 import pytest

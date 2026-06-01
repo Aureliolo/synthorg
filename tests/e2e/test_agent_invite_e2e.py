@@ -181,6 +181,74 @@ def _consent_app_state(
     )
 
 
+async def _assert_invite_parks_without_adding_agent(
+    service: GroupChatService,
+    approval_store: ApprovalStore,
+    ceo_id: str,
+) -> tuple[str, str]:
+    """Round one: the invite parks; the invited agent is not yet a member.
+
+    Returns:
+        ``(approval_id, conversation_id)`` from the parked invite.
+    """
+    round_one = await service.converse(
+        GroupConverseArgs(
+            message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, "Kick-off")),
+            created_by=NotBlankStr("user-1"),
+            participants=(NotBlankStr(ceo_id),),
+        )
+    )
+    assert [c.content for c in round_one.contributions] == [
+        "We need finance to weigh in."
+    ]
+    assert len(round_one.pending_invites) == 1
+    approval_id = round_one.pending_invites[0].approval_id
+    approval = await approval_store.get(approval_id)
+    assert approval is not None
+    assert approval.source is ApprovalSource.CONVERSATIONAL_INVITE
+    return approval_id, round_one.conversation_id
+
+
+async def _assert_consent_adds_to_roster(
+    app_state: AppState,
+    approval_id: str,
+    participant_repo: FakeParticipantRepo,
+) -> None:
+    """Consent through the canonical dispatcher adds the invited agent."""
+    await signal_resume_intent(
+        app_state, approval_id, approved=True, decided_by="operator-1"
+    )
+    roster = list(participant_repo.items.values())
+    assert any(p.agent_name == "Fiona" for p in roster)
+
+
+async def _assert_handover_in_prompt(
+    service: GroupChatService,
+    strategy: _RecordingSequencedStrategy,
+    conversation_id: str,
+) -> None:
+    """Round two: the CFO's first turn carries the fenced handover.
+
+    The handover (inviter + reason) is prepended above the shared
+    transcript; the established CEO never re-sees it.
+    """
+    round_two = await service.converse(
+        GroupConverseArgs(
+            message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, "Continue")),
+            created_by=NotBlankStr("user-1"),
+            conversation_id=conversation_id,
+        )
+    )
+    assert "Fiona" in [c.agent_name for c in round_two.contributions]
+    ceo_round_two = strategy.user_prompts[1]
+    cfo_round_two = strategy.user_prompts[2]
+    assert _REASON in cfo_round_two
+    assert "Dana" in cfo_round_two
+    assert TAG_TASK_DATA in cfo_round_two
+    assert cfo_round_two.index(_REASON) < cfo_round_two.index("## Conversation so far")
+    assert _REASON not in ceo_round_two
+
+
 class TestAgentInviteE2E:
     async def test_consent_adds_agent_with_context_handover(self) -> None:
         ceo = make_identity(name="Dana", role="CEO")
@@ -201,22 +269,9 @@ class TestAgentInviteE2E:
 
         # First round: the CEO requests the CFO; the invite parks, the agent
         # is NOT yet a participant, and the parsed message is the turn.
-        round_one = await service.converse(
-            GroupConverseArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, "Kick-off")),
-                created_by=NotBlankStr("user-1"),
-                participants=(NotBlankStr(str(ceo.id)),),
-            )
+        approval_id, conversation_id = await _assert_invite_parks_without_adding_agent(
+            service, approval_store, str(ceo.id)
         )
-        assert [c.content for c in round_one.contributions] == [
-            "We need finance to weigh in."
-        ]
-        assert len(round_one.pending_invites) == 1
-        approval_id = round_one.pending_invites[0].approval_id
-        approval = await approval_store.get(approval_id)
-        assert approval is not None
-        assert approval.source is ApprovalSource.CONVERSATIONAL_INVITE
-        conversation_id = round_one.conversation_id
 
         # Consent via the canonical dispatcher, feature effectively off.
         app_state = _consent_app_state(
@@ -225,32 +280,11 @@ class TestAgentInviteE2E:
             participant_repo=participant_repo,
             registry=registry,
         )
-        await signal_resume_intent(
-            app_state, approval_id, approved=True, decided_by="operator-1"
-        )
-        roster = list(participant_repo.items.values())
-        assert any(p.agent_name == "Fiona" for p in roster)
+        await _assert_consent_adds_to_roster(app_state, approval_id, participant_repo)
 
-        # Second round: the CFO takes its genuine first turn; its prompt
-        # carries the fenced inviter+reason handover, prepended above the
-        # transcript. The established CEO never re-sees it.
-        round_two = await service.converse(
-            GroupConverseArgs(
-                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, "Continue")),
-                created_by=NotBlankStr("user-1"),
-                conversation_id=conversation_id,
-            )
-        )
-        assert "Fiona" in [c.agent_name for c in round_two.contributions]
-        ceo_round_two = strategy.user_prompts[1]
-        cfo_round_two = strategy.user_prompts[2]
-        assert _REASON in cfo_round_two
-        assert "Dana" in cfo_round_two
-        assert TAG_TASK_DATA in cfo_round_two
-        assert cfo_round_two.index(_REASON) < cfo_round_two.index(
-            "## Conversation so far"
-        )
-        assert _REASON not in ceo_round_two
+        # Second round: the CFO takes its genuine first turn with the fenced
+        # inviter+reason handover prepended above the shared transcript.
+        await _assert_handover_in_prompt(service, strategy, conversation_id)
 
     async def test_reject_leaves_membership_unchanged(self) -> None:
         ceo = make_identity(name="Dana", role="CEO")

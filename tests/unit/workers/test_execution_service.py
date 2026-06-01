@@ -1,3 +1,4 @@
+# module-kind: tests
 """Unit tests for the agent-runtime worker execution services."""
 
 from unittest.mock import AsyncMock

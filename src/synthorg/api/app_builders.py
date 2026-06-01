@@ -230,9 +230,12 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
 
     The provider is the first registered one (same convention as the
     explain-only chat backend); the propose model name in config is
-    provider-agnostic. When *role_router* is supplied (concern routing,
-    #1969), the proposer also receives *provider_registry* so a routed
-    role agent answers on its own configured provider.
+    provider-agnostic. *provider_registry* is always forwarded to the
+    proposer; *role_router* does not gate that forwarding, it only
+    changes how the registry is used: when a router is supplied (concern
+    routing) a routed turn is answered by the matched role agent on its
+    own configured provider, and when it is absent the proposer stays in
+    generic mode but still holds the registry.
 
     Returns:
         The ``ChiefOfStaffProposer`` value when present, ``None`` otherwise.

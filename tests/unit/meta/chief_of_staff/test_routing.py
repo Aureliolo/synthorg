@@ -1,3 +1,4 @@
+# module-kind: tests
 """Unit tests for concern routing."""
 
 from datetime import UTC, datetime
