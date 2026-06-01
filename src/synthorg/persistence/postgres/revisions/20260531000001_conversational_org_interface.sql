@@ -41,8 +41,8 @@ ALTER TABLE conversation_turns ADD CONSTRAINT ck_ct_author_attribution CHECK (
     (author_agent_id IS NULL) = (author_name IS NULL)
     AND (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0)
     AND (author_name IS NULL OR LENGTH(TRIM(author_name)) > 0)
-    AND (role <> 'agent' OR author_agent_id IS NOT NULL)
-    AND (role <> 'user' OR author_agent_id IS NULL)
+    AND (role != 'agent' OR author_agent_id IS NOT NULL)
+    AND (role != 'user' OR author_agent_id IS NULL)
 );
 
 -- Group-chat participant roster.

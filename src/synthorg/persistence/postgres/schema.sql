@@ -1494,8 +1494,8 @@ CREATE TABLE conversation_turns (
         (author_agent_id IS NULL) = (author_name IS NULL)
         AND (author_agent_id IS NULL OR LENGTH(TRIM(author_agent_id)) > 0)
         AND (author_name IS NULL OR LENGTH(TRIM(author_name)) > 0)
-        AND (role <> 'agent' OR author_agent_id IS NOT NULL)
-        AND (role <> 'user' OR author_agent_id IS NULL)
+        AND (role != 'agent' OR author_agent_id IS NOT NULL)
+        AND (role != 'user' OR author_agent_id IS NULL)
     ),
     CONSTRAINT uq_ct_conversation_sequence UNIQUE (conversation_id, sequence)
 );
