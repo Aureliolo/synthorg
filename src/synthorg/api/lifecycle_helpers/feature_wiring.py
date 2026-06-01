@@ -10,9 +10,9 @@ re-entered lifespan does not double-wire and a missing collaborator
 leaves the feature's controllers to 503 rather than poisoning startup.
 
 ``wire_features_on_startup`` runs them in dependency order (docs,
-knowledge, research, charter, chat, proposer): research reads the
-knowledge service, and the chief-of-staff proposer expects the chat
-backend's conventions.
+project_brain, steering, knowledge, fine_tune, research, charter,
+chat, proposer): research reads the knowledge service, and the
+chief-of-staff proposer expects the chat backend's conventions.
 """
 
 from typing import TYPE_CHECKING
@@ -23,6 +23,9 @@ from synthorg.api.app_builders import (
     build_chief_of_staff_proposer,
 )
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.api.lifecycle_helpers.finetune_wiring import (
+    _wire_fine_tune_orchestrator,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
@@ -561,6 +564,7 @@ async def wire_features_on_startup(
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
     await _wire_knowledge_engine(app_state)
+    await _wire_fine_tune_orchestrator(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)
     await _wire_charter_engine(
         app_state,

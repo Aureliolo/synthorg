@@ -266,8 +266,12 @@ The pipeline requires no manual annotation and runs on a single GPU.
 
 **Pipeline stages:**
 
-1. **Synthetic data generation**: LLM generates query-document pairs from org documents
-   (policies, ADRs, procedures, coding standards)
+1. **Training-data generation**: the run selects a source via `FineTuneRequest.data_source`.
+   In **directory** mode an LLM generates query-document pairs from a static org-document
+   directory (policies, ADRs, procedures, coding standards); in **trajectory** mode the
+   pipeline harvests the organisation's real working history (accepted deliverables, distillation
+   trajectories, corrected-failure lessons) and curates the pairs by golden-benchmark score.
+   See [Memory Learning &rarr; Training data sources](memory-learning.md#training-data-sources-directory-vs-trajectory)
 2. **Hard negative mining**: base model embeds all passages (max_length=512) and queries
    (max_length=128) with truncation enabled; top-k semantically similar but non-matching
    passages become hard negatives. Inputs that overflow the token cap surface a
@@ -277,7 +281,11 @@ The pipeline requires no manual annotation and runs on a single GPU.
 4. **Evaluation**: NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
    the base model on held-out validation data, re-using the Stage 2 query / passage token
    caps so eval embeddings are tokenisation-consistent with mining
-5. **Deploy**: save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
+5. **Deploy (gated)**: promote the checkpoint to the active embedder **only on a measured
+   benchmark win** (the candidate must beat the base by a strictly positive margin on the
+   retrieval benchmark); on a tie or loss the checkpoint is recorded inactive. On promotion,
+   update `Mem0EmbedderConfig` to point to the fine-tuned model. See
+   [Memory Learning &rarr; Checkpoint promotion gate](memory-learning.md#checkpoint-promotion-gate)
 
 **Integration design:** fine-tuning is an offline pipeline triggered via
 `POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional

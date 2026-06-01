@@ -2168,6 +2168,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/learning/curve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetCurve */
+        readonly get: operations["ApiV1LearningCurveGetCurve"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meetings": {
         readonly parameters: {
             readonly query?: never;
@@ -5996,6 +6013,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[LearningCurve] */
+        readonly ApiResponse_LearningCurve_: {
+            readonly data: components["schemas"]["LearningCurve"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[ActiveSteeringDirective]] */
         readonly ApiResponse_list_ActiveSteeringDirective_: {
             readonly data: readonly components["schemas"]["ActiveSteeringDirective"][] | null;
@@ -9534,6 +9564,11 @@ export type components = {
              * @default 5
              */
             readonly pattern_weakness_threshold: number;
+            /**
+             * @description Mark a cycle training-triggered when it proposes actions
+             * @default false
+             */
+            readonly training_on_actions: boolean;
         };
         /** EvalMetrics */
         readonly EvalMetrics: {
@@ -9755,12 +9790,25 @@ export type components = {
          * @enum {string}
          */
         readonly FileSystemScope: "workspace_only" | "project_directory" | "full";
+        /**
+         * FineTuneDataSourceType
+         * @description Where the finetune draws its training pairs from.
+         *
+         *     ``DIRECTORY`` scans a static document directory (``source_dir``);
+         *     ``TRAJECTORY`` harvests the org's real working history (completed-task
+         *     deliverables, EPISODIC distillation trajectories, and PROCEDURAL failure
+         *     lessons) and curates by the golden-benchmark score.
+         * @default directory
+         * @enum {string}
+         */
+        readonly FineTuneDataSourceType: "directory" | "trajectory";
         /** FineTuneRequest */
         readonly FineTuneRequest: {
             /** @description Base model to fine-tune (None = active model) */
             readonly base_model?: string | null;
             /** @description Override training batch size */
             readonly batch_size?: number | null;
+            readonly data_source?: components["schemas"]["FineTuneDataSourceType"];
             /** @description Override training epochs */
             readonly epochs?: number | null;
             /** @description Override learning rate */
@@ -9769,8 +9817,8 @@ export type components = {
             readonly output_dir?: string | null;
             /** @description Resume a previous failed/cancelled run */
             readonly resume_run_id?: string | null;
-            /** @description Directory containing org documents */
-            readonly source_dir: string;
+            /** @description Directory containing org documents (required in directory mode, ignored in trajectory mode) */
+            readonly source_dir?: string | null;
             /** @description Override InfoNCE temperature */
             readonly temperature?: number | null;
             /** @description Override hard negative count per query */
@@ -9823,6 +9871,7 @@ export type components = {
              * @default 128
              */
             readonly batch_size: number;
+            readonly data_source: components["schemas"]["FineTuneDataSourceType"];
             /**
              * @description Training epochs
              * @default 3
@@ -9835,8 +9884,8 @@ export type components = {
             readonly learning_rate: number;
             /** @description Checkpoint output directory */
             readonly output_dir: string;
-            /** @description Source document directory */
-            readonly source_dir: string;
+            /** @description Source document directory (directory mode only) */
+            readonly source_dir: string | null;
             /**
              * @description InfoNCE temperature
              * @default 0.02
@@ -10348,6 +10397,32 @@ export type components = {
             readonly updated_at: string;
             /** @description Source URI (path / url / repo@ref / id) */
             readonly uri: string;
+        };
+        /** LearningCurve */
+        readonly LearningCurve: {
+            /** @description Whether any run on the curve is a regression */
+            readonly has_regression: boolean;
+            /** @description The most recent run's total, or None when empty */
+            readonly latest_total: number | null;
+            /** @default [] */
+            readonly points: readonly components["schemas"]["LearningCurvePoint"][];
+        };
+        /** LearningCurvePoint */
+        readonly LearningCurvePoint: {
+            /** @description total minus the previous run's total (0 first) */
+            readonly delta: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly generated_at: string;
+            readonly is_passing: boolean;
+            readonly is_regression: boolean;
+            readonly max_total: number;
+            readonly run_label: string;
+            /** @description Fraction of the maximum achievable score */
+            readonly score_fraction: number;
+            readonly total: number;
         };
         /**
          * LifecycleEventType
@@ -20514,6 +20589,30 @@ export interface operations {
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1LearningCurveGetCurve: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_LearningCurve_"];
+                };
+            };
             readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

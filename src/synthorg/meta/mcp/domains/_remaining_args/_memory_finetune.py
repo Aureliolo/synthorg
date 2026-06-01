@@ -15,6 +15,7 @@ from synthorg.meta.mcp.domains._common_args import (
 )
 
 FineTuneBackend = Literal["in-process", "docker"]
+FineTuneDataSource = Literal["directory", "trajectory"]
 
 
 class FineTuneExecutionConfig(_ArgsBase):
@@ -72,7 +73,20 @@ class FineTuneExecutionConfig(_ArgsBase):
 class _FineTunePlanFields(_ArgsBase):
     """Shared shape for ``memory.start_fine_tune`` / ``run_preflight``."""
 
-    source_dir: NotBlankStr = Field(description="Directory containing org documents")
+    data_source: FineTuneDataSource = Field(
+        default="directory",
+        description=(
+            "Where training pairs are drawn from: 'directory' (scan"
+            " source_dir) or 'trajectory' (harvest org working history)"
+        ),
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Directory containing org documents (required in directory mode,"
+            " ignored in trajectory mode)"
+        ),
+    )
     base_model: NotBlankStr | None = Field(
         default=None,
         description="Base model to fine-tune (None = active model)",
@@ -119,13 +133,40 @@ class _FineTunePlanFields(_ArgsBase):
         description="Optional runner-backend execution config",
     )
 
+    @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` at the wire boundary in directory mode.
 
-class MemoryStartFineTuneArgs(_FineTunePlanFields):
-    """Args for ``memory.start_fine_tune``."""
+        Mirrors the canonical invariant on
+        :class:`synthorg.memory.fine_tune_plan.FineTunePlan` so an MCP
+        caller that omits ``source_dir`` in directory mode is rejected
+        with an ``invalid_argument`` envelope at the invoker boundary
+        rather than reaching the handler-side re-parse.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if self.data_source == "directory" and self.source_dir is None:
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
 
 
-class MemoryResumeFineTuneArgs(_ArgsBase):
-    """Args for ``memory.resume_fine_tune``."""
+class MemoryStartFineTuneArgs(_FineTunePlanFields, AdminGuardrailFields):
+    """Args for ``memory.start_fine_tune`` (privileged; requires confirm).
+
+    Starting a run launches the full pipeline -- including the internal
+    deploy stage that swaps the active embedding model -- so the same
+    ``confirm`` / ``reason`` guardrail the destructive checkpoint ops use
+    gates it.
+    """
+
+
+class MemoryResumeFineTuneArgs(AdminGuardrailFields):
+    """Args for ``memory.resume_fine_tune`` (privileged; requires confirm)."""
 
     run_id: NotBlankStr = Field(description="Run ID to resume")
 
@@ -152,8 +193,13 @@ class _CheckpointIdArgs(_ArgsBase):
     checkpoint_id: NotBlankStr = Field(description="Checkpoint UUID")
 
 
-class MemoryDeployCheckpointArgs(_CheckpointIdArgs):
-    """Args for ``memory.deploy_checkpoint``."""
+class MemoryDeployCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):
+    """Args for ``memory.deploy_checkpoint`` (privileged; requires confirm).
+
+    Deploying swaps the active embedding model for all future retrieval,
+    so it carries the same ``confirm`` / ``reason`` guardrail as its
+    inverse, ``rollback_checkpoint``.
+    """
 
 
 class MemoryRollbackCheckpointArgs(_CheckpointIdArgs, AdminGuardrailFields):

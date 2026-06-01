@@ -32,7 +32,9 @@ from synthorg.memory.errors import (
 class _FakeSentenceTransformersModule(Protocol):
     """Shape of the patched ``sentence_transformers`` module returned by the factory."""
 
-    def SentenceTransformer(self, name: str) -> _RecordingEncoder: ...  # noqa: N802
+    def SentenceTransformer(  # noqa: N802
+        self, name: str, *, trust_remote_code: bool = False
+    ) -> _RecordingEncoder: ...
 
 
 class _RecordingEncoder:
@@ -79,7 +81,7 @@ def _make_fake_st_module(
 ) -> _FakeSentenceTransformersModule:
     """Build a ``SimpleNamespace`` fake of the ``sentence_transformers`` module."""
     fake = SimpleNamespace(
-        SentenceTransformer=lambda name: _RecordingEncoder(name, calls),
+        SentenceTransformer=lambda name, **_kwargs: _RecordingEncoder(name, calls),
     )
     return cast("_FakeSentenceTransformersModule", fake)
 

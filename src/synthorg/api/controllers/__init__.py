@@ -62,6 +62,7 @@ from synthorg.api.controllers.health import (
 from synthorg.api.controllers.integration_health import (
     IntegrationHealthController,
 )
+from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory.checkpoints import (
@@ -233,6 +234,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     TrainingController,
     MetaController,
     MetaAnalyticsController,
+    LearningController,
     CustomRuleController,
     CockpitController,
     SteeringController,
@@ -349,6 +351,7 @@ __all__ = [
     "GlobalKnowledgeController",
     "IntegrationHealthController",
     "InterruptController",
+    "LearningController",
     "LivenessController",
     "MCPCatalogController",
     "MeetingController",

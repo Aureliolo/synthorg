@@ -18,6 +18,7 @@ from synthorg.observability.events.hr import (
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.scaling.protocols import ScalingSignalSource
+    from synthorg.hr.scaling.signals.benchmark import BenchmarkSignalSource
     from synthorg.hr.scaling.signals.budget import BudgetSignalSource
     from synthorg.hr.scaling.signals.performance import (
         PerformanceSignalSource,
@@ -39,6 +40,7 @@ class ScalingContextBuilder:
         budget_source: Budget signal source.
         performance_source: Performance signal source.
         skill_source: Skill signal source.
+        benchmark_source: Golden-benchmark signal source.
     """
 
     def __init__(
@@ -48,13 +50,15 @@ class ScalingContextBuilder:
         budget_source: BudgetSignalSource | None = None,
         performance_source: PerformanceSignalSource | None = None,
         skill_source: SkillSignalSource | None = None,
+        benchmark_source: BenchmarkSignalSource | None = None,
     ) -> None:
         self._workload = workload_source
         self._budget = budget_source
         self._performance = performance_source
         self._skill = skill_source
+        self._benchmark = benchmark_source
 
-    async def build(
+    async def build(  # noqa: PLR0913 -- one kwargs slot per signal source
         self,
         *,
         agent_ids: tuple[NotBlankStr, ...],
@@ -62,6 +66,7 @@ class ScalingContextBuilder:
         budget_kwargs: dict[str, Any] | None = None,
         performance_kwargs: dict[str, Any] | None = None,
         skill_kwargs: dict[str, Any] | None = None,
+        benchmark_kwargs: dict[str, Any] | None = None,
     ) -> ScalingContext:
         """Build a frozen scaling context from all signal sources.
 
@@ -71,6 +76,7 @@ class ScalingContextBuilder:
             budget_kwargs: Extra kwargs for budget source.
             performance_kwargs: Extra kwargs for performance source.
             skill_kwargs: Extra kwargs for skill source.
+            benchmark_kwargs: Extra kwargs for benchmark source.
 
         Returns:
             Frozen ``ScalingContext`` with all collected signals.
@@ -111,11 +117,20 @@ class ScalingContextBuilder:
                     skill_kwargs,
                 ),
             )
+            benchmark_task = tg.create_task(
+                self._safe_collect(
+                    "benchmark",
+                    self._benchmark,
+                    agent_ids,
+                    benchmark_kwargs,
+                ),
+            )
 
         workload_signals = workload_task.result()
         budget_signals = budget_task.result()
         performance_signals = performance_task.result()
         skill_signals = skill_task.result()
+        benchmark_signals = benchmark_task.result()
 
         raw_snapshots = (performance_kwargs or {}).get("snapshots", {})
         perf_snapshots = (
@@ -130,6 +145,7 @@ class ScalingContextBuilder:
             budget_signals=budget_signals,
             performance_signals=performance_signals,
             skill_signals=skill_signals,
+            benchmark_signals=benchmark_signals,
             performance_snapshots=perf_snapshots,
             evaluated_at=datetime.now(UTC),
         )
@@ -140,6 +156,7 @@ class ScalingContextBuilder:
             budget_signals=len(budget_signals),
             performance_signals=len(performance_signals),
             skill_signals=len(skill_signals),
+            benchmark_signals=len(benchmark_signals),
         )
         return context
 

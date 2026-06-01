@@ -113,7 +113,27 @@ class CompanyConfigInvalidError(EvalError):
     default_message: ClassVar[str] = "Company config YAML failed validation"
 
 
+class BriefExecutionError(EvalError):
+    """Raised when the runner cannot boot a company or run a brief to a result."""
+
+    default_message: ClassVar[str] = "Brief execution failed to produce a result"
+
+
+class ResearchBriefUnsupportedError(EvalError):
+    """Raised when a research brief is run without a research-mode integration.
+
+    Research briefs grade a :class:`~synthorg.research.models.ResearchRun`, which
+    the agent-execution runner does not yet produce. The eval refuses to score a
+    research brief it cannot honestly run rather than emitting a fabricated zero.
+    """
+
+    default_message: ClassVar[str] = (
+        "Research briefs require a research-mode runner integration"
+    )
+
+
 __all__ = [
+    "BriefExecutionError",
     "BriefShapeError",
     "BriefSuiteDuplicateIdError",
     "BriefSuiteEmptyError",
@@ -127,4 +147,5 @@ __all__ = [
     "EvalToolMissingError",
     "JudgeAnchorSetTooSmallError",
     "JudgeCalibrationFailedError",
+    "ResearchBriefUnsupportedError",
 ]

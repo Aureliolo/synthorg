@@ -17,6 +17,7 @@ from synthorg.meta.models import (
     RuleMatch,
     RuleSeverity,
 )
+from synthorg.meta.rules.benchmark_rule import BenchmarkRegressionRule
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -605,4 +606,5 @@ def default_rules() -> tuple[SignalRule, ...]:
         RedundancyRule(),
         ScalingFailureRule(),
         ErrorSpikeRule(),
+        BenchmarkRegressionRule(),
     )

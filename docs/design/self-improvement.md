@@ -1,6 +1,6 @@
 # Self-Improving Company
 
-The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
+The self-improvement meta-loop observes company-wide signals from 7 existing subsystems plus the offline golden-company benchmark, and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
 Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organisation. Rank order: `full` > `semi` > `supervised` > `locked`.
 
@@ -10,7 +10,7 @@ The meta-loop operates at the **company altitude** (distinct from per-agent evol
 
 ```mermaid
 flowchart TD
-    subgraph signals["Signal Aggregation (7 domains)"]
+    subgraph signals["Signal Aggregation (7 live domains)"]
         P[Performance]
         B[Budget]
         C[Coordination]
@@ -20,8 +20,10 @@ flowchart TD
         T[Telemetry]
     end
 
+    Bm["Benchmark<br/>offline / opt-in"]
     signals --> SNAP[OrgSignalSnapshot]
-    SNAP --> RE[Rule Engine<br/>9 built-in rules]
+    Bm --> SNAP
+    SNAP --> RE[Rule Engine<br/>10 built-in rules]
     RE -->|rules fire| STRATEGIES[Strategies<br/>Config / Architecture / Prompt / Code]
     STRATEGIES --> GUARD[Guard Chain<br/>Scope / Rollback / Rate / Approval]
     GUARD -->|all pass| QUEUE[Approval Queue<br/>Human Review]
@@ -75,6 +77,7 @@ src/synthorg/meta/
     errors.py          -- Classification pipeline wrapper
     evolution.py       -- EvolutionService wrapper
     telemetry.py       -- Telemetry pipeline wrapper
+    benchmark.py       -- BenchmarkSignalAggregator (offline golden-benchmark curve)
     snapshot.py        -- Parallel snapshot builder
 
   guards/              -- Proposal validation chain
@@ -162,7 +165,7 @@ src/synthorg/meta/
 | Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
-| Signals consumed | All 7 domains | Performance, budget, coordination, scaling, errors, evolution, telemetry |
+| Signals consumed | 7 live domains + offline benchmark | Performance, budget, coordination, scaling, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
 | Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
@@ -180,6 +183,7 @@ src/synthorg/meta/
 | Errors | Classification pipeline | Category distribution, severity histogram, trends |
 | Evolution | `EvolutionService` | Proposal outcomes, approval rate, axis distribution |
 | Telemetry | Telemetry pipeline | Event counts, top event types, error events |
+| Benchmark | `ScorecardHistory` (offline, opt-in) | Latest golden-benchmark total, run-over-run delta, regression flag |
 
 ## Built-in Rules
 
@@ -194,8 +198,21 @@ src/synthorg/meta/
 | `redundancy` | INFO | Work redundancy rate too high |
 | `scaling_failure` | WARNING | Scaling decisions failing too often |
 | `error_spike` | WARNING | Error findings exceed threshold |
+| `benchmark_regression` | CRITICAL | Latest golden-benchmark run dropped below its predecessor |
 
-All thresholds are configurable via constructor arguments.
+All thresholds are configurable via constructor arguments. `benchmark_regression` is the strongest "something got worse" signal (the golden benchmark is the organisation's ground-truth quality measure), so it fires at CRITICAL and suggests the `PROMPT_TUNING` and `CODE_MODIFICATION` altitudes that can move a benchmark score back up.
+
+## Benchmark-Driven Feedback (Learning Curve)
+
+The golden-company benchmark is the organisation's ground-truth quality measure, and its score across runs is the **learning curve**. Each benchmark run records a per-run scorecard summary into `meta.scorecard_history_dir`; `read_learning_curve` (`synthorg.meta.learning_curve`) assembles the chronological `LearningCurve` with run-over-run deltas and per-run regression flags. `GET /learning/curve` serves it read-only for the dashboard chart; an unset directory yields an empty curve (a legitimate "no benchmark history yet" state, not a failure).
+
+The curve is not just charted; the benchmark quality signal **drives** improvement through three feedback paths, each closing on a tested action rather than a write-only signal:
+
+1. **Evolution**: `BenchmarkSignalAggregator` summarises the curve into `OrgSignalSnapshot.benchmark` (an optional, offline eighth aggregator on `SnapshotBuilder`). The `benchmark_regression` rule then fires CRITICAL on a regression and suggests the `PROMPT_TUNING` and `CODE_MODIFICATION` altitudes.
+2. **Scaling / hiring**: `BenchmarkSignalSource` (`hr/scaling/signals/benchmark.py`) emits `benchmark_score_trend` and `benchmark_is_regression` into the `ScalingContext`; `PerformancePruningStrategy` defers pruning while a regression is in progress (`defer_during_benchmark_regression`, default `True`) so the org does not shed capacity while quality is dropping.
+3. **Procedural memory and fine-tuning**: successful runs capture reusable lessons and failures capture corrected-failure lessons (see [Memory Learning](memory-learning.md)); the continual-improvement fine-tune harvests those plus accepted deliverables and curates them by the same benchmark score, promoting a new embedder only on a measured benchmark win.
+
+Disabling a learning subsystem measurably flattens the curve; this is validated end to end under the simulation harness (a rising curve with learning enabled, a flat curve with it disabled), since a single release cannot demonstrate the effect on its own.
 
 ## Proposal Lifecycle
 

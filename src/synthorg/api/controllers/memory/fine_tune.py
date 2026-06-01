@@ -23,7 +23,6 @@ from synthorg.api.state import AppState
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.domain_errors import (
     FeatureNotImplementedError,
-    FineTuneRunActiveError,
     NotFoundError,
     ServiceUnavailableError,
 )
@@ -94,16 +93,9 @@ class MemoryFineTuneController(Controller):
                 backend=persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
-        try:
-            run = await orchestrator.start(data)
-        except RuntimeError as exc:
-            logger.warning(
-                MEMORY_FINE_TUNE_REQUESTED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "A fine-tuning run is already active"
-            raise FineTuneRunActiveError(msg) from exc
+        # ``orchestrator.start`` raises ``FineTuneRunActiveError`` directly when
+        # a run is already active; it propagates to the 409 handler unchanged.
+        run = await orchestrator.start(data)
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=run.id,
@@ -161,17 +153,11 @@ class MemoryFineTuneController(Controller):
                 backend=persistence_backend_label(app_state),
             )
             raise FeatureNotImplementedError(msg)
+        # ``orchestrator.resume`` raises ``FineTuneRunActiveError`` (another run
+        # active) directly -- it propagates to the 409 handler unchanged. Only
+        # the ``ValueError`` (not found / not resumable) needs translating.
         try:
             run = await orchestrator.resume(run_id)
-        except RuntimeError as exc:
-            logger.warning(
-                MEMORY_FINE_TUNE_REQUESTED,
-                run_id=run_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            msg = "A fine-tuning run is already active"
-            raise FineTuneRunActiveError(msg) from exc
         except ValueError as exc:
             logger.warning(
                 MEMORY_FINE_TUNE_REQUESTED,

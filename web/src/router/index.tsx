@@ -47,6 +47,7 @@ const WebhookReceiptsPage = lazy(() => import('@/pages/WebhookReceiptsPage'))
 const CoordinationMetricsPage = lazy(() => import('@/pages/CoordinationMetricsPage'))
 const MissionControlPage = lazy(() => import('@/pages/MissionControlPage'))
 const MetaAnalyticsPage = lazy(() => import('@/pages/MetaAnalyticsPage'))
+const LearningCurvePage = lazy(() => import('@/pages/LearningCurvePage'))
 const PersonalitiesAdminPage = lazy(() => import('@/pages/PersonalitiesAdminPage'))
 const AdminAuditLogPage = lazy(() => import('@/pages/AdminAuditLogPage'))
 const AdminBackupsPage = lazy(() => import('@/pages/AdminBackupsPage'))
@@ -187,6 +188,7 @@ export const router = createBrowserRouter([
               { path: ROUTES.MISSION_CONTROL.slice(1), element: <MissionControlPage /> },
               { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
+              { path: 'analytics/learning', element: <LearningCurvePage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },
               { path: ROUTES.ADMIN_AUDIT_LOG.slice(1), element: <AdminAuditLogPage /> },
               { path: ROUTES.ADMIN_BACKUPS.slice(1), element: <AdminBackupsPage /> },

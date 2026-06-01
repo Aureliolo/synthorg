@@ -14,6 +14,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     model_validator,
 )
 
@@ -267,6 +268,44 @@ class OrgTelemetrySummary(BaseModel):
     error_event_count: int = Field(default=0, ge=0)
 
 
+class OrgBenchmarkSummary(BaseModel):
+    """Org-wide golden-benchmark signal summary.
+
+    Unlike the seven always-on runtime signals, this is an *opt-in,
+    offline* signal: it is populated only when a scorecard history
+    directory (``meta.scorecard_history_dir``) is configured and has
+    recorded golden-company benchmark runs. An all-default (empty)
+    instance therefore means "no benchmark history" -- which is why
+    :class:`OrgSignalSnapshot` defaults this field rather than requiring
+    it (the other summaries describe always-present runtime state).
+
+    Attributes:
+        run_count: Number of recorded benchmark runs on the curve.
+        latest_total: Most recent run's total score.
+        max_total: Maximum achievable score on the latest run.
+        score_fraction: Latest run's score as a fraction of the maximum.
+        delta: Latest run's total minus the previous run's total.
+        is_regression: Whether the latest run regressed against its
+            predecessor (drop beyond the regression threshold).
+        has_regression: Whether any run on the curve is a regression.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    run_count: int = Field(default=0, ge=0)
+    latest_total: int = Field(default=0, ge=0)
+    max_total: int = Field(default=0, ge=0)
+    delta: int = 0
+    is_regression: bool = False
+    has_regression: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def score_fraction(self) -> float:
+        """Latest run's score as a fraction of the maximum (0.0 with no runs)."""
+        return self.latest_total / self.max_total if self.max_total > 0 else 0.0
+
+
 # ── Composite signal snapshot ──────────────────────────────────────
 
 
@@ -284,6 +323,8 @@ class OrgSignalSnapshot(BaseModel):
         errors: Error taxonomy summary.
         evolution: Evolution signal summary.
         telemetry: Telemetry signal summary.
+        benchmark: Golden-benchmark signal summary (opt-in / offline;
+            empty when no scorecard history is configured).
         collected_at: When the snapshot was assembled.
     """
 
@@ -296,6 +337,7 @@ class OrgSignalSnapshot(BaseModel):
     errors: OrgErrorSummary
     evolution: OrgEvolutionSummary
     telemetry: OrgTelemetrySummary
+    benchmark: OrgBenchmarkSummary = Field(default_factory=OrgBenchmarkSummary)
     collected_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
     )

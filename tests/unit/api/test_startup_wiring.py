@@ -4,9 +4,11 @@ Covers `_wire_workflow_observer`, `_wire_ontology_service`, the unconditional
 tunnel wiring path, and the once-only contract on `set_ontology_service`.
 """
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, override
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog
@@ -18,16 +20,29 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.lifecycle_helpers.finetune_wiring import (
+    _wire_fine_tune_orchestrator,
+)
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
+from synthorg.memory.backends.inmemory import InMemoryBackend
+from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
+from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSource
+from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
 )
+from synthorg.observability.events.memory import (
+    MEMORY_FINE_TUNE_WIRING_FAILED,
+)
 from synthorg.ontology.state import OntologyStateSlice
+from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
+from tests.unit.api.fakes_backend import FakePersistenceBackend
 
 
 def _make_state(**overrides: object) -> AppState:
@@ -287,3 +302,136 @@ class TestTunnelUnconditionalWiring:
             and e.get("service") == "tunnel_provider"
         ]
         assert len(tunnel_logs) == 1
+
+
+class _NoFineTuneBackend(FakePersistenceBackend):
+    """Persistence backend whose fine-tune repo accessor is unsupported.
+
+    Real backends without fine-tune support raise ``NotImplementedError``
+    from the repo accessors (per the persistence protocol contract); this
+    fake reproduces that so the wiring hook's skip path is exercised.
+    """
+
+    @override
+    @property
+    def fine_tune_runs(self) -> Any:
+        msg = "backend does not support fine-tuning"
+        raise NotImplementedError(msg)
+
+
+def _wire_logs(captured: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """Filter captured logs to the fine-tune-orchestrator startup events.
+
+    Returns:
+        The startup-event records emitted by the wiring hook.
+    """
+    return [
+        e
+        for e in captured
+        if e["event"] == API_APP_STARTUP
+        and e.get("service") == "fine_tune_orchestrator"
+    ]
+
+
+@pytest.mark.unit
+class TestWireFineTuneOrchestrator:
+    """The embedding fine-tune orchestrator is wired once persistence connects."""
+
+    async def test_skips_when_persistence_absent(self) -> None:
+        state = _make_state()
+
+        await _wire_fine_tune_orchestrator(state)
+
+        assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
+
+    async def test_wires_orchestrator_and_runs_recovery(self) -> None:
+        fake = FakePersistenceBackend()
+        fake.fine_tune_runs.mark_interrupted.return_value = 0
+        state = _make_state(slices={PersistenceStateSlice: {"backend": fake}})
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_fine_tune_orchestrator(state)
+
+        orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
+        assert isinstance(orchestrator, FineTuneOrchestrator)
+        # No memory backend wired -> trajectory mode is unavailable, but the
+        # orchestrator still wires so directory-mode runs work.
+        assert orchestrator._training_data_source is None
+        fake.fine_tune_runs.mark_interrupted.assert_awaited_once()
+        wired = [e for e in _wire_logs(captured) if e.get("note") == "wired"]
+        assert len(wired) == 1
+        assert wired[0]["trajectory_source"] is False
+
+    async def test_attaches_trajectory_source_when_memory_backend_present(
+        self,
+    ) -> None:
+        fake = FakePersistenceBackend()
+        fake.fine_tune_runs.mark_interrupted.return_value = 0
+        resolver = mock_of[ConfigResolver](
+            get_str=AsyncMock(spec=ConfigResolver.get_str, return_value=""),
+        )
+        state = _make_state(
+            memory_backend=InMemoryBackend(),
+            config_resolver=resolver,
+            slices={PersistenceStateSlice: {"backend": fake}},
+        )
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_fine_tune_orchestrator(state)
+
+        orchestrator = state.slice(MemoryStateSlice).fine_tune_orchestrator
+        assert isinstance(orchestrator, FineTuneOrchestrator)
+        assert isinstance(
+            orchestrator._training_data_source, TrajectoryTrainingDataSource
+        )
+        resolver.get_str.assert_awaited_once()
+        wired = [e for e in _wire_logs(captured) if e.get("note") == "wired"]
+        assert wired[0]["trajectory_source"] is True
+
+    async def test_idempotent_when_already_wired(self) -> None:
+        existing = mock_of[FineTuneOrchestrator]()
+        fake = FakePersistenceBackend()
+        state = _make_state(
+            fine_tune_orchestrator=existing,
+            slices={PersistenceStateSlice: {"backend": fake}},
+        )
+
+        await _wire_fine_tune_orchestrator(state)
+
+        assert state.slice(MemoryStateSlice).fine_tune_orchestrator is existing
+        fake.fine_tune_runs.mark_interrupted.assert_not_awaited()
+
+    async def test_skips_when_backend_lacks_fine_tune_support(self) -> None:
+        state = _make_state(
+            slices={PersistenceStateSlice: {"backend": _NoFineTuneBackend()}}
+        )
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_fine_tune_orchestrator(state)
+
+        assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
+        skipped = [
+            e
+            for e in _wire_logs(captured)
+            if "lacks fine-tune support" in e.get("note", "")
+        ]
+        assert len(skipped) == 1
+
+    async def test_degrades_when_recovery_raises(self) -> None:
+        fake = FakePersistenceBackend()
+        fake.fine_tune_runs.mark_interrupted.side_effect = RuntimeError("db down")
+        state = _make_state(slices={PersistenceStateSlice: {"backend": fake}})
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_fine_tune_orchestrator(state)
+
+        # A wiring failure leaves the controllers to 501 rather than
+        # poisoning startup.
+        assert state.slice(MemoryStateSlice).fine_tune_orchestrator is None
+        degraded = [
+            e
+            for e in captured
+            if e["event"] == MEMORY_FINE_TUNE_WIRING_FAILED
+            and e.get("operation") == "startup_wire"
+        ]
+        assert len(degraded) == 1

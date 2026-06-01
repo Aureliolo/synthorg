@@ -73,3 +73,21 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
+        key="scorecard_history_dir",
+        type=SettingType.STRING,
+        default="",
+        description=(
+            "Filesystem directory the golden-company benchmark records"
+            " per-run scorecard summaries into. The learning-curve"
+            " endpoint and the in-app self-improvement loop read the"
+            " curve from here. Empty means 'no benchmark history"
+            " configured' and yields an empty curve."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+    )
+)

@@ -49,6 +49,7 @@ def make_context(  # noqa: PLR0913
     budget_signals: tuple[ScalingSignal, ...] = (),
     performance_signals: tuple[ScalingSignal, ...] = (),
     skill_signals: tuple[ScalingSignal, ...] = (),
+    benchmark_signals: tuple[ScalingSignal, ...] = (),
     performance_snapshots: dict[str, Any] | None = None,
     evaluated_at: datetime | None = None,
 ) -> ScalingContext:
@@ -59,6 +60,7 @@ def make_context(  # noqa: PLR0913
         budget_signals=budget_signals,
         performance_signals=performance_signals,
         skill_signals=skill_signals,
+        benchmark_signals=benchmark_signals,
         performance_snapshots=performance_snapshots or {},
         evaluated_at=evaluated_at or NOW,
     )

@@ -14,6 +14,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision, ScalingSignal
+from synthorg.hr.scaling.signals.benchmark import BENCHMARK_REGRESSION_SIGNAL
 from synthorg.observability import get_logger
 from synthorg.observability.events.hr import HR_SCALING_STRATEGY_EVALUATED
 
@@ -29,6 +30,19 @@ logger = get_logger(__name__)
 
 _NAME = NotBlankStr("performance_pruning")
 _ACTION_TYPES = frozenset({ScalingActionType.PRUNE})
+
+
+def _benchmark_regressing(context: ScalingContext) -> bool:
+    """Return whether the benchmark regression signal is set in *context*.
+
+    Returns:
+        ``True`` when a ``benchmark_is_regression`` signal with a positive
+        value is present (the golden benchmark's latest run backslid).
+    """
+    return any(
+        signal.name == BENCHMARK_REGRESSION_SIGNAL and signal.value > 0.0
+        for signal in context.benchmark_signals
+    )
 
 
 class PerformancePruningStrategy:
@@ -47,6 +61,10 @@ class PerformancePruningStrategy:
             ``async def(agent_id: NotBlankStr) -> bool``.
         defer_during_evolution: Whether to defer pruning during
             active evolution.
+        defer_during_benchmark_regression: Whether to defer pruning when the
+            golden benchmark's latest run regressed. A measured org-wide
+            quality drop is the wrong moment to shed capacity, so the strategy
+            holds the team until the benchmark recovers.
     """
 
     def __init__(
@@ -55,10 +73,12 @@ class PerformancePruningStrategy:
         policy: PruningPolicy,
         evolution_checker: EvolutionChecker | None = None,
         defer_during_evolution: bool = True,
+        defer_during_benchmark_regression: bool = True,
     ) -> None:
         self._policy = policy
         self._evolution_checker = evolution_checker
         self._defer_during_evolution = defer_during_evolution
+        self._defer_during_benchmark_regression = defer_during_benchmark_regression
 
     @property
     def name(self) -> NotBlankStr:
@@ -94,6 +114,15 @@ class PerformancePruningStrategy:
             context.performance_snapshots
         )
         if not snapshots:
+            return ()
+
+        if self._defer_during_benchmark_regression and _benchmark_regressing(context):
+            logger.info(
+                HR_SCALING_STRATEGY_EVALUATED,
+                strategy="performance_pruning",
+                decisions=0,
+                reason="deferred_benchmark_regression",
+            )
             return ()
 
         now = datetime.now(UTC)

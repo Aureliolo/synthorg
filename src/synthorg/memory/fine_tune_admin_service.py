@@ -169,7 +169,7 @@ class FineTuneAdminService:
         Raises:
             MemoryBackendUnsupportedError: When the active backend does
                 not expose fine-tune support.
-            RuntimeError: If another run is already active.
+            FineTuneRunActiveError: If another run is already active.
         """
         orchestrator = self._require_orchestrator()
         logger.info(
@@ -204,7 +204,7 @@ class FineTuneAdminService:
             FineTuneRunNotFoundError: If *run_id* does not exist.
             FineTuneRunNotResumableError: If the run exists but is not
                 in a resumable stage.
-            RuntimeError: If another run is already active.
+            FineTuneRunActiveError: If another run is already active.
         """
         from synthorg.memory.service import (  # noqa: PLC0415
             FineTuneRunNotFoundError,
@@ -291,10 +291,11 @@ class FineTuneAdminService:
         """Validate *plan* against local-env prerequisites.
 
         Minimal + deterministic so it is callable from any MCP client
-        without kicking off the full pipeline: verifies that the
-        ``source_dir`` exists and is a directory, that ``output_dir``
-        (if provided) is writable, and that numeric overrides are
-        within the runner's declared bounds.
+        without kicking off the full pipeline: in directory mode verifies
+        that the ``source_dir`` exists and is a directory (trajectory mode
+        has no source directory and skips that check), that ``output_dir``
+        (if provided) is writable, and that numeric overrides are within
+        the runner's declared bounds.
 
         Returns:
             Result of type ``PreflightResult``.
@@ -305,7 +306,11 @@ class FineTuneAdminService:
         """
         self._require_orchestrator()
         checks: list[PreflightCheck] = []
-        checks.append(_check_source_dir_exists(plan.source_dir))
+        # The source-directory check applies only to directory mode;
+        # trajectory mode sources from persisted org history, so there is
+        # no ``source_dir`` to stat (and ``plan.source_dir`` is ``None``).
+        if plan.source_dir is not None:
+            checks.append(_check_source_dir_exists(plan.source_dir))
         if plan.output_dir is not None:
             checks.append(_check_output_dir_writable(plan.output_dir))
         checks.append(_check_overrides(plan))

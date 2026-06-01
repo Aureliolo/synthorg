@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.memory.embedding.training_writer import split_and_write_pairs
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -253,7 +254,7 @@ async def _persist_triples(
     Returns:
         Result of type ``Path``.
     """
-    out = _ensure_dir(output_dir)
+    out = await _ensure_dir(output_dir)
     triples_path = out / "training_triples.jsonl"
     await asyncio.to_thread(_write_jsonl_any, triples_path, triples)
     return triples_path
@@ -328,14 +329,17 @@ def _require_not_blank(value: str, name: str) -> None:
         raise ValueError(msg)
 
 
-def _ensure_dir(path: str) -> Path:
-    """Create directory if needed and return as Path.
+async def _ensure_dir(path: str) -> Path:
+    """Create directory (and parents) off the event loop, returning the Path.
+
+    The ``mkdir`` syscall is blocking, so it is offloaded to a worker thread
+    to keep the orchestrator's event loop responsive during a pipeline run.
 
     Returns:
         Result of type ``Path``.
     """
     p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
     return p
 
 
@@ -426,16 +430,7 @@ async def generate_training_data(  # noqa: PLR0913
         msg = f"No documents found in {source_dir}"
         raise ValueError(msg)
 
-    if validation_split <= 0.0 or validation_split >= 1.0:
-        msg = (
-            f"validation_split must be between 0 and 1 exclusive, "
-            f"got {validation_split}"
-        )
-        raise ValueError(msg)
-
-    out = _ensure_dir(output_dir)
     all_pairs: list[dict[str, str]] = []
-
     for i, (_path, content) in enumerate(docs):
         if cancellation is not None:
             cancellation.check()
@@ -448,23 +443,11 @@ async def generate_training_data(  # noqa: PLR0913
         if progress_callback:
             progress_callback((i + 1) / len(docs))
 
-    if len(all_pairs) < 2:  # noqa: PLR2004
-        msg = (
-            f"Need at least 2 query-document pairs for "
-            f"train/validation split, got {len(all_pairs)}"
-        )
-        raise ValueError(msg)
-    raw_split = int(len(all_pairs) * (1 - validation_split))
-    split_idx = max(1, min(len(all_pairs) - 1, raw_split))
-    training = all_pairs[:split_idx]
-    validation = all_pairs[split_idx:]
-
-    train_path = out / "training.jsonl"
-    val_path = out / "validation.jsonl"
-    await asyncio.to_thread(_write_jsonl_any, train_path, training)
-    await asyncio.to_thread(_write_jsonl_any, val_path, validation)
-
-    return train_path, val_path
+    return await split_and_write_pairs(
+        all_pairs,
+        output_dir,
+        validation_split=validation_split,
+    )
 
 
 def _generate_query(
@@ -531,7 +514,9 @@ async def mine_hard_negatives(  # noqa: PLR0913
         training_data_path,
         require_non_empty=False,
     )
-    model = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    model = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
     triples = await _mine_negatives_from_pairs(
         model=model,
         model_name=base_model,
@@ -726,13 +711,15 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     _import_torch()
 
     triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
-    model = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    model = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
 
     examples = _build_training_examples(st, triples)
     total_steps = math.ceil(len(examples) / batch_size) * epochs
 
-    checkpoint_dir = _ensure_dir(output_dir) / "checkpoint"
-    checkpoint_dir.mkdir(exist_ok=True)
+    checkpoint_dir = (await _ensure_dir(output_dir)) / "checkpoint"
+    await asyncio.to_thread(checkpoint_dir.mkdir, exist_ok=True)
 
     step = 0
 
@@ -873,8 +860,12 @@ async def _run_eval_pipeline(  # noqa: PLR0913
         EvalMetrics,
     )
 
-    finetuned = await asyncio.to_thread(st.SentenceTransformer, checkpoint_path)
-    base = await asyncio.to_thread(st.SentenceTransformer, base_model)
+    finetuned = await asyncio.to_thread(
+        st.SentenceTransformer, checkpoint_path, trust_remote_code=False
+    )
+    base = await asyncio.to_thread(
+        st.SentenceTransformer, base_model, trust_remote_code=False
+    )
     if cancellation is not None:
         cancellation.check()
     _report_progress(progress_callback, _EVAL_PROGRESS_AFTER_LOAD)
@@ -930,7 +921,7 @@ async def _persist_eval_metrics(  # noqa: PLR0913
         base_recall_at_10=base_recall,
     )
 
-    out = _ensure_dir(output_dir)
+    out = await _ensure_dir(output_dir)
     metrics_path = out / "eval_metrics.json"
     await asyncio.to_thread(
         metrics_path.write_text,

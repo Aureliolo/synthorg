@@ -1,0 +1,11 @@
+# Deliberately broken golden-company config for the benchmark.
+#
+# Identical brief suite + deterministic provider as the reference run, but the
+# per-run budget ceiling is set absurdly low. Every run blows the ceiling, so
+# the runner attributes a budget-over process-fact penalty to each brief: the
+# scorecard trails the reference by the penalty margin, and the gap is
+# attributable to a budget event (not invented). This is the scorer's
+# discrimination test (broken must score measurably worse than reference).
+company_name: "Broken Benchmark Co"
+budget:
+  run_hard_ceiling: 0.001

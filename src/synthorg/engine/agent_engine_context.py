@@ -1,10 +1,13 @@
 """Context preparation mixin for :class:`AgentEngine`."""
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
+
+from pydantic import TypeAdapter
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
@@ -13,10 +16,14 @@ from synthorg.engine.errors import (
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.task_sync import transition_task_if_needed
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_PROJECT_VALIDATION_FAILED,
+)
+from synthorg.observability.events.memory import (
+    MEMORY_CONTEXT_INJECTED,
+    MEMORY_CONTEXT_INJECTION_FAILED,
 )
 from synthorg.observability.events.prompt import (
     PROMPT_PERSONALITY_NOTIFY_FAILED,
@@ -33,6 +40,16 @@ if TYPE_CHECKING:
     from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
+
+# Token cap for memories surfaced into an agent's pre-execution context by a
+# wired ``memory_injection_strategy``.  Caps the injected-memory section so it
+# cannot crowd out the system prompt and task instruction.
+_DEFAULT_MEMORY_TOKEN_BUDGET: Final[int] = 2000
+# ``NotBlankStr(x)`` is a bare ``str(x)`` cast at runtime and performs no
+# validation, so a module-level adapter enforces the not-blank contract on the
+# identifiers before they cross the memory-injection strategy boundary (the
+# established pattern in ``post_execution/memory_hooks.py``).
+_NB_ADAPTER: Final = TypeAdapter(NotBlankStr)
 
 
 class PersonalityTrimPayload(TypedDict):
@@ -59,6 +76,7 @@ class AgentEngineContextMixin:
     _task_engine: Any
     _personality_trim_notifier: Any
     _project_repo: Any
+    _memory_injection_strategy: Any
 
     async def _prepare_context(  # noqa: PLR0913
         self,
@@ -150,7 +168,11 @@ class AgentEngineContextMixin:
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),
         )
-        for msg in memory_messages:
+        injected = await self._retrieve_injected_memory_messages(
+            agent_id=agent_id,
+            task=task,
+        )
+        for msg in (*injected, *memory_messages):
             ctx = ctx.with_message(msg)
         ctx = ctx.with_message(
             ChatMessage(
@@ -166,6 +188,57 @@ class AgentEngineContextMixin:
             self._task_engine,
         )
         return ctx, system_prompt
+
+    async def _retrieve_injected_memory_messages(
+        self,
+        *,
+        agent_id: str,
+        task: Task,
+    ) -> tuple[ChatMessage, ...]:
+        """Retrieve memories to inject into context via the wired strategy.
+
+        Presence-gated: returns ``()`` when no ``memory_injection_strategy`` is
+        wired (the default), so construction sites that do not opt in are
+        unaffected.  A CONTEXT strategy returns formatted, marker-wrapped
+        memories keyed on the task title (the task's salient retrieval anchor);
+        a TOOL_BASED strategy returns ``()`` (it surfaces memories via agent
+        tools, not pre-execution context).  ``prepare_messages`` degrades
+        gracefully on retrieval failure; system errors propagate, and any
+        other unexpected error is swallowed so memory enrichment never fails
+        the run.
+
+        Returns:
+            The memory messages to thread into the agent's context (possibly
+            empty).
+        """
+        if self._memory_injection_strategy is None:
+            return ()
+        try:
+            messages: tuple[
+                ChatMessage, ...
+            ] = await self._memory_injection_strategy.prepare_messages(
+                _NB_ADAPTER.validate_python(agent_id),
+                _NB_ADAPTER.validate_python(task.title),
+                _DEFAULT_MEMORY_TOKEN_BUDGET,
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                MEMORY_CONTEXT_INJECTION_FAILED,
+                agent_id=agent_id,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ()
+        if messages:
+            logger.info(
+                MEMORY_CONTEXT_INJECTED,
+                agent_id=agent_id,
+                task_id=task.id,
+                message_count=len(messages),
+            )
+        return messages
 
     async def _maybe_notify_personality_trim(
         self,

@@ -513,7 +513,7 @@
     },
     {
       "kind": "code",
-      "loc": 370,
+      "loc": 373,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/__init__.py",
       "owning_feature": "api_core"
@@ -813,6 +813,13 @@
       "owning_feature": "api_core"
     },
     {
+      "kind": "controller",
+      "loc": 61,
+      "loc_cap": 400,
+      "module": "src/synthorg/api/controllers/learning.py",
+      "owning_feature": "api_core"
+    },
+    {
       "kind": "code",
       "loc": 360,
       "loc_cap": 500,
@@ -835,7 +842,7 @@
     },
     {
       "kind": "code",
-      "loc": 430,
+      "loc": 431,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/memory/_preflight.py",
       "owning_feature": "api_core"
@@ -870,7 +877,7 @@
     },
     {
       "kind": "controller",
-      "loc": 290,
+      "loc": 271,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/memory/fine_tune.py",
       "owning_feature": "api_core"
@@ -1521,9 +1528,16 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 534,
+      "loc": 538,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 101,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/lifecycle_helpers/finetune_wiring.py",
       "owning_feature": "api_core"
     },
     {
@@ -1731,7 +1745,7 @@
     },
     {
       "kind": "code",
-      "loc": 263,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/api/rate_limits/policies.py",
       "owning_feature": "api_core"
@@ -4055,14 +4069,14 @@
     },
     {
       "kind": "adapter",
-      "loc": 684,
+      "loc": 687,
       "loc_cap": 700,
       "module": "src/synthorg/engine/agent_engine.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 264,
+      "loc": 325,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_context.py",
       "owning_feature": "engine"
@@ -4083,7 +4097,7 @@
     },
     {
       "kind": "code",
-      "loc": 460,
+      "loc": 486,
       "loc_cap": 500,
       "module": "src/synthorg/engine/agent_engine_post_exec.py",
       "owning_feature": "engine"
@@ -5581,14 +5595,14 @@
     },
     {
       "kind": "code",
-      "loc": 9,
+      "loc": 11,
       "loc_cap": 500,
       "module": "src/synthorg/engine/post_execution/__init__.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 192,
+      "loc": 253,
       "loc_cap": 500,
       "module": "src/synthorg/engine/post_execution/memory_hooks.py",
       "owning_feature": "engine"
@@ -7142,7 +7156,7 @@
     },
     {
       "kind": "code",
-      "loc": 331,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/config.py",
       "owning_feature": "hr"
@@ -7254,7 +7268,7 @@
     },
     {
       "kind": "code",
-      "loc": 380,
+      "loc": 403,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/loop_coordinator.py",
       "owning_feature": "hr"
@@ -7646,7 +7660,7 @@
     },
     {
       "kind": "code",
-      "loc": 161,
+      "loc": 178,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/context.py",
       "owning_feature": "hr"
@@ -7674,7 +7688,7 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/factory.py",
       "owning_feature": "hr"
@@ -7723,7 +7737,7 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/models.py",
       "owning_feature": "hr"
@@ -7747,6 +7761,13 @@
       "loc": 1,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/signals/__init__.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
+      "loc": 126,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/scaling/signals/benchmark.py",
       "owning_feature": "hr"
     },
     {
@@ -7793,7 +7814,7 @@
     },
     {
       "kind": "code",
-      "loc": 149,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/strategies/performance_pruning.py",
       "owning_feature": "hr"
@@ -9060,23 +9081,37 @@
     },
     {
       "kind": "complex_service",
-      "loc": 897,
+      "loc": 891,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/embedding/fine_tune.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 389,
+      "loc": 493,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_models.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 646,
+      "loc": 533,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_orchestrator.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 167,
+      "loc_cap": 600,
+      "module": "src/synthorg/memory/embedding/fine_tune_pipeline.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 95,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/fine_tune_run_helpers.py",
       "owning_feature": "memory"
     },
     {
@@ -9084,6 +9119,13 @@
       "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/fine_tune_runner.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 50,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/promotion.py",
       "owning_feature": "memory"
     },
     {
@@ -9109,7 +9151,21 @@
     },
     {
       "kind": "code",
-      "loc": 49,
+      "loc": 379,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/training_sources.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 56,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/embedding/training_writer.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 54,
       "loc_cap": 500,
       "module": "src/synthorg/memory/errors.py",
       "owning_feature": "memory"
@@ -9123,7 +9179,7 @@
     },
     {
       "kind": "feature",
-      "loc": 46,
+      "loc": 47,
       "loc_cap": 100,
       "module": "src/synthorg/memory/feature.py",
       "owning_feature": "memory"
@@ -9137,14 +9193,14 @@
     },
     {
       "kind": "complex_service",
-      "loc": 383,
+      "loc": 385,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/fine_tune_admin_service.py",
       "owning_feature": "memory"
     },
     {
       "kind": "code",
-      "loc": 215,
+      "loc": 249,
       "loc_cap": 500,
       "module": "src/synthorg/memory/fine_tune_plan.py",
       "owning_feature": "memory"
@@ -10012,7 +10068,7 @@
     },
     {
       "kind": "feature",
-      "loc": 75,
+      "loc": 77,
       "loc_cap": 100,
       "module": "src/synthorg/meta/feature.py",
       "owning_feature": "meta"
@@ -10050,6 +10106,13 @@
       "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/meta/guards/scope_check.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 162,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/learning_curve.py",
       "owning_feature": "meta"
     },
     {
@@ -10145,7 +10208,7 @@
     },
     {
       "kind": "code",
-      "loc": 134,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/_remaining_args/_memory_finetune.py",
       "owning_feature": "meta"
@@ -10271,7 +10334,7 @@
     },
     {
       "kind": "code",
-      "loc": 254,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/domains/memory.py",
       "owning_feature": "meta"
@@ -10351,6 +10414,13 @@
       "loc": 46,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/__init__.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 178,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/mcp/handlers/_memory_finetune_parse.py",
       "owning_feature": "meta"
     },
     {
@@ -10607,7 +10677,7 @@
     },
     {
       "kind": "code",
-      "loc": 735,
+      "loc": 668,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/memory.py",
       "owning_feature": "meta"
@@ -10908,7 +10978,14 @@
     },
     {
       "kind": "code",
-      "loc": 490,
+      "loc": 66,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/rules/benchmark_rule.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 492,
       "loc_cap": 500,
       "module": "src/synthorg/meta/rules/builtin.py",
       "owning_feature": "meta"
@@ -10950,7 +11027,7 @@
     },
     {
       "kind": "code",
-      "loc": 227,
+      "loc": 262,
       "loc_cap": 500,
       "module": "src/synthorg/meta/signal_models.py",
       "owning_feature": "meta"
@@ -10960,6 +11037,13 @@
       "loc": 1,
       "loc_cap": 500,
       "module": "src/synthorg/meta/signals/__init__.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 106,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/signals/benchmark.py",
       "owning_feature": "meta"
     },
     {
@@ -11013,7 +11097,7 @@
     },
     {
       "kind": "code",
-      "loc": 186,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/meta/signals/snapshot.py",
       "owning_feature": "meta"
@@ -11594,7 +11678,7 @@
     },
     {
       "kind": "code",
-      "loc": 3,
+      "loc": 5,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/capture.py",
       "owning_feature": "observability"
@@ -11797,14 +11881,14 @@
     },
     {
       "kind": "code",
-      "loc": 13,
+      "loc": 14,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/eval_loop.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 11,
+      "loc": 14,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/evals.py",
       "owning_feature": "observability"
@@ -11930,14 +12014,14 @@
     },
     {
       "kind": "code",
-      "loc": 169,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/memory.py",
       "owning_feature": "observability"
     },
     {
       "kind": "code",
-      "loc": 100,
+      "loc": 102,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/meta.py",
       "owning_feature": "observability"
@@ -16214,7 +16298,7 @@
     },
     {
       "kind": "code",
-      "loc": 68,
+      "loc": 85,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/meta.py",
       "owning_feature": "settings"
