@@ -1,8 +1,10 @@
 """Tests for well-known Agent Card cache helpers."""
 
 from collections.abc import Iterator
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
+from uuid import NAMESPACE_DNS, uuid5
 
 import pytest
 
@@ -22,7 +24,10 @@ from synthorg.a2a.well_known import (
 )
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.role import Skill
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.resolver import ConfigResolver
@@ -217,14 +222,30 @@ def _make_identity(
     role: str = "engineer",
     skills: tuple[str, ...] = ("python",),
     department: str = "RnD",
-) -> SimpleNamespace:
-    """Build an attribute-bag agent identity for card tests."""
-    return SimpleNamespace(
-        id=agent_id,
+) -> AgentIdentity:
+    """Build a real agent identity for card tests.
+
+    The helpers under test read only ``name`` / ``role`` / ``skills``
+    (fingerprint) and otherwise pass the identity straight to a mocked
+    builder. A real model is used because ``AgentIdentity`` fields are
+    pydantic instance attributes that ``create_autospec`` cannot spec;
+    ``agent_id`` is folded into a deterministic UUID so repeat calls
+    with the same value compare equal.
+    """
+    return AgentIdentity(
+        id=uuid5(NAMESPACE_DNS, agent_id),
         name=name,
         role=role,
-        skills=skills,
         department=department,
+        level=SeniorityLevel.MID,
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-medium-001",
+        ),
+        hiring_date=date(2026, 1, 1),
+        skills=SkillSet(
+            primary=tuple(Skill(id=skill, name=skill) for skill in skills),
+        ),
     )
 
 
@@ -312,7 +333,7 @@ class TestAgentCardHelpers:
         identity = _make_identity()
         builder = Mock(spec=AgentCardBuilder)
         builder.build.return_value = SimpleNamespace(
-            model_dump=lambda: {"name": "Ada"},
+            model_dump=lambda **_: {"name": "Ada"},
         )
         payload = _build_agent_card_payload(
             make_app_state(slices={A2aStateSlice: {"card_builder": builder}}),
@@ -336,7 +357,7 @@ class TestCompanyAgentCardEndpoint:
         registry.list_active.return_value = (_make_identity(),)
         builder = Mock(spec=AgentCardBuilder)
         builder.build_company_card.return_value = SimpleNamespace(
-            model_dump=lambda: {"name": "Snapshot Co"},
+            model_dump=lambda **_: {"name": "Snapshot Co"},
         )
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_str.return_value = "Snapshot Co"
@@ -385,8 +406,8 @@ class TestCompanyAgentCardEndpoint:
         registry.list_active.return_value = (_make_identity(),)
         builder = Mock(spec=AgentCardBuilder)
         builder.build_company_card.side_effect = [
-            SimpleNamespace(model_dump=lambda: {"name": "Old Co"}),
-            SimpleNamespace(model_dump=lambda: {"name": "New Co"}),
+            SimpleNamespace(model_dump=lambda **_: {"name": "Old Co"}),
+            SimpleNamespace(model_dump=lambda **_: {"name": "New Co"}),
         ]
         resolver = AsyncMock(spec=ConfigResolver)
         resolver.get_str.return_value = "Old Co"
@@ -460,7 +481,7 @@ class TestAgentCardEndpoint:
         registry.get.return_value = identity
         builder = Mock(spec=AgentCardBuilder)
         builder.build.return_value = SimpleNamespace(
-            model_dump=lambda: {"name": "Ada"},
+            model_dump=lambda **_: {"name": "Ada"},
         )
         app_state = _make_app_state(registry=registry, builder=builder)
         controller = _controller()
@@ -483,8 +504,8 @@ class TestAgentCardEndpoint:
         registry.get.return_value = _make_identity(name="Ada")
         builder = Mock(spec=AgentCardBuilder)
         builder.build.side_effect = [
-            SimpleNamespace(model_dump=lambda: {"name": "Ada"}),
-            SimpleNamespace(model_dump=lambda: {"name": "Grace"}),
+            SimpleNamespace(model_dump=lambda **_: {"name": "Ada"}),
+            SimpleNamespace(model_dump=lambda **_: {"name": "Grace"}),
         ]
         app_state = _make_app_state(registry=registry, builder=builder)
         controller = _controller()
@@ -550,7 +571,7 @@ class TestAssembleCompanyCard:
         )
         builder = Mock(spec=AgentCardBuilder)
         builder.build_company_card.return_value = SimpleNamespace(
-            model_dump=lambda: {"name": "Resolved Co"},
+            model_dump=lambda **_: {"name": "Resolved Co"},
         )
         app_state = _make_app_state(registry=registry, builder=builder)
 

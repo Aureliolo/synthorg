@@ -19,12 +19,12 @@ and break the single-file enforcement of the credential-leak guard.
 import asyncio
 import hmac
 import json
-from typing import Any, ClassVar, Final
+from typing import ClassVar, Final
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
 from litestar.response import Response
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.a2a.models import (
     A2A_AUTH_REQUIRED,
@@ -50,6 +50,7 @@ from synthorg.a2a.rpc_params import (
 from synthorg.a2a.security import validate_peer
 from synthorg.a2a.task_mapper import to_a2a
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
+from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -57,7 +58,15 @@ from synthorg.core.normalization import (
     extract_bearer_token,
     extract_media_type,
 )
+from synthorg.core.task import Task
+from synthorg.engine.errors import (
+    TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
+    TaskMutationError,
+    TaskNotFoundError,
+)
 from synthorg.engine.state import task_engine_of
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
@@ -94,7 +103,7 @@ _SUPPORTED_METHODS = frozenset(
 _MAX_MESSAGE_PARTS_FALLBACK: Final[int] = 100
 
 
-async def _resolve_max_message_parts(app_state: Any) -> int:
+async def _resolve_max_message_parts(app_state: AppState | None) -> int:
     """Resolve the maximum message-parts cap through the settings chain.
 
     Falls back to :data:`_MAX_MESSAGE_PARTS_FALLBACK` when the
@@ -102,6 +111,11 @@ async def _resolve_max_message_parts(app_state: Any) -> int:
     resolver lookup fails.  A transient settings outage must not let
     an oversized message slip through, so the fallback is the same
     value as the registered default.
+
+    ``app_state`` is accepted as ``AppState | None`` (not just
+    ``AppState``) because a bare harness or a boot path that bypasses
+    :class:`AppState` may pass ``None``; that case takes the same
+    fallback as a missing resolver.
 
     Returns:
         The resolved ``a2a.max_message_parts`` value, or
@@ -143,8 +157,8 @@ def _error_response(
     code: int,
     message: str,
     *,
-    data: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    data: dict[str, JsonValue] | None = None,
+) -> dict[str, JsonValue]:
     """Build a JSON-RPC error response dict.
 
     Args:
@@ -164,13 +178,13 @@ def _error_response(
             data=data,
         ),
     )
-    return resp.model_dump()
+    return resp.model_dump(mode="json")
 
 
 def _success_response(
     request_id: str | int | None,
-    result: dict[str, Any],
-) -> dict[str, Any]:
+    result: dict[str, JsonValue],
+) -> dict[str, JsonValue]:
     """Build a JSON-RPC success response dict.
 
     Args:
@@ -181,7 +195,7 @@ def _success_response(
         Serialized JSON-RPC success response.
     """
     resp = JsonRpcResponse(id=request_id, result=result)
-    return resp.model_dump()
+    return resp.model_dump(mode="json")
 
 
 class A2AGatewayController(Controller):
@@ -205,8 +219,8 @@ class A2AGatewayController(Controller):
     async def handle_jsonrpc(
         self,
         state: State,
-        request: Request[Any, Any, Any],
-    ) -> Response[dict[str, Any]]:
+        request: Request[object, object, State],
+    ) -> Response[dict[str, JsonValue]]:
         """Dispatch an inbound JSON-RPC 2.0 request.
 
         Returns:
@@ -374,10 +388,10 @@ def _parse_jsonrpc(body: bytes) -> JsonRpcRequest | None:
 
 
 async def _dispatch_method(
-    app_state: Any,
+    app_state: AppState,
     rpc_request: JsonRpcRequest,
     peer_name: str,
-) -> Response[dict[str, Any]]:
+) -> Response[dict[str, JsonValue]]:
     """Dispatch a validated JSON-RPC request to its handler.
 
     The envelope's method is checked against the supported set, then
@@ -423,8 +437,8 @@ async def _dispatch_method(
         # Strip ``input`` and ``url`` from each error -- input would
         # echo peer-supplied payload (potentially credential-bearing),
         # and the Pydantic docs URL is noise for a wire client.
-        errors = [
-            {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+        errors: list[JsonValue] = [
+            {"loc": [*e["loc"]], "msg": e["msg"], "type": e["type"]}
             for e in exc.errors(include_input=False, include_url=False)
         ]
         logger.warning(
@@ -490,6 +504,63 @@ async def _dispatch_method(
             ),
             media_type="application/json",
             status_code=exc.http_status,
+        )
+    except TaskNotFoundError as exc:
+        # A task can vanish between a handler's pre-flight ``get_task``
+        # and the subsequent ``cancel_task``; surface the dedicated A2A
+        # not-found code rather than a generic 500.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="task_not_found",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(request_id, A2A_TASK_NOT_FOUND, "Task not found"),
+            media_type="application/json",
+            status_code=404,
+        )
+    except (TaskEngineNotRunningError, TaskEngineQueueFullError) as exc:
+        # Retryable engine-availability faults: a peer must see 503 so it
+        # retries, not a permanent-looking 500.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="engine_unavailable",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(
+                request_id,
+                JSONRPC_INTERNAL_ERROR,
+                "Task engine temporarily unavailable",
+            ),
+            media_type="application/json",
+            status_code=503,
+        )
+    except TaskMutationError as exc:
+        # Mutation rejected by the engine (validation, version conflict).
+        # Maps to invalid-params rather than an internal fault.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="task_mutation_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid task operation",
+            ),
+            media_type="application/json",
+            status_code=400,
         )
     except Exception as exc:
         reraise_critical(exc)
@@ -558,8 +629,8 @@ def _credentials_match(stored: str, presented: str) -> bool:
 
 
 async def _verify_peer_credentials(
-    app_state: Any,
-    request: Request[Any, Any, Any],
+    app_state: AppState,
+    request: Request[object, object, State],
     peer_name: str,
 ) -> bool:
     """Verify the peer's credentials against the connection catalog.
@@ -638,7 +709,7 @@ async def _verify_peer_credentials(
 
 
 def _extract_peer_name(
-    request: Request[Any, Any, Any],
+    request: Request[object, object, State],
 ) -> str | None:
     """Extract the peer name from request headers.
 
@@ -677,7 +748,7 @@ class _A2AMethodError(DomainError):
         self.http_status = http_status
 
 
-def _require_task_engine(app_state: Any) -> Any:
+def _require_task_engine(app_state: AppState) -> TaskEngine:
     """Return the task engine or raise 503.
 
     ``AppState.task_engine`` raises ``ServiceUnavailableError``
@@ -702,7 +773,7 @@ def _require_task_engine(app_state: Any) -> Any:
 
 
 def _validate_task_ownership(
-    task: Any,
+    task: Task,
     peer_name: str,
 ) -> None:
     """Verify the peer created or is assigned this task.
@@ -724,10 +795,10 @@ def _validate_task_ownership(
 
 
 async def _handle_message_send(
-    app_state: Any,
+    app_state: AppState,
     params: A2AMessageSendParams,
     peer_name: str,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Handle ``message/send`` -- create a task.
 
     The :class:`A2AMessageSendParams` model has already validated that
@@ -770,13 +841,8 @@ async def _handle_message_send(
 
     task_engine = _require_task_engine(app_state)
 
-    from uuid import uuid4 as _uuid4  # noqa: PLC0415
-
     from synthorg.core.enums import Priority, TaskType  # noqa: PLC0415
-    from synthorg.engine.task_engine_models import (  # noqa: PLC0415
-        CreateTaskData,
-        CreateTaskMutation,
-    )
+    from synthorg.engine.task_engine_models import CreateTaskData  # noqa: PLC0415
 
     task_data = CreateTaskData(
         title=f"A2A: {description[:80]}",
@@ -786,12 +852,10 @@ async def _handle_message_send(
         project="a2a-inbound",
         created_by="a2a-gateway",
     )
-    mutation = CreateTaskMutation(
-        request_id=_uuid4().hex,
+    created = await task_engine.create_task(
+        task_data,
         requested_by=f"a2a-gateway:{peer_name}",
-        task_data=task_data,
     )
-    created = await task_engine.submit(mutation)
 
     logger.info(
         A2A_TASK_CREATED,
@@ -806,10 +870,10 @@ async def _handle_message_send(
 
 
 async def _handle_tasks_get(
-    app_state: Any,
+    app_state: AppState,
     params: A2ATaskGetParams,
     peer_name: str,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Handle ``tasks/get`` -- retrieve task state.
 
     Args:
@@ -825,7 +889,7 @@ async def _handle_tasks_get(
             or when the task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
-    task = await task_engine.get(params.id)
+    task = await task_engine.get_task(params.id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
@@ -842,10 +906,10 @@ async def _handle_tasks_get(
 
 
 async def _handle_tasks_cancel(
-    app_state: Any,
+    app_state: AppState,
     params: A2ATaskCancelParams,
     peer_name: str,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Handle ``tasks/cancel`` -- cancel a running task.
 
     Args:
@@ -862,7 +926,7 @@ async def _handle_tasks_cancel(
             when the task engine is unavailable.
     """
     task_engine = _require_task_engine(app_state)
-    task = await task_engine.get(params.id)
+    task = await task_engine.get_task(params.id)
     if task is None:
         raise _A2AMethodError(
             A2A_TASK_NOT_FOUND,
@@ -885,7 +949,11 @@ async def _handle_tasks_cancel(
             "Task is in terminal state",
         )
 
-    cancelled = await task_engine.cancel(params.id)
+    cancelled_task, _ = await task_engine.cancel_task(
+        params.id,
+        requested_by=f"a2a-gateway:{peer_name}",
+        reason="A2A tasks/cancel request",
+    )
 
     logger.info(
         A2A_TASK_CANCELLED,
@@ -894,6 +962,6 @@ async def _handle_tasks_cancel(
     )
 
     return {
-        "id": cancelled.id,
-        "state": to_a2a(cancelled.status).value,
+        "id": cancelled_task.id,
+        "state": to_a2a(cancelled_task.status).value,
     }
