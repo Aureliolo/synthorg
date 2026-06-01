@@ -1,5 +1,6 @@
 """Domain models for the fine-tuning pipeline."""
 
+from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal, Self
 
@@ -14,6 +15,52 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
+
+
+def _assert_safe_base_model(value: str | None) -> None:
+    """Reject base-model references that could trigger remote-code / SSRF loads.
+
+    The fine-tune backend passes ``base_model`` straight to the embedding
+    library's model loader (``SentenceTransformer(base_model)``). A URL scheme
+    would let that loader fetch -- and on legacy pickle weight formats, execute
+    -- an arbitrary remote artefact, and parent-directory traversal or a Windows
+    path would escape the model store. All three are rejected here; Hugging
+    Face ``org/name`` identifiers and POSIX local paths pass. This is the
+    boundary half of the defence; the call sites also pin
+    ``trust_remote_code=False``.
+
+    Raises:
+        ValueError: If the reference is a URL, contains parent-directory
+            traversal, or uses a backslash / drive letter.
+    """
+    if value is None:
+        return
+    if "://" in value:
+        msg = "base_model must be a model id or POSIX path, not a URL"
+        raise ValueError(msg)
+    parts = PureWindowsPath(value).parts + PurePosixPath(value).parts
+    if ".." in parts:
+        msg = "base_model must not contain parent-directory traversal (..)"
+        raise ValueError(msg)
+    if "\\" in value or (len(value) >= 2 and value[1] == ":"):  # noqa: PLR2004
+        msg = (
+            "base_model must be a POSIX path or model id "
+            "(no backslashes or drive letters)"
+        )
+        raise ValueError(msg)
+
+
+class FineTuneDataSourceType(StrEnum):
+    """Where the finetune draws its training pairs from.
+
+    ``DIRECTORY`` scans a static document directory (``source_dir``);
+    ``TRAJECTORY`` harvests the org's real working history (completed-task
+    deliverables, EPISODIC distillation trajectories, and PROCEDURAL failure
+    lessons) and curates by the golden-benchmark score.
+    """
+
+    DIRECTORY = "directory"
+    TRAJECTORY = "trajectory"
 
 
 class FineTuneRequest(BaseModel):
@@ -35,8 +82,16 @@ class FineTuneRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    source_dir: NotBlankStr = Field(
-        description="Directory containing org documents",
+    data_source: FineTuneDataSourceType = Field(
+        default=FineTuneDataSourceType.DIRECTORY,
+        description="Where training pairs are drawn from",
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Directory containing org documents (required in directory mode,"
+            " ignored in trajectory mode)"
+        ),
     )
     base_model: NotBlankStr | None = Field(
         default=None,
@@ -83,6 +138,24 @@ class FineTuneRequest(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` when sourcing from a directory.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if (
+            self.data_source is FineTuneDataSourceType.DIRECTORY
+            and self.source_dir is None
+        ):
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _reject_path_traversal(self) -> Self:
         """Reject parent-directory traversal and Windows paths.
 
@@ -108,6 +181,19 @@ class FineTuneRequest(BaseModel):
                     "or drive letters)"
                 )
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_base_model(self) -> Self:
+        """Reject unsafe ``base_model`` references (RCE / SSRF defence).
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If ``base_model`` fails the safe-reference check.
+        """
+        _assert_safe_base_model(self.base_model)
         return self
 
 
@@ -237,7 +323,14 @@ class FineTuneRunConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    source_dir: NotBlankStr = Field(description="Source document directory")
+    data_source: FineTuneDataSourceType = Field(
+        default=FineTuneDataSourceType.DIRECTORY,
+        description="Where training pairs are drawn from",
+    )
+    source_dir: NotBlankStr | None = Field(
+        default=None,
+        description="Source document directory (directory mode only)",
+    )
     base_model: NotBlankStr = Field(description="Base embedding model")
     output_dir: NotBlankStr = Field(description="Checkpoint output directory")
     epochs: int = Field(default=3, ge=1, description="Training epochs")
@@ -251,6 +344,37 @@ class FineTuneRunConfig(BaseModel):
         lt=1.0,
         description="Fraction held out for evaluation",
     )
+
+    @model_validator(mode="after")
+    def _require_source_dir_in_directory_mode(self) -> Self:
+        """Require ``source_dir`` when sourcing from a directory.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If directory mode is selected without a ``source_dir``.
+        """
+        if (
+            self.data_source is FineTuneDataSourceType.DIRECTORY
+            and self.source_dir is None
+        ):
+            msg = "source_dir is required when data_source is 'directory'"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_base_model(self) -> Self:
+        """Reject unsafe ``base_model`` references (RCE / SSRF defence).
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If ``base_model`` fails the safe-reference check.
+        """
+        _assert_safe_base_model(self.base_model)
+        return self
 
 
 # ── Pipeline run record ─────────────────────────────────────────

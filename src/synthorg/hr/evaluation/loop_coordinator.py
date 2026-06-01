@@ -51,6 +51,7 @@ from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_CYCLE_FAILED,
     EVAL_LOOP_CYCLE_START,
     EVAL_LOOP_PATTERN_IDENTIFIED,
+    EVAL_LOOP_TRAINING_TRIGGERED,
 )
 
 logger = get_logger(__name__)
@@ -200,7 +201,19 @@ class EvalLoopCoordinator:
             # 4. PROPOSE: action proposals (stub).
             proposed_actions = await self._propose_actions(observations)
 
-            # 5. Optionally run benchmarks.
+            # 5. DECIDE: a cycle that identified corrective actions routes
+            # them to the training pipeline -- gated so training (an
+            # expensive action) never fires without an explicit opt-in.
+            training_triggered = self._should_trigger_training(proposed_actions)
+            if training_triggered:
+                logger.info(
+                    EVAL_LOOP_TRAINING_TRIGGERED,
+                    cycle_id=cycle_id,
+                    action_count=len(proposed_actions),
+                    actions=list(proposed_actions),
+                )
+
+            # 6. Optionally run benchmarks.
             benchmark_results: tuple[BenchmarkRunResult, ...] = ()
             if self._config.benchmark_on_cycle:
                 benchmark_results = await self._run_benchmarks()
@@ -216,7 +229,7 @@ class EvalLoopCoordinator:
                 agent_reports=reports,
                 observations=observations,
                 proposed_actions=proposed_actions,
-                training_triggered=False,
+                training_triggered=training_triggered,
                 benchmark_results=benchmark_results,
                 created_at=datetime.now(UTC),
             )
@@ -452,6 +465,24 @@ class EvalLoopCoordinator:
         if not mapped:
             return ("unmapped_pattern", None, {"pillar": pillar})
         return ("", mapped, {})
+
+    def _should_trigger_training(
+        self,
+        proposed_actions: tuple[NotBlankStr, ...],
+    ) -> bool:
+        """Decide whether this cycle's actions route to the training pipeline.
+
+        Training is an expensive, cost-incurring action, so it fires
+        only when the cycle identified at least one corrective action
+        *and* the operator opted in via ``config.training_on_actions``.
+
+        Args:
+            proposed_actions: Actions returned by :meth:`_propose_actions`.
+
+        Returns:
+            ``True`` when training should be triggered for this cycle.
+        """
+        return bool(proposed_actions) and self._config.training_on_actions
 
     async def _run_benchmarks(self) -> tuple[BenchmarkRunResult, ...]:
         """Run all registered benchmarks concurrently.

@@ -379,6 +379,58 @@ class TestFineTuneRequestExtensions:
 
 
 @pytest.mark.unit
+class TestBaseModelValidation:
+    """``base_model`` RCE / SSRF defence on both request and run config."""
+
+    @pytest.mark.parametrize(
+        "bad_model",
+        [
+            "https://evil.example/model",
+            "file://etc/passwd",
+            "../../etc/passwd",
+            "models\\windows",
+            "C:/models/x",
+        ],
+    )
+    def test_request_rejects_unsafe_base_model(self, bad_model: str) -> None:
+        with pytest.raises(ValidationError, match="base_model"):
+            FineTuneRequest(source_dir="/docs", base_model=bad_model)
+
+    @pytest.mark.parametrize(
+        "bad_model",
+        [
+            "https://evil.example/model",
+            "../escape",
+            "back\\slash",
+            "D:/drive",
+        ],
+    )
+    def test_run_config_rejects_unsafe_base_model(self, bad_model: str) -> None:
+        with pytest.raises(ValidationError, match="base_model"):
+            FineTuneRunConfig(
+                source_dir="/docs",
+                base_model=bad_model,
+                output_dir="/out",
+            )
+
+    @pytest.mark.parametrize(
+        "good_model",
+        ["all-MiniLM-L6-v2", "example-org/example-encoder", "/data/models/local"],
+    )
+    def test_accepts_safe_base_model(self, good_model: str) -> None:
+        cfg = FineTuneRunConfig(
+            source_dir="/docs",
+            base_model=good_model,
+            output_dir="/out",
+        )
+        assert cfg.base_model == good_model
+
+    def test_request_allows_none_base_model(self) -> None:
+        req = FineTuneRequest(source_dir="/docs")
+        assert req.base_model is None
+
+
+@pytest.mark.unit
 class TestFineTuneExecutionConfig:
     """FineTuneExecutionConfig model validation."""
 

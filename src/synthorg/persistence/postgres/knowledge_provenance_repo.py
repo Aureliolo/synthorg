@@ -1,10 +1,10 @@
 """Postgres repository implementation for :class:`ChunkProvenanceRow`."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, TupleRow, dict_row
 from pydantic import TypeAdapter, ValidationError
 
 from synthorg.core.enums import ContentKind
@@ -43,7 +43,7 @@ _MAX_LIST_ROWS: int = 100_000
 _LOCATOR_ADAPTER: TypeAdapter[ProvenanceLocator] = TypeAdapter(ProvenanceLocator)
 
 
-def _row_to_provenance(row: dict[str, Any]) -> ChunkProvenanceRow:
+def _row_to_provenance(row: DictRow) -> ChunkProvenanceRow:
     """Reconstruct a :class:`ChunkProvenanceRow` from a ``dict_row``.
 
     Returns:
@@ -89,7 +89,7 @@ class PostgresChunkProvenanceRepository:
         )
 
     async def _safe_rollback(
-        self, conn: psycopg.AsyncConnection[Any], *, event: str
+        self, conn: psycopg.AsyncConnection[TupleRow], *, event: str
     ) -> None:
         """Safe rollback."""
         try:
@@ -403,7 +403,7 @@ class PostgresChunkProvenanceRepository:
         return count
 
     def _rows_to_tuple(
-        self, rows: tuple[dict[str, Any], ...]
+        self, rows: tuple[DictRow, ...]
     ) -> tuple[ChunkProvenanceRow, ...]:
         """Deserialise a row batch with one shared error path.
 

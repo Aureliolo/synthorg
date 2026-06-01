@@ -17,6 +17,7 @@ from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.conversational import ConversationalController
 from synthorg.api.controllers.custom_rules import CustomRuleController
 from synthorg.api.controllers.experiments import ExperimentsController
+from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
@@ -71,6 +72,7 @@ FEATURE: FeatureModule = FeatureManifest(
         AnalyticsController,
         ExperimentsController,
         CustomRuleController,
+        LearningController,
     ),
     mcp_handlers=(
         mcp_descriptor(

@@ -7,8 +7,10 @@ Both backends round-trip the same Pydantic model. Differences:
   timestamps as TIMESTAMPTZ (returned as ``datetime``); row access is
   by column name (``psycopg.rows.dict_row``).
 
-The helpers below take a unified ``dict[str, Any]`` row contract,
-tolerate either encoding for ``target_altitudes``, and route both
+The helpers below take a unified column-keyed row mapping
+(``psycopg.rows.DictRow``; the SQLite repo converts its positional
+``aiosqlite.Row`` into the same dict shape), tolerate either encoding
+for ``target_altitudes``, and route both
 backends through :func:`coerce_row_timestamp` so timestamp
 normalisation is the conformance contract.
 
@@ -18,8 +20,8 @@ instantiating either backend.
 """
 
 import json
-from typing import Any
 
+from psycopg.rows import DictRow
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import MalformedRowError
@@ -55,7 +57,7 @@ def serialize_altitudes(rule: CustomRuleDefinition) -> list[str]:
     return [a.value for a in rule.target_altitudes]
 
 
-def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
+def row_to_custom_rule(row: DictRow) -> CustomRuleDefinition:
     """Deserialise a row mapping into a :class:`CustomRuleDefinition`.
 
     Tolerates both string-encoded ``target_altitudes`` (SQLite TEXT)

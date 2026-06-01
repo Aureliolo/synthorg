@@ -23,10 +23,12 @@ from synthorg.core.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
+    InterventionKind,
     Priority,
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.models import STEERABLE_KINDS
 from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.models import ProposalAltitude, RuleSeverity
 
@@ -343,20 +345,59 @@ class ProposedWork(BaseModel):
     acceptance_criteria: tuple[NotBlankStr, ...] = ()
 
 
+class ProposedSteering(BaseModel):
+    """A single steering directive emitted by the clarify step.
+
+    The human asks to redirect or hint an in-flight project rather than to
+    create new work. On approval this routes to ``SteeringService.issue``;
+    supersession stays an explicit operator cockpit action, so the
+    conversational path issues in ``NONE`` supersede mode.
+
+    Attributes:
+        project: Project to steer (optional; resolved at acceptance when
+            absent, mirroring ``ProposedWork.project``).
+        kind: ``HINT`` (advisory) or ``REDIRECT`` (forces a re-plan).
+        text: The directive text the agents adopt.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    project: NotBlankStr | None = None
+    kind: InterventionKind
+    text: NotBlankStr
+
+    @model_validator(mode="after")
+    def _validate_steerable_kind(self) -> Self:
+        """Reject PAUSE/KILL: only HINT and REDIRECT are steerable.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: When ``kind`` is not a steerable intervention.
+        """
+        if self.kind not in STEERABLE_KINDS:
+            msg = f"{self.kind.value!r} is not a steerable directive kind"
+            raise ValueError(msg)
+        return self
+
+
 class ProposeDecision(BaseModel):
     """Structured output of one clarify-or-propose model turn.
 
-    Exactly one branch is taken: either the model asks a single
-    clarifying question, or it emits one or more concrete work
-    proposals. The two are mutually exclusive and exhaustive.
+    Exactly one branch is taken: either the model asks a single clarifying
+    question, or it emits one or more concrete work proposals and/or steering
+    directives. Clarification is mutually exclusive with proposing.
 
     Attributes:
         needs_clarification: ``True`` when the request is still
             underspecified and a question is being asked.
         clarifying_question: The question to put back to the human;
             required iff ``needs_clarification``.
-        proposals: The proposed work items; non-empty iff not
-            ``needs_clarification``.
+        proposals: The proposed work items.
+        steering: The proposed steering directives (redirect / hint an
+            in-flight project). At least one of ``proposals`` / ``steering``
+            is non-empty iff not ``needs_clarification``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -364,6 +405,7 @@ class ProposeDecision(BaseModel):
     needs_clarification: bool
     clarifying_question: NotBlankStr | None = None
     proposals: tuple[ProposedWork, ...] = ()
+    steering: tuple[ProposedSteering, ...] = ()
 
     @model_validator(mode="after")
     def _validate_exclusive_branch(self) -> Self:
@@ -379,12 +421,17 @@ class ProposeDecision(BaseModel):
             if self.clarifying_question is None:
                 msg = "clarifying_question is required when needs_clarification is True"
                 raise ValueError(msg)
-            if self.proposals:
-                msg = "proposals must be empty when needs_clarification is True"
+            if self.proposals or self.steering:
+                msg = (
+                    "proposals/steering must be empty when needs_clarification is True"
+                )
                 raise ValueError(msg)
         else:
-            if not self.proposals:
-                msg = "proposals must be non-empty when needs_clarification is False"
+            if not self.proposals and not self.steering:
+                msg = (
+                    "proposals or steering must be non-empty when "
+                    "needs_clarification is False"
+                )
                 raise ValueError(msg)
             if self.clarifying_question is not None:
                 msg = (
@@ -464,6 +511,24 @@ class ProposedApprovalSummary(BaseModel):
     priority: Priority
 
 
+class SteeringProposalSummary(BaseModel):
+    """One parked steering directive, summarised for the API response.
+
+    Attributes:
+        approval_id: The gating approval-queue item id.
+        kind: ``HINT`` or ``REDIRECT``.
+        text: The directive text awaiting approval.
+        project: Project the directive targets.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approval_id: NotBlankStr
+    kind: InterventionKind
+    text: NotBlankStr
+    project: NotBlankStr
+
+
 class ProposeResult(BaseModel):
     """Outcome of one ``converse`` turn.
 
@@ -498,6 +563,7 @@ class ProposeResult(BaseModel):
     status: Literal["needs_clarification", "proposed"]
     clarifying_question: NotBlankStr | None = None
     proposals: tuple[ProposedApprovalSummary, ...] = ()
+    steering: tuple[SteeringProposalSummary, ...] = ()
     conversation_closed: bool = False
     responder_role: NotBlankStr | None = None
     responder_name: NotBlankStr | None = None
@@ -529,12 +595,17 @@ class ProposeResult(BaseModel):
                     "status is 'needs_clarification'"
                 )
                 raise ValueError(msg)
-            if self.proposals:
-                msg = "proposals must be empty when status is 'needs_clarification'"
+            if self.proposals or self.steering:
+                msg = (
+                    "proposals/steering must be empty when "
+                    "status is 'needs_clarification'"
+                )
                 raise ValueError(msg)
         else:
-            if not self.proposals:
-                msg = "proposals must be non-empty when status is 'proposed'"
+            if not self.proposals and not self.steering:
+                msg = (
+                    "proposals or steering must be non-empty when status is 'proposed'"
+                )
                 raise ValueError(msg)
             if self.clarifying_question is not None:
                 msg = "clarifying_question must be None when status is 'proposed'"

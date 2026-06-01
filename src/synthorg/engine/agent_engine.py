@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.hybrid_models import HybridLoopConfig
+    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
@@ -98,6 +99,7 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
@@ -188,6 +190,7 @@ class AgentEngine(
         checkpoint_config: CheckpointConfig | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        steering_inbox: SteeringInbox | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
         hybrid_loop_config: HybridLoopConfig | None = None,
         compaction_callback: CompactionCallback | None = None,
@@ -199,6 +202,7 @@ class AgentEngine(
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         ontology_injection_strategy: OntologyInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
+        capture_strategy: CaptureStrategy | None = None,
         memory_backend: MemoryBackend | None = None,
         distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
@@ -255,6 +259,7 @@ class AgentEngine(
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
         self._stakes_router = stakes_router
         self._stagnation_detector = stagnation_detector
+        self._steering_inbox = steering_inbox
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config
         self._compaction_callback = compaction_callback
@@ -311,6 +316,7 @@ class AgentEngine(
         self._memory_injection_strategy = memory_injection_strategy
         self._ontology_injection_strategy = ontology_injection_strategy
         self._procedural_memory_config = procedural_memory_config
+        self._capture_strategy = capture_strategy
         self._memory_backend = memory_backend
         self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver

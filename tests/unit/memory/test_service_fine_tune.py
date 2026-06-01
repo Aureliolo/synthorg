@@ -9,6 +9,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     CheckpointRecord,
+    FineTuneDataSourceType,
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
@@ -443,6 +444,23 @@ class TestRunPreflight:
         assert source_checks
         assert source_checks[0].status == "fail"
         assert "not readable" in source_checks[0].message
+
+    async def test_trajectory_mode_skips_source_dir_check(self) -> None:
+        """Trajectory mode has no ``source_dir`` to stat -- the check is skipped.
+
+        Statting ``None`` would raise ``TypeError`` inside
+        ``_check_source_dir_exists``; the guard must elide it so a
+        trajectory preflight stays a clean, deterministic result.
+        """
+        service = _service(orchestrator=_FakeOrchestrator())
+        plan = FineTunePlan(data_source=FineTuneDataSourceType.TRAJECTORY)
+
+        result = await service.run_preflight(plan)
+
+        source_checks = [c for c in result.checks if c.name == "source_dir_exists"]
+        assert not source_checks
+        override_checks = [c for c in result.checks if c.name == "override_bounds"]
+        assert len(override_checks) == 1
 
 
 class TestListRunsPagination:

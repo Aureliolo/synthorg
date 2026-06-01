@@ -5,7 +5,7 @@ management.  Repository protocols provide entity-level access.
 """
 
 from contextlib import AbstractAsyncContextManager
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.core.agent import AgentIdentity
@@ -277,7 +277,7 @@ class PersistenceBackend(Protocol):
         """
         ...
 
-    def get_db(self) -> Any:
+    def get_db(self) -> object:
         """Return the underlying database connection.
 
         Returns:

@@ -361,7 +361,29 @@ Strategy selection via config: ``memory.retrieval.strategy: context | tool_based
 
 Destructive entries (`cancel_fine_tune`, `rollback_checkpoint`, and `delete_checkpoint` at the handler layer) are gated by the standard MCP guardrail triple (`actor`, literal `confirm=True`, non-blank `reason`) and emit `MCP_ADMIN_OP_EXECUTED` with the resolved actor, reason, and `target_id` (the cancelled run id or the rolled-back / deleted checkpoint id).
 
-`FineTunePlan` is an MCP-facing Pydantic model (`src/synthorg/memory/fine_tune_plan.py`) that mirrors the runner's internal `FineTuneRequest` field-for-field but isolates the public contract from runner internals. A `@model_validator` rejects parent-directory traversal, backslashes, and Windows drive letters on `source_dir` / `output_dir` before the runner's subprocess or container mount could expose the host filesystem.
+`FineTunePlan` is an MCP-facing Pydantic model (`src/synthorg/memory/fine_tune_plan.py`) that mirrors the runner's internal `FineTuneRequest` and isolates the public contract from runner internals. A `@model_validator` rejects parent-directory traversal, backslashes, and Windows drive letters on `source_dir` / `output_dir` before the runner's subprocess or container mount could expose the host filesystem.
+
+### Training data sources (directory vs trajectory)
+
+The fine-tune pipeline draws its `{query, positive_passage}` contrastive pairs from one of two sources, selected per run via `FineTuneRequest.data_source` (`FineTuneDataSourceType`, default `directory`):
+
+- **`directory`** (default): scans a static document directory (`source_dir`), the original behaviour. A cross-field validator requires `source_dir` in this mode.
+- **`trajectory`**: harvests the organisation's real working history through a `TrajectoryTrainingDataSource` (`src/synthorg/memory/embedding/training_sources.py`), so no `source_dir` is needed. It draws three passage sources off the completed/failed-task spine and pairs each passage with the originating task title as the retrieval query:
+  - **Accepted deliverables**: artifacts of COMPLETED tasks via `ArtifactRepository`.
+  - **Distillation trajectories**: EPISODIC distillation entries (condensed run narratives).
+  - **Corrected failures**: PROCEDURAL `failure:*` lessons from the procedural-memory pipeline.
+
+  Pairs are then **curated by benchmark score**: the golden-company scorecard history is the quality filter. A record is kept only when the benchmark run that first observed it (the earliest run at or after the record's timestamp) passed; records newer than the latest run inherit that run's verdict. With no benchmark history every pair is kept.
+
+The trajectory source is a REST opt-in: the MCP `FineTunePlan` keeps `source_dir` required and always runs in directory mode, so trajectory harvesting is an explicit dashboard / REST choice rather than a silent default that would break an empty organisation or an existing directory-mode caller.
+
+### Checkpoint promotion gate
+
+A fine-tuned checkpoint replaces the active embedder **only on a measured win**. After training, the candidate is A/B'd against the current embedder on the retrieval benchmark, and `should_promote(base_score, candidate_score, *, margin)` (`src/synthorg/memory/embedding/promotion.py`) returns `True` only when `candidate_score - base_score >= margin` (default `0.01`, strictly positive so a tie never promotes). On a win the orchestrator deploys the new checkpoint and deactivates the rest; on a tie or loss it records the checkpoint inactive and logs `MEMORY_FINE_TUNE_CHECKPOINT_REJECTED`. The gate is a pure, signal-agnostic function and the orchestrator is the single policy point; `deploy_checkpoint` stays a mechanism (no fail-close) so a rollback can always reactivate a prior checkpoint.
+
+### Startup wiring
+
+The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is best-effort and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
 
 ### BackendUnsupportedError routing
 

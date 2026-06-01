@@ -1,15 +1,17 @@
 """Acceptance test for the golden-company benchmark.
 
 A deliberately broken company config must score measurably worse than
-the reference config under the same brief suite and cassette. This is
-the gating test for the whole eval spine. Marked
-``@pytest.mark.integration`` because it boots a real SynthOrg app per
-brief and exercises the cassette-replay path end-to-end.
+the reference config under the same brief suite and deterministic
+provider. This is the gating test for the whole eval spine. Marked
+``@pytest.mark.integration`` because it boots a real SynthOrg agent
+engine per brief and exercises the full run -> capture -> grade ->
+scorecard path end-to-end.
 
-``importorskip`` is used to keep the test collection-safe when
-``evals.run`` is not yet importable (the runner is intentionally not
-in this layer of the package; the test asserts behaviour, not the
-mere existence of a module).
+The in-repo run uses the deterministic ``ScriptedDriver`` (free,
+reproducible) rather than a recorded cassette; the broken config trails
+the reference because its absurdly low per-run budget ceiling attributes
+a budget-over process-fact penalty to every brief. The recorded-cassette
+path stays available for operators who want an authentic scorecard.
 """
 
 from pathlib import Path
@@ -18,6 +20,7 @@ from typing import Final
 import pytest
 
 from evals.models.scorecard import Scorecard
+from evals.run import run_benchmark
 
 pytestmark = pytest.mark.integration
 
@@ -32,15 +35,11 @@ SCORE_MARGIN: Final[int] = 15
 
 
 def _run(company_yaml: str, out_dir: Path) -> Scorecard:
-    run_mod = pytest.importorskip(
-        "evals.run",
-        reason="evals.run is not available in this environment",
-    )
-    scorecard = run_mod.run_benchmark(
+    scorecard = run_benchmark(
         company_config=EVALS / "baselines" / company_yaml,
         brief_suite=EVALS / "briefs",
-        cassette=EVALS / "cassettes" / "reference_run.cassette.json",
         out_dir=out_dir,
+        anchors_dir=EVALS / "anchors",
     )
     assert isinstance(scorecard, Scorecard)
     return scorecard

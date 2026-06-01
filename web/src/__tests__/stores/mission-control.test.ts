@@ -45,11 +45,4 @@ describe('useMissionControlStore', () => {
     expect(result).toBeNull()
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'error')).toBe(true)
   })
-
-  it('sendHintAction returns the steering outcome on success', async () => {
-    const outcome = await useMissionControlStore
-      .getState()
-      .sendHintAction('exec-1', 'agent-1', 'use Postgres')
-    expect(outcome?.applied).toBe(true)
-  })
 })

@@ -4,10 +4,10 @@ Postgres-native port of the SQLite training plan repository.  Uses
 JSONB for array/object columns and native TIMESTAMPTZ for timestamps.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _row_to_plan(row: dict[str, Any]) -> TrainingPlan:
+def _row_to_plan(row: DictRow) -> TrainingPlan:
     """Reconstruct a ``TrainingPlan`` from a Postgres dict_row.
 
     Postgres returns JSONB as Python lists, TIMESTAMPTZ as aware

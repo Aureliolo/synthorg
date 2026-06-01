@@ -10,7 +10,6 @@ from synthorg.communication.config import (
     HierarchyConfig,
     LoopPreventionConfig,
     MeetingsConfig,
-    MeetingTypeConfig,
     MessageBusConfig,
     NatsConfig,
     RateLimitConfig,
@@ -19,6 +18,7 @@ from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
 )
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.frequency import MeetingFrequency
 
 _TEST_NATS_URL = "nats://localhost:4222"

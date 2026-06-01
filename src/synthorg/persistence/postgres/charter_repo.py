@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.enums import CharterStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -37,8 +37,6 @@ from synthorg.persistence._shared import (
 from synthorg.persistence.charter_protocol import CharterFilterSpec
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -131,7 +129,7 @@ def _as_iso(value: object) -> str | None:
     return str(value)
 
 
-def _row_to_charter(row: dict[str, Any]) -> ProjectCharter:
+def _row_to_charter(row: DictRow) -> ProjectCharter:
     """Convert a Postgres dict row into a :class:`ProjectCharter`.
 
     Returns:

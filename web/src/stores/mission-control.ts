@@ -6,15 +6,12 @@ import {
   getFlightRecorderFrames,
   killTask,
   pauseTask,
-  redirectAgent,
   seekFlightRecorder,
-  sendHint,
 } from '@/api/endpoints/cockpit'
 import type {
   FlightRecorderFrame,
   LiveActivitySnapshot,
   ReplaySeekView,
-  SteeringOutcome,
   Task,
 } from '@/api/types'
 import { createLogger } from '@/lib/logger'
@@ -45,18 +42,9 @@ interface MissionControlState {
   seek: (executionId: string, turnIndex: number) => Promise<void>
 
   // Interventions (mutation pattern: toast + sentinel; callers do NOT wrap).
+  // Mid-flight hint/redirect is project-scoped now -- see useSteeringStore.
   pauseTaskAction: (taskId: string, reason: string) => Promise<Task | null>
   killTaskAction: (taskId: string, reason: string) => Promise<Task | null>
-  sendHintAction: (
-    executionId: string,
-    agentId: string,
-    text: string,
-  ) => Promise<SteeringOutcome | null>
-  redirectAction: (
-    executionId: string,
-    agentId: string,
-    text: string,
-  ) => Promise<SteeringOutcome | null>
 }
 
 type McSet = StoreApi<MissionControlState>['setState']
@@ -204,19 +192,5 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
       `Killed task ${taskId}`,
       'Failed to kill task',
       'kill_failed',
-    ),
-  sendHintAction: (executionId, agentId, text) =>
-    steeringAction(
-      () => sendHint(executionId, agentId, text),
-      'Hint queued for the next safe turn boundary',
-      'Failed to send hint',
-      'hint_failed',
-    ),
-  redirectAction: (executionId, agentId, text) =>
-    steeringAction(
-      () => redirectAgent(executionId, agentId, text),
-      'Redirect queued for the next safe turn boundary',
-      'Failed to redirect agent',
-      'redirect_failed',
     ),
 }))

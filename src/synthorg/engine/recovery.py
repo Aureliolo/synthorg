@@ -23,7 +23,8 @@ from pydantic import (
 
 from synthorg.core.enums import FailureCategory, TaskStatus
 from synthorg.core.types import NotBlankStr, validate_unique_strings
-from synthorg.engine.context import AgentContext, AgentContextSnapshot
+from synthorg.engine.context import AgentContext
+from synthorg.engine.context_snapshot import AgentContextSnapshot
 from synthorg.engine.immutable import deep_copy_mapping
 from synthorg.engine.stagnation.models import (
     StagnationResult,

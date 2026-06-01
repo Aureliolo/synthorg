@@ -69,6 +69,7 @@ EXECUTION_SHUTDOWN_CHECKPOINT_FAILED: Final[str] = (
     "execution.shutdown.checkpoint_failed"
 )
 EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
+EXECUTION_LOOP_TASK_CANCELLED: Final[str] = "execution.loop.task_cancelled"
 
 EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"
 EXECUTION_PLAN_STEP_START: Final[str] = "execution.plan.step_start"

@@ -8,7 +8,7 @@ Sibling of ``SQLiteConversationalProposalRepository`` backed by
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
@@ -29,8 +29,6 @@ from synthorg.persistence.conversational_proposal_protocol import (
 )
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from psycopg_pool import AsyncConnectionPool
 
     from synthorg.core.types import NotBlankStr
@@ -53,7 +51,7 @@ _UPSERT_SQL = f"""
 """  # noqa: S608  -- column list is a compile-time constant
 
 
-def _row_to_proposal(row: dict[str, Any]) -> ConversationalProposal:
+def _row_to_proposal(row: DictRow) -> ConversationalProposal:
     """Convert a Postgres dict row into a :class:`ConversationalProposal`.
 
     Returns:

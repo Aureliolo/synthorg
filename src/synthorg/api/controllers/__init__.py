@@ -64,6 +64,7 @@ from synthorg.api.controllers.health import (
 from synthorg.api.controllers.integration_health import (
     IntegrationHealthController,
 )
+from synthorg.api.controllers.learning import LearningController
 from synthorg.api.controllers.mcp_catalog import MCPCatalogController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.memory.checkpoints import (
@@ -125,6 +126,7 @@ from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
 from synthorg.api.controllers.simulations import SimulationController
+from synthorg.api.controllers.steering import SteeringController
 from synthorg.api.controllers.subworkflows import SubworkflowController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.teams import TeamController
@@ -236,8 +238,10 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetaController,
     ConversationalController,
     MetaAnalyticsController,
+    LearningController,
     CustomRuleController,
     CockpitController,
+    SteeringController,
 )
 
 if TYPE_CHECKING:
@@ -353,6 +357,7 @@ __all__ = [
     "GlobalKnowledgeController",
     "IntegrationHealthController",
     "InterruptController",
+    "LearningController",
     "LivenessController",
     "MCPCatalogController",
     "MeetingController",

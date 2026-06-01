@@ -277,6 +277,12 @@ class EvalLoopConfig(BaseModel):
             Keys are ``EvaluationPillar`` values; values are free-form
             action identifiers. Unknown pillars fall back to the
             shipped default map.
+        training_on_actions: When ``True``, a cycle that identifies
+            corrective actions marks the cycle as training-triggered so
+            the closed-loop runtime routes the actions to the training
+            pipeline. Defaults to ``False`` so training -- an expensive,
+            cost-incurring action -- is never fired without an explicit
+            opt-in.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -284,6 +290,10 @@ class EvalLoopConfig(BaseModel):
     enabled: bool = Field(
         default=True,
         description="Whether evaluation cycles are active",
+    )
+    training_on_actions: bool = Field(
+        default=False,
+        description="Mark a cycle training-triggered when it proposes actions",
     )
     pattern_identifier_enabled: bool = Field(
         default=True,

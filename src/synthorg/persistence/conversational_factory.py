@@ -8,7 +8,7 @@ concrete-backend imports here means the persistence boundary holds --
 no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -18,6 +18,9 @@ from synthorg.observability.events.persistence import (
 )
 
 if TYPE_CHECKING:
+    import aiosqlite
+    from psycopg_pool import AsyncConnectionPool
+
     from synthorg.persistence.conversation_invite_protocol import (
         ConversationInviteRepository,
     )
@@ -119,21 +122,22 @@ def build_conversational_repositories(
             SQLiteConversationalProposalRepository,
         )
 
+        sqlite_handle = cast("aiosqlite.Connection", handle)
         return ConversationalRepositories(
             conversation_repo=SQLiteConversationRepository(
-                handle, write_context=write_context
+                sqlite_handle, write_context=write_context
             ),
             turn_repo=SQLiteConversationTurnRepository(
-                handle, write_context=write_context
+                sqlite_handle, write_context=write_context
             ),
             proposal_repo=SQLiteConversationalProposalRepository(
-                handle, write_context=write_context
+                sqlite_handle, write_context=write_context
             ),
             participant_repo=SQLiteConversationParticipantRepository(
-                handle, write_context=write_context
+                sqlite_handle, write_context=write_context
             ),
             invite_repo=SQLiteConversationInviteRepository(
-                handle, write_context=write_context
+                sqlite_handle, write_context=write_context
             ),
         )
     from synthorg.persistence.postgres.conversation_invite_repo import (  # noqa: PLC0415
@@ -150,12 +154,13 @@ def build_conversational_repositories(
         PostgresConversationalProposalRepository,
     )
 
+    pg_handle = cast("AsyncConnectionPool", handle)
     return ConversationalRepositories(
-        conversation_repo=PostgresConversationRepository(handle),
-        turn_repo=PostgresConversationTurnRepository(handle),
-        proposal_repo=PostgresConversationalProposalRepository(handle),
-        participant_repo=PostgresConversationParticipantRepository(handle),
-        invite_repo=PostgresConversationInviteRepository(handle),
+        conversation_repo=PostgresConversationRepository(pg_handle),
+        turn_repo=PostgresConversationTurnRepository(pg_handle),
+        proposal_repo=PostgresConversationalProposalRepository(pg_handle),
+        participant_repo=PostgresConversationParticipantRepository(pg_handle),
+        invite_repo=PostgresConversationInviteRepository(pg_handle),
     )
 
 

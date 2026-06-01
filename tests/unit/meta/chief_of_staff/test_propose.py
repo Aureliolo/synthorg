@@ -10,8 +10,14 @@ from synthorg.core.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
+    InterventionKind,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.intervention.models import (
+    STEERING_INTAKE_KIND_KEY,
+    STEERING_INTAKE_PROJECT_KEY,
+    STEERING_INTAKE_TEXT_KEY,
+)
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
@@ -48,6 +54,17 @@ _PROPOSE_NO_PROJECT_JSON = (
     '"proposals": [{"title": "Do a thing", "raw_intent": "Some work", '
     '"priority": "medium", "task_type": "development", '
     '"estimated_complexity": "simple", "acceptance_criteria": []}]}'
+)
+_STEER_JSON = (
+    '{"needs_clarification": false, "clarifying_question": null, '
+    '"proposals": [], '
+    '"steering": [{"project": "checkout", "kind": "redirect", '
+    '"text": "use Postgres not Mongo"}]}'
+)
+_STEER_NO_PROJECT_JSON = (
+    '{"needs_clarification": false, "clarifying_question": null, '
+    '"proposals": [], '
+    '"steering": [{"kind": "hint", "text": "prefer the shared util"}]}'
 )
 
 
@@ -156,6 +173,133 @@ class TestPropose:
                     created_by=NotBlankStr("user-1"),
                 )
             )
+
+
+class TestSteeringPropose:
+    async def test_steering_parks_approval_no_proposal_row(self) -> None:
+        provider = ScriptedProvider(responses=[make_text_response(_STEER_JSON)])
+        proposer, conv_repo, _, proposal_repo, approvals = build_proposer(
+            provider=provider
+        )
+
+        result = await proposer.converse(
+            ProposeArgs(
+                message=NotBlankStr("stop using Mongo, switch the store to Postgres"),
+                created_by=NotBlankStr("user-1"),
+            )
+        )
+
+        assert result.status == "proposed"
+        # Steering rides in the approval metadata, never a proposal row.
+        assert result.proposals == ()
+        assert proposal_repo.items == {}
+        assert len(result.steering) == 1
+        summary = result.steering[0]
+        assert summary.kind is InterventionKind.REDIRECT
+        assert summary.text == "use Postgres not Mongo"
+        assert summary.project == "checkout"
+
+        items = await approvals.list_items()
+        assert len(items) == 1
+        appr = items[0]
+        assert appr.id == summary.approval_id
+        assert appr.source is ApprovalSource.CONVERSATIONAL_INTAKE
+        assert appr.status is ApprovalStatus.PENDING
+        assert appr.action_type == "conversational:steer"
+        assert appr.metadata[STEERING_INTAKE_KIND_KEY] == "redirect"
+        assert appr.metadata[STEERING_INTAKE_PROJECT_KEY] == "checkout"
+        assert appr.metadata[STEERING_INTAKE_TEXT_KEY] == "use Postgres not Mongo"
+
+        conv = conv_repo.items[result.conversation_id]
+        assert conv.status is ConversationStatus.PROPOSED
+
+    async def test_steering_uses_args_project_when_omitted(self) -> None:
+        provider = ScriptedProvider(
+            responses=[make_text_response(_STEER_NO_PROJECT_JSON)]
+        )
+        proposer, _, _, _, approvals = build_proposer(provider=provider)
+        result = await proposer.converse(
+            ProposeArgs(
+                message=NotBlankStr("nudge the agents toward the shared util"),
+                created_by=NotBlankStr("user-1"),
+                project=NotBlankStr("platform"),
+            )
+        )
+        assert result.steering[0].project == "platform"
+        appr = (await approvals.list_items())[0]
+        assert appr.metadata[STEERING_INTAKE_PROJECT_KEY] == "platform"
+
+    async def test_steering_missing_project_raises(self) -> None:
+        provider = ScriptedProvider(
+            responses=[make_text_response(_STEER_NO_PROJECT_JSON)]
+        )
+        proposer, *_, approvals = build_proposer(provider=provider)
+        with pytest.raises(ConversationalProposeResponseInvalidError):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("nudge the agents"),
+                    created_by=NotBlankStr("user-1"),
+                )
+            )
+        # Pre-validation raises before any park lands.
+        assert await approvals.list_items() == ()
+
+    async def test_mixed_batch_unwinds_work_when_steering_park_fails(self) -> None:
+        # A work proposal parks first (proposal row + approval), then the
+        # steering directive's approval add fails. Compensation must unwind
+        # the work park AND attempt the steering unwind, leaving no
+        # half-committed state and the conversation still ACTIVE.
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(
+                    '{"needs_clarification": false, "clarifying_question": null, '
+                    '"proposals": [{"title": "Build the page", '
+                    '"raw_intent": "a marketing page", "project": "marketing", '
+                    '"priority": "medium", "task_type": "development", '
+                    '"estimated_complexity": "simple", "acceptance_criteria": []}], '
+                    '"steering": [{"project": "marketing", "kind": "redirect", '
+                    '"text": "use Postgres not Mongo"}]}'
+                ),
+            ],
+        )
+        proposer, conv_repo, _, proposal_repo, approval_store = build_proposer(
+            provider=provider
+        )
+        conv_repo.items["c-mix"] = Conversation(
+            id=NotBlankStr("c-mix"),
+            created_by=NotBlankStr("user-1"),
+            created_at=START,
+            updated_at=START,
+            status=ConversationStatus.ACTIVE,
+        )
+
+        # The work approval is the 1st add (succeeds); the steering
+        # approval is the 2nd add (raises), driving compensation.
+        original_add = approval_store.add
+        add_calls = {"count": 0}
+
+        async def staged_add(item: object) -> None:
+            add_calls["count"] += 1
+            if add_calls["count"] >= 2:
+                msg = "synthetic steering park failure"
+                raise RuntimeError(msg)
+            await original_add(item)  # type: ignore[arg-type]
+
+        approval_store.add = staged_add  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="synthetic steering park failure"):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("build it and pivot the store"),
+                    created_by=NotBlankStr("user-1"),
+                    conversation_id=NotBlankStr("c-mix"),
+                )
+            )
+
+        # The work proposal row was unwound; nothing half-committed remains.
+        assert proposal_repo.items == {}
+        assert await approval_store.list_items() == ()
+        assert conv_repo.items["c-mix"].status is ConversationStatus.ACTIVE
 
 
 class TestConversationResolution:

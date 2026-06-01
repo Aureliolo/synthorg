@@ -47,6 +47,7 @@ _TERMINATION_TO_STATUS: Final[dict[TerminationReason, TaskStatus]] = {
     TerminationReason.SHUTDOWN: TaskStatus.INTERRUPTED,
     TerminationReason.PARKED: TaskStatus.SUSPENDED,
     TerminationReason.STAGNATION: TaskStatus.FAILED,
+    TerminationReason.CANCELLED: TaskStatus.CANCELLED,
     TerminationReason.ERROR: TaskStatus.FAILED,
 }
 

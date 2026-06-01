@@ -1,0 +1,27 @@
+# Judged brief: a resilient checkout flow.
+#
+# The title doubles as the memory-retrieval key: a procedural lesson captured
+# from a failed attempt at this brief is surfaced on the next run because its
+# stored text references the same task. Judged by the calibrated judge against
+# the ``default-bench`` rubric + anchor set.
+brief_id: checkout-resilience
+schema_version: 1
+kind: judged
+title: "checkout resilience"
+description: "Build a resilient checkout flow that recovers from failures."
+priority: medium
+estimated_complexity: 3
+acceptance_criteria:
+  - "The checkout flow completes without an unrecovered failure."
+  - "The deliverable explains the corrected approach."
+limits:
+  max_total_cost_usd: 5.0
+  max_wall_clock_seconds: 120
+  max_turns: 6
+rubric:
+  rubric_id: default-bench
+  reference_answer_path: "references/default-bench.md"
+  dimensions:
+    - name: correctness
+      weight: 1.0
+      grade_type: score

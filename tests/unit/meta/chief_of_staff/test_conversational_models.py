@@ -10,6 +10,7 @@ from synthorg.core.enums import (
     ConversationalProposalStatus,
     ConversationRole,
     ConversationStatus,
+    InterventionKind,
     Priority,
     TaskType,
 )
@@ -18,7 +19,10 @@ from synthorg.meta.chief_of_staff.models import (
     ConversationalProposal,
     ConversationTurn,
     ProposeDecision,
+    ProposedSteering,
     ProposedWork,
+    ProposeResult,
+    SteeringProposalSummary,
 )
 
 pytestmark = pytest.mark.unit
@@ -166,9 +170,46 @@ class TestProposeDecision:
                 proposals=(ProposedWork(title="x", raw_intent="y"),),
             )
 
-    def test_proposal_path_requires_proposals(self) -> None:
-        with pytest.raises(ValidationError, match="proposals"):
+    def test_proposal_path_requires_one_of_proposals_or_steering(self) -> None:
+        with pytest.raises(ValidationError, match="proposals or steering"):
             ProposeDecision(needs_clarification=False)
+
+    def test_steering_only_path(self) -> None:
+        d = ProposeDecision(
+            needs_clarification=False,
+            steering=(
+                ProposedSteering(
+                    project="checkout",
+                    kind=InterventionKind.REDIRECT,
+                    text="use Postgres not Mongo",
+                ),
+            ),
+        )
+        assert not d.needs_clarification
+        assert d.proposals == ()
+        assert len(d.steering) == 1
+        assert d.steering[0].kind is InterventionKind.REDIRECT
+
+    def test_proposals_and_steering_together(self) -> None:
+        d = ProposeDecision(
+            needs_clarification=False,
+            proposals=(ProposedWork(title="x", raw_intent="y"),),
+            steering=(
+                ProposedSteering(kind=InterventionKind.HINT, text="prefer the util"),
+            ),
+        )
+        assert len(d.proposals) == 1
+        assert len(d.steering) == 1
+
+    def test_clarification_forbids_steering(self) -> None:
+        with pytest.raises(ValidationError):
+            ProposeDecision(
+                needs_clarification=True,
+                clarifying_question="What exactly?",
+                steering=(
+                    ProposedSteering(kind=InterventionKind.HINT, text="advisory"),
+                ),
+            )
 
     def test_proposal_path_forbids_question(self) -> None:
         with pytest.raises(ValidationError):
@@ -185,6 +226,67 @@ class TestProposeDecision:
         )
         with pytest.raises(ValidationError):
             d.needs_clarification = False  # type: ignore[misc]
+
+
+class TestProposedSteering:
+    """ProposedSteering steerable-kind invariant."""
+
+    def test_hint_and_redirect_allowed(self) -> None:
+        assert (
+            ProposedSteering(kind=InterventionKind.HINT, text="advisory").kind
+            is InterventionKind.HINT
+        )
+        assert (
+            ProposedSteering(kind=InterventionKind.REDIRECT, text="pivot").kind
+            is InterventionKind.REDIRECT
+        )
+
+    def test_project_optional(self) -> None:
+        assert ProposedSteering(kind=InterventionKind.HINT, text="x").project is None
+
+    @pytest.mark.parametrize("kind", [InterventionKind.PAUSE, InterventionKind.KILL])
+    def test_non_steerable_kind_rejected(self, kind: InterventionKind) -> None:
+        with pytest.raises(ValidationError, match="not a steerable directive kind"):
+            ProposedSteering(kind=kind, text="halt it")
+
+    def test_blank_text_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ProposedSteering(kind=InterventionKind.HINT, text="  ")
+
+    def test_frozen(self) -> None:
+        steer = ProposedSteering(kind=InterventionKind.HINT, text="x")
+        with pytest.raises(ValidationError):
+            steer.text = "y"  # type: ignore[misc]
+
+
+class TestProposeResultSteering:
+    """ProposeResult steering summaries respect the status invariant."""
+
+    def _summary(self) -> SteeringProposalSummary:
+        return SteeringProposalSummary(
+            approval_id="appr-steer",
+            kind=InterventionKind.REDIRECT,
+            text="use Postgres not Mongo",
+            project="checkout",
+        )
+
+    def test_proposed_with_only_steering(self) -> None:
+        result = ProposeResult(
+            conversation_id="conv-1",
+            status="proposed",
+            steering=(self._summary(),),
+        )
+        assert result.proposals == ()
+        assert len(result.steering) == 1
+
+    def test_clarification_forbids_steering(self) -> None:
+        with pytest.raises(ValidationError):
+            ProposeResult(
+                conversation_id="conv-1",
+                status="needs_clarification",
+                clarifying_question="which project?",
+                steering=(self._summary(),),
+            )
 
 
 class TestConversationalProposal:

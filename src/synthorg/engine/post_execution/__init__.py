@@ -2,10 +2,12 @@
 
 from synthorg.engine.post_execution.memory_hooks import (
     try_capture_distillation,
+    try_capture_success,
     try_procedural_memory,
 )
 
 __all__ = [
     "try_capture_distillation",
+    "try_capture_success",
     "try_procedural_memory",
 ]

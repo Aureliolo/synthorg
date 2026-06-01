@@ -1,7 +1,10 @@
 """Postgres-backed drift report repository."""
 
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
+
+from psycopg.rows import BaseRowFactory, DictRow
+from pydantic import AwareDatetime
 
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
@@ -19,11 +22,11 @@ if TYPE_CHECKING:
     from synthorg.persistence.ontology_protocol import DriftReportFilterSpec
 
 
-def _import_dict_row() -> Any:
+def _import_dict_row() -> BaseRowFactory[DictRow]:
     """Lazily resolve ``psycopg.rows.dict_row``.
 
     Returns:
-        Result of type ``Any``.
+        The ``dict_row`` row factory.
     """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
@@ -35,7 +38,7 @@ logger = get_logger(__name__)
 _DEFAULT_LIST_LIMIT_10: Final[int] = 10
 
 
-def _row_to_report(row: dict[str, Any]) -> DriftReport:
+def _row_to_report(row: DictRow) -> DriftReport:
     """Deserialize a dict row into a DriftReport.
 
     Returns:
@@ -136,7 +139,7 @@ class PostgresOntologyDriftReportRepository:
         msg = "OntologyDriftReportRepository.query is not implemented"
         raise NotImplementedError(msg)
 
-    async def purge_before(self, threshold: Any) -> int:
+    async def purge_before(self, threshold: AwareDatetime) -> int:
         """Retention purge of drift reports (not implemented).
 
         Raises rather than silently reporting zero deletions, which

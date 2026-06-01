@@ -56,13 +56,28 @@ logger = get_logger(__name__)
 _MAX_LIST_ROWS: int = 10_000
 
 
+def _load_json(value: object) -> object:
+    """Decode a JSON column (SQLite stores JSON payloads as ``TEXT``).
+
+    Accepts ``object`` to satisfy the shared ``row_to_entry`` loader
+    contract; SQLite always yields ``str`` here, so any non-``str`` value
+    passes through unchanged.
+
+    Returns:
+        The decoded JSON value.
+    """
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
 def _row_to_entry(row: aiosqlite.Row) -> BrainEntry:
     """Reconstruct a :class:`BrainEntry` from a SQLite row.
 
     Returns:
         The reconstructed entry.
     """
-    return row_to_entry(dict(row), load_json=json.loads)
+    return row_to_entry(dict(row), load_json=_load_json)
 
 
 def _insert_params(entity: BrainEntry) -> tuple[object, ...]:

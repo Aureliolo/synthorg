@@ -22,7 +22,11 @@ from synthorg.api.app_builders import (
     _build_configured_trust_service,
     _build_performance_tracker,
 )
-from synthorg.api.app_helpers import _make_expire_callback, _make_meeting_publisher
+from synthorg.api.app_helpers import (
+    _make_expire_callback,
+    _make_meeting_publisher,
+    make_steering_notifier,
+)
 from synthorg.api.app_overrides import AppOverrides
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auto_wire import auto_wire_meetings, auto_wire_phase1
@@ -345,6 +349,17 @@ def build_construction_services(
         client_simulation_state=overrides.client_simulation_state,
     )
     run_construction_wiring(app_state, construction_deps)
+
+    # The cockpit-channel steering notifier closes over the channels plugin
+    # (a construction-phase artifact) and is parked on the cockpit slice so
+    # ``_wire_steering_service`` can inject it once the steering service wires
+    # after the project brain connects.
+    from synthorg.engine.cockpit.state import CockpitStateSlice  # noqa: PLC0415
+
+    app_state.wire(
+        CockpitStateSlice,
+        steering_notifier=make_steering_notifier(channels_plugin),
+    )
 
     # Compose the config resolver + management / org-mutation / audit / preset
     # services when a settings service is injected at build time (a no-op

@@ -27,6 +27,14 @@ export const Empty: Story = {
   },
 }
 
+export const WithLabel: Story = {
+  args: { value: ['task-1'], label: 'Task IDs', placeholder: 'Add a task ID...' },
+  render: function Render(args) {
+    const [value, setValue] = useState(args.value)
+    return <TagInput {...args} value={value} onChange={setValue} />
+  },
+}
+
 export const Disabled: Story = {
   args: { value: ['locked-value'], disabled: true },
 }

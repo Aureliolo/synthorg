@@ -6,10 +6,10 @@ Uses native JSONB for ``nodes`` and ``edges``, and native TIMESTAMPTZ for
 Pydantic models as the SQLite backend.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -55,7 +55,7 @@ is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision"""
 
 
 def _deserialize_row(
-    row: dict[str, Any],
+    row: DictRow,
     context_id: str,
 ) -> WorkflowDefinition:
     """Reconstruct a ``WorkflowDefinition`` from a Postgres dict_row.

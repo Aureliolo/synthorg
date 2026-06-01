@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.communication.config import MeetingTypeConfig
+from synthorg.communication.meeting.config import MeetingTypeConfig
 from synthorg.communication.meeting.frequency import MeetingFrequency
 
 

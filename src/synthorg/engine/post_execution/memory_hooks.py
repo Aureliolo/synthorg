@@ -10,6 +10,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.capture import (
+    CAPTURE_STRATEGY_FAILED,
+    CAPTURE_STRATEGY_SKIPPED,
+)
 from synthorg.observability.events.consolidation import (
     DISTILLATION_CAPTURE_FAILED,
     DISTILLATION_CAPTURE_SKIPPED,
@@ -27,6 +31,7 @@ if TYPE_CHECKING:
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.recovery import RecoveryResult
+    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
@@ -159,6 +164,68 @@ async def try_procedural_memory(  # noqa: PLR0913
             agent_id=agent_id,
             task_id=task_id,
             phase="procedural_memory",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
+async def try_capture_success(  # noqa: PLR0913
+    execution_result: ExecutionResult,
+    recovery_result: RecoveryResult | None,
+    agent_id: str,
+    task_id: str,
+    *,
+    capture_strategy: CaptureStrategy | None,
+    memory_backend: MemoryBackend | None,
+) -> None:
+    """Run a procedural capture strategy post-execution (non-critical).
+
+    The failure-recovery procedural pipeline (:func:`try_procedural_memory`)
+    only fires when recovery occurred; this hook lets a capture strategy turn
+    a SUCCESSFUL run into reusable procedural knowledge.  The strategy itself
+    decides whether the outcome qualifies (``SuccessCaptureStrategy`` no-ops
+    unless the run COMPLETED with no recovery and clears its quality gate), so
+    this wrapper passes the outcome through unconditionally and only guards on
+    wiring.  System errors and cancellation propagate; all others are
+    swallowed so a capture fault never fails the run.
+
+    Raises:
+        asyncio.CancelledError: If the capture task is cancelled mid-flight.
+    """
+    if capture_strategy is None or memory_backend is None:
+        logger.debug(
+            CAPTURE_STRATEGY_SKIPPED,
+            agent_id=agent_id,
+            task_id=task_id,
+            reason=(
+                "no_capture_strategy"
+                if capture_strategy is None
+                else "no_memory_backend"
+            ),
+        )
+        return
+    try:
+        from pydantic import TypeAdapter  # noqa: PLC0415
+
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+
+        _nb = TypeAdapter(NotBlankStr)
+        await capture_strategy.capture(
+            execution_result=execution_result,
+            recovery_result=recovery_result,
+            agent_id=_nb.validate_python(agent_id),
+            task_id=_nb.validate_python(task_id),
+            memory_backend=memory_backend,
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            CAPTURE_STRATEGY_FAILED,
+            agent_id=agent_id,
+            task_id=task_id,
+            strategy=capture_strategy.name,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

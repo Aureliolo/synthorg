@@ -236,12 +236,15 @@ A human is asking the organisation to do
 work, in natural language. Your job for THIS turn is exactly one of:
 
 1. Ask ONE clarifying question, if the request is underspecified and
-   you cannot yet write concrete, actionable work item(s).
-2. Propose one or more concrete work items, if (and only if) the
-   request is specific enough to act on.
+   you cannot yet write concrete, actionable item(s).
+2. Propose one or more concrete work items, if the request is to
+   create NEW work and is specific enough to act on.
+3. Propose one or more steering directives, if the request is to
+   change the DIRECTION of work already in flight on a project
+   (for example "use Postgres not Mongo", "pivot off the frontend").
 
-You never execute anything yourself: proposed work items go to a
-human approval queue and run only after a human approves them.
+You never execute anything yourself: proposed items go to a human
+approval queue and run only after a human approves them.
 
 ## Conversation so far (oldest first)
 
@@ -265,18 +268,29 @@ exactly this shape:
       "estimated_complexity": <"simple"|"medium"|"complex"|"epic">,
       "acceptance_criteria": [<string>, ...]
     }}
+  ],
+  "steering": [
+    {{
+      "project": <string>,
+      "kind": <"hint"|"redirect">,
+      "text": <the directive the agents should adopt>
+    }}
   ]
 }}
 
 Rules:
 - If "needs_clarification" is true: set "clarifying_question" to a
-  single question and leave "proposals" as [].
+  single question and leave BOTH "proposals" and "steering" as [].
 - If "needs_clarification" is false: "clarifying_question" must be
-  null and "proposals" must contain at least one item and at most
-  {max_proposals} item(s).
-- Every proposed item MUST include a non-empty "project". If the
-  human has not named a project and you cannot infer one, ask a
-  clarifying question instead of guessing.
+  null and AT LEAST ONE of "proposals" / "steering" must be non-empty
+  (each at most {max_proposals} item(s)).
+- Use "steering" only to redirect or hint EXISTING in-flight work, not
+  to create new work. "hint" is advisory; "redirect" forces affected
+  agents to re-plan. Obsolete tasks are NOT cancelled here; the
+  operator supersedes them explicitly at the cockpit.
+- Every proposed work item and every steering directive MUST include a
+  non-empty "project". If the human has not named a project and you
+  cannot infer one, ask a clarifying question instead of guessing.
 - Prefer asking a clarifying question over proposing vague work.
 
 """ + untrusted_content_directive((TAG_TASK_DATA,))

@@ -152,12 +152,16 @@ def make_loop_with_callback(  # noqa: PLR0913
         task_id=task_id,
     )
 
+    # Forward steering_inbox so a checkpoint-resumed run still adopts
+    # mid-flight directives; omitting it leaves the rebuilt loop with a
+    # None inbox and steering silently dead for the rest of the run.
     if isinstance(loop, ReactLoop):
         return ReactLoop(
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
             compaction_callback=loop.compaction_callback,
+            steering_inbox=loop.steering_inbox,
         )
     if isinstance(loop, PlanExecuteLoop):
         return PlanExecuteLoop(
@@ -166,6 +170,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
             compaction_callback=loop.compaction_callback,
+            steering_inbox=loop.steering_inbox,
         )
     if isinstance(loop, HybridLoop):
         return HybridLoop(
@@ -174,6 +179,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
             compaction_callback=loop.compaction_callback,
+            steering_inbox=loop.steering_inbox,
         )
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,

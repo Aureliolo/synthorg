@@ -63,6 +63,7 @@ import { fineTuningHandlers } from './fine-tuning'
 import { healthHandlers } from './health'
 import { integrationHealthHandlers } from './integration-health'
 import { knowledgeHandlers } from './knowledge'
+import { learningHandlers } from './learning'
 import { mcpCatalogDefaultHandlers } from './mcp-catalog'
 import { meetingsHandlers } from './meetings'
 import { messagesHandlers } from './messages'
@@ -80,6 +81,7 @@ import { rolesHandlers } from './roles'
 import { scalingHandlers } from './scaling'
 import { settingsHandlers } from './settings'
 import { setupHandlers } from './setup'
+import { steeringHandlers } from './steering'
 import { subworkflowsHandlers } from './subworkflows'
 import { tasksHandlers } from './tasks'
 import { templatePacksHandlers } from './template-packs'
@@ -121,6 +123,7 @@ export const defaultHandlers = [
   ...healthHandlers,
   ...integrationHealthHandlers,
   ...knowledgeHandlers,
+  ...learningHandlers,
   ...mcpCatalogDefaultHandlers,
   ...meetingsHandlers,
   ...messagesHandlers,
@@ -138,6 +141,7 @@ export const defaultHandlers = [
   ...scalingHandlers,
   ...settingsHandlers,
   ...setupHandlers,
+  ...steeringHandlers,
   ...subworkflowsHandlers,
   ...tasksHandlers,
   ...templatePacksHandlers,

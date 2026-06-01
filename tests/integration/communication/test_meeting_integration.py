@@ -421,7 +421,7 @@ class TestMeetingTypeConfigIntegration:
     """Tests for MeetingTypeConfig with protocol_config field."""
 
     def test_meeting_type_config_has_protocol_config(self) -> None:
-        from synthorg.communication.config import MeetingTypeConfig
+        from synthorg.communication.meeting.config import MeetingTypeConfig
 
         config = MeetingTypeConfig(
             name="standup",
@@ -432,7 +432,7 @@ class TestMeetingTypeConfigIntegration:
         assert config.protocol_config.protocol == MeetingProtocolType.ROUND_ROBIN
 
     def test_meeting_type_config_custom_protocol(self) -> None:
-        from synthorg.communication.config import MeetingTypeConfig
+        from synthorg.communication.meeting.config import MeetingTypeConfig
 
         config = MeetingTypeConfig(
             name="design_review",

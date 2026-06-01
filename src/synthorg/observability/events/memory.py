@@ -63,6 +63,11 @@ MEMORY_FORMAT_INVALID_INJECTION_POINT: Final[str] = (
     "memory.format.invalid_injection_point"
 )
 MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noqa: S105
+# Engine context-injection dispatch: emitted when the wired injection strategy
+# surfaces memories into an agent's pre-execution context, or when that call
+# fails unexpectedly (non-fatal -- the run proceeds without injected memory).
+MEMORY_CONTEXT_INJECTED: Final[str] = "memory.context.injected"
+MEMORY_CONTEXT_INJECTION_FAILED: Final[str] = "memory.context.injection_failed"
 
 # ── Memory filter ──────────────────────────────────────────────
 
@@ -90,6 +95,7 @@ MEMORY_FINE_TUNE_CANCELLED: Final[str] = "memory.fine_tune.cancelled"
 MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED: Final[str] = (
     "memory.fine_tune.backend_unsupported"
 )
+MEMORY_FINE_TUNE_WIRING_FAILED: Final[str] = "memory.fine_tune.wiring_failed"
 MEMORY_FINE_TUNE_INVALID_REQUEST: Final[str] = "memory.fine_tune.invalid_request"
 MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
 MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
@@ -97,6 +103,11 @@ MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_sav
 MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
     "memory.fine_tune.checkpoint_deployed"
 )
+MEMORY_FINE_TUNE_CHECKPOINT_REJECTED: Final[str] = (
+    "memory.fine_tune.checkpoint_rejected"
+)
+MEMORY_TRAINING_SOURCE_HARVESTED: Final[str] = "memory.training_source.harvested"
+MEMORY_TRAINING_SOURCE_DEGRADED: Final[str] = "memory.training_source.degraded"
 MEMORY_FINE_TUNE_CHECKPOINT_ROLLED_BACK: Final[str] = (
     "memory.fine_tune.checkpoint_rolled_back"
 )

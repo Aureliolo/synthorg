@@ -6,11 +6,11 @@ Uses JSONB for node/edge/IO columns and TIMESTAMPTZ for timestamps.
 
 import hashlib
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import psycopg
 from packaging.version import InvalidVersion, Version
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, TupleRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
@@ -64,7 +64,7 @@ def _semver_sort_key(version: str) -> Version:
 
 
 def _deserialize_row(
-    row: dict[str, Any],
+    row: DictRow,
     context_id: str,
 ) -> WorkflowDefinition:
     """Reconstruct a ``WorkflowDefinition`` from a Postgres dict_row.
@@ -115,7 +115,7 @@ def _deserialize_row(
 
 
 def _extract_references(  # noqa: PLR0913
-    rows: Iterable[dict[str, Any]],
+    rows: Iterable[DictRow],
     subworkflow_id: str,
     version: str | None,
     *,
@@ -664,7 +664,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
     async def _find_parents_with_conn(
         self,
-        conn: psycopg.AsyncConnection[Any],
+        conn: psycopg.AsyncConnection[TupleRow],
         subworkflow_id: str,
         version: str | None,
     ) -> tuple[ParentReference, ...]:
@@ -710,14 +710,14 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
     def _build_summaries_from_rows(
         self,
-        rows: Iterable[dict[str, Any]],
+        rows: Iterable[DictRow],
     ) -> tuple[SubworkflowSummary, ...]:
         """Group rows by subworkflow_id and build summaries.
 
         Returns:
             The matching collection.
         """
-        grouped: dict[str, list[dict[str, Any]]] = {}
+        grouped: dict[str, list[DictRow]] = {}
         for row in rows:
             sid = str(row["subworkflow_id"])
             grouped.setdefault(sid, []).append(row)

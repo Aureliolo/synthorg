@@ -1,9 +1,9 @@
 """Postgres repository for meeting cooldown timestamps."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -39,7 +39,7 @@ class PostgresMeetingCooldownRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params: tuple[Any, ...] = (
+        params: tuple[object, ...] = (
             record.meeting_type_name,
             normalize_utc(record.last_triggered_at),
         )
@@ -166,7 +166,7 @@ class PostgresMeetingCooldownRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_record(r) for r in rows)
 
-    def _row_to_record(self, row: dict[str, Any]) -> MeetingCooldownRecord:
+    def _row_to_record(self, row: DictRow) -> MeetingCooldownRecord:
         """Row to record.
 
         Returns:

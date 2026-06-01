@@ -9,10 +9,10 @@ clean exit and rolls back on exception.
 import contextlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.auth.session import Session
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _row_to_session(row: Any) -> Session:
+def _row_to_session(row: DictRow) -> Session:
     """Deserialize a psycopg dict row into a :class:`Session`.
 
     Returns:

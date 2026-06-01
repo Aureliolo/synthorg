@@ -1,0 +1,62 @@
+# Declarative import-layering contracts (import-linter / grimp).
+#
+# Reality-grounded: every contract here passes against the CURRENT import
+# graph and exists to prevent regressions, NOT to describe an aspirational
+# layering. The codebase routes many cross-subsystem references through
+# shared hubs (the per-domain ``.state`` slices import ``api.state_slices``;
+# ``config.schema`` transitively reaches most subsystems), so the app-boundary
+# contracts below check DIRECT imports only (``allow_indirect_imports = true``)
+# and bless the handful of deliberate direct back-edges in ``ignore_imports``
+# (the construction-wiring seam, the per-feature ``.state`` slice, and
+# ``api.auth.system_user``). A strict total-order ``layers`` contract is
+# deliberately NOT used; it cannot express those back-edges.
+#
+# Three custom AST gates complement this file and are NOT replaced by it:
+#   * scripts/check_persistence_boundary.py   -- raw-SQL / driver-import boundary
+#   * scripts/check_no_api_dto_in_persistence_or_service.py -- DTO leakage
+#   * scripts/check_dependency_inversion.py    -- concrete-class dependency rule
+# See docs/reference/import-layering.md.
+
+[importlinter]
+root_package = synthorg
+
+[importlinter:contract:core-is-foundation]
+name = core is the foundation layer (no path up to a higher subsystem)
+type = forbidden
+source_modules =
+    synthorg.core
+forbidden_modules =
+    synthorg.api
+    synthorg.persistence
+    synthorg.engine
+    synthorg.workers
+    synthorg.meta
+
+[importlinter:contract:persistence-app-boundary]
+name = persistence does not directly import the api or worker layers
+type = forbidden
+source_modules =
+    synthorg.persistence
+forbidden_modules =
+    synthorg.api
+    synthorg.workers
+allow_indirect_imports = true
+ignore_imports =
+    synthorg.persistence._construction -> synthorg.api.construction_wiring
+    synthorg.persistence._construction -> synthorg.api.state
+    synthorg.persistence.state -> synthorg.api.state_slices
+    synthorg.persistence.postgres.user_repo -> synthorg.api.auth.system_user
+    synthorg.persistence.sqlite.user_repo -> synthorg.api.auth.system_user
+
+[importlinter:contract:observability-below-api]
+name = observability does not directly import the api layer
+type = forbidden
+source_modules =
+    synthorg.observability
+forbidden_modules =
+    synthorg.api
+allow_indirect_imports = true
+ignore_imports =
+    synthorg.observability.feature -> synthorg.api.controllers.metrics
+    synthorg.observability.prometheus_collector -> synthorg.api.state
+    synthorg.observability.startup_wiring -> synthorg.api.state

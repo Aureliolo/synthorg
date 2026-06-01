@@ -1,11 +1,11 @@
 """Acceptance: watch a run, spot a stuck agent, intervene, replay it.
 
 Exercises the mission-control cockpit end-to-end through the real
-services it wires (live-activity aggregation, steering directive,
+services it wires (live-activity aggregation, steering service,
 flight-recorder replay) over recorded per-turn frames. This is the
 operator flow #1981 requires: during a run the operator can see
-progress, identify a stuck agent and intervene, and afterwards replay
-the run step-by-step with content.
+progress, identify a stuck agent and intervene (steer the project),
+and afterwards replay the run step-by-step with content.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.communication.event_stream.interrupt import InterruptStore, InterruptType
 from synthorg.core.enums import InterventionKind, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -22,11 +21,15 @@ from synthorg.engine.flight_recording import (
     FlightRecorderService,
     PersistenceFlightRecorderSink,
 )
-from synthorg.engine.intervention import build_steering_directive
+from synthorg.engine.intervention import NoOpSupersessionProposer, SteeringService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
 from tests._shared import FakeClock, mock_of
-from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
+from tests._shared.steering import FakeBrainService
+from tests.unit.api.fakes import (
+    FakeFlightRecorderFrameRepository,
+    FakeProjectBrainRepository,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -92,20 +95,28 @@ async def test_detect_stuck_intervene_then_replay() -> None:
     activity = snapshot.agents[0]
     assert activity.execution_id == _EXEC
 
-    # 3. The operator intervenes with a hint; it is queued for the agent.
-    interrupt_store = InterruptStore()
-    directive = build_steering_directive(interrupt_store, clock=clock)
-    outcome = await directive.steer(
-        kind=InterventionKind.HINT,
-        execution_id=activity.execution_id or _EXEC,
-        agent_id=activity.agent_id,
-        details={"text": "you seem stuck; try a narrower search"},
+    # 3. The operator steers the project with a hint; it is recorded in
+    #    the project brain and surfaces as the active directive in-flight
+    #    agents adopt at their next safe boundary.
+    brain_repo = FakeProjectBrainRepository()
+    steering = SteeringService(
+        brain_service=FakeBrainService(brain_repo, clock=clock),  # type: ignore[arg-type]
+        brain_repo=brain_repo,
+        task_engine=task_engine,
+        proposer=NoOpSupersessionProposer(),
+        clock=clock,
     )
-    assert outcome.applied is True
-    assert outcome.artifact_id is not None
-    pending = await interrupt_store.get(outcome.artifact_id)
-    assert pending is not None
-    assert pending.type is InterruptType.INFO_REQUEST
+    result = await steering.issue(
+        project_id=NotBlankStr("mission-control-e2e"),
+        kind=InterventionKind.HINT,
+        text=NotBlankStr("you seem stuck; try a narrower search"),
+        author=NotBlankStr("operator"),
+    )
+    active = await steering.list_active(project_id=NotBlankStr("mission-control-e2e"))
+    assert len(active) == 1
+    assert active[0].entry_id == result.directive_id
+    assert active[0].kind is InterventionKind.HINT
+    assert active[0].text == "you seem stuck; try a narrower search"
 
     # 4. Afterwards the run replays step-by-step with content.
     recorder = FlightRecorderService(repo)

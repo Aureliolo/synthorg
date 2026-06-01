@@ -8,7 +8,6 @@ callback; ``cleanup_expired`` reclaims stale rows.
 import contextlib
 import sqlite3
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import aiosqlite
 
@@ -37,7 +36,7 @@ _SELECT_COLS = (
 )
 
 
-def _row_to_state(row: aiosqlite.Row | tuple[Any, ...]) -> OAuthState:
+def _row_to_state(row: aiosqlite.Row) -> OAuthState:
     """Deserialize a row tuple into an :class:`OAuthState`.
 
     Returns:

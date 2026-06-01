@@ -25,9 +25,13 @@ from synthorg.core.enums import (
 )
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.task import AcceptanceCriterion, Task
-from synthorg.persistence.sqlite.repositories import (
+from synthorg.persistence.sqlite.cost_record_repo import (
     SQLiteCostRecordRepository,
+)
+from synthorg.persistence.sqlite.message_repo import (
     SQLiteMessageRepository,
+)
+from synthorg.persistence.sqlite.task_repo import (
     SQLiteTaskRepository,
 )
 from tests._shared.persistence import make_private_write_context

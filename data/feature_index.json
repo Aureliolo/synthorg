@@ -204,14 +204,17 @@
     },
     {
       "controllers": [
-        "CockpitController"
+        "CockpitController",
+        "SteeringController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/engine/cockpit",
       "ghost_wired_symbols": [
         "CockpitService",
         "FlightRecorderService",
-        "build_steering_directive",
+        "SteeringService",
+        "build_steering_inbox",
+        "build_supersession_proposer",
         "build_flight_recorder_sink"
       ],
       "mcp_tool_names": [
@@ -220,8 +223,9 @@
         "synthorg_cockpit_seek_flight_recorder",
         "synthorg_cockpit_intervene_pause",
         "synthorg_cockpit_intervene_kill",
-        "synthorg_cockpit_intervene_hint",
-        "synthorg_cockpit_intervene_redirect"
+        "synthorg_cockpit_steer",
+        "synthorg_cockpit_steer_supersede",
+        "synthorg_cockpit_steer_list"
       ],
       "name": "cockpit",
       "protocol_exports": [],
@@ -229,7 +233,8 @@
       "state_slice_fields": [
         "cockpit_service",
         "flight_recorder_service",
-        "steering_directive"
+        "steering_service",
+        "steering_notifier"
       ]
     },
     {
@@ -693,7 +698,9 @@
       ],
       "depends_on": [],
       "directory": "src/synthorg/memory",
-      "ghost_wired_symbols": [],
+      "ghost_wired_symbols": [
+        "FineTuneOrchestrator"
+      ],
       "mcp_tool_names": [
         "synthorg_memory_start_fine_tune",
         "synthorg_memory_resume_fine_tune",
@@ -736,7 +743,8 @@
         "MetaAnalyticsController",
         "AnalyticsController",
         "ExperimentsController",
-        "CustomRuleController"
+        "CustomRuleController",
+        "LearningController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/meta",
@@ -1186,6 +1194,6 @@
       ]
     }
   ],
-  "generated_at": "2026-05-31T21:47:06.748607Z",
+  "generated_at": "2026-06-01T04:08:41.209771Z",
   "schema_version": 1
 }

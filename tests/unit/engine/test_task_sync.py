@@ -440,8 +440,12 @@ class TestApplyPostExecutionTransitions:
 
     @pytest.mark.parametrize(
         "reason",
-        [TerminationReason.MAX_TURNS, TerminationReason.BUDGET_EXHAUSTED],
-        ids=["MAX_TURNS", "BUDGET_EXHAUSTED"],
+        [
+            TerminationReason.MAX_TURNS,
+            TerminationReason.BUDGET_EXHAUSTED,
+            TerminationReason.CANCELLED,
+        ],
+        ids=["MAX_TURNS", "BUDGET_EXHAUSTED", "CANCELLED"],
     )
     async def test_non_completion_reasons_return_unchanged(
         self,

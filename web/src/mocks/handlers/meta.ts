@@ -73,12 +73,13 @@ export const metaHandlers = [
             priority: 'medium',
           },
         ],
-        // Concern routing (#1969) is off by default: the generic Chief
+        // Concern routing is off by default: the generic Chief
         // of Staff answers, so no role attribution is carried.
         responder_role: null,
         responder_name: null,
         routed_topic: null,
         routing_confidence: null,
+        steering: [],
       }),
     )
   }),
@@ -143,7 +144,7 @@ export const metaHandlers = [
         ],
         participants_skipped: [],
         truncated_reason: null,
-        // Agent-initiated invites (#1971) are off by default; the happy
+        // Agent-initiated invites are off by default; the happy
         // path parks none, so the consent surface stays empty.
         pending_invites: [],
       }),
@@ -173,7 +174,7 @@ export const metaHandlers = [
         agent_id: 'agent-cfo-mock',
         agent_name: 'Casey',
         conversation_id: 'conv-act-mock-001',
-        // Direct MCP acting (#1972) is off by default; the happy path
+        // Direct MCP acting is off by default; the happy path
         // performs a permitted action under trust and completes.
         action: {
           termination_reason: 'completed',

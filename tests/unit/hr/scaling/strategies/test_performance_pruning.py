@@ -15,7 +15,7 @@ from synthorg.hr.scaling.strategies.performance_pruning import (
     PerformancePruningStrategy,
 )
 
-from .conftest import NOW, make_context
+from .conftest import NOW, make_context, make_signal
 
 _AGENT_IDS = ("agent-001", "agent-002")
 
@@ -116,6 +116,66 @@ class TestPerformancePruningStrategy:
         ctx = make_context(agent_ids=_AGENT_IDS)
         decisions = await strategy.evaluate(ctx)
         assert decisions == ()
+
+    async def test_defers_pruning_on_benchmark_regression(self) -> None:
+        """A benchmark regression holds the team: no PRUNE decisions."""
+        policy = _StubPruningPolicy(eligible=True)
+        strategy = PerformancePruningStrategy(policy=policy)
+        snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
+        regression = make_signal(
+            name="benchmark_is_regression",
+            value=1.0,
+            threshold=None,
+            source="benchmark",
+        )
+        ctx = make_context(
+            agent_ids=_AGENT_IDS,
+            performance_snapshots=snapshots,
+            benchmark_signals=(regression,),
+        )
+        decisions = await strategy.evaluate(ctx)
+        assert decisions == ()
+
+    async def test_prunes_when_benchmark_not_regressing(self) -> None:
+        """A non-regressing benchmark signal does not block pruning."""
+        policy = _StubPruningPolicy(eligible=True)
+        strategy = PerformancePruningStrategy(policy=policy)
+        snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
+        no_regression = make_signal(
+            name="benchmark_is_regression",
+            value=0.0,
+            threshold=None,
+            source="benchmark",
+        )
+        ctx = make_context(
+            agent_ids=_AGENT_IDS,
+            performance_snapshots=snapshots,
+            benchmark_signals=(no_regression,),
+        )
+        decisions = await strategy.evaluate(ctx)
+        assert len(decisions) == len(_AGENT_IDS)
+
+    async def test_benchmark_deferral_disabled_prunes_during_regression(self) -> None:
+        """With benchmark deferral off, a regression does not block pruning."""
+        policy = _StubPruningPolicy(eligible=True)
+        strategy = PerformancePruningStrategy(
+            policy=policy,
+            defer_during_benchmark_regression=False,
+        )
+        snapshots = {aid: _make_snapshot(aid) for aid in _AGENT_IDS}
+        regression = make_signal(
+            name="benchmark_is_regression",
+            value=1.0,
+            threshold=None,
+            source="benchmark",
+        )
+        ctx = make_context(
+            agent_ids=_AGENT_IDS,
+            performance_snapshots=snapshots,
+            benchmark_signals=(regression,),
+        )
+        decisions = await strategy.evaluate(ctx)
+        assert len(decisions) == len(_AGENT_IDS)
 
     async def test_name_and_action_types(self) -> None:
         policy = _StubPruningPolicy()

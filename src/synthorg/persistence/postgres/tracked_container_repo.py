@@ -1,9 +1,9 @@
 """Postgres repository for tracked Docker container records."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
@@ -39,7 +39,7 @@ class PostgresTrackedContainerRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        params: tuple[Any, ...] = (
+        params: tuple[object, ...] = (
             record.container_id,
             record.sidecar_id,
             normalize_utc(record.created_at),
@@ -197,7 +197,7 @@ class PostgresTrackedContainerRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_record(r) for r in rows)
 
-    def _row_to_record(self, row: dict[str, Any]) -> TrackedContainerRecord:
+    def _row_to_record(self, row: DictRow) -> TrackedContainerRecord:
         """Row to record.
 
         Returns:

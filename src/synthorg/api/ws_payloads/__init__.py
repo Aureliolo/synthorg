@@ -68,6 +68,9 @@ from synthorg.api.ws_payloads._domain import (
     WsSimulationPausedPayload,
     WsSimulationRunningPayload,
     WsSimulationStartedPayload,
+    WsSteeringDirectiveIssuedPayload,
+    WsSteeringSupersessionProposedPayload,
+    WsSteeringTasksSupersededPayload,
 )
 from synthorg.api.ws_payloads._lifecycle import (
     WsAgentCreatedPayload,
@@ -172,7 +175,10 @@ WsEventPayload = Annotated[
     | WsSimulationFailedPayload
     | WsInterruptCreatedPayload
     | WsInterruptResumedPayload
-    | WsDissentPublishedPayload,
+    | WsDissentPublishedPayload
+    | WsSteeringDirectiveIssuedPayload
+    | WsSteeringSupersessionProposedPayload
+    | WsSteeringTasksSupersededPayload,
     Discriminator("event_type"),
 ]
 """Discriminated union of every typed WebSocket event payload.
@@ -246,6 +252,9 @@ __all__ = [
     "WsSimulationPausedPayload",
     "WsSimulationRunningPayload",
     "WsSimulationStartedPayload",
+    "WsSteeringDirectiveIssuedPayload",
+    "WsSteeringSupersessionProposedPayload",
+    "WsSteeringTasksSupersededPayload",
     "WsSystemErrorPayload",
     "WsSystemShutdownPayload",
     "WsSystemStartupPayload",

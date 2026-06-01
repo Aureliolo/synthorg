@@ -348,6 +348,15 @@ async def try_conversational_intake_resume(
     Returns:
         ``True`` or ``False`` reflecting the condition.
     """
+    from synthorg.meta.chief_of_staff._intake_parking import (  # noqa: PLC0415
+        resume_conversational_steering,
+    )
+
+    # A steering directive rides in the approval metadata, not a proposal row.
+    item = await _reread_approval_item(app_state, approval_id)
+    if await resume_conversational_steering(app_state, item, approved=approved):
+        return True
+
     owns_decision, proposal = await _load_conversational_proposal(
         app_state, approval_id
     )
