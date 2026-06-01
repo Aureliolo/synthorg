@@ -35,7 +35,7 @@ ADD COLUMN kind TEXT NOT NULL DEFAULT 'direct' CHECK (
 CREATE TABLE conversation_turns_new (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
-        CONSTRAINT fk_ct_conversation REFERENCES conversations (id),
+    CONSTRAINT fk_ct_conversation REFERENCES conversations (id),
     sequence INTEGER NOT NULL CHECK (sequence >= 0),
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'agent')),
     content TEXT NOT NULL CHECK (LENGTH(TRIM(content)) > 0),
@@ -54,8 +54,16 @@ INSERT INTO conversation_turns_new (
     author_agent_id, author_name, routed_topic, routing_confidence, created_at
 )
 SELECT
-    id, conversation_id, sequence, role, content,
-    NULL, NULL, NULL, NULL, created_at
+    id,
+    conversation_id,
+    sequence,
+    role,
+    content,
+    NULL AS author_agent_id,
+    NULL AS author_name,
+    NULL AS routed_topic,
+    NULL AS routing_confidence,
+    created_at
 FROM conversation_turns;
 
 DROP TABLE conversation_turns;
@@ -67,7 +75,7 @@ ALTER TABLE conversation_turns_new RENAME TO conversation_turns;
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
-        CONSTRAINT fk_cpart_conversation REFERENCES conversations (id),
+    CONSTRAINT fk_cpart_conversation REFERENCES conversations (id),
     agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
     agent_name TEXT NOT NULL CHECK (LENGTH(TRIM(agent_name)) > 0),
     participant_role TEXT NOT NULL CHECK (LENGTH(TRIM(participant_role)) > 0),
@@ -89,10 +97,10 @@ ON conversation_participants (conversation_id);
 CREATE TABLE conversation_invites (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
-        CONSTRAINT fk_cinv_conversation REFERENCES conversations (id),
+    CONSTRAINT fk_cinv_conversation REFERENCES conversations (id),
     approval_id TEXT NOT NULL CHECK (LENGTH(TRIM(approval_id)) > 0),
     requested_by_agent_id TEXT NOT NULL
-        CHECK (LENGTH(TRIM(requested_by_agent_id)) > 0),
+    CHECK (LENGTH(TRIM(requested_by_agent_id)) > 0),
     target_agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(target_agent_id)) > 0),
     target_role TEXT,
     reason TEXT NOT NULL CHECK (LENGTH(TRIM(reason)) > 0),

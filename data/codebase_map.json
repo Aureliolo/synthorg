@@ -13561,7 +13561,7 @@
     },
     {
       "kind": "code",
-      "loc": 376,
+      "loc": 375,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_invite_repo.py",
       "owning_feature": "persistence"

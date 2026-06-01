@@ -35,7 +35,7 @@ ALTER TABLE conversation_turns ADD COLUMN routing_confidence DOUBLE PRECISION;
 CREATE TABLE conversation_participants (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
-        CONSTRAINT fk_cpart_conversation REFERENCES conversations (id),
+    CONSTRAINT fk_cpart_conversation REFERENCES conversations (id),
     agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(agent_id)) > 0),
     agent_name TEXT NOT NULL CHECK (LENGTH(TRIM(agent_name)) > 0),
     participant_role TEXT NOT NULL CHECK (LENGTH(TRIM(participant_role)) > 0),
@@ -53,10 +53,10 @@ ON conversation_participants (conversation_id);
 CREATE TABLE conversation_invites (
     id TEXT NOT NULL PRIMARY KEY CHECK (LENGTH(TRIM(id)) > 0),
     conversation_id TEXT NOT NULL
-        CONSTRAINT fk_cinv_conversation REFERENCES conversations (id),
+    CONSTRAINT fk_cinv_conversation REFERENCES conversations (id),
     approval_id TEXT NOT NULL CHECK (LENGTH(TRIM(approval_id)) > 0),
     requested_by_agent_id TEXT NOT NULL
-        CHECK (LENGTH(TRIM(requested_by_agent_id)) > 0),
+    CHECK (LENGTH(TRIM(requested_by_agent_id)) > 0),
     target_agent_id TEXT NOT NULL CHECK (LENGTH(TRIM(target_agent_id)) > 0),
     target_role TEXT,
     reason TEXT NOT NULL CHECK (LENGTH(TRIM(reason)) > 0),
