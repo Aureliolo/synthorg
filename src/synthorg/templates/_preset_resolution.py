@@ -50,7 +50,8 @@ def resolve_agent_personality(
         the referenced preset does not exist.
 
     Raises:
-        TemplateRenderError: If an inline personality config is invalid.
+        TemplateRenderError: If an inline personality config is invalid,
+            or if ``personality_preset`` is present but is not a string.
     """
     inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
@@ -69,19 +70,19 @@ def resolve_agent_personality(
             raise TemplateRenderError(msg)
         _validate_inline_personality(inline_personality, name)
         return copy.deepcopy(inline_personality)
+    if preset_name is not None and not isinstance(preset_name, str):
+        msg = (
+            f"personality_preset for agent {name!r} must be a string, "
+            f"got {type(preset_name).__name__}"
+        )
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            agent=name,
+            field="personality_preset",
+            got=type(preset_name).__name__,
+        )
+        raise TemplateRenderError(msg)
     if preset_name:
-        if not isinstance(preset_name, str):
-            msg = (
-                f"personality_preset for agent {name!r} must be a string, "
-                f"got {type(preset_name).__name__}"
-            )
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                agent=name,
-                field="personality_preset",
-                got=type(preset_name).__name__,
-            )
-            raise TemplateRenderError(msg)
         # Normalize once for both the lookup and the custom-source check.
         key = normalize_ascii_lowercase(preset_name)
         is_custom = custom_presets is not None and key in custom_presets

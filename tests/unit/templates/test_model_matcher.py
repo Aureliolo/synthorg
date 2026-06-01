@@ -328,6 +328,50 @@ class TestMatchAllAgents:
         assert len(no_models_events) == 1
         assert no_models_events[0]["log_level"] == "warning"
 
+    def test_non_str_tier_coerced_to_medium_with_warning(self) -> None:
+        """A non-string ``tier`` is coerced to "medium" and warned, not crashed."""
+        import structlog.testing
+
+        agents: list[dict[str, object]] = [{"tier": 123}]
+        providers = {
+            "p": _FakeProviderConfig(models=(_make_model("m1", cost_input=0.01),)),
+        }
+        with structlog.testing.capture_logs() as logs:
+            results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        assert results[0].tier == "medium"
+        coerced = [
+            log
+            for log in logs
+            if log.get("event") == "template.model_match.coerced"
+            and log.get("field") == "tier"
+        ]
+        assert len(coerced) == 1
+        assert coerced[0]["log_level"] == "warning"
+        assert coerced[0]["coerced_to"] == "medium"
+
+    def test_non_str_preset_ignored_with_warning(self) -> None:
+        """A non-string ``personality_preset`` is dropped and warned."""
+        import structlog.testing
+
+        agents: list[dict[str, object]] = [
+            {"tier": "medium", "personality_preset": ["not", "a", "string"]},
+        ]
+        providers = {
+            "p": _FakeProviderConfig(models=(_make_model("m1", cost_input=0.01),)),
+        }
+        with structlog.testing.capture_logs() as logs:
+            results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        coerced = [
+            log
+            for log in logs
+            if log.get("event") == "template.model_match.coerced"
+            and log.get("field") == "personality_preset"
+        ]
+        assert len(coerced) == 1
+        assert coerced[0]["log_level"] == "warning"
+
     def test_agent_index_preserved(self) -> None:
         agents = [
             {"tier": "small"},
@@ -443,7 +487,7 @@ class TestModelMatcherConfigInjection:
     """Verify operator-tunable matcher weights flow through ``match_model``."""
 
     @pytest.mark.unit
-    def test_default_config_matches_historical_values(self) -> None:
+    def test_default_config_field_defaults(self) -> None:
         config = ModelMatcherConfig()
         assert config.tier_base_score == pytest.approx(0.5)
         assert config.headroom_max_bonus == pytest.approx(0.25)
@@ -465,7 +509,7 @@ class TestModelMatcherConfigInjection:
 
     @pytest.mark.unit
     def test_default_arg_uses_default_config(self) -> None:
-        """Calling without ``matcher_config`` reproduces legacy behaviour."""
+        """Omitting ``matcher_config`` scores identically to the default."""
         models = (_make_model("only"),)
         requirement = ModelRequirement(tier="medium")
         _, score_default = match_model(requirement, models)

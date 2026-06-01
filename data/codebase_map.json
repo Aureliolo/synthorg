@@ -12476,7 +12476,7 @@
     },
     {
       "kind": "code",
-      "loc": 60,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/template.py",
       "owning_feature": "observability"
@@ -16872,14 +16872,14 @@
     },
     {
       "kind": "code",
-      "loc": 112,
+      "loc": 113,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_preset_resolution.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 242,
+      "loc": 250,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_render_helpers.py",
       "owning_feature": null
@@ -16914,14 +16914,14 @@
     },
     {
       "kind": "code",
-      "loc": 321,
+      "loc": 322,
       "loc_cap": 500,
       "module": "src/synthorg/templates/merge.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 427,
+      "loc": 448,
       "loc_cap": 500,
       "module": "src/synthorg/templates/model_matcher.py",
       "owning_feature": null

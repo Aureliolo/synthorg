@@ -359,6 +359,39 @@ class TestBuildDepartments:
                 [{"name": "eng", "budget_percent": "not-a-number"}],
             )
 
+    def test_non_list_departments_raises(self) -> None:
+        """A non-list ``departments`` value fails loud."""
+        from synthorg.templates._render_helpers import build_departments
+
+        with pytest.raises(TemplateRenderError, match="'departments' must be a list"):
+            build_departments({"name": "eng"})
+
+    def test_non_dict_department_entry_raises(self) -> None:
+        """A non-mapping department entry fails loud."""
+        from synthorg.templates._render_helpers import build_departments
+
+        with pytest.raises(TemplateRenderError, match="must be a mapping"):
+            build_departments(["not-a-dict"])
+
+    def test_non_string_head_role_falls_back_to_name(self) -> None:
+        """A non-string head_role logs a type-specific warning and falls back."""
+        import structlog.testing
+
+        from synthorg.templates._render_helpers import build_departments
+
+        with structlog.testing.capture_logs() as logs:
+            result = build_departments(
+                [{"name": "eng", "head_role": 123, "budget_percent": 50}],
+            )
+        assert result[0]["head"] == "eng"
+        head_warnings = [
+            log
+            for log in logs
+            if log.get("field") == "head_role"
+            and "must be a non-empty string" in str(log.get("detail", ""))
+        ]
+        assert len(head_warnings) == 1
+
 
 # ── validate_as_root_config edge cases ──────────────────────────
 
@@ -408,11 +441,13 @@ class TestCollectVariables:
 @pytest.mark.unit
 class TestExpandAgentNarrowing:
     def test_non_string_role_raises(self) -> None:
-        """A non-string role fails loud with a domain render error."""
+        """A non-string role fails loud with the non-empty-string render error."""
         from synthorg.templates.renderer import _expand_single_agent
 
         agent: dict[str, object] = {"role": 123}
-        with pytest.raises(TemplateRenderError, match="missing required 'role'"):
+        with pytest.raises(
+            TemplateRenderError, match="requires a non-empty string 'role'"
+        ):
             _expand_single_agent(agent, 0, set(), has_extends=False)
 
     def test_non_string_personality_preset_raises(self) -> None:
@@ -540,7 +575,9 @@ class TestMissingRoleError:
         """Agent without a 'role' field raises TemplateRenderError."""
         from synthorg.templates.renderer import _expand_single_agent
 
-        with pytest.raises(TemplateRenderError, match="missing required 'role'"):
+        with pytest.raises(
+            TemplateRenderError, match="requires a non-empty string 'role'"
+        ):
             _expand_single_agent({}, 0, set(), has_extends=False)
 
 

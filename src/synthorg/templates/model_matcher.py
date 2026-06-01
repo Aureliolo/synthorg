@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
+    TEMPLATE_MODEL_MATCH_COERCED,
     TEMPLATE_MODEL_MATCH_FAILED,
     TEMPLATE_MODEL_MATCH_FALLBACK,
     TEMPLATE_MODEL_MATCH_SKIPPED,
@@ -72,8 +73,8 @@ def match_model(
         requirement: Structured model requirement.
         available: Tuple of available models from a single provider.
         matcher_config: Operator-tunable score weights. ``None`` falls
-            back to the default ``ModelMatcherConfig`` whose values
-            mirror the historical hardcoded constants.
+            back to the default ``ModelMatcherConfig`` projected from the
+            registered ``EngineBridgeConfig`` defaults.
 
     Returns:
         Tuple of (best matching model or None, score 0-1).
@@ -139,9 +140,29 @@ def _resolve_agent_requirement(
         return req, req.tier
 
     raw_tier = agent.get("tier", "medium")
-    tier_str = raw_tier if isinstance(raw_tier, str) else "medium"
+    if isinstance(raw_tier, str):
+        tier_str = raw_tier
+    else:
+        logger.warning(
+            TEMPLATE_MODEL_MATCH_COERCED,
+            agent_index=idx,
+            field="tier",
+            coerced_to="medium",
+            value_type=type(raw_tier).__name__,
+        )
+        tier_str = "medium"
     raw_preset = agent.get("personality_preset")
-    preset = raw_preset if isinstance(raw_preset, str) else None
+    if raw_preset is None or isinstance(raw_preset, str):
+        preset = raw_preset
+    else:
+        logger.warning(
+            TEMPLATE_MODEL_MATCH_COERCED,
+            agent_index=idx,
+            field="personality_preset",
+            coerced_to=None,
+            value_type=type(raw_preset).__name__,
+        )
+        preset = None
     try:
         req = resolve_fn(tier_str, preset)
     except (ValidationError, ValueError) as exc:
@@ -188,8 +209,8 @@ def match_all_agents(
             a tuple of ``ProviderModelConfig``.
         matcher_config: Operator-tunable score weights propagated to
             every per-provider :func:`match_model` call.  ``None`` falls
-            back to the default :class:`ModelMatcherConfig` whose values
-            mirror the historical hardcoded constants.
+            back to the default :class:`ModelMatcherConfig` projected from
+            the registered ``EngineBridgeConfig`` defaults.
 
     Returns:
         List of ``ModelMatch`` results.  Agents may be omitted from

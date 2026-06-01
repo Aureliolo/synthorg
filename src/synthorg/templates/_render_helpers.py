@@ -67,11 +67,19 @@ def _resolve_head(
         head_role = raw_head_role
         head_role_specified = True
     else:
+        if raw_head_role is None or raw_head_role == "":
+            detail = "No head_role specified; using department name as placeholder"
+        else:
+            detail = (
+                f"head_role must be a non-empty string, got "
+                f"{type(raw_head_role).__name__}; using department name "
+                f"as placeholder"
+            )
         logger.warning(
             TEMPLATE_RENDER_VARIABLE_ERROR,
             department=dept_name,
             field="head_role",
-            detail="No head_role specified; using department name as placeholder",
+            detail=detail,
         )
         head_role = dept_name
         head_role_specified = False
@@ -145,7 +153,7 @@ def _validate_optional_fields(
                 got=type(ceremony_policy).__name__,
             )
             raise TemplateRenderError(msg)
-        dept_dict["ceremony_policy"] = ceremony_policy
+        dept_dict["ceremony_policy"] = copy.deepcopy(ceremony_policy)
 
 
 def _handle_dept_remove(

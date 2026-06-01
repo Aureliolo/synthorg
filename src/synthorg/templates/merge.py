@@ -44,7 +44,8 @@ def _as_dict_list(value: object, field_name: str) -> list[dict[str, object]]:
         field_name: Field name for error context.
 
     Returns:
-        The value as a list of string-keyed mapping records.
+        The value as a list of mapping records (dict-ness is enforced;
+        keys are assumed to be strings per the rendered-config contract).
 
     Raises:
         TemplateInheritanceError: When *value* is not a list, or any

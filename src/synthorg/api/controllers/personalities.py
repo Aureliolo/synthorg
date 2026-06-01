@@ -59,15 +59,15 @@ def _to_detail(entry: PresetEntry) -> PresetDetailResponse:
     Returns:
         ``PresetDetailResponse`` instance.
     """
-    cfg: dict[str, Any] = dict(entry.config)
-    return PresetDetailResponse(
-        name=entry.name,
-        source=PresetSource(entry.source),
-        description=entry.description,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-        **{k: v for k, v in cfg.items() if k != "description"},
-    )
+    payload: dict[str, object] = {
+        key: value for key, value in entry.config.items() if key != "description"
+    }
+    payload["name"] = entry.name
+    payload["source"] = PresetSource(entry.source)
+    payload["description"] = entry.description
+    payload["created_at"] = entry.created_at
+    payload["updated_at"] = entry.updated_at
+    return PresetDetailResponse.model_validate(payload)
 
 
 def _get_service(state: State) -> PersonalityPresetService:

@@ -563,6 +563,9 @@ def _validate_list(
                 got=type(item).__name__,
             )
             raise TemplateRenderError(msg)
+    # Every item was just asserted to be a dict above; the comprehension
+    # is a no-op at runtime but narrows the element type from the list's
+    # ``object`` members to ``dict[str, object]`` for the return signature.
     return [item for item in raw if isinstance(item, dict)]
 
 
@@ -685,11 +688,11 @@ def _expand_single_agent(  # noqa: PLR0913
         Expanded agent dict suitable for ``AgentConfig`` construction.
 
     Raises:
-        TemplateRenderError: When the agent dict is missing a ``role``.
+        TemplateRenderError: When ``role`` is absent, empty, or not a string.
     """
     role = agent.get("role")
     if not isinstance(role, str) or not role:
-        msg = f"Agent at index {idx} is missing required 'role' field"
+        msg = f"Agent at index {idx} requires a non-empty string 'role' field"
         logger.warning(TEMPLATE_RENDER_VARIABLE_ERROR, index=idx, field="role")
         raise TemplateRenderError(msg)
     name = str(agent.get("name") or "").strip()

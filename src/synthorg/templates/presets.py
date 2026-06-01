@@ -423,7 +423,7 @@ def get_personality_preset(
     """Look up a personality preset by name.
 
     Custom presets take precedence over builtins; the result is a fresh
-    one-level copy (builtin ``traits`` tuple normalised to a JSON list).
+    one-level copy with any tuple-valued field normalised to a JSON list.
 
     Args:
         name: Preset name (case-insensitive, whitespace-stripped).
@@ -559,7 +559,7 @@ def generate_auto_name(
     With *seed*, a fresh single-locale Faker instance is used so the
     shared cached instance is never mutated.  *role* is accepted for
     positional-caller compatibility but does not influence the name;
-    *locales* defaults to all Latin-script locales when empty.
+    *locales* defaults to all Latin-script locales when None or empty.
 
     Returns:
         A generated full name string.
