@@ -11,15 +11,17 @@ only mounted when ``a2a.enabled = True``.
 
 import asyncio
 import hashlib
-from typing import Any
 
 from litestar import Controller, Request, get
 from litestar.datastructures import State
 from litestar.response import Response
+from pydantic import JsonValue
 
 from synthorg._core.features import require_service
 from synthorg.a2a.agent_card import AgentCardBuilder
 from synthorg.a2a.state import A2aStateSlice
+from synthorg.api.state import AppState
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
@@ -40,7 +42,7 @@ from synthorg.settings.state import config_resolver_of
 logger = get_logger(__name__)
 
 # Module-level cache: (card_data, expires_at, fingerprint).
-_card_cache: dict[str, tuple[dict[str, Any], float, str]] = {}
+_card_cache: dict[str, tuple[dict[str, JsonValue], float, str]] = {}
 _cache_lock = asyncio.Lock()
 # Module-level clock singleton; tests inject a FakeClock by passing
 # it explicitly to the cache helpers below.
@@ -53,7 +55,7 @@ async def _get_cached_card(
     *,
     fingerprint: str = "",
     clock: Clock | None = None,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Return cached card data if still valid.
 
     Args:
@@ -87,7 +89,7 @@ async def _get_cached_card(
 
 async def _put_cached_card(
     cache_key: str,
-    card_data: dict[str, Any],
+    card_data: dict[str, JsonValue],
     ttl: int,
     *,
     fingerprint: str = "",
@@ -115,7 +117,7 @@ async def _put_cached_card(
         )
 
 
-async def _resolve_company_name(app_state: Any) -> str:
+async def _resolve_company_name(app_state: AppState) -> str:
     """Read ``company.company_name`` through ``ConfigResolver`` with fallback.
 
     A ``/settings/company/company_name`` runtime write only reaches this
@@ -154,7 +156,9 @@ async def _resolve_company_name(app_state: Any) -> str:
     return str(resolved)
 
 
-def _card_response(card_data: dict[str, Any], ttl: int) -> Response[dict[str, Any]]:
+def _card_response(
+    card_data: dict[str, JsonValue], ttl: int
+) -> Response[dict[str, JsonValue]]:
     """Build the success JSON response with the public cache header.
 
     Returns:
@@ -168,7 +172,7 @@ def _card_response(card_data: dict[str, Any], ttl: int) -> Response[dict[str, An
     )
 
 
-def _service_unavailable_response() -> Response[dict[str, Any]]:
+def _service_unavailable_response() -> Response[dict[str, JsonValue]]:
     """Build the 503 response served when card assembly fails.
 
     Returns:
@@ -182,10 +186,10 @@ def _service_unavailable_response() -> Response[dict[str, Any]]:
 
 
 async def _assemble_company_card(
-    app_state: Any,
+    app_state: AppState,
     base_url: str,
     company_name: str,
-) -> tuple[dict[str, Any], int]:
+) -> tuple[dict[str, JsonValue], int]:
     """Build the company card payload for an already-resolved name.
 
     Returns:
@@ -203,10 +207,12 @@ async def _assemble_company_card(
         base_url=f"{base_url}/api/v1/a2a",
         company_name=company_name,
     )
-    return card.model_dump(), len(identities)
+    return card.model_dump(mode="json"), len(identities)
 
 
-async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
+async def _resolve_agent_for_card(
+    app_state: AppState, agent_id: str
+) -> AgentIdentity | None:
     """Resolve an agent identity by id, then by name.
 
     Returns:
@@ -221,7 +227,7 @@ async def _resolve_agent_for_card(app_state: Any, agent_id: str) -> Any | None:
     return identity
 
 
-def _agent_fingerprint(identity: Any) -> str:
+def _agent_fingerprint(identity: AgentIdentity) -> str:
     """Compute the staleness fingerprint for an agent identity.
 
     Derived from name + role + skills so a rename, role change, or
@@ -238,10 +244,10 @@ def _agent_fingerprint(identity: Any) -> str:
 
 
 def _build_agent_card_payload(
-    app_state: Any,
-    identity: Any,
+    app_state: AppState,
+    identity: AgentIdentity,
     host_base: str,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Build the card payload for an already-resolved identity.
 
     Returns:
@@ -254,7 +260,7 @@ def _build_agent_card_payload(
         identity=identity,
         base_url=f"{host_base}/api/v1/a2a",
     )
-    return card.model_dump()
+    return card.model_dump(mode="json")
 
 
 class WellKnownAgentCardController(Controller):
@@ -274,8 +280,8 @@ class WellKnownAgentCardController(Controller):
     async def company_agent_card(
         self,
         state: State,
-        request: Request[Any, Any, Any],
-    ) -> Response[dict[str, Any]]:
+        request: Request[object, object, State],
+    ) -> Response[dict[str, JsonValue]]:
         """Serve the company-level Agent Card.
 
         Returns:
@@ -343,9 +349,9 @@ class WellKnownAgentCardController(Controller):
     async def agent_card(
         self,
         state: State,
-        request: Request[Any, Any, Any],
+        request: Request[object, object, State],
         agent_id: str,
-    ) -> Response[dict[str, Any]]:
+    ) -> Response[dict[str, JsonValue]]:
         """Serve a per-agent Agent Card.
 
         Returns:

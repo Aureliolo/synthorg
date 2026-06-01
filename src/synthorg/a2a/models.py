@@ -9,7 +9,7 @@ internal SynthOrg models are mapped to/from these via the
 
 import copy
 from enum import StrEnum
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import uuid4
 
 from pydantic import (
@@ -61,7 +61,7 @@ class JsonRpcRequest(BaseModel):
         description="Request identifier",
     )
     method: NotBlankStr = Field(description="RPC method name")
-    params: dict[str, Any] = Field(
+    params: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Method parameters",
     )
@@ -90,7 +90,7 @@ class JsonRpcErrorData(BaseModel):
 
     code: int = Field(description="Integer error code")
     message: str = Field(description="Human-readable error description")
-    data: dict[str, Any] | None = Field(
+    data: dict[str, JsonValue] | None = Field(
         default=None,
         description="Additional error data",
     )
@@ -123,7 +123,7 @@ class JsonRpcResponse(BaseModel):
 
     jsonrpc: Literal["2.0"] = "2.0"
     id: str | int | None = None
-    result: dict[str, Any] | None = None
+    result: dict[str, JsonValue] | None = None
     error: JsonRpcErrorData | None = None
 
     @model_validator(mode="after")

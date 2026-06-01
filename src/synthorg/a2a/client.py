@@ -5,10 +5,11 @@ pulling credentials from the connection catalog and validating
 outbound URLs against SSRF rules.
 """
 
-from typing import Any, ClassVar
+from typing import ClassVar
 from uuid import uuid4
 
 import httpx
+from pydantic import JsonValue
 
 from synthorg.a2a.models import (
     A2ATask,
@@ -18,6 +19,7 @@ from synthorg.a2a.models import (
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_FAILED,
@@ -25,6 +27,7 @@ from synthorg.observability.events.a2a import (
     A2A_OUTBOUND_SENT,
     A2A_OUTBOUND_SSRF_BLOCKED,
 )
+from synthorg.tools.network_validator import NetworkPolicy
 
 logger = get_logger(__name__)
 
@@ -71,10 +74,10 @@ class A2AClient:
 
     def __init__(
         self,
-        connection_catalog: Any,
+        connection_catalog: ConnectionCatalog,
         *,
         timeout_seconds: float,
-        network_validator: Any | None = None,
+        network_validator: NetworkPolicy | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._catalog = connection_catalog
@@ -91,7 +94,7 @@ class A2AClient:
     async def send_message(
         self,
         peer_name: str,
-        message_params: dict[str, Any],
+        message_params: dict[str, JsonValue],
     ) -> A2ATask:
         """Send a ``message/send`` request to an external peer.
 
@@ -161,7 +164,7 @@ class A2AClient:
         self,
         peer_name: str,
         method: str,
-        params: dict[str, Any],
+        params: dict[str, JsonValue],
     ) -> A2ATask:
         """Execute a JSON-RPC call to a peer.
 

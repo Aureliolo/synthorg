@@ -57,10 +57,11 @@ class TestJsonRpcRequest:
     @pytest.mark.unit
     def test_params_deep_copied(self) -> None:
         """Params dict is deep-copied at construction."""
-        original = {"nested": {"key": "value"}}
+        original: dict[str, Any] = {"nested": {"key": "value"}}
         req = JsonRpcRequest(method="test", params=original)
         original["nested"]["key"] = "changed"
-        assert req.params["nested"]["key"] == "value"
+        params = cast("dict[str, dict[str, str]]", req.params)
+        assert params["nested"]["key"] == "value"
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
@@ -140,11 +141,12 @@ class TestJsonRpcResponse:
     @pytest.mark.unit
     def test_result_deep_copied(self) -> None:
         """Result dict is deep-copied at construction."""
-        original = {"nested": {"key": "value"}}
+        original: dict[str, Any] = {"nested": {"key": "value"}}
         resp = JsonRpcResponse(id="1", result=original)
         original["nested"]["key"] = "changed"
         assert resp.result is not None
-        assert resp.result["nested"]["key"] == "value"
+        result = cast("dict[str, dict[str, str]]", resp.result)
+        assert result["nested"]["key"] == "value"
 
 
 class TestJsonRpcErrorCodes:

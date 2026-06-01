@@ -572,10 +572,6 @@ warn_unused_ignores = false
 # only the flags / error codes actually firing.
 # ──────────────────────────────────────────────────────────────────────
 
-[[tool.mypy.overrides]]
-module = "synthorg.a2a.*"
-disallow_any_explicit = false
-
 # The broad api exemption covers the ~70 still-undecomposed controllers and
 # the decomposed controllers that inherited explicit-Any (drained by #2056,
 # not this PR). The two narrower blocks below re-enable the bar for the

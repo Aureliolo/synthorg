@@ -8,7 +8,7 @@ re-raised ``ValidationError`` into ``-32602 Invalid params``.
 
 import pytest
 import structlog
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.a2a.models import A2AMessage, JsonRpcRequest
 from synthorg.a2a.rpc_params import (
@@ -19,11 +19,11 @@ from synthorg.a2a.rpc_params import (
 )
 
 
-def _envelope(method: str, params: dict[str, object]) -> JsonRpcRequest:
+def _envelope(method: str, params: dict[str, JsonValue]) -> JsonRpcRequest:
     return JsonRpcRequest(jsonrpc="2.0", method=method, id=1, params=params)
 
 
-def _message_payload() -> dict[str, object]:
+def _message_payload() -> dict[str, JsonValue]:
     msg = A2AMessage(
         role="agent",  # type: ignore[arg-type]
         parts=({"type": "text", "text": "hello"},),  # type: ignore[arg-type]
@@ -60,7 +60,7 @@ class TestA2ARpcParamsBoundary:
         # because it lacks the required ``id`` field.
         envelope = _envelope(
             "tasks/get",
-            {"method": "message/send", "message": {"role": "agent", "parts": ()}},
+            {"method": "message/send", "message": {"role": "agent", "parts": []}},
         )
         with pytest.raises(ValidationError):
             parse_rpc_params(envelope)
