@@ -59,6 +59,12 @@ from synthorg.core.normalization import (
     extract_media_type,
 )
 from synthorg.core.task import Task
+from synthorg.engine.errors import (
+    TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
+    TaskMutationError,
+    TaskNotFoundError,
+)
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.integrations.state import IntegrationsStateSlice
@@ -105,6 +111,11 @@ async def _resolve_max_message_parts(app_state: AppState | None) -> int:
     resolver lookup fails.  A transient settings outage must not let
     an oversized message slip through, so the fallback is the same
     value as the registered default.
+
+    ``app_state`` is accepted as ``AppState | None`` (not just
+    ``AppState``) because a bare harness or a boot path that bypasses
+    :class:`AppState` may pass ``None``; that case takes the same
+    fallback as a missing resolver.
 
     Returns:
         The resolved ``a2a.max_message_parts`` value, or
@@ -493,6 +504,63 @@ async def _dispatch_method(
             ),
             media_type="application/json",
             status_code=exc.http_status,
+        )
+    except TaskNotFoundError as exc:
+        # A task can vanish between a handler's pre-flight ``get_task``
+        # and the subsequent ``cancel_task``; surface the dedicated A2A
+        # not-found code rather than a generic 500.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="task_not_found",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(request_id, A2A_TASK_NOT_FOUND, "Task not found"),
+            media_type="application/json",
+            status_code=404,
+        )
+    except (TaskEngineNotRunningError, TaskEngineQueueFullError) as exc:
+        # Retryable engine-availability faults: a peer must see 503 so it
+        # retries, not a permanent-looking 500.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="engine_unavailable",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(
+                request_id,
+                JSONRPC_INTERNAL_ERROR,
+                "Task engine temporarily unavailable",
+            ),
+            media_type="application/json",
+            status_code=503,
+        )
+    except TaskMutationError as exc:
+        # Mutation rejected by the engine (validation, version conflict).
+        # Maps to invalid-params rather than an internal fault.
+        logger.warning(
+            A2A_INBOUND_REJECTED,
+            method=method,
+            peer_name=peer_name,
+            reason="task_mutation_failed",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return Response(
+            content=_error_response(
+                request_id,
+                JSONRPC_INVALID_PARAMS,
+                "Invalid task operation",
+            ),
+            media_type="application/json",
+            status_code=400,
         )
     except Exception as exc:
         reraise_critical(exc)

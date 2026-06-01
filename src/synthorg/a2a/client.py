@@ -393,13 +393,13 @@ class A2AClient:
         if self._http_client is not None:
             return await self._http_client.post(
                 url,
-                json=rpc_req.model_dump(),
+                json=rpc_req.model_dump(mode="json"),
                 headers=headers,
             )
         async with httpx.AsyncClient(timeout=self._timeout) as http:
             return await http.post(
                 url,
-                json=rpc_req.model_dump(),
+                json=rpc_req.model_dump(mode="json"),
                 headers=headers,
             )
 

@@ -128,7 +128,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 734,
+      "loc": 794,
       "loc_cap": 1100,
       "module": "src/synthorg/a2a/gateway.py",
       "owning_feature": "a2a"

@@ -240,7 +240,7 @@ def _make_identity(
         level=SeniorityLevel.MID,
         model=ModelConfig(
             provider="test-provider",
-            model_id="test-model-medium-001",
+            model_id="test-medium-001",
         ),
         hiring_date=date(2026, 1, 1),
         skills=SkillSet(

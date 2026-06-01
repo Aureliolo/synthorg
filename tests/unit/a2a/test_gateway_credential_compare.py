@@ -36,7 +36,7 @@ def credentials_match() -> Callable[[str, str], bool]:
     if helper is None:
         pytest.fail(
             "expected `_credentials_match` helper in synthorg.a2a.gateway "
-            "(introduced by #1682 to replace `!=` with `hmac.compare_digest`)",
+            "for constant-time credential comparison via hmac.compare_digest",
         )
     return helper
 
