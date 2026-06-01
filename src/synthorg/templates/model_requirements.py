@@ -7,9 +7,9 @@ template does not specify full requirements.
 """
 
 from types import MappingProxyType
-from typing import Any, Literal, get_args
+from typing import Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.core.normalization import (
     normalize_ascii_lowercase,
@@ -29,6 +29,10 @@ logger = get_logger(__name__)
 
 # Valid tier and priority literals.
 ModelPriority = Literal["quality", "balanced", "speed", "cost"]
+
+# Closed value set for personality affinity entries: a string ``priority``
+# axis and an integer ``min_context`` floor.
+type AffinityValue = str | int
 
 _VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
 
@@ -65,7 +69,7 @@ class ModelRequirement(BaseModel):
     )
 
 
-def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
+def parse_model_requirement(raw: str | dict[str, JsonValue]) -> ModelRequirement:
     """Parse a model requirement from a string tier or dict.
 
     Backward-compatible: accepts the legacy ``"medium"`` string format
@@ -92,10 +96,10 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
                 valid_tiers=sorted(_VALID_TIERS),
             )
             raise ValueError(msg)
-        result = ModelRequirement(tier=key)  # type: ignore[arg-type]
+        result = ModelRequirement.model_validate({"tier": key})
     else:
         try:
-            result = ModelRequirement(**raw)
+            result = ModelRequirement.model_validate(raw)
         except ValidationError:
             logger.warning(
                 TEMPLATE_MODEL_REQUIREMENT_INVALID,
@@ -118,7 +122,7 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
 # extra="forbid".  These are soft defaults applied when resolving
 # model requirements.
 
-_RAW_AFFINITY: dict[str, dict[str, Any]] = {
+_RAW_AFFINITY: dict[str, dict[str, AffinityValue]] = {
     # Leaders and strategists benefit from stronger reasoning.
     "visionary_leader": {"priority": "quality", "min_context": 100_000},
     "strategic_planner": {"priority": "quality"},
@@ -150,8 +154,10 @@ _RAW_AFFINITY: dict[str, dict[str, Any]] = {
 }
 
 # Both the outer mapping and each inner mapping are read-only.
-MODEL_AFFINITY: MappingProxyType[str, MappingProxyType[str, Any]] = MappingProxyType(
-    {k: MappingProxyType(v) for k, v in _RAW_AFFINITY.items()},
+MODEL_AFFINITY: MappingProxyType[str, MappingProxyType[str, AffinityValue]] = (
+    MappingProxyType(
+        {k: MappingProxyType(v) for k, v in _RAW_AFFINITY.items()},
+    )
 )
 del _RAW_AFFINITY
 
@@ -177,11 +183,11 @@ def resolve_model_requirement(
     Returns:
         Resolved ``ModelRequirement``.
     """
-    affinity: dict[str, Any] = dict(
+    affinity: dict[str, AffinityValue] = dict(
         MODEL_AFFINITY.get(normalize_ascii_lowercase_or_default(preset_name), {}),
     )
 
-    merged: dict[str, Any] = {"tier": normalize_ascii_lowercase(tier_str)}
+    merged: dict[str, JsonValue] = {"tier": normalize_ascii_lowercase(tier_str)}
     # Affinity values fill in priority and min_context when available.
     if "priority" in affinity:
         merged["priority"] = affinity["priority"]

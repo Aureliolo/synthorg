@@ -12,12 +12,12 @@ each template's Jinja2 is rendered independently, then configs are
 merged via :func:`~synthorg.templates.merge.merge_template_configs`.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import yaml
 from jinja2 import TemplateError as Jinja2TemplateError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
@@ -71,10 +71,10 @@ _JINJA_ENV.filters["auto"] = lambda value: value or ""
 
 def render_template(
     loaded: LoadedTemplate,
-    variables: dict[str, Any] | None = None,
+    variables: dict[str, object] | None = None,
     *,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
@@ -119,13 +119,13 @@ def render_template(
 
 def _render_to_dict(
     loaded: LoadedTemplate,
-    variables: dict[str, Any] | None = None,
+    variables: dict[str, object] | None = None,
     *,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     _as_parent: bool = False,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Render a template to a config dict, resolving inheritance.
 
     Args:
@@ -167,7 +167,7 @@ def _render_to_dict(
     )
 
     # Build base config from extends parent (if any).
-    base_config: dict[str, Any] = {}
+    base_config: dict[str, object] = {}
     if template.extends is not None:
         base_config = render_parent_config(
             parent_name=template.extends,
@@ -199,14 +199,14 @@ def _render_to_dict(
 
 
 def _resolve_packs(
-    base_config: dict[str, Any],
+    base_config: dict[str, object],
     pack_names: tuple[str, ...],
     *,
-    variables: dict[str, Any] | None = None,
+    variables: dict[str, object] | None = None,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> dict[str, object]:
     """Merge template packs onto a base config in declaration order.
 
     Each pack is loaded, rendered to a config dict, and merged onto
@@ -273,8 +273,8 @@ def _resolve_packs(
 
 def _collect_variables(
     template: CompanyTemplate,
-    user_vars: dict[str, Any],
-) -> dict[str, Any]:
+    user_vars: dict[str, object],
+) -> dict[str, object]:
     """Merge user variables with template defaults.
 
     Args:
@@ -287,7 +287,7 @@ def _collect_variables(
     Raises:
         TemplateRenderError: If a required variable is missing.
     """
-    result: dict[str, Any] = {}
+    result: dict[str, object] = {}
     for var in template.variables:
         if var.name in user_vars:
             result[var.name] = user_vars[var.name]
@@ -313,7 +313,7 @@ def _collect_variables(
 
 def _render_jinja2(
     raw_yaml: str,
-    variables: dict[str, Any],
+    variables: dict[str, object],
     *,
     source_name: str,
 ) -> str:
@@ -352,7 +352,7 @@ def _render_jinja2(
 def _parse_rendered_yaml(
     rendered_text: str,
     source_name: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Parse the Jinja2-rendered YAML text.
 
     Args:
@@ -400,9 +400,9 @@ def _parse_rendered_yaml(
 
 
 def _build_workflow_dict(
-    rendered_data: dict[str, Any],
+    rendered_data: dict[str, object],
     template: CompanyTemplate,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build a WorkflowConfig-compatible dict from workflow type and sub-configs.
 
     Args:
@@ -418,7 +418,7 @@ def _build_workflow_dict(
         if isinstance(workflow_type_raw, WorkflowType)
         else str(workflow_type_raw)
     )
-    workflow_dict: dict[str, Any] = {"workflow_type": workflow_type_str}
+    workflow_dict: dict[str, object] = {"workflow_type": workflow_type_str}
     wf_config = rendered_data.get("workflow_config")
     if isinstance(wf_config, dict):
         known_keys = {"kanban", "sprint"}
@@ -436,14 +436,14 @@ def _build_workflow_dict(
 
 
 def _build_config_dict(  # noqa: PLR0913
-    rendered_data: dict[str, Any],
+    rendered_data: dict[str, object],
     template: CompanyTemplate,
-    variables: dict[str, Any],
+    variables: dict[str, object],
     *,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_ids: bool = False,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Build a RootConfig-compatible dict from rendered template data.
 
     Args:
@@ -493,7 +493,7 @@ def _build_config_dict(  # noqa: PLR0913
 
     autonomy, budget_monthly = _extract_numeric_config(company, template)
 
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "company_name": company_name,
         "company_type": company.get("type", template.metadata.company_type.value),
         "agents": agents,
@@ -515,8 +515,8 @@ def _build_config_dict(  # noqa: PLR0913
 
 
 def _attach_optional_lists(
-    rendered_data: dict[str, Any],
-    result: dict[str, Any],
+    rendered_data: dict[str, object],
+    result: dict[str, object],
 ) -> None:
     """Extract optional list fields from rendered data into result."""
     for key in ("workflow_handoffs", "escalation_paths"):
@@ -525,9 +525,9 @@ def _attach_optional_lists(
 
 
 def _validate_list(
-    rendered_data: dict[str, Any],
+    rendered_data: dict[str, object],
     key: str,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Extract and validate a list field from rendered data.
 
     Returns:
@@ -563,13 +563,13 @@ def _validate_list(
                 got=type(item).__name__,
             )
             raise TemplateRenderError(msg)
-    return raw
+    return [item for item in raw if isinstance(item, dict)]
 
 
 def _extract_numeric_config(
-    company: dict[str, Any],
+    company: dict[str, object],
     template: CompanyTemplate,
-) -> tuple[dict[str, Any], float]:
+) -> tuple[dict[str, object], float]:
     """Extract autonomy and budget_monthly.
 
     Autonomy is always a dict (AutonomyConfig-compatible). A copy
@@ -600,7 +600,7 @@ def _extract_numeric_config(
         raise TemplateRenderError(msg)
     try:
         # Shallow copy -- autonomy dicts have only scalar values.
-        autonomy: dict[str, Any] = dict(raw_autonomy)
+        autonomy: dict[str, object] = dict(raw_autonomy)
         budget_monthly = to_float(
             company.get("budget_monthly", template.budget_monthly),
             field_name="budget_monthly",
@@ -618,13 +618,13 @@ def _extract_numeric_config(
 
 
 def _expand_agents(
-    raw_agents: list[dict[str, Any]],
+    raw_agents: list[dict[str, object]],
     *,
     has_extends: bool,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_ids: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
     Args:
@@ -639,7 +639,7 @@ def _expand_agents(
     """
     keep_merge = preserve_merge_ids or has_extends
     used_names: set[str] = set()
-    expanded: list[dict[str, Any]] = []
+    expanded: list[dict[str, object]] = []
     for idx, agent in enumerate(raw_agents):
         expanded.append(
             _expand_single_agent(
@@ -656,15 +656,15 @@ def _expand_agents(
 
 
 def _expand_single_agent(  # noqa: PLR0913
-    agent: dict[str, Any],
+    agent: dict[str, object],
     idx: int,
     used_names: set[str],
     *,
     has_extends: bool,
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     preserve_merge_id: bool = False,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Expand a single template agent dict.
 
     Steps: auto-name generation, name deduplication, personality
@@ -688,7 +688,7 @@ def _expand_single_agent(  # noqa: PLR0913
         TemplateRenderError: When the agent dict is missing a ``role``.
     """
     role = agent.get("role")
-    if not role:
+    if not isinstance(role, str) or not role:
         msg = f"Agent at index {idx} is missing required 'role' field"
         logger.warning(TEMPLATE_RENDER_VARIABLE_ERROR, index=idx, field="role")
         raise TemplateRenderError(msg)
@@ -704,7 +704,7 @@ def _expand_single_agent(  # noqa: PLR0913
         counter += 1
     used_names.add(name)
 
-    agent_dict: dict[str, Any] = {
+    agent_dict: dict[str, object] = {
         "name": name,
         "role": role,
         "department": agent.get("department", _DEFAULT_DEPARTMENT),
@@ -748,7 +748,7 @@ def _expand_single_agent(  # noqa: PLR0913
     return agent_dict
 
 
-def _resolve_model_tier(agent: dict[str, Any]) -> str:
+def _resolve_model_tier(agent: dict[str, object]) -> str:
     """Extract the model tier from a template agent dict.
 
     Handles both the string format (``"medium"``) and the structured

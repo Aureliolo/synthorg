@@ -954,7 +954,7 @@
     },
     {
       "kind": "code",
-      "loc": 176,
+      "loc": 182,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/personalities.py",
       "owning_feature": "api_core"
@@ -16865,21 +16865,21 @@
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 169,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_inheritance.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 100,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_preset_resolution.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 228,
+      "loc": 242,
       "loc_cap": 500,
       "module": "src/synthorg/templates/_render_helpers.py",
       "owning_feature": null
@@ -16900,7 +16900,7 @@
     },
     {
       "kind": "code",
-      "loc": 500,
+      "loc": 498,
       "loc_cap": 500,
       "module": "src/synthorg/templates/loader.py",
       "owning_feature": null
@@ -16914,21 +16914,21 @@
     },
     {
       "kind": "code",
-      "loc": 279,
+      "loc": 321,
       "loc_cap": 500,
       "module": "src/synthorg/templates/merge.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 422,
+      "loc": 427,
       "loc_cap": 500,
       "module": "src/synthorg/templates/model_matcher.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 153,
+      "loc": 156,
       "loc_cap": 500,
       "module": "src/synthorg/templates/model_requirements.py",
       "owning_feature": null
@@ -16956,7 +16956,7 @@
     },
     {
       "kind": "code",
-      "loc": 381,
+      "loc": 383,
       "loc_cap": 500,
       "module": "src/synthorg/templates/preset_service.py",
       "owning_feature": null
@@ -16977,7 +16977,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 520,
+      "loc": 527,
       "loc_cap": null,
       "module": "src/synthorg/templates/schema.py",
       "owning_feature": null

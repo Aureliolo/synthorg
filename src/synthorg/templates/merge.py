@@ -6,8 +6,8 @@ the template inheritance design.
 """
 
 import copy
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
 
 from synthorg.config.utils import deep_merge
 from synthorg.observability import get_logger
@@ -32,14 +32,50 @@ class _ParentEntry:
     """Tracking record for a parent agent during merge."""
 
     index: int
-    agent: dict[str, Any] | None
+    agent: dict[str, object] | None
     matched: bool = field(default=False)
 
 
+def _as_dict_list(value: object, field_name: str) -> list[dict[str, object]]:
+    """Narrow a rendered-config value to a list of mapping records.
+
+    Args:
+        value: Candidate value pulled from a rendered config dict.
+        field_name: Field name for error context.
+
+    Returns:
+        The value as a list of string-keyed mapping records.
+
+    Raises:
+        TemplateInheritanceError: When *value* is not a list, or any
+            element is not a mapping.
+    """
+    if not isinstance(value, list):
+        msg = f"Merged template {field_name!r} must be a list"
+        logger.error(
+            TEMPLATE_INHERIT_MERGE_ERROR,
+            action="invalid_field_type",
+            field=field_name,
+        )
+        raise TemplateInheritanceError(msg)
+    records: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            msg = f"Merged template {field_name!r} entries must be mappings"
+            logger.error(
+                TEMPLATE_INHERIT_MERGE_ERROR,
+                action="invalid_field_entry",
+                field=field_name,
+            )
+            raise TemplateInheritanceError(msg)
+        records.append(item)
+    return records
+
+
 def merge_template_configs(
-    parent: dict[str, Any],
-    child: dict[str, Any],
-) -> dict[str, Any]:
+    parent: dict[str, object],
+    child: dict[str, object],
+) -> dict[str, object]:
     """Merge a parent config dict with a child config dict.
 
     Merge strategies by field:
@@ -60,7 +96,7 @@ def merge_template_configs(
     """
     logger.debug(TEMPLATE_INHERIT_MERGE, action="start")
 
-    result: dict[str, Any] = {}
+    result: dict[str, object] = {}
 
     # Scalars: child wins if present.
     for key in ("company_name", "company_type"):
@@ -82,13 +118,19 @@ def merge_template_configs(
     parent_agents = parent.get("agents", [])
     child_agents = child.get("agents", [])
     if parent_agents or child_agents:
-        result["agents"] = _merge_agents(parent_agents, child_agents)
+        result["agents"] = _merge_agents(
+            _as_dict_list(parent_agents, "agents"),
+            _as_dict_list(child_agents, "agents"),
+        )
 
     # Departments: merge by name.
     parent_depts = parent.get("departments", [])
     child_depts = child.get("departments", [])
     if parent_depts or child_depts:
-        result["departments"] = _merge_departments(parent_depts, child_depts)
+        result["departments"] = _merge_departments(
+            _as_dict_list(parent_depts, "departments"),
+            _as_dict_list(child_depts, "departments"),
+        )
 
     # Replace-if-present fields (deep-copied to prevent reference sharing).
     for key in ("workflow", "workflow_handoffs", "escalation_paths"):
@@ -102,9 +144,9 @@ def merge_template_configs(
 
 
 def _merge_agents(
-    parent_agents: list[dict[str, Any]],
-    child_agents: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    parent_agents: Sequence[Mapping[str, object]],
+    child_agents: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
     """Merge agent lists by ``(role, department, merge_id)`` key.
 
     Algorithm:
@@ -132,24 +174,27 @@ def _merge_agents(
     Raises:
         TemplateInheritanceError: If ``_remove`` has no matching parent.
     """
+    parents = [dict(agent) for agent in parent_agents]
+    children = [dict(agent) for agent in child_agents]
+
     parent_entries: dict[tuple[str, str, str], list[_ParentEntry]] = {}
-    for idx, agent in enumerate(parent_agents):
+    for idx, agent in enumerate(parents):
         key = _agent_key(agent)
         parent_entries.setdefault(key, []).append(
             _ParentEntry(index=idx, agent=copy.deepcopy(agent)),
         )
 
-    appended: list[dict[str, Any]] = []
-    for child_agent in child_agents:
+    appended: list[dict[str, object]] = []
+    for child_agent in children:
         _apply_child_agent(child_agent, parent_entries, appended)
 
     return _collect_merged_agents(parent_entries, appended)
 
 
 def _apply_child_agent(
-    child_agent: dict[str, Any],
+    child_agent: dict[str, object],
     parent_entries: dict[tuple[str, str, str], list[_ParentEntry]],
-    appended: list[dict[str, Any]],
+    appended: list[dict[str, object]],
 ) -> None:
     """Apply a single child agent against parent entries.
 
@@ -203,8 +248,8 @@ def _find_unmatched(
 
 def _collect_merged_agents(
     parent_entries: dict[tuple[str, str, str], list[_ParentEntry]],
-    appended: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    appended: list[dict[str, object]],
+) -> list[dict[str, object]]:
     """Collect surviving parent agents (in order) + appended.
 
     Returns:
@@ -215,19 +260,20 @@ def _collect_merged_agents(
         (entry for entries in parent_entries.values() for entry in entries),
         key=lambda e: e.index,
     )
-    result: list[dict[str, Any]] = [
-        {k: v for k, v in entry.agent.items() if k not in _STRIP_KEYS}
-        for entry in all_entries
-        if entry.agent is not None
-    ]
+    result: list[dict[str, object]] = []
+    for entry in all_entries:
+        agent = entry.agent
+        if agent is None:
+            continue
+        result.append({k: v for k, v in agent.items() if k not in _STRIP_KEYS})
     result.extend(appended)
     return result
 
 
 def _merge_departments(
-    parent_depts: list[dict[str, Any]],
-    child_depts: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    parent_depts: Sequence[Mapping[str, object]],
+    child_depts: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
     """Merge department lists by name (case-insensitive).
 
     Child dept with matching name replaces parent entirely.
@@ -244,10 +290,13 @@ def _merge_departments(
     Raises:
         TemplateInheritanceError: If ``_remove`` has no matching parent.
     """
+    parents = [dict(dept) for dept in parent_depts]
+    children = [dict(dept) for dept in child_depts]
+
     # Build child overrides index (skip nameless departments).
-    child_by_name: dict[str, dict[str, Any]] = {}
-    nameless_child: list[dict[str, Any]] = []
-    for child_dept in child_depts:
+    child_by_name: dict[str, dict[str, object]] = {}
+    nameless_child: list[dict[str, object]] = []
+    for child_dept in children:
         name = str(child_dept.get("name", "")).lower()
         if not name:
             logger.warning(
@@ -259,9 +308,9 @@ def _merge_departments(
         child_by_name[name] = copy.deepcopy(child_dept)
 
     # Walk parent depts: apply child override/removal if it exists.
-    result: list[dict[str, Any]] = []
+    result: list[dict[str, object]] = []
     seen_names: set[str] = set()
-    for dept in parent_depts:
+    for dept in parents:
         name = str(dept.get("name", "")).lower()
         if not name:
             logger.warning(
@@ -294,9 +343,9 @@ def _merge_departments(
 
 
 def _collect_unmatched_child_depts(
-    child_by_name: dict[str, dict[str, Any]],
+    child_by_name: dict[str, dict[str, object]],
     seen_names: set[str],
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Return child departments that didn't match any parent.
 
     Returns:
@@ -305,7 +354,7 @@ def _collect_unmatched_child_depts(
     Raises:
         TemplateInheritanceError: If a child ``_remove`` has no parent.
     """
-    result: list[dict[str, Any]] = []
+    result: list[dict[str, object]] = []
     for name, child_dept in child_by_name.items():
         if name not in seen_names:
             if child_dept.get("_remove"):
@@ -324,7 +373,7 @@ def _collect_unmatched_child_depts(
     return result
 
 
-def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
+def _agent_key(agent: dict[str, object]) -> tuple[str, str, str]:
     """Compute the merge key for an agent dict.
 
     Uses ``(role, department, merge_id)`` when ``merge_id`` is present,

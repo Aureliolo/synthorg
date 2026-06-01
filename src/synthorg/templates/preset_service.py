@@ -7,9 +7,8 @@ Merges builtin presets (from code) with user-defined custom presets
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.core.agent import PersonalityConfig
@@ -30,7 +29,7 @@ from synthorg.persistence.preset_protocol import (
     Preset,
 )
 from synthorg.templates.preset_models import PresetSource
-from synthorg.templates.presets import PERSONALITY_PRESETS
+from synthorg.templates.presets import PERSONALITY_PRESETS, get_personality_preset
 
 logger = get_logger(__name__)
 
@@ -53,24 +52,28 @@ class PresetEntry(BaseModel):
 
     name: NotBlankStr
     source: PresetSource
-    config: dict[str, Any]
+    config: dict[str, JsonValue]
     description: str = ""
     created_at: str | None = None
     updated_at: str | None = None
 
 
-def _builtin_to_entry(name: str, preset: dict[str, Any]) -> PresetEntry:
-    """Convert a builtin preset dict to a PresetEntry.
+def _builtin_to_entry(name: str) -> PresetEntry:
+    """Convert a builtin preset to a PresetEntry.
+
+    Args:
+        name: Builtin preset name (must exist in the registry).
 
     Returns:
-        A ``PresetEntry`` with ``BUILTIN`` source wrapping the preset
-        config.
+        A ``PresetEntry`` with ``BUILTIN`` source wrapping a JSON-shaped
+        copy of the preset config.
     """
+    config = get_personality_preset(name)
     return PresetEntry(
         name=NotBlankStr(name),
         source=PresetSource.BUILTIN,
-        config=dict(preset),
-        description=str(preset.get("description", "")),
+        config=config,
+        description=str(config.get("description", "")),
     )
 
 
@@ -111,7 +114,7 @@ def _normalize_preset_name(raw: str) -> str:
 
 
 def _validate_personality_config(
-    config: dict[str, Any],
+    config: dict[str, JsonValue],
 ) -> PersonalityConfig:
     """Validate a config dict against PersonalityConfig.
 
@@ -125,7 +128,7 @@ def _validate_personality_config(
         ValidationError: If validation fails.
     """
     try:
-        return PersonalityConfig(**config)
+        return PersonalityConfig.model_validate(config)
     except PydanticValidationError as exc:
         logger.warning(
             PRESET_VALIDATION_FAILED,
@@ -137,7 +140,7 @@ def _validate_personality_config(
         raise ValidationError(msg) from exc
 
 
-def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
+def _parse_config_json(config_json: str, preset_name: str) -> dict[str, JsonValue]:
     """Parse a JSON config string from the database.
 
     Args:
@@ -151,7 +154,7 @@ def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
         NotFoundError: If the JSON is corrupt.
     """
     try:
-        parsed: dict[str, Any] = json.loads(config_json)
+        parsed: dict[str, JsonValue] = json.loads(config_json)
     except json.JSONDecodeError as exc:
         logger.warning(
             PRESET_VALIDATION_FAILED,
@@ -203,8 +206,8 @@ class PersonalityPresetService:
         """
         entries: dict[str, PresetEntry] = {}
 
-        for name, preset in PERSONALITY_PRESETS.items():
-            entries[name] = _builtin_to_entry(name, dict(preset))
+        for name in PERSONALITY_PRESETS:
+            entries[name] = _builtin_to_entry(name)
 
         presets = await self._repo.list_items()
         for custom in presets:
@@ -253,7 +256,7 @@ class PersonalityPresetService:
             )
 
         if key in PERSONALITY_PRESETS:
-            return _builtin_to_entry(key, dict(PERSONALITY_PRESETS[key]))
+            return _builtin_to_entry(key)
 
         logger.warning(PRESET_NOT_FOUND, preset_name=key)
         msg = f"Personality preset {name!r} not found"
@@ -262,7 +265,7 @@ class PersonalityPresetService:
     async def create(
         self,
         name: str,
-        config: dict[str, Any],
+        config: dict[str, JsonValue],
     ) -> PresetEntry:
         """Create a new custom preset.
 
@@ -327,7 +330,7 @@ class PersonalityPresetService:
     async def update(
         self,
         name: str,
-        config: dict[str, Any],
+        config: dict[str, JsonValue],
     ) -> PresetEntry:
         """Update an existing custom preset.
 
@@ -414,7 +417,7 @@ class PersonalityPresetService:
         logger.info(PRESET_DELETED, preset_name=key)
 
     @staticmethod
-    def get_schema() -> dict[str, Any]:
+    def get_schema() -> dict[str, JsonValue]:
         """Return the JSON Schema for PersonalityConfig.
 
         Returns:
@@ -425,7 +428,7 @@ class PersonalityPresetService:
 
 async def fetch_custom_presets_map(
     repo: PersonalityPresetRepository,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, dict[str, JsonValue]]:
     """Fetch all custom presets as a sync-friendly name-to-config dict.
 
     This bridges the async persistence layer and the sync template
@@ -443,7 +446,7 @@ async def fetch_custom_presets_map(
         Mapping of lowercased preset names to personality config dicts.
     """
     presets = await repo.list_items()
-    result: dict[str, dict[str, Any]] = {}
+    result: dict[str, dict[str, JsonValue]] = {}
     for preset in presets:
         key = normalize_ascii_lowercase(str(preset.name))
         try:

@@ -5,12 +5,15 @@ parent-child merge, variable flow, and post-merge name deduplication.
 Extracted from ``renderer.py`` to keep file sizes under 800 lines.
 """
 
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
+
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
     TEMPLATE_INHERIT_DEPTH_EXCEEDED,
+    TEMPLATE_INHERIT_MERGE_ERROR,
 )
 from synthorg.templates.errors import TemplateInheritanceError
 
@@ -29,13 +32,13 @@ class _RenderToDictFn(Protocol):
     def __call__(
         self,
         loaded: LoadedTemplate,
-        variables: dict[str, Any] | None = ...,
+        variables: dict[str, object] | None = ...,
         *,
         locales: list[str] | None = ...,
         _chain: frozenset[str] = ...,
-        custom_presets: Mapping[str, dict[str, Any]] | None = ...,
+        custom_presets: Mapping[str, dict[str, JsonValue]] | None = ...,
         _as_parent: bool = ...,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, object]: ...
 
 
 logger = get_logger(__name__)
@@ -86,12 +89,12 @@ def render_parent_config(  # noqa: PLR0913
     *,
     parent_name: str,
     child_id: str,
-    vars_dict: dict[str, Any],
+    vars_dict: dict[str, object],
     _chain: frozenset[str],
     locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
     render_to_dict_fn: _RenderToDictFn,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Load and render a parent template, returning its config dict.
 
     Does **not** merge with a child config.  Used by the renderer to
@@ -133,7 +136,7 @@ def render_parent_config(  # noqa: PLR0913
     )
 
 
-def deduplicate_merged_agent_names(merged: dict[str, Any]) -> dict[str, Any]:
+def deduplicate_merged_agent_names(merged: dict[str, object]) -> dict[str, object]:
     """Ensure agent names are unique after merging parent + child.
 
     Parent and child agent names are auto-generated independently, so
@@ -147,14 +150,25 @@ def deduplicate_merged_agent_names(merged: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         New config dict with deduplicated agent names.
+
+    Raises:
+        TemplateInheritanceError: If an ``agents`` entry is not a mapping.
     """
     agents = merged.get("agents")
-    if not agents:
+    if not isinstance(agents, list) or not agents:
         return merged
     used: set[str] = set()
-    new_agents: list[dict[str, Any]] = []
+    new_agents: list[dict[str, object]] = []
     for agent in agents:
-        name = agent.get("name") or ""
+        if not isinstance(agent, dict):
+            msg = "Merged 'agents' entries must be mappings"
+            logger.error(
+                TEMPLATE_INHERIT_MERGE_ERROR,
+                action="invalid_agent_entry",
+            )
+            raise TemplateInheritanceError(msg)
+        raw_name = agent.get("name")
+        name = raw_name if isinstance(raw_name, str) and raw_name else ""
         if not name:
             new_agents.append(agent)
             continue
@@ -173,8 +187,8 @@ def deduplicate_merged_agent_names(merged: dict[str, Any]) -> dict[str, Any]:
 
 def collect_parent_variables(
     parent_template: CompanyTemplate,
-    child_vars: dict[str, Any],
-) -> dict[str, Any]:
+    child_vars: Mapping[str, object],
+) -> dict[str, object]:
     """Collect variables for a parent template.
 
     Child's resolved variables take priority over the parent's own
@@ -187,7 +201,7 @@ def collect_parent_variables(
     Returns:
         Variable dict for parent rendering.
     """
-    result: dict[str, Any] = dict(child_vars)
+    result: dict[str, object] = dict(child_vars)
     for var in parent_template.variables:
         if var.name not in result and var.default is not None:
             result[var.name] = var.default

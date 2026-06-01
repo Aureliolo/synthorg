@@ -39,10 +39,16 @@ def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:
     Returns:
         ``PresetSummaryResponse`` instance.
     """
+    raw_traits = entry.config.get("traits", ())
+    traits = (
+        tuple(str(t) for t in raw_traits)
+        if isinstance(raw_traits, (list, tuple))
+        else ()
+    )
     return PresetSummaryResponse(
         name=entry.name,
         description=entry.description,
-        traits=tuple(str(t) for t in entry.config.get("traits", ())),
+        traits=traits,
         source=PresetSource(entry.source),
     )
 
@@ -53,7 +59,7 @@ def _to_detail(entry: PresetEntry) -> PresetDetailResponse:
     Returns:
         ``PresetDetailResponse`` instance.
     """
-    cfg = entry.config
+    cfg: dict[str, Any] = dict(entry.config)
     return PresetDetailResponse(
         name=entry.name,
         source=PresetSource(entry.source),

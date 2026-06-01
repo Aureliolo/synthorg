@@ -1,6 +1,6 @@
 """Tests for the two-pass template rendering pipeline."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import structlog
@@ -406,6 +406,25 @@ class TestCollectVariables:
 
 
 @pytest.mark.unit
+class TestExpandAgentNarrowing:
+    def test_non_string_role_raises(self) -> None:
+        """A non-string role fails loud with a domain render error."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {"role": 123}
+        with pytest.raises(TemplateRenderError, match="missing required 'role'"):
+            _expand_single_agent(agent, 0, set(), has_extends=False)
+
+    def test_non_string_personality_preset_raises(self) -> None:
+        """A non-string personality_preset fails loud."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Dev", "personality_preset": 123}
+        with pytest.raises(TemplateRenderError, match="must be a string"):
+            _expand_single_agent(agent, 0, set(), has_extends=False)
+
+
+@pytest.mark.unit
 class TestInlinePersonality:
     def test_inline_personality_applied(self) -> None:
         """Inline personality dict is applied to agent config."""
@@ -418,7 +437,7 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert result["personality"]["communication_style"] == "custom"
         assert "custom-trait" in result["personality"]["traits"]
 
@@ -439,7 +458,7 @@ class TestDepartmentPassthrough:
                 ],
             },
         ]
-        result = build_departments(raw)
+        result: Any = build_departments(raw)
         assert "reporting_lines" in result[0]
         assert len(result[0]["reporting_lines"]) == 1
 
@@ -457,7 +476,7 @@ class TestDepartmentPassthrough:
                 },
             },
         ]
-        result = build_departments(raw)
+        result: Any = build_departments(raw)
         assert "policies" in result[0]
 
     def test_workflow_handoffs_passthrough(self) -> None:
@@ -477,7 +496,7 @@ class TestDepartmentPassthrough:
             ),
             agents=(TemplateAgentConfig(role="Dev"),),
         )
-        rendered = {
+        rendered: dict[str, object] = {
             "company": {"type": "custom"},
             "agents": [{"role": "Dev"}],
             "departments": [],
@@ -485,7 +504,7 @@ class TestDepartmentPassthrough:
                 {"from_department": "eng", "to_department": "qa", "trigger": "done"},
             ],
         }
-        result = _build_config_dict(rendered, template, {})
+        result: Any = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
         assert len(result["workflow_handoffs"]) == 1
 
@@ -574,7 +593,7 @@ class TestEscalationPathsPassthrough:
             ),
             agents=(TemplateAgentConfig(role="Dev"),),
         )
-        rendered = {
+        rendered: dict[str, object] = {
             "company": {"type": "custom"},
             "agents": [{"role": "Dev"}],
             "departments": [],
@@ -586,7 +605,7 @@ class TestEscalationPathsPassthrough:
                 },
             ],
         }
-        result = _build_config_dict(rendered, template, {})
+        result: Any = _build_config_dict(rendered, template, {})
         assert "escalation_paths" in result
         assert len(result["escalation_paths"]) == 1
 
@@ -648,7 +667,7 @@ class TestExpandPreservesMergeId:
             "merge_id": "frontend",
             "department": "engineering",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "merge_id" not in result
 
     def test_preserve_merge_id_without_extends(self) -> None:
@@ -717,7 +736,7 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__ Dev",
             "department": "engineering",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         # The auto-generated name should NOT contain the placeholder.
         assert "__JINJA2__" not in result["name"]
         assert len(result["name"]) > 0
@@ -731,6 +750,6 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__",
             "department": "executive",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "__JINJA2__" not in result["name"]
         assert len(result["name"]) > 0

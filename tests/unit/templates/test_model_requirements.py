@@ -125,7 +125,9 @@ class TestModelAffinity:
     def test_affinity_min_context_non_negative(self) -> None:
         for name, affinity in MODEL_AFFINITY.items():
             if "min_context" in affinity:
-                assert affinity["min_context"] >= 0, f"{name} has negative min_context"
+                min_context = affinity["min_context"]
+                assert isinstance(min_context, int)
+                assert min_context >= 0, f"{name} has negative min_context"
 
 
 @pytest.mark.unit

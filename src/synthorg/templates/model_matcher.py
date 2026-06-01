@@ -7,9 +7,9 @@ according to the requirement's priority axis.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -22,13 +22,19 @@ from synthorg.observability.events.template import (
 from synthorg.templates.model_requirements import ModelTier
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
     from synthorg.config.schema import ProviderModelConfig
     from synthorg.settings.bridge_configs import EngineBridgeConfig
     from synthorg.templates.model_requirements import ModelRequirement
 
 logger = get_logger(__name__)
+
+
+class _ProviderWithModels(Protocol):
+    """Structural type for a provider config exposing its models."""
+
+    models: tuple[ProviderModelConfig, ...]
 
 
 class ModelMatch(BaseModel):
@@ -102,12 +108,12 @@ def match_model(
 
 
 def _resolve_agent_requirement(
-    agent: dict[str, Any],
+    agent: Mapping[str, object],
     idx: int,
-    model_requirement_cls: type,
-    parse_fn: Any,
-    resolve_fn: Any,
-) -> tuple[Any, ModelTier] | None:
+    model_requirement_cls: type[ModelRequirement],
+    parse_fn: Callable[[str | dict[str, JsonValue]], ModelRequirement],
+    resolve_fn: Callable[[str, str | None], ModelRequirement],
+) -> tuple[ModelRequirement, ModelTier] | None:
     """Resolve a single agent's model requirement.
 
     Returns:
@@ -116,7 +122,7 @@ def _resolve_agent_requirement(
     """
     model_req = agent.get("model_requirement")
     if isinstance(model_req, model_requirement_cls):
-        return model_req, model_req.tier  # type: ignore[attr-defined]
+        return model_req, model_req.tier
 
     if isinstance(model_req, dict):
         try:
@@ -132,27 +138,29 @@ def _resolve_agent_requirement(
             return None
         return req, req.tier
 
-    tier: ModelTier = agent.get("tier", "medium")
-    preset = agent.get("personality_preset")
+    raw_tier = agent.get("tier", "medium")
+    tier_str = raw_tier if isinstance(raw_tier, str) else "medium"
+    raw_preset = agent.get("personality_preset")
+    preset = raw_preset if isinstance(raw_preset, str) else None
     try:
-        req = resolve_fn(tier, preset)
+        req = resolve_fn(tier_str, preset)
     except (ValidationError, ValueError) as exc:
         logger.warning(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             agent_index=idx,
-            tier=tier,
+            tier=tier_str,
             preset=preset,
             reason="invalid_requirement",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return None
-    return req, tier
+    return req, req.tier
 
 
 def match_all_agents(
-    agents: list[dict[str, Any]],
-    providers: Mapping[str, Any],
+    agents: Sequence[Mapping[str, object]],
+    providers: Mapping[str, _ProviderWithModels],
     matcher_config: ModelMatcherConfig | None = None,
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.

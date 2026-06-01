@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from pydantic import ValidationError
@@ -446,7 +446,7 @@ def _parse_template_yaml(
     template_data = _validate_template_structure(data, source_name)
     try:
         normalized = _normalize_template_data(template_data)
-        return CompanyTemplate(**normalized)
+        return CompanyTemplate.model_validate(normalized)
     except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Template validation failed for {source_name}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
@@ -462,9 +462,9 @@ def _parse_template_yaml(
 
 
 def _validate_template_structure(
-    data: Any,
+    data: object,
     source_name: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Validate top-level YAML structure has a dict 'template' key.
 
     Returns:
@@ -491,7 +491,7 @@ def _validate_template_structure(
     return template_data
 
 
-def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
+def _normalize_template_data(data: dict[str, object]) -> dict[str, object]:
     """Transform raw YAML template data into CompanyTemplate kwargs.
 
     Bridges the human-friendly flat YAML format and the nested Pydantic
@@ -519,12 +519,12 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         )
         raise TypeError(msg)
 
-    metadata: dict[str, Any] = {
+    metadata: dict[str, object] = {
         "description": data.get("description", ""),
         "version": data.get("version", "1.0.0"),
         "company_type": company.get("type", "custom"),
-        "tags": tuple(data.get("tags", ())),
-        "skill_patterns": tuple(data.get("skill_patterns", ())),
+        "tags": data.get("tags", ()),
+        "skill_patterns": data.get("skill_patterns", ()),
     }
     if "name" in data:
         metadata["name"] = data["name"]
@@ -533,7 +533,7 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     if "max_agents" in data:
         metadata["max_agents"] = data["max_agents"]
 
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "metadata": metadata,
         "variables": data.get("variables", ()),
         "agents": data.get("agents", ()),
@@ -552,11 +552,11 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         raw_packs = data["uses_packs"]
         if raw_packs is None:
             pass  # Treat explicit null as "no packs".
-        elif (
-            isinstance(raw_packs, str)
-            or not isinstance(raw_packs, (list, tuple))
-            or not all(isinstance(p, str) for p in raw_packs)
+        elif isinstance(raw_packs, (list, tuple)) and all(
+            isinstance(p, str) for p in raw_packs
         ):
+            result["uses_packs"] = tuple(raw_packs)
+        else:
             msg = "Template field 'uses_packs' must be a list of strings"
             logger.warning(
                 TEMPLATE_LOAD_STRUCTURE_ERROR,
@@ -564,12 +564,10 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
                 error=msg,
             )
             raise TypeError(msg)
-        else:
-            result["uses_packs"] = tuple(raw_packs)
     return result
 
 
-def _to_float(value: Any) -> float:
+def _to_float(value: object) -> float:
     """Coerce a value to float for Pass 1 normalization.
 
     Returns ``0.0`` for values that cannot be converted (e.g. Jinja2
@@ -584,13 +582,13 @@ def _to_float(value: Any) -> float:
         Float value, or ``0.0`` for ``None`` or unconvertible strings
         (typically Jinja2 placeholders).
     """
-    if value is None:
-        return 0.0
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        logger.debug(
-            TEMPLATE_PASS1_FLOAT_FALLBACK,
-            value=repr(value),
-        )
-        return 0.0
+    if isinstance(value, (int, float, str)):
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                TEMPLATE_PASS1_FLOAT_FALLBACK,
+                value=repr(value),
+            )
+            return 0.0
+    return 0.0

@@ -239,7 +239,7 @@ class TestMergeTemplateConfigs:
         """Child scalars override parent."""
         parent: dict[str, Any] = {"company_name": "Parent Co"}
         child: dict[str, Any] = {"company_name": "Child Co"}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["company_name"] == "Child Co"
 
     def test_scalars_parent_fallback(self) -> None:
@@ -249,7 +249,7 @@ class TestMergeTemplateConfigs:
             "company_type": "startup",
         }
         child: dict[str, Any] = {}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["company_name"] == "Parent Co"
         assert result["company_type"] == "startup"
 
@@ -264,7 +264,7 @@ class TestMergeTemplateConfigs:
         child: dict[str, Any] = {
             "config": {"autonomy": {"level": "full"}},
         }
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["config"]["autonomy"] == {"level": "full"}
         assert result["config"]["budget_monthly"] == 100.0
 
@@ -282,7 +282,7 @@ class TestMergeTemplateConfigs:
             "departments": [{"name": "eng"}],
             "config": {"budget_monthly": 200.0},
         }
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["company_name"] == "Child"
         assert len(result["agents"]) == 2
         assert len(result["departments"]) == 2
@@ -297,7 +297,7 @@ class TestMergeTemplateConfigs:
         child: dict[str, Any] = {
             "workflow_handoffs": [{"from": "x", "to": "y"}],
         }
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert len(result["workflow_handoffs"]) == 1
         assert result["workflow_handoffs"][0]["from"] == "x"
 
@@ -307,14 +307,14 @@ class TestMergeTemplateConfigs:
             "escalation_paths": [{"from": "eng", "to": "security"}],
         }
         child: dict[str, Any] = {}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["escalation_paths"] == [{"from": "eng", "to": "security"}]
 
     def test_none_child_scalar_uses_parent(self) -> None:
         """None child scalar falls back to parent value."""
         parent: dict[str, Any] = {"company_name": "Parent Co"}
         child: dict[str, Any] = {"company_name": None}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["company_name"] == "Parent Co"
 
     def test_workflow_child_replaces_parent(self) -> None:
@@ -325,7 +325,7 @@ class TestMergeTemplateConfigs:
         child: dict[str, Any] = {
             "workflow": {"type": "agile_kanban"},
         }
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["workflow"] == {"type": "agile_kanban"}
 
     def test_workflow_inherited_from_parent(self) -> None:
@@ -334,7 +334,7 @@ class TestMergeTemplateConfigs:
             "workflow": {"type": "kanban", "wip": 3},
         }
         child: dict[str, Any] = {}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         assert result["workflow"] == {"type": "kanban", "wip": 3}
 
     def test_workflow_deep_copy_isolation(self) -> None:
@@ -343,7 +343,7 @@ class TestMergeTemplateConfigs:
             "workflow": {"type": "kanban", "config": {"wip": 3}},
         }
         child: dict[str, Any] = {}
-        result = merge_template_configs(parent, child)
+        result: Any = merge_template_configs(parent, child)
         result["workflow"]["config"]["wip"] = 99
         assert parent["workflow"]["config"]["wip"] == 3
 
@@ -356,13 +356,13 @@ class TestDeduplicateMergedAgentNames:
     def test_empty_agents(self) -> None:
         """No agents key is a no-op."""
         merged: dict[str, Any] = {}
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         assert "agents" not in result
 
     def test_empty_list(self) -> None:
         """Empty agents list is a no-op."""
         merged: dict[str, Any] = {"agents": []}
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         assert result["agents"] == []
 
     def test_no_duplicates(self) -> None:
@@ -370,7 +370,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "Alice"}, {"name": "Bob"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         names = [a["name"] for a in result["agents"]]
         assert names == ["Alice", "Bob"]
 
@@ -379,7 +379,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "Alice"}, {"name": "Alice"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         names = [a["name"] for a in result["agents"]]
         assert names == ["Alice", "Alice 2"]
 
@@ -388,7 +388,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "A"}, {"name": "A"}, {"name": "A"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         names = [a["name"] for a in result["agents"]]
         assert names == ["A", "A 2", "A 3"]
 
@@ -397,7 +397,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": ""}, {"name": ""}, {"name": "Alice"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         names = [a["name"] for a in result["agents"]]
         assert names == ["", "", "Alice"]
 
@@ -406,7 +406,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"role": "Dev"}, {"name": "Alice"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         assert "name" not in result["agents"][0]
         assert result["agents"][1]["name"] == "Alice"
 
@@ -415,7 +415,7 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "Alice"}, {"name": "Alice"}],
         }
-        result = deduplicate_merged_agent_names(merged)
+        result: Any = deduplicate_merged_agent_names(merged)
         assert result is not merged
         assert [a["name"] for a in merged["agents"]] == ["Alice", "Alice"]
 

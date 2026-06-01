@@ -59,7 +59,8 @@ class TestCompanyTemplateWorkflowConfig:
             },
         }
         t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        assert t.workflow_config["kanban"]["enforce_wip"] is True
+        wfc: Any = t.workflow_config
+        assert wfc["kanban"]["enforce_wip"] is True
 
     def test_accepts_sprint_config(
         self,
@@ -72,7 +73,8 @@ class TestCompanyTemplateWorkflowConfig:
             },
         }
         t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        assert t.workflow_config["sprint"]["duration_days"] == 7
+        wfc: Any = t.workflow_config
+        assert wfc["sprint"]["duration_days"] == 7
 
     def test_accepts_full_agile_kanban_config(
         self,
@@ -119,7 +121,8 @@ class TestCompanyTemplateWorkflowConfig:
             },
         }
         t = CompanyTemplate(**make_template_dict(workflow_config=wf_config))
-        assert t.workflow_config["kanban"]["wip_limits"][0]["limit"] == "__JINJA2__"
+        wfc: Any = t.workflow_config
+        assert wfc["kanban"]["wip_limits"][0]["limit"] == "__JINJA2__"
 
 
 # ── Renderer: workflow flows through to RootConfig ──────────────
@@ -506,6 +509,7 @@ class TestBuiltinWorkflowConfigs:
         loaded = load_template(name)
         # Verify the template YAML explicitly declares sprint ceremonies.
         sprint_cfg = loaded.template.workflow_config.get("sprint", {})
+        assert isinstance(sprint_cfg, dict)
         assert sprint_cfg.get("ceremonies"), f"{name}: missing sprint ceremonies"
         config = render_template(loaded)
         assert len(config.workflow.sprint.ceremonies) >= 1
@@ -638,7 +642,9 @@ class TestBuiltinWorkflowConfigs:
         loaded = load_template(name)
         # Assert raw template YAML declares the field (not just derived)
         sprint_cfg = loaded.template.workflow_config.get("sprint", {})
+        assert isinstance(sprint_cfg, dict)
         ceremony_policy = sprint_cfg.get("ceremony_policy", {})
+        assert isinstance(ceremony_policy, dict)
         assert ceremony_policy.get("velocity_calculator") == expected_calc
         # Assert rendered config matches
         config = render_template(loaded)

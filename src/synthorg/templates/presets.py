@@ -5,17 +5,18 @@ and behavioral enums, plus internationally diverse auto-name generation
 backed by the Faker library.
 """
 
-import copy
 import functools
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from faker import Faker
+
     from synthorg.templates.schema import CompanyTemplate
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -28,8 +29,11 @@ from synthorg.observability.events.template import (
 
 logger = get_logger(__name__)
 
+# Closed value set for builtin preset entries (scalars + immutable traits).
+type PresetValue = str | float | tuple[str, ...]
+
 # Mutable construction helper; frozen into PERSONALITY_PRESETS below.
-_RAW_PRESETS: dict[str, dict[str, Any]] = {
+_RAW_PRESETS: dict[str, dict[str, PresetValue]] = {
     "visionary_leader": {
         "traits": ("strategic", "decisive", "inspiring"),
         "communication_style": "authoritative",
@@ -406,7 +410,7 @@ _RAW_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 # Both the outer mapping and each inner mapping are read-only.
-PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
+PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, PresetValue]] = (
     MappingProxyType({k: MappingProxyType(v) for k, v in _RAW_PRESETS.items()})
 )
 del _RAW_PRESETS
@@ -414,11 +418,12 @@ del _RAW_PRESETS
 
 def get_personality_preset(
     name: str,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> dict[str, JsonValue]:
     """Look up a personality preset by name.
 
-    Custom presets are checked first (higher precedence), then builtins.
+    Custom presets take precedence over builtins; the result is a fresh
+    one-level copy (builtin ``traits`` tuple normalised to a JSON list).
 
     Args:
         name: Preset name (case-insensitive, whitespace-stripped).
@@ -426,16 +431,22 @@ def get_personality_preset(
             personality config dicts.  Keys must be lowercased.
 
     Returns:
-        A *copy* of the personality configuration dict.
+        A fresh JSON-shaped copy of the personality configuration dict.
 
     Raises:
         KeyError: If the preset name is not found in either source.
     """
     key = normalize_ascii_lowercase(name)
+    source: Mapping[str, PresetValue | JsonValue] | None = None
     if custom_presets is not None and key in custom_presets:
-        return copy.deepcopy(custom_presets[key])
-    if key in PERSONALITY_PRESETS:
-        return dict(PERSONALITY_PRESETS[key])
+        source = custom_presets[key]
+    elif key in PERSONALITY_PRESETS:
+        source = PERSONALITY_PRESETS[key]
+    if source is not None:
+        return {
+            field: list(value) if isinstance(value, (list, tuple)) else value
+            for field, value in source.items()
+        }
     available = sorted(PERSONALITY_PRESETS)
     if custom_presets:
         available = sorted({*available, *custom_presets})
@@ -452,7 +463,7 @@ def get_personality_preset(
 def _validate_presets() -> None:
     for name, preset in PERSONALITY_PRESETS.items():
         try:
-            PersonalityConfig(**preset)
+            PersonalityConfig.model_validate(dict(preset))
         except (ValidationError, TypeError) as exc:
             logger.warning(
                 TEMPLATE_PERSONALITY_PRESET_INVALID,
@@ -505,7 +516,7 @@ def get_strategic_output_default(
 
 def validate_preset_references(
     template: CompanyTemplate,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
 ) -> tuple[str, ...]:
     """Check all agent personality_preset references against known presets.
 
@@ -545,20 +556,10 @@ def generate_auto_name(
 ) -> str:
     """Generate an internationally diverse agent name using Faker.
 
-    When *seed* is provided, a local ``random.Random`` deterministically
-    selects a locale, then a **fresh** single-locale Faker instance
-    generates the name -- the cached instance is never mutated.
-
-    The *role* parameter is accepted because callers
-    (``setup_agents.py``, ``renderer.py``) pass it positionally;
-    it does not influence name generation.
-
-    Args:
-        role: The agent's role name.  Unused since the switch from
-            role-based name pools to Faker.
-        seed: Optional random seed for deterministic naming.
-        locales: Faker locale codes to draw from.  Defaults to all
-            Latin-script locales when ``None`` or empty.
+    With *seed*, a fresh single-locale Faker instance is used so the
+    shared cached instance is never mutated.  *role* is accepted for
+    positional-caller compatibility but does not influence the name;
+    *locales* defaults to all Latin-script locales when empty.
 
     Returns:
         A generated full name string.
@@ -601,7 +602,7 @@ def generate_auto_name(
 
 
 @functools.lru_cache(maxsize=128)
-def _get_faker(locale_tuple: tuple[str, ...]) -> Any:
+def _get_faker(locale_tuple: tuple[str, ...]) -> Faker:
     """Return a cached Faker instance for the given locale tuple.
 
     Caching avoids re-initialising locale providers on every call.

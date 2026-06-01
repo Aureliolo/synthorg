@@ -5,9 +5,9 @@ package.
 """
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -27,11 +27,11 @@ logger = get_logger(__name__)
 
 
 def resolve_agent_personality(
-    agent: dict[str, Any],
+    agent: dict[str, object],
     name: str,
     *,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> dict[str, JsonValue] | None:
     """Resolve personality from inline config or named preset.
 
     Inline personality config takes highest precedence.  For named
@@ -70,6 +70,18 @@ def resolve_agent_personality(
         _validate_inline_personality(inline_personality, name)
         return copy.deepcopy(inline_personality)
     if preset_name:
+        if not isinstance(preset_name, str):
+            msg = (
+                f"personality_preset for agent {name!r} must be a string, "
+                f"got {type(preset_name).__name__}"
+            )
+            logger.warning(
+                TEMPLATE_RENDER_TYPE_ERROR,
+                agent=name,
+                field="personality_preset",
+                got=type(preset_name).__name__,
+            )
+            raise TemplateRenderError(msg)
         # Normalize once for both the lookup and the custom-source check.
         key = normalize_ascii_lowercase(preset_name)
         is_custom = custom_presets is not None and key in custom_presets
@@ -92,7 +104,7 @@ def resolve_agent_personality(
 
 
 def _validate_inline_personality(
-    personality: dict[str, Any],
+    personality: dict[str, JsonValue],
     agent_name: str,
 ) -> None:
     """Eagerly validate an inline personality dict.
@@ -105,7 +117,7 @@ def _validate_inline_personality(
         TemplateRenderError: If the dict is not valid for PersonalityConfig.
     """
     try:
-        PersonalityConfig(**personality)
+        PersonalityConfig.model_validate(personality)
     except (ValidationError, TypeError) as exc:
         desc = safe_error_description(exc)
         logger.warning(

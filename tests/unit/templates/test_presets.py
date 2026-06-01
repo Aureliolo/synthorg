@@ -1,6 +1,9 @@
 """Tests for template personality presets and auto-name generation."""
 
+from typing import Any
+
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.enums import (
@@ -42,6 +45,16 @@ class TestGetPersonalityPreset:
         with pytest.raises(KeyError, match="Unknown personality preset"):
             get_personality_preset("nonexistent")
 
+    def test_builtin_traits_normalised_to_list(self) -> None:
+        """Builtin preset tuples are normalised to JSON lists on lookup.
+
+        Unifies builtin (Python-literal tuple) and custom (JSON list)
+        preset representations so resolved configs are uniformly
+        JSON-shaped.
+        """
+        result = get_personality_preset("visionary_leader")
+        assert isinstance(result["traits"], list)
+
     def test_all_presets_have_required_keys(self) -> None:
         required_keys = {"traits", "communication_style", "description"}
         for name in PERSONALITY_PRESETS:
@@ -53,7 +66,7 @@ class TestGetPersonalityPreset:
 
     def test_client_advisor_profile(self) -> None:
         preset = get_personality_preset("client_advisor")
-        config = PersonalityConfig(**preset)
+        config = PersonalityConfig.model_validate(preset)
         assert config.agreeableness >= 0.7
         assert config.collaboration == CollaborationPreference.TEAM
         assert config.decision_making == DecisionMakingStyle.CONSULTATIVE
@@ -62,7 +75,7 @@ class TestGetPersonalityPreset:
 
     def test_code_craftsman_profile(self) -> None:
         preset = get_personality_preset("code_craftsman")
-        config = PersonalityConfig(**preset)
+        config = PersonalityConfig.model_validate(preset)
         assert config.conscientiousness >= 0.85
         assert config.risk_tolerance == RiskTolerance.LOW
         assert config.collaboration == CollaborationPreference.PAIR
@@ -71,7 +84,7 @@ class TestGetPersonalityPreset:
 
     def test_devil_advocate_profile(self) -> None:
         preset = get_personality_preset("devil_advocate")
-        config = PersonalityConfig(**preset)
+        config = PersonalityConfig.model_validate(preset)
         assert config.agreeableness <= 0.3
         assert config.conflict_approach == ConflictApproach.COMPETE
         assert config.collaboration == CollaborationPreference.INDEPENDENT
@@ -81,7 +94,7 @@ class TestGetPersonalityPreset:
     def test_all_presets_produce_valid_personality_config(self) -> None:
         for name in PERSONALITY_PRESETS:
             preset = get_personality_preset(name)
-            config = PersonalityConfig(**preset)
+            config = PersonalityConfig.model_validate(preset)
             assert isinstance(config, PersonalityConfig), f"{name} invalid"
 
     def test_presets_include_big_five(self) -> None:
@@ -99,9 +112,9 @@ class TestGetPersonalityPreset:
             )
 
     def test_custom_presets_resolved_first(self) -> None:
-        custom = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
-                "traits": ("custom-trait",),
+                "traits": ["custom-trait"],
                 "communication_style": "custom",
                 "description": "Custom preset",
                 "openness": 0.5,
@@ -113,10 +126,10 @@ class TestGetPersonalityPreset:
         }
         result = get_personality_preset("my_custom", custom_presets=custom)
         assert result["communication_style"] == "custom"
-        assert result["traits"] == ("custom-trait",)
+        assert result["traits"] == ["custom-trait"]
 
     def test_custom_presets_returns_deep_copy(self) -> None:
-        custom = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
                 "traits": ["a", "b"],
                 "communication_style": "test",
@@ -128,7 +141,7 @@ class TestGetPersonalityPreset:
                 "stress_response": 0.5,
             },
         }
-        a = get_personality_preset("my_custom", custom_presets=custom)
+        a: Any = get_personality_preset("my_custom", custom_presets=custom)
         b = get_personality_preset("my_custom", custom_presets=custom)
         assert a == b
         assert a is not b
@@ -137,7 +150,7 @@ class TestGetPersonalityPreset:
         source_traits = custom["my_custom"]["traits"]
         assert isinstance(source_traits, list)
         assert "mutated" not in source_traits
-        c = get_personality_preset("my_custom", custom_presets=custom)
+        c: Any = get_personality_preset("my_custom", custom_presets=custom)
         assert "mutated" not in c["traits"]
 
     def test_custom_preset_overrides_builtin_defense_in_depth(self) -> None:
@@ -147,9 +160,9 @@ class TestGetPersonalityPreset:
         builtins, but the lookup function is resilient to corrupt or
         legacy DB data by giving custom presets higher precedence.
         """
-        custom = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "visionary_leader": {
-                "traits": ("overridden",),
+                "traits": ["overridden"],
                 "communication_style": "overridden",
                 "description": "Overridden builtin",
                 "openness": 0.1,
@@ -166,9 +179,9 @@ class TestGetPersonalityPreset:
         assert result["communication_style"] == "overridden"
 
     def test_custom_presets_case_insensitive(self) -> None:
-        custom = {
+        custom: dict[str, dict[str, JsonValue]] = {
             "my_custom": {
-                "traits": ("a",),
+                "traits": ["a"],
                 "communication_style": "test",
                 "description": "test",
                 "openness": 0.5,
@@ -184,7 +197,7 @@ class TestGetPersonalityPreset:
     def test_builtin_still_works_when_custom_presets_passed(self) -> None:
         """Builtin preset resolves when custom_presets is provided but
         does not contain the requested name."""
-        custom = {"other_preset": {"traits": ("a",)}}
+        custom: dict[str, dict[str, JsonValue]] = {"other_preset": {"traits": ["a"]}}
         result = get_personality_preset(
             "pragmatic_builder",
             custom_presets=custom,
@@ -193,7 +206,7 @@ class TestGetPersonalityPreset:
 
     def test_unknown_with_custom_presets_still_raises(self) -> None:
         """Unknown preset raises KeyError even with custom_presets."""
-        custom = {"other_preset": {"traits": ("a",)}}
+        custom: dict[str, dict[str, JsonValue]] = {"other_preset": {"traits": ["a"]}}
         with pytest.raises(KeyError, match="Unknown personality preset"):
             get_personality_preset("nonexistent", custom_presets=custom)
 

@@ -2,12 +2,13 @@
 """Template schema: Pydantic models for company templates."""
 
 from collections import Counter
-from typing import Any, Literal, Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     ValidationError,
     field_validator,
     model_validator,
@@ -30,6 +31,15 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
 
 logger = get_logger(__name__)
+
+
+def _default_autonomy() -> dict[str, JsonValue]:
+    """Return the default autonomy configuration for a company template.
+
+    Returns:
+        A fresh ``{"level": "semi"}`` mapping.
+    """
+    return {"level": "semi"}
 
 
 class TemplateVariable(BaseModel):
@@ -159,7 +169,7 @@ class TemplateAgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
-    model: NotBlankStr | dict[str, Any] = Field(
+    model: NotBlankStr | dict[str, JsonValue] = Field(
         default="medium",
         description="Model tier alias or structured ModelRequirement dict",
     )
@@ -168,8 +178,8 @@ class TemplateAgentConfig(BaseModel):
     @classmethod
     def _validate_model(
         cls,
-        value: NotBlankStr | dict[str, Any],
-    ) -> NotBlankStr | dict[str, Any]:
+        value: NotBlankStr | dict[str, JsonValue],
+    ) -> NotBlankStr | dict[str, JsonValue]:
         """Validate model value: tier string or ModelRequirement dict.
 
         Returns:
@@ -193,7 +203,7 @@ class TemplateAgentConfig(BaseModel):
         default=None,
         description="Named personality preset",
     )
-    personality: dict[str, Any] | None = Field(
+    personality: dict[str, JsonValue] | None = Field(
         default=None,
         description="Inline personality override (alternative to preset)",
     )
@@ -252,7 +262,7 @@ class TemplateDepartmentConfig(BaseModel):
         reporting_lines: Reporting line definitions within this department.
         policies: Department operational policies.
         ceremony_policy: Per-department ceremony policy override
-            (``dict[str, Any] | None``).  ``None`` inherits the
+            (``dict[str, JsonValue] | None``).  ``None`` inherits the
             project-level policy.
         remove: Merge directive -- when ``True``, removes matching
             parent department during inheritance.
@@ -279,11 +289,11 @@ class TemplateDepartmentConfig(BaseModel):
         default=(),
         description="Reporting line definitions",
     )
-    policies: dict[str, Any] | None = Field(
+    policies: dict[str, JsonValue] | None = Field(
         default=None,
         description="Department operational policies",
     )
-    ceremony_policy: dict[str, Any] | None = Field(
+    ceremony_policy: dict[str, JsonValue] | None = Field(
         default=None,
         description="Per-department ceremony policy override",
     )
@@ -447,7 +457,7 @@ class CompanyTemplate(BaseModel):
         default=WorkflowType.AGILE_KANBAN,
         description="Workflow type",
     )
-    workflow_config: dict[str, Any] = Field(
+    workflow_config: dict[str, JsonValue] = Field(
         default_factory=dict,
         description=(
             "Optional Kanban/Sprint sub-configurations. "
@@ -463,15 +473,15 @@ class CompanyTemplate(BaseModel):
         ge=0.0,
         description="Default monthly budget in the configured currency",
     )
-    autonomy: dict[str, Any] = Field(
-        default_factory=lambda: {"level": "semi"},
+    autonomy: dict[str, JsonValue] = Field(
+        default_factory=_default_autonomy,
         description="Autonomy configuration",
     )
-    workflow_handoffs: tuple[dict[str, Any], ...] = Field(
+    workflow_handoffs: tuple[dict[str, JsonValue], ...] = Field(
         default=(),
         description="Cross-department workflow handoffs",
     )
-    escalation_paths: tuple[dict[str, Any], ...] = Field(
+    escalation_paths: tuple[dict[str, JsonValue], ...] = Field(
         default=(),
         description="Cross-department escalation paths",
     )
@@ -490,7 +500,7 @@ class CompanyTemplate(BaseModel):
 
     @field_validator("extends", mode="before")
     @classmethod
-    def _normalize_extends(cls, value: Any) -> Any:
+    def _normalize_extends(cls, value: object) -> object:
         """Normalize extends to lowercase stripped form.
 
         Returns:
