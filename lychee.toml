@@ -59,7 +59,7 @@ exclude = [
     # 403 (a browser GET returns a 202 challenge); the console is real and
     # reachable for any signed-in user. Same anti-bot shape as the platforms
     # above.
-    '^https?://platform\.deepseek\.com/',
+    '^https?://platform\.deepseek\.com(/|$)',
     # Cloudflare dashboard requires login (always 403 to unauthenticated
     # HEAD probes); the URL is real and reachable for any logged-in user
     # following the fork-setup guide.
