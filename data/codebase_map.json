@@ -10033,7 +10033,7 @@
     },
     {
       "kind": "service",
-      "loc": 586,
+      "loc": 501,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
@@ -10057,6 +10057,13 @@
       "loc": 116,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/group_prompt.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 138,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/group_roster.py",
       "owning_feature": "meta"
     },
     {

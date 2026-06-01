@@ -26,8 +26,6 @@ untrusted-content ``<peer-contribution>`` fencing in the persona prompt is the
 injection defence.
 """
 
-import uuid
-from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.tracker import CostTracker
@@ -43,7 +41,6 @@ from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 from synthorg.meta.chief_of_staff.enums import (
     ConversationKind,
-    ConversationParticipantStatus,
     GroupChatTruncationReason,
 )
 from synthorg.meta.chief_of_staff.group_invite import GroupInviteCoordinator
@@ -59,6 +56,14 @@ from synthorg.meta.chief_of_staff.group_prompt import (
     audit_authority,
     build_group_prompt,
 )
+from synthorg.meta.chief_of_staff.group_roster import (
+    active_participants,
+    dedupe_participants,
+    enrol_participants,
+    new_id,
+    ordered_turns,
+    resolve_identities,
+)
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import GROUP_CONTRIBUTION_PROMPT
 from synthorg.meta.errors import (
@@ -66,47 +71,27 @@ from synthorg.meta.errors import (
     ConversationNotFoundError,
     GroupConversationEmptyError,
     GroupParticipantLimitError,
-    GroupParticipantUnknownError,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_CONTRIBUTION,
     COS_GROUP_CONTRIBUTION_FAILED,
-    COS_GROUP_PARTICIPANTS_ADDED,
     COS_GROUP_ROUND_COMPLETED,
     COS_GROUP_ROUND_STARTED,
     COS_GROUP_ROUND_TRUNCATED,
 )
 from synthorg.persistence.conversation_participant_protocol import (
-    ConversationParticipantFilterSpec,
     ConversationParticipantRepository,
 )
 from synthorg.persistence.conversation_protocol import (
     ConversationRepository,
-    ConversationTurnFilterSpec,
     ConversationTurnRepository,
 )
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from synthorg.core.agent import AgentIdentity
-
 logger = get_logger(__name__)
-
-# Group conversations are short interactive sessions; 1000 turns is a
-# generous ceiling that hands every round the full history without
-# pagination (the repo's own _MAX_PAGE_LIMIT clamps anything larger).
-_MAX_TURNS_QUERY_LIMIT: int = 1000
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 class GroupChatService:
@@ -234,7 +219,7 @@ class GroupChatService:
             GroupParticipantLimitError: More participants than the cap.
             GroupParticipantUnknownError: A named agent is not registered.
         """
-        agent_ids = self._dedupe(args.participants)
+        agent_ids = dedupe_participants(args.participants)
         if not agent_ids:
             raise GroupConversationEmptyError
         if len(agent_ids) > self._config.group_chat_max_participants:
@@ -242,9 +227,9 @@ class GroupChatService:
                 requested=len(agent_ids),
                 limit=self._config.group_chat_max_participants,
             )
-        identities = await self._resolve_identities(agent_ids)
+        identities = await resolve_identities(self._agent_registry, agent_ids)
         conversation = Conversation(
-            id=_new_id(),
+            id=new_id(),
             created_by=args.created_by,
             created_at=now,
             updated_at=now,
@@ -252,61 +237,14 @@ class GroupChatService:
             kind=ConversationKind.GROUP,
         )
         await self._conversation_repo.save(conversation)
-        await self._enrol(conversation.id, identities, args.created_by, now)
-        return conversation
-
-    async def _resolve_identities(
-        self, agent_ids: list[NotBlankStr]
-    ) -> list[AgentIdentity]:
-        """Resolve every agent id to its identity, or fail fast.
-
-        Returns:
-            The resolved identities, in the order supplied.
-
-        Raises:
-            GroupParticipantUnknownError: A named agent is not registered.
-        """
-        identities: list[AgentIdentity] = []
-        for agent_id in agent_ids:
-            identity = await self._agent_registry.get(agent_id)
-            if identity is None:
-                raise GroupParticipantUnknownError(agent_id=agent_id)
-            identities.append(identity)
-        return identities
-
-    async def _enrol(
-        self,
-        conversation_id: NotBlankStr,
-        identities: list[AgentIdentity],
-        added_by: NotBlankStr,
-        now: datetime,
-    ) -> None:
-        """Persist an active participant row for each resolved identity.
-
-        A per-index microsecond offset on ``added_at`` records enrolment
-        order, so the roster query (``added_at ASC, id ASC``) walks the
-        round in the order the caller listed participants rather than by
-        the random participant uuid -- a batch otherwise shares one
-        ``now`` and the order would be arbitrary.
-        """
-        for index, identity in enumerate(identities):
-            await self._participant_repo.save(
-                ConversationParticipant(
-                    id=_new_id(),
-                    conversation_id=conversation_id,
-                    agent_id=NotBlankStr(str(identity.id)),
-                    agent_name=identity.name,
-                    participant_role=identity.role,
-                    status=ConversationParticipantStatus.ACTIVE,
-                    added_by=added_by,
-                    added_at=now + timedelta(microseconds=index),
-                )
-            )
-        logger.info(
-            COS_GROUP_PARTICIPANTS_ADDED,
-            conversation_id=conversation_id,
-            count=len(identities),
+        await enrol_participants(
+            self._participant_repo,
+            conversation_id=conversation.id,
+            identities=identities,
+            added_by=args.created_by,
+            now=now,
         )
+        return conversation
 
     async def _run_round(
         self, conversation: Conversation, args: GroupConverseArgs, now: datetime
@@ -326,11 +264,13 @@ class GroupChatService:
         if current is None or current.status is not ConversationStatus.ACTIVE:
             raise ConversationClosedError(conversation_id=conversation.id)
         conversation = current
-        participants = await self._active_participants(conversation.id)
-        prior_turns = await self._ordered_turns(conversation.id)
+        participants = await active_participants(
+            self._participant_repo, conversation.id
+        )
+        prior_turns = await ordered_turns(self._turn_repo, conversation.id)
         next_sequence = len(prior_turns)
         user_turn = ConversationTurn(
-            id=_new_id(),
+            id=new_id(),
             conversation_id=conversation.id,
             sequence=next_sequence,
             role=ConversationRole.USER,
@@ -536,7 +476,7 @@ class GroupChatService:
             return None, None
         await self._turn_repo.append(
             ConversationTurn(
-                id=_new_id(),
+                id=new_id(),
                 conversation_id=conversation.id,
                 sequence=sequence,
                 role=ConversationRole.AGENT,
@@ -589,50 +529,6 @@ class GroupChatService:
             agent_id=agent_id,
         )
         return parsed.message.strip(), parsed.invite
-
-    async def _active_participants(
-        self, conversation_id: NotBlankStr
-    ) -> tuple[ConversationParticipant, ...]:
-        """Return the active roster for a conversation, enrolment order.
-
-        Returns:
-            Tuple of active participants, oldest-enrolled first.
-        """
-        return await self._participant_repo.query(
-            ConversationParticipantFilterSpec(
-                conversation_id=conversation_id,
-                status=ConversationParticipantStatus.ACTIVE,
-            )
-        )
-
-    async def _ordered_turns(
-        self, conversation_id: NotBlankStr
-    ) -> tuple[ConversationTurn, ...]:
-        """Return all turns for a conversation, oldest-first.
-
-        Returns:
-            Tuple of turns sorted by sequence ascending.
-        """
-        newest_first = await self._turn_repo.query(
-            ConversationTurnFilterSpec(conversation_id=conversation_id),
-            limit=_MAX_TURNS_QUERY_LIMIT,
-        )
-        return tuple(sorted(newest_first, key=lambda turn: turn.sequence))
-
-    @staticmethod
-    def _dedupe(participants: tuple[NotBlankStr, ...]) -> list[NotBlankStr]:
-        """Drop duplicate agent ids, preserving first-seen order.
-
-        Returns:
-            The de-duplicated agent ids.
-        """
-        seen: set[str] = set()
-        result: list[NotBlankStr] = []
-        for participant in participants:
-            if participant not in seen:
-                seen.add(participant)
-                result.append(participant)
-        return result
 
     def _log_round_outcome(
         self,
