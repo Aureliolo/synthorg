@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.api.controllers._approval_review_gate import (
+from synthorg.api.controllers._conversational_resume import (
     try_conversational_intake_resume,
 )
 from synthorg.api.state import AppState

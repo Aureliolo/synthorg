@@ -8,7 +8,7 @@ Sibling of ``SQLiteConversationInviteRepository`` backed by
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import dict_row
+from psycopg.rows import DictRow, dict_row
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
@@ -29,8 +29,6 @@ from synthorg.persistence.conversation_invite_protocol import (
 )
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from psycopg_pool import AsyncConnectionPool
 
     from synthorg.core.types import NotBlankStr
@@ -59,7 +57,7 @@ _UPSERT_SQL = f"""
 """  # noqa: S608  -- column list is a compile-time constant
 
 
-def _row_to_invite(row: dict[str, Any]) -> ConversationInvite:
+def _row_to_invite(row: DictRow) -> ConversationInvite:
     """Convert a Postgres dict row into a :class:`ConversationInvite`.
 
     Returns:

@@ -8,7 +8,7 @@ domain models. The row objects differ (``aiosqlite.Row`` vs psycopg
 timestamp coercer normalises ``TEXT`` / ``TIMESTAMPTZ`` alike.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
 from synthorg.core.persistence_errors import QueryError
@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 class RowLike(Protocol):
     """A database row supporting string-key access (dict / sqlite Row)."""
 
-    def __getitem__(self, key: str) -> Any: ...
+    def __getitem__(self, key: str) -> object: ...
 
 
 def row_to_conversation(row: RowLike) -> Conversation:
@@ -82,14 +82,14 @@ def row_to_turn(row: RowLike) -> ConversationTurn:
         return ConversationTurn(
             id=str(row["id"]),
             conversation_id=str(row["conversation_id"]),
-            sequence=int(row["sequence"]),
+            sequence=int(str(row["sequence"])),
             role=ConversationRole(str(row["role"])),
             content=str(row["content"]),
             author_agent_id=(None if author_agent_id is None else str(author_agent_id)),
             author_name=None if author_name is None else str(author_name),
             routed_topic=None if routed_topic is None else str(routed_topic),
             routing_confidence=(
-                None if routing_confidence is None else float(routing_confidence)
+                None if routing_confidence is None else float(str(routing_confidence))
             ),
             created_at=coerce_row_timestamp(row["created_at"]),
         )
