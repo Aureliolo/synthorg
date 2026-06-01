@@ -7,13 +7,14 @@ according to the requirement's priority axis.
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
+    TEMPLATE_MODEL_MATCH_COERCED,
     TEMPLATE_MODEL_MATCH_FAILED,
     TEMPLATE_MODEL_MATCH_FALLBACK,
     TEMPLATE_MODEL_MATCH_SKIPPED,
@@ -22,13 +23,19 @@ from synthorg.observability.events.template import (
 from synthorg.templates.model_requirements import ModelTier
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping, Sequence
 
     from synthorg.config.schema import ProviderModelConfig
     from synthorg.settings.bridge_configs import EngineBridgeConfig
     from synthorg.templates.model_requirements import ModelRequirement
 
 logger = get_logger(__name__)
+
+
+class _ProviderWithModels(Protocol):
+    """Structural type for a provider config exposing its models."""
+
+    models: tuple[ProviderModelConfig, ...]
 
 
 class ModelMatch(BaseModel):
@@ -66,8 +73,8 @@ def match_model(
         requirement: Structured model requirement.
         available: Tuple of available models from a single provider.
         matcher_config: Operator-tunable score weights. ``None`` falls
-            back to the default ``ModelMatcherConfig`` whose values
-            mirror the historical hardcoded constants.
+            back to the default ``ModelMatcherConfig`` projected from the
+            registered ``EngineBridgeConfig`` defaults.
 
     Returns:
         Tuple of (best matching model or None, score 0-1).
@@ -102,12 +109,12 @@ def match_model(
 
 
 def _resolve_agent_requirement(
-    agent: dict[str, Any],
+    agent: Mapping[str, object],
     idx: int,
-    model_requirement_cls: type,
-    parse_fn: Any,
-    resolve_fn: Any,
-) -> tuple[Any, ModelTier] | None:
+    model_requirement_cls: type[ModelRequirement],
+    parse_fn: Callable[[str | dict[str, JsonValue]], ModelRequirement],
+    resolve_fn: Callable[[str, str | None], ModelRequirement],
+) -> tuple[ModelRequirement, ModelTier] | None:
     """Resolve a single agent's model requirement.
 
     Returns:
@@ -116,7 +123,7 @@ def _resolve_agent_requirement(
     """
     model_req = agent.get("model_requirement")
     if isinstance(model_req, model_requirement_cls):
-        return model_req, model_req.tier  # type: ignore[attr-defined]
+        return model_req, model_req.tier
 
     if isinstance(model_req, dict):
         try:
@@ -132,27 +139,49 @@ def _resolve_agent_requirement(
             return None
         return req, req.tier
 
-    tier: ModelTier = agent.get("tier", "medium")
-    preset = agent.get("personality_preset")
+    raw_tier = agent.get("tier", "medium")
+    if isinstance(raw_tier, str):
+        tier_str = raw_tier
+    else:
+        logger.warning(
+            TEMPLATE_MODEL_MATCH_COERCED,
+            agent_index=idx,
+            field="tier",
+            coerced_to="medium",
+            value_type=type(raw_tier).__name__,
+        )
+        tier_str = "medium"
+    raw_preset = agent.get("personality_preset")
+    if raw_preset is None or isinstance(raw_preset, str):
+        preset = raw_preset
+    else:
+        logger.warning(
+            TEMPLATE_MODEL_MATCH_COERCED,
+            agent_index=idx,
+            field="personality_preset",
+            coerced_to=None,
+            value_type=type(raw_preset).__name__,
+        )
+        preset = None
     try:
-        req = resolve_fn(tier, preset)
+        req = resolve_fn(tier_str, preset)
     except (ValidationError, ValueError) as exc:
         logger.warning(
             TEMPLATE_MODEL_MATCH_SKIPPED,
             agent_index=idx,
-            tier=tier,
+            tier=tier_str,
             preset=preset,
             reason="invalid_requirement",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
         return None
-    return req, tier
+    return req, req.tier
 
 
 def match_all_agents(
-    agents: list[dict[str, Any]],
-    providers: Mapping[str, Any],
+    agents: Sequence[Mapping[str, object]],
+    providers: Mapping[str, _ProviderWithModels],
     matcher_config: ModelMatcherConfig | None = None,
 ) -> list[ModelMatch]:
     """Batch-match template agents to provider models.
@@ -180,8 +209,8 @@ def match_all_agents(
             a tuple of ``ProviderModelConfig``.
         matcher_config: Operator-tunable score weights propagated to
             every per-provider :func:`match_model` call.  ``None`` falls
-            back to the default :class:`ModelMatcherConfig` whose values
-            mirror the historical hardcoded constants.
+            back to the default :class:`ModelMatcherConfig` projected from
+            the registered ``EngineBridgeConfig`` defaults.
 
     Returns:
         List of ``ModelMatch`` results.  Agents may be omitted from

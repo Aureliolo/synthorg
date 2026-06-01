@@ -119,7 +119,7 @@ class TestTemplateAgentConfig:
     def test_inline_personality(self) -> None:
         a = TemplateAgentConfig(
             role="Dev",
-            personality={"openness": 0.9, "traits": ("bold",)},
+            personality={"openness": 0.9, "traits": ["bold"]},
         )
         assert a.personality is not None
         assert a.personality["openness"] == 0.9
@@ -137,7 +137,7 @@ class TestTemplateAgentConfig:
             TemplateAgentConfig(role="dev", model="   ")
 
     def test_dict_model_accepted(self) -> None:
-        model_dict = {
+        model_dict: dict[str, Any] = {
             "tier": "large",
             "priority": "quality",
             "min_context": 100000,

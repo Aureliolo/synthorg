@@ -5,6 +5,7 @@ import string
 import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from synthorg.templates.preset_service import (
     PersonalityPresetService,
@@ -70,7 +71,7 @@ class TestPresetServiceProperties:
     async def test_create_get_round_trip(
         self,
         name: str,
-        config: dict[str, object],
+        config: dict[str, JsonValue],
     ) -> None:
         """Any valid config round-trips through create/get."""
         from synthorg.templates.presets import PERSONALITY_PRESETS

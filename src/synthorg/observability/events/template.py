@@ -61,6 +61,11 @@ TEMPLATE_MODEL_MATCH_SKIPPED: Final[str] = "template.model_match.skipped"
 # fallback ALSO fails (no models available at all), which after the
 # wizard provider gate should not fire in practice.
 TEMPLATE_MODEL_MATCH_FALLBACK: Final[str] = "template.model_match.fallback"
+# Emitted at WARNING when an agent dict carries a non-string ``tier`` or
+# ``personality_preset``; the matcher proceeds on a coerced value
+# ("medium" tier / dropped preset) rather than crashing, but the
+# malformed input is surfaced so the template author can correct it.
+TEMPLATE_MODEL_MATCH_COERCED: Final[str] = "template.model_match.coerced"
 
 # Template packs
 TEMPLATE_PACK_LOAD_START: Final[str] = "template.pack.load.start"

@@ -1,8 +1,10 @@
 """Tests for PersonalityPresetService."""
 
 import json
+from typing import Any
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
@@ -12,10 +14,10 @@ from synthorg.templates.presets import PERSONALITY_PRESETS
 from tests.unit.api.fakes import FakePersonalityPresetRepository
 
 
-def _make_valid_config() -> dict[str, object]:
+def _make_valid_config() -> dict[str, JsonValue]:
     """Return a valid PersonalityConfig dict for testing."""
     return {
-        "traits": ("friendly", "curious"),
+        "traits": ["friendly", "curious"],
         "communication_style": "warm",
         "risk_tolerance": "medium",
         "creativity": "high",
@@ -90,7 +92,9 @@ class TestGet:
         entry = await service.get("visionary_leader")
         assert entry.source == "builtin"
         assert entry.name == "visionary_leader"
-        assert "strategic" in entry.config.get("traits", ())
+        traits = entry.config.get("traits", ())
+        assert isinstance(traits, list)
+        assert "strategic" in traits
 
     async def test_get_builtin_case_insensitive(
         self, service: PersonalityPresetService
@@ -253,7 +257,7 @@ class TestDelete:
 @pytest.mark.unit
 class TestGetSchema:
     def test_returns_json_schema(self) -> None:
-        schema = PersonalityPresetService.get_schema()
+        schema: Any = PersonalityPresetService.get_schema()
         assert "properties" in schema
         assert "openness" in schema["properties"]
         assert "traits" in schema["properties"]

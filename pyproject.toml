@@ -700,10 +700,6 @@ module = "synthorg.settings.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.templates.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.tools.*"
 disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]

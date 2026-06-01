@@ -1,6 +1,6 @@
 """Tests for the two-pass template rendering pipeline."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import structlog
@@ -359,6 +359,39 @@ class TestBuildDepartments:
                 [{"name": "eng", "budget_percent": "not-a-number"}],
             )
 
+    def test_non_list_departments_raises(self) -> None:
+        """A non-list ``departments`` value fails loud."""
+        from synthorg.templates._render_helpers import build_departments
+
+        with pytest.raises(TemplateRenderError, match="'departments' must be a list"):
+            build_departments({"name": "eng"})
+
+    def test_non_dict_department_entry_raises(self) -> None:
+        """A non-mapping department entry fails loud."""
+        from synthorg.templates._render_helpers import build_departments
+
+        with pytest.raises(TemplateRenderError, match="must be a mapping"):
+            build_departments(["not-a-dict"])
+
+    def test_non_string_head_role_falls_back_to_name(self) -> None:
+        """A non-string head_role logs a type-specific warning and falls back."""
+        import structlog.testing
+
+        from synthorg.templates._render_helpers import build_departments
+
+        with structlog.testing.capture_logs() as logs:
+            result = build_departments(
+                [{"name": "eng", "head_role": 123, "budget_percent": 50}],
+            )
+        assert result[0]["head"] == "eng"
+        head_warnings = [
+            log
+            for log in logs
+            if log.get("field") == "head_role"
+            and "must be a non-empty string" in str(log.get("detail", ""))
+        ]
+        assert len(head_warnings) == 1
+
 
 # ── validate_as_root_config edge cases ──────────────────────────
 
@@ -406,6 +439,27 @@ class TestCollectVariables:
 
 
 @pytest.mark.unit
+class TestExpandAgentNarrowing:
+    def test_non_string_role_raises(self) -> None:
+        """A non-string role fails loud with the non-empty-string render error."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {"role": 123}
+        with pytest.raises(
+            TemplateRenderError, match="requires a non-empty string 'role'"
+        ):
+            _expand_single_agent(agent, 0, set(), has_extends=False)
+
+    def test_non_string_personality_preset_raises(self) -> None:
+        """A non-string personality_preset fails loud."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {"role": "Dev", "personality_preset": 123}
+        with pytest.raises(TemplateRenderError, match="must be a string"):
+            _expand_single_agent(agent, 0, set(), has_extends=False)
+
+
+@pytest.mark.unit
 class TestInlinePersonality:
     def test_inline_personality_applied(self) -> None:
         """Inline personality dict is applied to agent config."""
@@ -418,7 +472,7 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert result["personality"]["communication_style"] == "custom"
         assert "custom-trait" in result["personality"]["traits"]
 
@@ -439,7 +493,7 @@ class TestDepartmentPassthrough:
                 ],
             },
         ]
-        result = build_departments(raw)
+        result: Any = build_departments(raw)
         assert "reporting_lines" in result[0]
         assert len(result[0]["reporting_lines"]) == 1
 
@@ -457,7 +511,7 @@ class TestDepartmentPassthrough:
                 },
             },
         ]
-        result = build_departments(raw)
+        result: Any = build_departments(raw)
         assert "policies" in result[0]
 
     def test_workflow_handoffs_passthrough(self) -> None:
@@ -477,7 +531,7 @@ class TestDepartmentPassthrough:
             ),
             agents=(TemplateAgentConfig(role="Dev"),),
         )
-        rendered = {
+        rendered: dict[str, object] = {
             "company": {"type": "custom"},
             "agents": [{"role": "Dev"}],
             "departments": [],
@@ -485,7 +539,7 @@ class TestDepartmentPassthrough:
                 {"from_department": "eng", "to_department": "qa", "trigger": "done"},
             ],
         }
-        result = _build_config_dict(rendered, template, {})
+        result: Any = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
         assert len(result["workflow_handoffs"]) == 1
 
@@ -521,7 +575,9 @@ class TestMissingRoleError:
         """Agent without a 'role' field raises TemplateRenderError."""
         from synthorg.templates.renderer import _expand_single_agent
 
-        with pytest.raises(TemplateRenderError, match="missing required 'role'"):
+        with pytest.raises(
+            TemplateRenderError, match="requires a non-empty string 'role'"
+        ):
             _expand_single_agent({}, 0, set(), has_extends=False)
 
 
@@ -574,7 +630,7 @@ class TestEscalationPathsPassthrough:
             ),
             agents=(TemplateAgentConfig(role="Dev"),),
         )
-        rendered = {
+        rendered: dict[str, object] = {
             "company": {"type": "custom"},
             "agents": [{"role": "Dev"}],
             "departments": [],
@@ -586,7 +642,7 @@ class TestEscalationPathsPassthrough:
                 },
             ],
         }
-        result = _build_config_dict(rendered, template, {})
+        result: Any = _build_config_dict(rendered, template, {})
         assert "escalation_paths" in result
         assert len(result["escalation_paths"]) == 1
 
@@ -648,7 +704,7 @@ class TestExpandPreservesMergeId:
             "merge_id": "frontend",
             "department": "engineering",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "merge_id" not in result
 
     def test_preserve_merge_id_without_extends(self) -> None:
@@ -717,7 +773,7 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__ Dev",
             "department": "engineering",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         # The auto-generated name should NOT contain the placeholder.
         assert "__JINJA2__" not in result["name"]
         assert len(result["name"]) > 0
@@ -731,6 +787,6 @@ class TestJinja2PlaceholderAutoName:
             "name": "__JINJA2__",
             "department": "executive",
         }
-        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        result: Any = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "__JINJA2__" not in result["name"]
         assert len(result["name"]) > 0

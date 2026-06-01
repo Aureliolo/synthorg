@@ -6,7 +6,6 @@ package.
 """
 
 import copy
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -27,7 +26,7 @@ logger = get_logger(__name__)
 # ── Department helpers ───────────────────────────────────────
 
 
-def _parse_budget(dept: dict[str, Any]) -> float:
+def _parse_budget(dept: dict[str, object]) -> float:
     """Parse and validate a department's budget_percent value.
 
     Returns:
@@ -54,27 +53,41 @@ def _parse_budget(dept: dict[str, Any]) -> float:
 
 
 def _resolve_head(
-    dept: dict[str, Any],
+    dept: dict[str, object],
 ) -> tuple[str, str | None]:
     """Resolve head_role and optional head_id for a department.
 
     Returns:
         Tuple of (head_role, head_id or None).
     """
-    dept_name = dept.get("name", "")
-    head_role = dept.get("head_role")
-    if not head_role:
+    raw_name = dept.get("name", "")
+    dept_name = raw_name if isinstance(raw_name, str) else ""
+    raw_head_role = dept.get("head_role")
+    if isinstance(raw_head_role, str) and raw_head_role:
+        head_role = raw_head_role
+        head_role_specified = True
+    else:
+        if raw_head_role is None or raw_head_role == "":
+            detail = "No head_role specified; using department name as placeholder"
+        else:
+            detail = (
+                f"head_role must be a non-empty string, got "
+                f"{type(raw_head_role).__name__}; using department name "
+                f"as placeholder"
+            )
         logger.warning(
             TEMPLATE_RENDER_VARIABLE_ERROR,
             department=dept_name,
             field="head_role",
-            detail="No head_role specified; using department name as placeholder",
+            detail=detail,
         )
-        head_role = dept_name or ""
+        head_role = dept_name
+        head_role_specified = False
 
-    head_merge_id = dept.get("head_merge_id", "")
+    raw_merge_id = dept.get("head_merge_id", "")
+    head_merge_id = raw_merge_id if isinstance(raw_merge_id, str) else ""
     head_id: str | None = None
-    if head_merge_id and dept.get("head_role"):
+    if head_merge_id and head_role_specified:
         head_id = head_merge_id
     elif head_merge_id:
         logger.warning(
@@ -90,8 +103,8 @@ def _resolve_head(
 
 
 def _validate_optional_fields(
-    dept: dict[str, Any],
-    dept_dict: dict[str, Any],
+    dept: dict[str, object],
+    dept_dict: dict[str, object],
 ) -> None:
     """Validate and attach optional reporting_lines / policies.
 
@@ -140,14 +153,14 @@ def _validate_optional_fields(
                 got=type(ceremony_policy).__name__,
             )
             raise TemplateRenderError(msg)
-        dept_dict["ceremony_policy"] = ceremony_policy
+        dept_dict["ceremony_policy"] = copy.deepcopy(ceremony_policy)
 
 
 def _handle_dept_remove(
-    dept: dict[str, Any],
+    dept: dict[str, object],
     *,
     has_extends: bool,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Validate and return a ``_remove`` marker for a department.
 
     Returns:
@@ -173,10 +186,10 @@ def _handle_dept_remove(
 
 
 def build_departments(
-    raw_depts: list[Any],
+    raw_depts: object,
     *,
     has_extends: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     """Build RootConfig-compatible department dicts.
 
     Args:
@@ -187,10 +200,19 @@ def build_departments(
         List of dicts suitable for ``Department`` construction.
 
     Raises:
-        TemplateRenderError: If a department entry is invalid or
-            ``_remove`` is used without ``extends``.
+        TemplateRenderError: If ``raw_depts`` is not a list, a department
+            entry is invalid, or ``_remove`` is used without ``extends``.
     """
-    departments: list[dict[str, Any]] = []
+    if not isinstance(raw_depts, list):
+        msg = "Rendered template 'departments' must be a list"
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            field="departments",
+            expected="list",
+            got=type(raw_depts).__name__,
+        )
+        raise TemplateRenderError(msg)
+    departments: list[dict[str, object]] = []
     for idx, dept in enumerate(raw_depts):
         if not isinstance(dept, dict):
             msg = f"Department at index {idx} must be a mapping"
@@ -211,7 +233,7 @@ def build_departments(
         budget_pct = _parse_budget(dept)
         head_role, head_id = _resolve_head(dept)
 
-        dept_dict: dict[str, Any] = {
+        dept_dict: dict[str, object] = {
             "name": dept.get("name", ""),
             "head": head_role,
             "budget_percent": budget_pct,
@@ -228,7 +250,7 @@ def build_departments(
 
 
 def validate_as_root_config(
-    merged: dict[str, Any],
+    merged: dict[str, object],
     source_name: str,
 ) -> RootConfig:
     """Validate a merged config dict as RootConfig.
@@ -244,7 +266,7 @@ def validate_as_root_config(
         TemplateValidationError: If validation fails.
     """
     try:
-        return RootConfig(**merged)
+        return RootConfig.model_validate(merged)
     except ValidationError as exc:
         field_errors: list[tuple[str, str]] = []
         locations: list[ConfigLocation] = []

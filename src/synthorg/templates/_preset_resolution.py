@@ -5,9 +5,9 @@ package.
 """
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.normalization import normalize_ascii_lowercase
@@ -27,11 +27,11 @@ logger = get_logger(__name__)
 
 
 def resolve_agent_personality(
-    agent: dict[str, Any],
+    agent: dict[str, object],
     name: str,
     *,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
+    custom_presets: Mapping[str, dict[str, JsonValue]] | None = None,
+) -> dict[str, JsonValue] | None:
     """Resolve personality from inline config or named preset.
 
     Inline personality config takes highest precedence.  For named
@@ -50,7 +50,8 @@ def resolve_agent_personality(
         the referenced preset does not exist.
 
     Raises:
-        TemplateRenderError: If an inline personality config is invalid.
+        TemplateRenderError: If an inline personality config is invalid,
+            or if ``personality_preset`` is present but is not a string.
     """
     inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
@@ -69,6 +70,18 @@ def resolve_agent_personality(
             raise TemplateRenderError(msg)
         _validate_inline_personality(inline_personality, name)
         return copy.deepcopy(inline_personality)
+    if preset_name is not None and not isinstance(preset_name, str):
+        msg = (
+            f"personality_preset for agent {name!r} must be a string, "
+            f"got {type(preset_name).__name__}"
+        )
+        logger.warning(
+            TEMPLATE_RENDER_TYPE_ERROR,
+            agent=name,
+            field="personality_preset",
+            got=type(preset_name).__name__,
+        )
+        raise TemplateRenderError(msg)
     if preset_name:
         # Normalize once for both the lookup and the custom-source check.
         key = normalize_ascii_lowercase(preset_name)
@@ -92,7 +105,7 @@ def resolve_agent_personality(
 
 
 def _validate_inline_personality(
-    personality: dict[str, Any],
+    personality: dict[str, JsonValue],
     agent_name: str,
 ) -> None:
     """Eagerly validate an inline personality dict.
@@ -105,7 +118,7 @@ def _validate_inline_personality(
         TemplateRenderError: If the dict is not valid for PersonalityConfig.
     """
     try:
-        PersonalityConfig(**personality)
+        PersonalityConfig.model_validate(personality)
     except (ValidationError, TypeError) as exc:
         desc = safe_error_description(exc)
         logger.warning(
