@@ -289,6 +289,7 @@ class TestCredentialsRotation:
         # Audit row carries the masked secret only.
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]
+        assert isinstance(masked, str)
         assert "rota" in masked  # first 4
         assert "et-y" in masked  # last 4
         assert "rotated-secret-y" not in masked  # never plaintext
@@ -376,6 +377,7 @@ class TestRotateCredentialsAllAuthTypes:
         assert result.tos_accepted_at is not None
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]
+        assert isinstance(masked, str)
         assert "rota" in masked
         assert "en-y" in masked
         assert "rotated-sub-token-y" not in masked
@@ -402,6 +404,7 @@ class TestRotateCredentialsAllAuthTypes:
         assert result.custom_header_value == "rotated-header-zzz"
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]
+        assert isinstance(masked, str)
         assert "rota" in masked
         assert "-zzz" in masked
         assert "rotated-header-zzz" not in masked
@@ -434,6 +437,7 @@ class TestRotateCredentialsAllAuthTypes:
         assert result.oauth_scope == "read write"
         assert len(audit_repo.records) == 1
         masked = audit_repo.records[0].payload["masked_secret"]
+        assert isinstance(masked, str)
         assert "rota" in masked
         assert "-yyy" in masked
         assert "rotated-oauth-secret-yyy" not in masked

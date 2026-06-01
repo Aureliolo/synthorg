@@ -6,7 +6,7 @@ Split from ``dto.py`` to keep that file under the 800-line limit.
 import re
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Self
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -721,12 +721,11 @@ class ProbeLocalResponse(BaseModel):
         return self
 
     @field_serializer("results", "errors")
-    def _serialize_mappings(self, value: Mapping[str, Any]) -> dict[str, Any]:
+    def _serialize_mappings(
+        self,
+        value: Mapping[str, ProbePresetResponse | str],
+    ) -> dict[str, ProbePresetResponse | str]:
         """Unwrap ``MappingProxyType`` to plain ``dict`` for JSON encode.
-
-        Pydantic-core / msgspec cannot encode ``mappingproxy`` directly;
-        the unwrap copy keeps the on-wire payload independent of the
-        in-memory proxy.
 
         Returns:
             A plain ``dict`` copy of the mapping for JSON encoding.

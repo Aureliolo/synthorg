@@ -21,6 +21,8 @@ import asyncio
 import json
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
@@ -167,7 +169,7 @@ _assert_sensitive_fields_complete()
 def _diff_provider_update(
     existing: ProviderConfig,
     updated: ProviderConfig,
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     """Build an audit payload listing only fields whose value changed.
 
     The EDIT form on the frontend re-sends every field on every submit,
@@ -187,16 +189,18 @@ def _diff_provider_update(
     """
     before = existing.model_dump(mode="json")
     after = updated.model_dump(mode="json")
-    changes: dict[str, dict[str, object]] = {}
+    changes: dict[str, JsonValue] = {}
     for key in sorted(set(before) | set(after)):
         if before.get(key) == after.get(key):
             continue
-        if key in _SENSITIVE_PROVIDER_FIELDS:
-            changes[key] = {"old": "<redacted>", "new": "<redacted>"}
-        else:
-            changes[key] = {"old": before.get(key), "new": after.get(key)}
+        entry: dict[str, JsonValue] = (
+            {"old": "<redacted>", "new": "<redacted>"}
+            if key in _SENSITIVE_PROVIDER_FIELDS
+            else {"old": before.get(key), "new": after.get(key)}
+        )
+        changes[key] = entry
     return {
-        "fields_changed": list(changes.keys()),
+        "fields_changed": [*changes],
         "diff": changes,
     }
 
@@ -1132,16 +1136,17 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 provider=name,
                 model=model_id,
             )
+            payload: dict[str, JsonValue] = {
+                "model_id": model_id,
+                "fields_changed": [
+                    *sorted(local_params.model_dump(exclude_unset=True).keys()),
+                ],
+            }
             await self._audit(
                 provider_name=name,
                 event_type="model_config_updated",
                 actor=actor,
-                payload={
-                    "model_id": model_id,
-                    "fields_changed": sorted(
-                        local_params.model_dump(exclude_unset=True).keys(),
-                    ),
-                },
+                payload=payload,
             )
             return updated
 

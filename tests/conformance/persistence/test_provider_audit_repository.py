@@ -10,6 +10,7 @@ timestamp through the same Pydantic model on read.
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.dto_provider_capabilities import (
     ProviderAuditActor,
@@ -26,7 +27,7 @@ def _event(  # noqa: PLR0913 -- test factory with explicit knobs
     event_type: str = "provider_updated",
     actor_id: str = "user-1",
     actor_label: str = "Operator",
-    payload: dict[str, object] | None = None,
+    payload: dict[str, JsonValue] | None = None,
     occurred_at: datetime | None = None,
 ) -> ProviderAuditEvent:
     return ProviderAuditEvent(
@@ -89,7 +90,7 @@ async def test_list_isolates_provider_scope(backend: PersistenceBackend) -> None
 
 async def test_payload_round_trip_complex(backend: PersistenceBackend) -> None:
     repo = backend.provider_audit_events
-    payload: dict[str, object] = {
+    payload: dict[str, JsonValue] = {
         "list": [1, 2, 3],
         "nested": {"key": "value", "n": 42},
         "string": "abc",

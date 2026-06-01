@@ -1,7 +1,7 @@
 """Tests for LLM decomposition prompt building and response parsing."""
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -144,7 +144,7 @@ class TestBuildDecompositionTool:
     def test_tool_schema_structure(self) -> None:
         """Tool schema contains subtasks array and enum fields."""
         tool = build_decomposition_tool()
-        schema = tool.parameters_schema
+        schema = cast("dict[str, Any]", tool.parameters_schema)
         assert schema["type"] == "object"
         props = schema["properties"]
         assert "subtasks" in props

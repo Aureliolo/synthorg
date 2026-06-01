@@ -356,6 +356,38 @@ class TestDoStream:
         ]
         assert len(tc_chunks) == 0
 
+    async def test_streaming_non_finite_tool_call_dropped(self) -> None:
+        """A streamed tool call with non-finite arguments is dropped, not raised.
+
+        ``json.loads`` accepts the ``Infinity`` literal, but ``ToolCall``
+        forbids non-finite floats; the accumulator drops the tool call so
+        a misbehaving provider cannot abort the whole stream.
+        """
+        driver = _make_driver()
+        td1 = make_stream_tool_call_delta(
+            index=0,
+            call_id="call_001",
+            name="search",
+            arguments='{"score": ',
+        )
+        td2 = make_stream_tool_call_delta(
+            index=0,
+            arguments="Infinity}",
+        )
+        chunks = [
+            make_stream_chunk(tool_calls=[td1]),
+            make_stream_chunk(tool_calls=[td2]),
+            make_stream_chunk(finish_reason="tool_calls"),
+        ]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        tc_chunks = [
+            c for c in collected if c.event_type == StreamEventType.TOOL_CALL_DELTA
+        ]
+        assert len(tc_chunks) == 0
+
     async def test_streaming_multiple_concurrent_tool_calls(self) -> None:
         """Multiple tool calls at different indices are emitted separately."""
         driver = _make_driver()
@@ -666,6 +698,22 @@ class TestExceptionMapping:
                 llm_provider="example-provider",
             )
             with pytest.raises(AuthenticationError):
+                await driver.stream(_user_message(), "medium")
+
+    async def test_stream_non_iterator_response_raises_internal_error(self) -> None:
+        """A non-streaming response to a streaming request is rejected.
+
+        A real ``ModelResponse`` is not async-iterable; ``object()`` stands
+        in for it here (a ``MagicMock`` would falsely satisfy the
+        ``AsyncIterator`` check via its auto-generated ``__aiter__``).
+        """
+        driver = _make_driver()
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.return_value = object()
+            with pytest.raises(ProviderInternalError, match="non-streaming"):
                 await driver.stream(_user_message(), "medium")
 
     async def test_response_mapping_error_wrapped_as_provider_error(self) -> None:

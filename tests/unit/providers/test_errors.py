@@ -1,6 +1,7 @@
 """Tests for provider error hierarchy."""
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.providers.errors import (
@@ -32,7 +33,7 @@ class TestProviderError:
         assert err.context == {}
 
     def test_context_stored(self) -> None:
-        ctx = {"provider": "example-provider", "model": "medium"}
+        ctx: dict[str, JsonValue] = {"provider": "example-provider", "model": "medium"}
         err = ProviderError("oops", context=ctx)
         assert err.context == ctx
 
@@ -187,7 +188,7 @@ class TestContextImmutability:
             err.context["new_key"] = "new_val"  # type: ignore[index]
 
     def test_original_dict_mutation_does_not_affect_error(self) -> None:
-        ctx = {"provider": "test-provider"}
+        ctx: dict[str, JsonValue] = {"provider": "test-provider"}
         err = ProviderError("oops", context=ctx)
         ctx["api_key"] = "sk-secret"
         assert "api_key" not in err.context

@@ -120,7 +120,7 @@ _SECURITY_VERDICT_TOOL = ToolDefinition(
         "properties": {
             "verdict": {
                 "type": "string",
-                "enum": sorted(_VALID_VERDICTS),
+                "enum": [*sorted(_VALID_VERDICTS)],
                 "description": (
                     "Security verdict: allow (safe), deny (unsafe), "
                     "or escalate (needs human review)."
@@ -128,7 +128,7 @@ _SECURITY_VERDICT_TOOL = ToolDefinition(
             },
             "risk_level": {
                 "type": "string",
-                "enum": sorted(_VALID_RISK_LEVELS),
+                "enum": [*sorted(_VALID_RISK_LEVELS)],
                 "description": "Assessed risk level of the action.",
             },
             "reason": {
@@ -619,7 +619,7 @@ class LlmSecurityEvaluator:
         for tc in response.tool_calls:
             if tc.name == "security_verdict":
                 return self._parse_tool_call_args(
-                    tc.arguments,
+                    {**tc.arguments},
                     rule_verdict,
                     start,
                 )

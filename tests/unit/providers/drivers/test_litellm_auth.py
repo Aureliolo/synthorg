@@ -1,6 +1,7 @@
 # mypy: disable-error-code="explicit-any"
 """Tests for LiteLLM driver multi-auth support."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -48,7 +49,7 @@ def _make_config(
     )
 
 
-def _build_kwargs(config: ProviderConfig) -> dict[str, Any]:
+def _build_kwargs(config: ProviderConfig) -> Mapping[str, object]:
     """Extract _build_kwargs result from a driver."""
     driver = LiteLLMDriver("test-provider", config)
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]

@@ -5,7 +5,10 @@ from typing import Any
 
 import pytest
 
-from synthorg.engine.quality.graders.llm import LLMRubricGrader
+from synthorg.engine.quality.graders.llm import (
+    LLMRubricGrader,
+    _parse_unit_interval,
+)
 from synthorg.engine.quality.verification import (
     AtomicProbe,
     GradeType,
@@ -444,7 +447,7 @@ class TestLLMRubricGraderInvalidGrades:
             ToolCall,
         )
 
-        args = {
+        args: dict[str, Any] = {
             "per_criterion_grades": {"correctness": 0.9, "completeness": 0.9},
             "verdict": "pass",
             "confidence": 0.9,
@@ -584,31 +587,20 @@ class TestLLMRubricGraderInvalidGrades:
         [float("nan"), float("inf"), float("-inf")],
         ids=["nan", "+inf", "-inf"],
     )
-    async def test_non_finite_grade_returns_refer(
+    def test_non_finite_grade_rejected_as_not_finite(
         self,
         non_finite_grade: float,
     ) -> None:
-        response = _response(
-            {
-                "per_criterion_grades": {
-                    "correctness": non_finite_grade,
-                    "completeness": 0.9,
-                },
-                "verdict": "pass",
-                "confidence": 0.9,
-                "findings": [],
-            }
-        )
-        provider = ScriptedProvider(response=response)
-        grader = LLMRubricGrader(
-            provider=provider,
-            model_id="test-medium-001",
-        )
-        result = await grader.grade(
-            artifact=_artifact(),
-            rubric=_rubric(),
-            probes=_probes(),
-            generator_agent_id="agent-generator",
-            evaluator_agent_id="agent-evaluator",
-        )
-        assert result.verdict == VerificationVerdict.REFER
+        """The grader's defence-in-depth rejects a non-finite grade.
+
+        Non-finite values can no longer reach the grader through a
+        ``ToolCall`` (its ``arguments`` forbid them via
+        ``allow_inf_nan=False``, and ``mappers._parse_arguments`` drops
+        any that ``json.loads`` accepted), so this exercises
+        ``_parse_unit_interval`` directly -- the grader keeps the finite
+        check as a safety net for any non-``ToolCall`` feed, and a
+        non-finite grade still maps to a REFER reason rather than being
+        trusted.
+        """
+        result = _parse_unit_interval(non_finite_grade, label="correctness")
+        assert result == "correctness is not finite"

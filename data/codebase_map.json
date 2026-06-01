@@ -14905,7 +14905,7 @@
     },
     {
       "kind": "code",
-      "loc": 96,
+      "loc": 97,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/errors.py",
       "owning_feature": "providers"
@@ -14926,7 +14926,7 @@
     },
     {
       "kind": "code",
-      "loc": 516,
+      "loc": 515,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/provider.py",
       "owning_feature": "providers"
@@ -14947,7 +14947,7 @@
     },
     {
       "kind": "code",
-      "loc": 372,
+      "loc": 375,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cost_recording.py",
       "owning_feature": "providers"
@@ -14961,7 +14961,7 @@
     },
     {
       "kind": "integration",
-      "loc": 513,
+      "loc": 515,
       "loc_cap": 700,
       "module": "src/synthorg/providers/discovery.py",
       "owning_feature": "providers"
@@ -14982,21 +14982,28 @@
     },
     {
       "kind": "adapter",
-      "loc": 740,
+      "loc": 739,
       "loc_cap": 700,
       "module": "src/synthorg/providers/drivers/litellm_driver.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 114,
+      "loc": 50,
+      "loc_cap": 500,
+      "module": "src/synthorg/providers/drivers/litellm_kwargs.py",
+      "owning_feature": "providers"
+    },
+    {
+      "kind": "code",
+      "loc": 124,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/litellm_tool_accumulator.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 206,
+      "loc": 217,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"
@@ -15017,7 +15024,7 @@
     },
     {
       "kind": "code",
-      "loc": 286,
+      "loc": 287,
       "loc_cap": 500,
       "module": "src/synthorg/providers/errors.py",
       "owning_feature": "providers"
@@ -15059,7 +15066,7 @@
     },
     {
       "kind": "code",
-      "loc": 450,
+      "loc": 451,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/_capabilities_mixin.py",
       "owning_feature": "providers"
@@ -15073,7 +15080,7 @@
     },
     {
       "kind": "code",
-      "loc": 335,
+      "loc": 353,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/_helpers.py",
       "owning_feature": "providers"
@@ -15087,14 +15094,14 @@
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 79,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/audit_service.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 548,
+      "loc": 547,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/capability_dtos.py",
       "owning_feature": "providers"
@@ -15115,21 +15122,21 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 182,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/preset_override_service.py",
       "owning_feature": "providers"
     },
     {
       "kind": "complex_service",
-      "loc": 1000,
+      "loc": 1004,
       "loc_cap": 1100,
       "module": "src/synthorg/providers/management/service.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 450,
+      "loc": 457,
       "loc_cap": 500,
       "module": "src/synthorg/providers/models.py",
       "owning_feature": "providers"
@@ -15206,7 +15213,7 @@
     },
     {
       "kind": "code",
-      "loc": 331,
+      "loc": 333,
       "loc_cap": 500,
       "module": "src/synthorg/providers/routing/_strategy_helpers.py",
       "owning_feature": "providers"
@@ -17754,7 +17761,7 @@
     },
     {
       "kind": "code",
-      "loc": 271,
+      "loc": 273,
       "loc_cap": 500,
       "module": "src/synthorg/tools/invoker_validation.py",
       "owning_feature": "tools"

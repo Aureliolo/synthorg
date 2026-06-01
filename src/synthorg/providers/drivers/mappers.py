@@ -7,7 +7,8 @@ consume.  Reusable by future native SDK drivers.
 
 import copy
 import json
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -166,7 +167,7 @@ def map_finish_reason(reason: str | None) -> FinishReason:
     return result
 
 
-def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
+def extract_tool_calls(raw: list[object] | None) -> tuple[ToolCall, ...]:
     """Extract ``ToolCall`` objects from raw chat-completion tool call dicts.
 
     Handles both parsed dicts and objects with attribute access (as
@@ -195,7 +196,7 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         name = _get(func, "name", "")
         raw_args = _get(func, "arguments", "{}")
         arguments = _parse_arguments(raw_args)
-        if call_id and name:
+        if isinstance(call_id, str) and isinstance(name, str) and call_id and name:
             calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
         else:
             logger.warning(
@@ -207,7 +208,7 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
     return tuple(calls)
 
 
-def _get(obj: Any, key: str, default: Any) -> Any:
+def _get(obj: object, key: str, default: object) -> object:
     """Get a value from a dict or object attribute.
 
     Returns:
@@ -219,7 +220,7 @@ def _get(obj: Any, key: str, default: Any) -> Any:
     return getattr(obj, key, default)
 
 
-def _parse_arguments(raw: Any) -> dict[str, Any]:
+def _parse_arguments(raw: object) -> dict[str, JsonValue]:
     """Parse tool call arguments from string or dict form.
 
     Expected inputs are ``str`` (JSON) or ``dict``, but any type is
@@ -229,11 +230,12 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
         raw: JSON string, pre-parsed dict, or other value.
 
     Returns:
-        Parsed arguments dict.  Returns empty dict on parse failure.
+        Parsed arguments dict.  Returns empty dict on parse failure or
+        when the arguments are not finite, JSON-serialisable values.
     """
     if isinstance(raw, dict):
-        return dict(raw)
-    if isinstance(raw, str):
+        candidate: dict[str, JsonValue] = dict(raw)
+    elif isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError, ValueError:
@@ -242,12 +244,27 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
                 args_length=len(raw),
             )
             return {}
-        if isinstance(parsed, dict):
-            return dict(parsed)
+        if not isinstance(parsed, dict):
+            logger.warning(
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                args_length=len(raw),
+                parsed_type=type(parsed).__name__,
+            )
+            return {}
+        candidate = dict(parsed)
+    else:
+        return {}
+    # ``ToolCall.arguments`` forbids non-finite floats (allow_inf_nan=False)
+    # and must hold JSON-serialisable values.  ``json.loads`` accepts the
+    # ``NaN`` / ``Infinity`` literals by default, so gate the result here:
+    # arguments that will not round-trip degrade to ``{}`` instead of
+    # raising a ValidationError when the ``ToolCall`` is constructed.
+    try:
+        json.dumps(candidate, allow_nan=False)
+    except ValueError, TypeError:
         logger.warning(
             PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
-            args_length=len(raw),
-            parsed_type=type(parsed).__name__,
+            reason="non_finite_or_unserialisable",
         )
         return {}
-    return {}
+    return candidate

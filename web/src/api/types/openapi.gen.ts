@@ -13048,7 +13048,9 @@ export type components = {
             readonly occurred_at: string;
             /** @description Event-specific metadata; credentials must be masked. Wrapped in MappingProxyType after validation so the audit row stays append-only at the Python level too. */
             readonly payload: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /** @description Provider name the mutation targets */
             readonly provider_name: string;

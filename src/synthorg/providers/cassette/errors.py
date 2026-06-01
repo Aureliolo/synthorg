@@ -10,6 +10,8 @@ break the "zero real LLM calls" guarantee.
 
 from typing import ClassVar
 
+from pydantic import JsonValue
+
 from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
@@ -97,7 +99,7 @@ def provider_error_for(
     error_class: str,
     message: str,
     *,
-    context: dict[str, object] | None = None,
+    context: dict[str, JsonValue] | None = None,
 ) -> ProviderError:
     """Reconstruct a provider error to re-raise on replay.
 
@@ -112,7 +114,7 @@ def provider_error_for(
         a generic :class:`ProviderError` when the class is unknown.
     """
     cls = _PROVIDER_ERROR_BY_NAME.get(error_class, ProviderError)
-    merged: dict[str, object] = {
+    merged: dict[str, JsonValue] = {
         **(context or {}),
         "cassette_replayed_error_class": error_class,
     }

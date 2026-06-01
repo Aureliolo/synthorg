@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.models import Workspace
@@ -33,7 +34,7 @@ def _make_workspace() -> Workspace:
 
 def _make_provider_response(
     *,
-    conflicts: list[dict[str, str]] | None = None,
+    conflicts: list[JsonValue] | None = None,
 ) -> CompletionResponse:
     """Build a response with a submit_semantic_review tool call."""
     tc = ToolCall(

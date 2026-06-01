@@ -285,7 +285,9 @@ class ToolInvokerValidationMixin:
             RecursionError: If the related operation fails.
         """
         try:
-            return copy.deepcopy(tool_call.arguments)
+            # Widen the parsed-LLM ``JsonValue`` arguments to ``object`` at
+            # this isolation boundary: the deep copy is what tool code mutates.
+            isolated: dict[str, object] = {**copy.deepcopy(tool_call.arguments)}
         except (MemoryError, RecursionError) as exc:
             log_exception_redacted(
                 logger,
@@ -313,3 +315,5 @@ class ToolInvokerValidationMixin:
                 ),
                 is_error=True,
             )
+        else:
+            return isolated

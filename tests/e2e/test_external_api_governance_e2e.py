@@ -17,6 +17,7 @@ real production path.
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.enums import ApprovalStatus
@@ -128,7 +129,7 @@ def _make_invoker(
     return ToolInvoker(ToolRegistry([tool]), agent_id=_AGENT_ID, task_id="task-e2e")
 
 
-def _call(call_id: str, **arguments: object) -> ToolCall:
+def _call(call_id: str, **arguments: JsonValue) -> ToolCall:
     return ToolCall(id=call_id, name="external_api", arguments=arguments)
 
 

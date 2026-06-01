@@ -261,7 +261,7 @@ _SAFETY_VERDICT_TOOL = ToolDefinition(
         "properties": {
             "classification": {
                 "type": "string",
-                "enum": sorted(_VALID_CLASSIFICATIONS),
+                "enum": [*sorted(_VALID_CLASSIFICATIONS)],
                 "description": (
                     "Safety classification: safe (action appears "
                     "safe), suspicious (concerning elements), or "
@@ -640,7 +640,7 @@ class SafetyClassifier:
         for tc in response.tool_calls:
             if tc.name == "safety_classification_verdict":
                 return self._parse_tool_call(
-                    tc.arguments,
+                    {**tc.arguments},
                     stripped_description,
                     duration_ms,
                 )

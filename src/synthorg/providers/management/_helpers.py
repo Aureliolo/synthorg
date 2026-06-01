@@ -3,10 +3,10 @@
 import re
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Any, Final
+from typing import Final
 from urllib.parse import urlparse
 
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger, safe_error_description
@@ -149,7 +149,7 @@ def apply_update(
     # on the request DTO retain their original semantic for those two
     # SecretStr fields (handled in ``_apply_credential_updates``).
     sent_fields = request.model_fields_set
-    updates: dict[str, Any] = {}
+    updates: dict[str, object] = {}
     for field in _UPDATE_FIELDS:
         if field not in sent_fields:
             continue
@@ -170,7 +170,12 @@ def apply_update(
                 if f not in keep:
                     updates[f] = None
 
-    final_auth_type = updates.get("auth_type", existing.auth_type)
+    updated_auth_type = updates.get("auth_type", existing.auth_type)
+    final_auth_type = (
+        updated_auth_type
+        if isinstance(updated_auth_type, AuthType)
+        else existing.auth_type
+    )
     _apply_credential_updates(updates, request, final_auth_type)
 
     # Use model_validate (not model_copy) to run validators on the merged result
@@ -179,7 +184,7 @@ def apply_update(
 
 
 def _apply_credential_updates(
-    updates: dict[str, Any],
+    updates: dict[str, object],
     request: UpdateProviderRequest,
     final_auth_type: AuthType,
 ) -> None:
@@ -213,7 +218,7 @@ def _apply_credential_updates(
 
 def serialize_providers(
     providers: dict[str, ProviderConfig],
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Serialize provider dict for JSON persistence.
 
     Args:
@@ -294,9 +299,26 @@ def infer_preset_hint(base_url: str) -> str | None:
     return PORT_TO_PRESET.get(port)
 
 
+def _coerce_cost(value: JsonValue) -> float:
+    """Coerce a litellm per-token cost to ``float``.
+
+    Returns:
+        The value as a ``float``.
+
+    Raises:
+        TypeError: If *value* is not a real number (``bool`` is rejected
+            too). The caller's ``except (TypeError, ValueError)`` turns
+            this into a skipped, logged ``malformed_model_entry``.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        msg = f"non-numeric cost value: {type(value).__name__}"
+        raise TypeError(msg)
+    return float(value)
+
+
 def _parse_litellm_entry(
     model_name: str,
-    info: dict[str, Any],
+    info: dict[str, JsonValue],
     litellm_provider: str,
     version_filter: re.Pattern[str] | None,
 ) -> tuple[str, ProviderModelConfig] | None:
@@ -330,8 +352,8 @@ def _parse_litellm_entry(
     try:
         config = ProviderModelConfig(
             id=model_id,
-            cost_per_1k_input=round(input_cost * 1000, 6),
-            cost_per_1k_output=round(output_cost * 1000, 6),
+            cost_per_1k_input=round(_coerce_cost(input_cost) * 1000, 6),
+            cost_per_1k_output=round(_coerce_cost(output_cost) * 1000, 6),
             max_context=(
                 max_input if isinstance(max_input, int) else _DEFAULT_MAX_CONTEXT
             ),

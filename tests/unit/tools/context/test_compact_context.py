@@ -1,5 +1,7 @@
 """Tests for CompactContextTool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ToolCategory
@@ -158,7 +160,7 @@ class TestCompactContextTool:
         tool = CompactContextTool()
         definition = tool.to_definition()
 
-        schema = definition.parameters_schema
+        schema = cast("dict[str, Any]", definition.parameters_schema)
         assert "properties" in schema
         assert "strategy" in schema["properties"]
         assert "reason" in schema["properties"]

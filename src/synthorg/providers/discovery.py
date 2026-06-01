@@ -16,10 +16,11 @@ import asyncio
 import ipaddress
 import json
 import socket
-from typing import TYPE_CHECKING, Any, Final, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 from urllib.parse import urlparse, urlunparse
 
 import httpx
+from pydantic import JsonValue
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -297,8 +298,8 @@ async def _discover_standard_api(
 def _parse_and_log(
     preset_name: str | None,
     url: str,
-    data: dict[str, Any],
-    parse_fn: Callable[[dict[str, Any]], tuple[ProviderModelConfig, ...] | None],
+    data: dict[str, JsonValue],
+    parse_fn: Callable[[dict[str, JsonValue]], tuple[ProviderModelConfig, ...] | None],
 ) -> tuple[ProviderModelConfig, ...]:
     """Parse a model-listing response and log skip counts.
 
@@ -327,7 +328,8 @@ def _parse_and_log(
 
     # Determine skip count from the raw list.
     raw_key = "models" if parse_fn is _parse_ollama_models else "data"
-    raw_entries = data.get(raw_key, [])
+    raw_value = data.get(raw_key, [])
+    raw_entries: list[JsonValue] = raw_value if isinstance(raw_value, list) else []
     skipped = len(raw_entries) - len(models)
     _log_skip_counts(preset_name, raw_entries, skipped, len(models))
 
@@ -344,7 +346,7 @@ def _parse_and_log(
 
 def _log_skip_counts(
     preset_name: str | None,
-    raw_entries: list[Any],
+    raw_entries: list[JsonValue],
     skipped: int,
     model_count: int,
 ) -> None:
@@ -401,7 +403,7 @@ async def _fetch_json_trusted(
     preset_name: str | None,
     *,
     headers: dict[str, str] | None = None,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Fetch JSON from a trusted URL without SSRF validation.
 
     Used for URLs that originate from preset ``candidate_urls`` or
@@ -437,7 +439,7 @@ async def _fetch_json(
     *,
     headers: dict[str, str] | None = None,
     trust_url: bool = False,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Fetch JSON from a URL with timeout and error handling.
 
     Validates the URL for SSRF safety before making the request
@@ -528,10 +530,10 @@ async def _validate_and_pin(
 
 
 async def _safe_fetch(
-    coro: Awaitable[dict[str, Any] | None],
+    coro: Awaitable[dict[str, JsonValue] | None],
     preset_name: str | None,
     safe_url: str,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Await a fetch coroutine with unified exception handling.
 
     Wraps the common try/except pattern shared by both trusted and
@@ -580,7 +582,7 @@ async def _do_fetch_json(
     *,
     host_header: str = "",
     preset_name: str | None = None,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Execute the HTTP GET and parse JSON response.
 
     Args:

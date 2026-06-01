@@ -21,6 +21,8 @@ override at read time is a planned enhancement.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.observability import get_logger
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.capability_dtos import (
@@ -111,13 +113,14 @@ class PresetOverrideService:
 
         await self._repo.save(merged)
         if self._audit_service is not None:
+            payload: dict[str, JsonValue] = {
+                "fields_changed": [*sorted(updates.keys())],
+            }
             await self._audit_service.record(
                 provider_name=preset_name,
                 event_type="preset_override_updated",
                 actor=actor,
-                payload={
-                    "fields_changed": sorted(updates.keys()),
-                },
+                payload=payload,
             )
         return merged
 
@@ -153,7 +156,7 @@ class PresetOverrideService:
         """Merge ``updates`` onto ``existing`` (or a blank base).
 
         The merged dict carries mixed-type values (datetime, list,
-        ``None``, str) so the local type is ``dict[str, Any]``;
+        ``None``, str) so the local type is ``dict[str, object]``;
         ``PresetOverride.model_validate`` enforces the per-field
         contract.
 
@@ -161,9 +164,7 @@ class PresetOverrideService:
             The validated ``PresetOverride`` built from the merged base
             and updates.
         """
-        from typing import Any  # noqa: PLC0415
-
-        base: dict[str, Any] = (
+        base: dict[str, object] = (
             existing.model_dump()
             if existing is not None
             else {
@@ -174,7 +175,7 @@ class PresetOverrideService:
                 "base_url": None,
             }
         )
-        merged: dict[str, Any] = {
+        merged: dict[str, object] = {
             **base,
             **updates,
             "updated_at": datetime.now(UTC),

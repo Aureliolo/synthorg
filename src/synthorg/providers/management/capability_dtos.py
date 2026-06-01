@@ -22,7 +22,7 @@ model, ...) stay in ``dto_providers.py``.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Annotated, Any, Literal, Self, cast
+from typing import Annotated, Literal, Self, cast
 
 from pydantic import (
     AfterValidator,
@@ -30,6 +30,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     SecretStr,
     field_serializer,
     field_validator,
@@ -68,7 +69,7 @@ def _require_utc(value: datetime) -> datetime:
 UTCDatetime = Annotated[AwareDatetime, AfterValidator(_require_utc)]
 
 
-def _recursively_freeze(value: Any) -> Any:
+def _recursively_freeze(value: object) -> object:
     """Return an immutable equivalent of ``value`` for audit-payload safety.
 
     Walks the structure and produces ``MappingProxyType`` for dicts and
@@ -111,7 +112,7 @@ def _recursively_freeze(value: Any) -> Any:
     return value
 
 
-def _recursively_thaw(value: Any) -> Any:
+def _recursively_thaw(value: object) -> object:
     """Inverse of :func:`_recursively_freeze` for JSON serialisation.
 
     Pydantic-core / msgspec cannot encode ``MappingProxyType`` directly,
@@ -239,7 +240,7 @@ class ProviderAuditEvent(BaseModel):
     provider_name: NotBlankStr = Field(description="Provider name the mutation targets")
     event_type: ProviderAuditEventType = Field(description="Mutation category")
     actor: ProviderAuditActor = Field(description="Actor performing the mutation")
-    payload: Mapping[str, Any] = Field(
+    payload: Mapping[str, JsonValue] = Field(
         default_factory=dict,
         description=(
             "Event-specific metadata; credentials must be masked. "
@@ -279,13 +280,10 @@ class ProviderAuditEvent(BaseModel):
         return self
 
     @field_serializer("payload")
-    def _serialize_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _serialize_payload(
+        self, payload: Mapping[str, JsonValue]
+    ) -> dict[str, JsonValue]:
         """Recursively thaw the immutable payload back to plain builtins.
-
-        Pydantic-core / msgspec cannot encode ``MappingProxyType``,
-        ``tuple`` (when typed as ``Mapping`` value), or ``frozenset``
-        directly; ``_recursively_thaw`` produces a JSON-encodable copy
-        that's independent of the in-memory immutable structure.
 
         Returns:
             A plain ``dict`` copy of the payload with all immutable
@@ -293,10 +291,10 @@ class ProviderAuditEvent(BaseModel):
         """
         thawed = _recursively_thaw(payload)
         # Outer container is always a Mapping after thaw because
-        # ``payload`` is typed as ``Mapping[str, Any]``.  Defensive
+        # ``payload`` is typed as ``Mapping[str, JsonValue]``.  Defensive
         # ``cast`` rather than ``assert`` so ``-O`` builds keep the
         # contract.
-        return cast("dict[str, Any]", thawed)
+        return cast("dict[str, JsonValue]", thawed)
 
 
 # ── Rate-limit override ───────────────────────────────────────────────

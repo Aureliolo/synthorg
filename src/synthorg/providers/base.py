@@ -9,7 +9,7 @@ import asyncio
 import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Mapping
-from typing import Any, Final, TypeVar
+from typing import Final, ParamSpec, TypeVar
 
 from opentelemetry.trace import Status, StatusCode
 
@@ -50,6 +50,7 @@ logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
 
 _T = TypeVar("_T")
+_P = ParamSpec("_P")
 
 _MILLISECONDS_PER_SECOND: Final[float] = 1000.0
 
@@ -166,7 +167,7 @@ class BaseCompletionProvider(ABC):
         # so attacker-controlled provider error strings are scrubbed
         # before reaching the OTLP exporter.
         provider_label = self._provider_label()
-        span_attributes: dict[str, Any] = {
+        span_attributes: dict[str, str | int] = {
             "provider.name": provider_label,
             "provider.model": model,
             "provider.message_count": len(messages),
@@ -538,7 +539,7 @@ class BaseCompletionProvider(ABC):
 
     async def _resilient_execute(
         self,
-        attempt_fn: Callable[[], Coroutine[Any, Any, _T]],
+        attempt_fn: Callable[[], Coroutine[object, object, _T]],
     ) -> _T:
         """Execute *attempt_fn* with retry if configured.
 
@@ -555,9 +556,9 @@ class BaseCompletionProvider(ABC):
 
     async def _rate_limited_call(
         self,
-        func: Callable[..., Coroutine[Any, Any, _T]],
-        *args: Any,
-        **kwargs: Any,
+        func: Callable[_P, Coroutine[object, object, _T]],
+        *args: _P.args,
+        **kwargs: _P.kwargs,
     ) -> _T:
         """Wrap a call with rate limiter acquire/release.
 
@@ -583,12 +584,11 @@ class BaseCompletionProvider(ABC):
                 # Transfer slot ownership to a wrapper generator so the
                 # concurrency slot is held until the stream is exhausted.
                 rate_limiter = self._rate_limiter
-                streaming_owns_release = True
-                acquired = False
+                streaming_owns_release, acquired = True, False
 
                 async def _hold_slot_for_stream(
-                    inner: AsyncIterator[Any],
-                ) -> AsyncIterator[Any]:
+                    inner: AsyncIterator[object],
+                ) -> AsyncIterator[object]:
                     """Re-yield the inner stream, releasing the slot when exhausted."""
                     try:
                         async for chunk in inner:

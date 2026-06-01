@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.tools.integrity_check import (
     ToolIntegrityCheckConfig,
@@ -21,7 +21,7 @@ from synthorg.tools.integrity_check import (
 def _make_mock_tool(
     name: str = "test_tool",
     description: str = "A test tool",
-    parameters_schema: dict[str, object] | None = None,
+    parameters_schema: dict[str, JsonValue] | None = None,
 ) -> MagicMock:
     """Create a mock BaseTool with a to_definition() method."""
     from synthorg.providers.models import ToolDefinition

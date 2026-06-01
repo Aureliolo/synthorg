@@ -7,7 +7,8 @@ dispatch path.
 """
 
 import json
-from typing import Any
+
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -37,7 +38,7 @@ class _ToolCallAccumulator:
         self.arguments = ""
         self._truncated = False
 
-    def update(self, delta: Any) -> None:
+    def update(self, delta: object) -> None:
         """Merge a single tool call delta."""
         call_id = getattr(delta, "id", None)
         if call_id:
@@ -91,12 +92,26 @@ class _ToolCallAccumulator:
                 args_length=len(self.arguments) if self.arguments else 0,
             )
             return None
-        args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
+        args: dict[str, JsonValue] = parsed if isinstance(parsed, dict) else {}
+        # ``ToolCall.arguments`` forbids non-finite floats (allow_inf_nan=False);
+        # ``json.loads`` accepts the ``NaN`` / ``Infinity`` literals, so drop the
+        # tool call when its arguments will not round-trip rather than raising a
+        # ValidationError that would abort the whole stream.
+        try:
+            json.dumps(args, allow_nan=False)
+        except ValueError, TypeError:
+            logger.warning(
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                tool_name=self.name,
+                tool_id=self.id,
+                reason="non_finite_or_unserialisable",
+            )
+            return None
         return ToolCall(id=self.id, name=self.name, arguments=args)
 
 
 def accumulate_tool_call_deltas(
-    raw_deltas: list[Any],
+    raw_deltas: list[object],
     pending: dict[int, _ToolCallAccumulator],
 ) -> None:
     """Merge streaming tool call deltas into accumulators."""

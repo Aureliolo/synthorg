@@ -22,7 +22,7 @@ from collections.abc import (
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -58,9 +58,9 @@ class CostRecordingContext(BaseModel):
     """Per-call recording context bound to the current ``asyncio.Task``.
 
     Construction is via :func:`cost_recording_scope` rather than direct
-    instantiation.  ``cost_tracker`` is stored as ``Any`` because
-    :class:`CostTracker` is not a Pydantic model -- the field validator
-    enforces the runtime type check.
+    instantiation.  ``cost_tracker`` is a :class:`CostTracker` (a
+    non-Pydantic class), permitted by ``arbitrary_types_allowed``; the
+    field validator keeps the explicit ``TypeError`` on a bad instance.
     """
 
     model_config = ConfigDict(
@@ -70,7 +70,7 @@ class CostRecordingContext(BaseModel):
         extra="forbid",
     )
 
-    cost_tracker: Any = Field(description="CostTracker reference")
+    cost_tracker: CostTracker = Field(description="CostTracker reference")
     agent_id: NotBlankStr = Field(description="Agent attribution")
     task_id: NotBlankStr = Field(description="Task attribution")
     project_id: NotBlankStr | None = Field(
@@ -82,10 +82,14 @@ class CostRecordingContext(BaseModel):
         description="ISO 4217 currency for emitted CostRecord",
     )
 
-    @field_validator("cost_tracker")
+    @field_validator("cost_tracker", mode="before")
     @classmethod
     def _validate_cost_tracker(cls, value: object) -> object:
         """Validate that ``cost_tracker`` is a ``CostTracker`` instance.
+
+        Runs in ``before`` mode so the explicit ``TypeError`` fires ahead
+        of Pydantic's core ``is_instance_of`` check (which would otherwise
+        raise a ``ValidationError`` for the field's ``CostTracker`` type).
 
         Returns:
             The validated ``CostTracker`` value.
