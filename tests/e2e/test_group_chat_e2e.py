@@ -1,3 +1,4 @@
+# module-kind: tests
 """Acceptance: one human, several agents, attributed round-robin.
 
 Drives the REAL :class:`GroupChatService` over the REAL meeting agent

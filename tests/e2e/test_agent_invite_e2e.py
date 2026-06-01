@@ -1,3 +1,4 @@
+# module-kind: tests
 """Acceptance: agent-initiated invite, human consent, handover.
 
 Drives the REAL :class:`GroupChatService` + :class:`GroupInviteCoordinator`
@@ -21,6 +22,8 @@ The acceptance bar:
   prepended above the shared transcript.
 - Reject -> membership is unchanged and the agent never contributes.
 """
+
+from datetime import timedelta
 
 import pytest
 
@@ -165,13 +168,19 @@ def _consent_app_state(
     registry are wired -- there is no group-chat service or coordinator,
     so a passing resume proves the consent path is ungated.
 
+    The clock starts a minute after ``START`` so the consent-added CFO
+    enrols strictly after the round-one CEO (whose ``added_at`` is
+    ``START``). Without the gap both share ``START`` and the roster's
+    ``added_at ASC, id ASC`` ordering falls to the random participant
+    uuid, flipping the round-two dispatch order non-deterministically.
+
     Returns:
         The composed ``AppState``.
     """
     return make_app_state(
         approval_store=approval_store,
         agent_registry=registry,
-        clock=FakeClock(start=START),
+        clock=FakeClock(start=START + timedelta(minutes=1)),
         slices={
             MetaStateSlice: {
                 "conversation_invite_repo": invite_repo,
@@ -184,6 +193,7 @@ def _consent_app_state(
 async def _assert_invite_parks_without_adding_agent(
     service: GroupChatService,
     approval_store: ApprovalStore,
+    participant_repo: FakeParticipantRepo,
     ceo_id: str,
 ) -> tuple[str, str]:
     """Round one: the invite parks; the invited agent is not yet a member.
@@ -206,6 +216,12 @@ async def _assert_invite_parks_without_adding_agent(
     approval = await approval_store.get(approval_id)
     assert approval is not None
     assert approval.source is ApprovalSource.CONVERSATIONAL_INVITE
+    # The invite only PARKS: the target agent (the CFO, Fiona) must NOT be
+    # a roster member until consent lands. The inviting CEO (Dana) is the
+    # sole enrolled participant at this point.
+    roster_names = {p.agent_name for p in participant_repo.items.values()}
+    assert "Fiona" not in roster_names
+    assert roster_names == {"Dana"}
     return approval_id, round_one.conversation_id
 
 
@@ -270,7 +286,7 @@ class TestAgentInviteE2E:
         # First round: the CEO requests the CFO; the invite parks, the agent
         # is NOT yet a participant, and the parsed message is the turn.
         approval_id, conversation_id = await _assert_invite_parks_without_adding_agent(
-            service, approval_store, str(ceo.id)
+            service, approval_store, participant_repo, str(ceo.id)
         )
 
         # Consent via the canonical dispatcher, feature effectively off.
