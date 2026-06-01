@@ -81,6 +81,16 @@ _GROUP_PER_AGENT_MAX_TOKENS_MIN: int = 100
 _GROUP_MAX_TOTAL_TURNS_DEFAULT: int = 60
 _GROUP_MAX_TOTAL_TURNS_MIN: int = 2
 _GROUP_MAX_TOTAL_TURNS_MAX: int = 500
+# A single conversational agent LLM call (a group-chat contribution or a
+# clarify/propose decision) runs while the per-conversation lock is held,
+# so a hung provider connection (TCP alive, no bytes) would stall every
+# queued turn on that conversation indefinitely. This wall-clock bound is
+# the backstop the provider's own (optional) timeout may not supply: 120s
+# covers a slow large-model reply plus the provider retry budget; 5s is
+# the floor below which a legitimate slow reply would be cut off.
+_AGENT_CALL_TIMEOUT_SECONDS_DEFAULT: float = 120.0
+_AGENT_CALL_TIMEOUT_SECONDS_MIN: float = 5.0
+_AGENT_CALL_TIMEOUT_SECONDS_MAX: float = 600.0
 # Agent-initiated invites: an agent may request to bring another
 # agent in, gated by human consent. Two invites parked per round bounds
 # the consent-queue storm a single round can create; 1 is the floor and
@@ -166,6 +176,11 @@ class ChiefOfStaffConfig(BaseModel):
             round).
         group_chat_max_total_turns: Maximum total turns a single group
             conversation may accumulate over its lifetime.
+        agent_call_timeout_seconds: Wall-clock cap for a single
+            conversational agent LLM call (a group-chat contribution or a
+            clarify/propose decision). The call runs while the
+            per-conversation lock is held, so this bound stops a hung
+            provider from stalling the conversation indefinitely.
         invite_enabled: Enable agent-initiated invites in group chat
             (an agent may request to bring another agent in, gated by
             human consent). When off, contributions stay plain text.
@@ -289,6 +304,11 @@ class ChiefOfStaffConfig(BaseModel):
         default=_GROUP_MAX_TOTAL_TURNS_DEFAULT,
         ge=_GROUP_MAX_TOTAL_TURNS_MIN,
         le=_GROUP_MAX_TOTAL_TURNS_MAX,
+    )
+    agent_call_timeout_seconds: float = Field(
+        default=_AGENT_CALL_TIMEOUT_SECONDS_DEFAULT,
+        ge=_AGENT_CALL_TIMEOUT_SECONDS_MIN,
+        le=_AGENT_CALL_TIMEOUT_SECONDS_MAX,
     )
 
     # ── Agent-initiated invite ────────────────────────────

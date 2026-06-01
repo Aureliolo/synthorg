@@ -524,11 +524,16 @@ async def _add_invited_participant(
     """Insert the invited agent's active roster row, idempotently.
 
     Resolves ``target_agent_id`` to its current identity (the invite row
-    carries no agent name -- the single migration shipped without one),
-    so a target deleted between park and consent is a logged no-op
-    rather than a crash. A target already active in the roster is also a
-    no-op (the table's unique ``(conversation_id, agent_id)`` constraint
-    is the backstop).
+    stores no agent name, so the display name is read from the registry
+    at accept time), so a target deleted between park and consent is a
+    logged no-op rather than a crash. A target already active in the
+    roster is also a no-op. The participant cap is re-checked here as
+    well as at park time: two invites for different agents can both pass
+    the park-time guard against the same pre-round roster, so without
+    this accept-time check two approvals could push the roster one over
+    ``group_chat_max_participants``. The table's unique
+    ``(conversation_id, agent_id)`` constraint is the duplicate-agent
+    backstop; this guard is the total-count one.
     """
     from synthorg.meta.chief_of_staff.enums import (  # noqa: PLC0415
         ConversationParticipantStatus,
@@ -536,9 +541,11 @@ async def _add_invited_participant(
     from synthorg.meta.chief_of_staff.group_models import (  # noqa: PLC0415
         ConversationParticipant,
     )
+    from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
     from synthorg.persistence.conversation_participant_protocol import (  # noqa: PLC0415
         ConversationParticipantFilterSpec,
     )
+    from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     identity = await agent_registry_of(app_state).get(invite.target_agent_id)
     if identity is None:
@@ -558,6 +565,19 @@ async def _add_invited_participant(
         )
     )
     if any(p.agent_id == invite.target_agent_id for p in roster):
+        return
+    meta_config = await load_self_improvement_config(
+        app_state.slice(SettingsStateSlice).settings_service
+    )
+    cap = meta_config.chief_of_staff.group_chat_max_participants
+    if len(roster) >= cap:
+        logger.warning(
+            COS_GROUP_INVITE_FAILED,
+            invite_id=invite.id,
+            conversation_id=invite.conversation_id,
+            target_agent_id=invite.target_agent_id,
+            note="participant cap reached at accept; roster row not added",
+        )
         return
     await participant_repo.save(
         ConversationParticipant(

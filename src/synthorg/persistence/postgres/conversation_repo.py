@@ -340,6 +340,16 @@ class PostgresConversationTurnRepository:
                 conflicts after the retry budget.
             QueryError: On other database errors.
         """
+        # Unlike the SQLite sibling, which holds one serialising write
+        # lock (``_write_context``) across the whole read-then-insert,
+        # each Postgres attempt below takes a fresh pool connection for
+        # the insert AND another for the re-sequence read, so the
+        # re-sequence and the retry insert are NOT serialised: a
+        # concurrent appender can claim the just-read sequence again
+        # between the two. Correctness rests on the unique constraint
+        # (which rejects the collision) plus the bounded retry (which
+        # resolves it), not on serialisation; the retry narrows the race
+        # window rather than closing it.
         current = event
         for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
             params = (

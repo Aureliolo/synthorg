@@ -377,7 +377,12 @@ class TestGroupChatContinuation:
 
 
 class TestGroupChatResilienceAndSafety:
-    async def test_agent_dispatch_failure_aborts_round(self) -> None:
+    async def test_agent_dispatch_failure_skips_agent(self) -> None:
+        # A failed dispatch (a timeout or provider error) skips just that
+        # agent and records it in participants_skipped; the round still
+        # completes and the contributions already produced this round
+        # survive, rather than the whole round aborting and discarding
+        # them.
         cfo = make_identity(name="Casey", role="CFO")
         ceo = make_identity(name="Erin", role="CEO")
         registry = await build_registry(cfo, ceo)
@@ -386,17 +391,20 @@ class TestGroupChatResilienceAndSafety:
             {str(cfo.id): "ok"},
             raise_for=frozenset({str(ceo.id)}),
         )
-        service, _, _, _ = build_group_chat_service(
+        service, _, turn_repo, _ = build_group_chat_service(
             agent_caller=caller, registry=registry
         )
-        with pytest.raises(RuntimeError):
-            await service.converse(
-                GroupConverseArgs(
-                    message=NotBlankStr("Plan it"),
-                    created_by=NotBlankStr("user-1"),
-                    participants=tuple(ids),
-                )
+        result = await service.converse(
+            GroupConverseArgs(
+                message=NotBlankStr("Plan it"),
+                created_by=NotBlankStr("user-1"),
+                participants=tuple(ids),
             )
+        )
+        assert NotBlankStr(str(ceo.id)) in result.participants_skipped
+        assert [c.agent_id for c in result.contributions] == [NotBlankStr(str(cfo.id))]
+        agent_turns = [t for t in turn_repo.turns if t.role is ConversationRole.AGENT]
+        assert len(agent_turns) == 1
 
     async def test_authority_cues_in_peer_block_are_scanned(self) -> None:
         # A spy guard records every scanned text so the test can assert

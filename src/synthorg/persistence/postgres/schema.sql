@@ -1543,6 +1543,14 @@ CREATE UNIQUE INDEX idx_cinv_approval_id
 ON conversation_invites (approval_id);
 CREATE INDEX idx_cinv_conversation_id
 ON conversation_invites (conversation_id);
+-- At most one PENDING invite per (conversation, target): the app-layer
+-- duplicate-pending check (request_invite) has a read-then-insert TOCTOU
+-- gap, so two concurrent parks can both pass it; this index makes the DB
+-- the final arbiter. It also serves that hot duplicate check, which
+-- filters on (conversation_id, target_agent_id, status = 'pending').
+CREATE UNIQUE INDEX idx_cinv_one_pending_per_target
+ON conversation_invites (conversation_id, target_agent_id)
+WHERE status = 'pending';
 
 -- Pre-flight cost forecasts.
 CREATE TABLE cost_forecasts (

@@ -188,6 +188,14 @@ def build_conversational_actor(
             note="Direct MCP acting enabled but no MCP self-consumer wired",
         )
         return None
+    if not engine.has_security_governance:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Direct MCP acting enabled with security governance "
+            "inactive: sensitive chat actions will NOT be escalated or "
+            "parked. Wire an enabled SecurityConfig before exposing "
+            "/meta/chat/act.",
+        )
     logger.info(API_APP_STARTUP, note="Direct MCP acting configured")
     return ConversationalActor(
         engine=engine,

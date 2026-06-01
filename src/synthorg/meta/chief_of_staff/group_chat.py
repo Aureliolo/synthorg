@@ -26,6 +26,7 @@ untrusted-content ``<peer-contribution>`` fencing in the persona prompt is the
 injection defence.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.budget.tracker import CostTracker
@@ -417,12 +418,13 @@ class GroupChatService:
 
         Returns:
             ``(contribution, invite_request)``: the attributed
-            contribution (or ``None`` when the agent returned empty
-            content), paired with any parsed invite request (or ``None``).
-
-        Raises:
-            Exception: The agent dispatch failed (the round aborts; the
-                lock guarantees no interleaving with a concurrent round).
+            contribution, or ``None`` when the agent returned empty
+            content OR its dispatch failed (a timeout or provider error).
+            On a failed dispatch the round loop records the agent in
+            ``participants_skipped`` and continues, rather than aborting
+            the whole round and discarding the contributions already
+            persisted earlier in it. Paired with any parsed invite
+            request (or ``None``).
         """
         # The invite feature swaps in a structured-envelope template; the
         # plain template stays the default so the feature-off path is
@@ -449,8 +451,11 @@ class GroupChatService:
             self._authority_guard, conversation.id, participant, prior_contributions
         )
         try:
-            response = await self._agent_caller(
-                participant.agent_id, prompt, max_tokens, conversation.id
+            response = await asyncio.wait_for(
+                self._agent_caller(
+                    participant.agent_id, prompt, max_tokens, conversation.id
+                ),
+                timeout=self._config.agent_call_timeout_seconds,
             )
         except Exception as exc:
             reraise_critical(exc)
@@ -461,7 +466,7 @@ class GroupChatService:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise
+            return None, None
         tracker.record(response.input_tokens, response.output_tokens)
         content, invite_req = self._extract_contribution(
             response.content, conversation.id, participant.agent_id

@@ -8,6 +8,7 @@ through the work pipeline via the approval-decision seam (still no
 autonomous acting).
 """
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING
 
@@ -413,10 +414,13 @@ class ChiefOfStaffProposer:
                 task_id=NotBlankStr("system:cos:propose"),
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await provider.complete(
-                    messages,
-                    responder.model,
-                    config=completion_config,
+                response = await asyncio.wait_for(
+                    provider.complete(
+                        messages,
+                        responder.model,
+                        config=completion_config,
+                    ),
+                    timeout=self._config.agent_call_timeout_seconds,
                 )
         except Exception as exc:
             reraise_critical(exc)

@@ -474,6 +474,85 @@ class TestInviteResume:
         # The single-winner CAS means only the first approve adds a row.
         assert len(await self._added_fiona(participant_repo)) == 1
 
+    async def test_second_approval_capped_at_accept(self) -> None:
+        # Two invites for DIFFERENT agents both clear the park-time
+        # capacity guard against the same pre-round roster (no roster row
+        # is written until accept), so the accept-time re-check is the
+        # only thing stopping the second approval from pushing the room
+        # one over ``group_chat_max_participants``. Both the park and the
+        # accept guard read the same default cap (the coordinator's config
+        # and the resume path's settings load both fall back to it), so
+        # the room is seated to one below the cap to leave room for
+        # exactly one of the two pending invites.
+        cap = ChiefOfStaffConfig().group_chat_max_participants
+        ceo = make_identity(name="Dana", role="CEO")
+        cfo = make_identity(name="Fiona", role="CFO")
+        cto = make_identity(name="Greg", role="CTO")
+        registry = await build_registry(ceo, cfo, cto)
+        invite_repo = FakeInviteRepo()
+        participant_repo = FakeParticipantRepo()
+        approval_store = ApprovalStore()
+        coordinator = GroupInviteCoordinator(
+            invite_repo=invite_repo,  # type: ignore[arg-type]
+            approval_store=approval_store,
+            agent_registry=registry,
+            participant_repo=participant_repo,  # type: ignore[arg-type]
+            config=_invite_config(),
+            clock=FakeClock(start=START),
+        )
+        for seat in range(cap - 1):
+            await participant_repo.save(
+                _participant(f"seat-{seat}", f"Seat{seat}", "VP")
+            )
+        app_state = make_app_state(
+            approval_store=approval_store,
+            agent_registry=registry,
+            clock=FakeClock(start=START),
+            slices={
+                MetaStateSlice: {
+                    "conversation_invite_repo": invite_repo,
+                    "conversation_participant_repo": participant_repo,
+                }
+            },
+        )
+        first = await coordinator.request_invite(
+            conversation_id=_CONV,
+            requested_by_agent_id=NotBlankStr("ceo-id"),
+            requested_by_name=NotBlankStr("Dana"),
+            invite_request=_invite_request(target="Fiona"),
+            now=START,
+        )
+        second = await coordinator.request_invite(
+            conversation_id=_CONV,
+            requested_by_agent_id=NotBlankStr("ceo-id"),
+            requested_by_name=NotBlankStr("Dana"),
+            invite_request=_invite_request(target="Greg"),
+            now=START,
+        )
+        # Both park against the same pre-round roster (one below the cap).
+        assert first is not None
+        assert second is not None
+        first_handled = await try_conversational_invite_resume(
+            app_state, first.approval_id, approved=True, decided_by=_DECIDED_BY
+        )
+        second_handled = await try_conversational_invite_resume(
+            app_state, second.approval_id, approved=True, decided_by=_DECIDED_BY
+        )
+        # Both approvals are handled (the invites are marked accepted),
+        # but only the first seats its agent.
+        assert first_handled is True
+        assert second_handled is True
+        active = await participant_repo.query(
+            ConversationParticipantFilterSpec(
+                conversation_id=_CONV,
+                status=ConversationParticipantStatus.ACTIVE,
+            )
+        )
+        assert len(active) == cap
+        names = {p.agent_name for p in active}
+        assert "Fiona" in names
+        assert "Greg" not in names
+
     async def test_decline_leaves_membership_unchanged(self) -> None:
         app_state, invite_repo, participant_repo, approval_id = await self._park()
         handled = await try_conversational_invite_resume(

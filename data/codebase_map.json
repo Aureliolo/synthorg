@@ -527,7 +527,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 523,
+      "loc": 543,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
@@ -1353,7 +1353,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/api/conversational_builders.py",
       "owning_feature": "api_core"
@@ -4104,7 +4104,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 696,
+      "loc": 700,
       "loc_cap": 700,
       "module": "src/synthorg/engine/agent_engine.py",
       "owning_feature": "engine"
@@ -10012,7 +10012,7 @@
     },
     {
       "kind": "code",
-      "loc": 226,
+      "loc": 239,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
@@ -10033,7 +10033,7 @@
     },
     {
       "kind": "service",
-      "loc": 501,
+      "loc": 507,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/group_chat.py",
       "owning_feature": "meta"
@@ -10110,7 +10110,7 @@
     },
     {
       "kind": "code",
-      "loc": 682,
+      "loc": 686,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/propose.py",
       "owning_feature": "meta"
@@ -13064,7 +13064,7 @@
     },
     {
       "kind": "code",
-      "loc": 122,
+      "loc": 159,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -13568,7 +13568,7 @@
     },
     {
       "kind": "code",
-      "loc": 375,
+      "loc": 346,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_invite_repo.py",
       "owning_feature": "persistence"
@@ -14254,7 +14254,7 @@
     },
     {
       "kind": "code",
-      "loc": 395,
+      "loc": 365,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversation_invite_repo.py",
       "owning_feature": "persistence"

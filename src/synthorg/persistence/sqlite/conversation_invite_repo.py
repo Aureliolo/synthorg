@@ -10,7 +10,6 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from aiosqlite import Row
 
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
@@ -25,9 +24,9 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_FETCHED,
     COS_GROUP_INVITE_LISTED,
 )
+from synthorg.persistence._conversation_marshalling import row_to_invite
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
-    coerce_row_timestamp,
     format_iso_utc,
     validate_pagination_args,
 )
@@ -81,39 +80,6 @@ async def _safe_rollback(
             operation=operation,
             **log_context,
         )
-
-
-def _row_to_invite(row: Row) -> ConversationInvite:
-    """Convert a database row into a :class:`ConversationInvite`.
-
-    Raises:
-        QueryError: If the row contains corrupt or unparseable data.
-
-    Returns:
-        Result of type ``ConversationInvite``.
-    """
-    try:
-        target_role = row["target_role"]
-        return ConversationInvite(
-            id=str(row["id"]),
-            conversation_id=str(row["conversation_id"]),
-            approval_id=str(row["approval_id"]),
-            requested_by_agent_id=str(row["requested_by_agent_id"]),
-            target_agent_id=str(row["target_agent_id"]),
-            target_role=str(target_role) if target_role is not None else None,
-            reason=str(row["reason"]),
-            status=ConversationInviteStatus(str(row["status"])),
-            created_at=coerce_row_timestamp(row["created_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse conversation invite row"
-        logger.warning(
-            COS_GROUP_INVITE_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 def _build_where(
@@ -234,7 +200,7 @@ class SQLiteConversationInviteRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        invite = _row_to_invite(row)
+        invite = row_to_invite(row)
         logger.debug(COS_GROUP_INVITE_FETCHED, invite_id=entity_id)
         return invite
 
@@ -264,7 +230,7 @@ class SQLiteConversationInviteRepository:
         try:
             cursor = await self._db.execute(sql, (effective_limit, offset))
             rows = await cursor.fetchall()
-            items = tuple(_row_to_invite(r) for r in rows)
+            items = tuple(row_to_invite(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -312,7 +278,7 @@ class SQLiteConversationInviteRepository:
         try:
             cursor = await self._db.execute(sql, params)
             rows = await cursor.fetchall()
-            items = tuple(_row_to_invite(r) for r in rows)
+            items = tuple(row_to_invite(r) for r in rows)
         except QueryError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:

@@ -369,6 +369,11 @@ class AgentEngine(
         """
         return self._mcp_self_consumer is not None
 
+    @property
+    def has_security_governance(self) -> bool:
+        """Whether an enabled ``SecurityConfig`` governs sensitive actions."""
+        return self._security_config is not None and self._security_config.enabled
+
     async def coordinate(
         self,
         context: CoordinationContext,

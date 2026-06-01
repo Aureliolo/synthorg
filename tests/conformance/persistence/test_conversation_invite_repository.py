@@ -27,7 +27,10 @@ from synthorg.core.enums import (
 )
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
+from synthorg.meta.chief_of_staff.enums import (
+    ConversationInviteStatus,
+    ConversationKind,
+)
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.meta.chief_of_staff.models import Conversation
 from synthorg.persistence.approval_protocol import ApprovalRepository
@@ -124,6 +127,7 @@ async def _seed_conversation(
             created_at=_NOW,
             updated_at=_NOW,
             status=ConversationStatus.ACTIVE,
+            kind=ConversationKind.GROUP,
         )
     )
 
@@ -204,8 +208,14 @@ class TestConversationInviteRepository:
     ) -> None:
         await _seed_conversation(backend)
         repo = _repo(backend)
+        # Distinct targets: the partial-unique index admits only one
+        # PENDING invite per (conversation, target_agent_id).
         await repo.save(_make_invite(invite_id="i1", approval_id="appr-A"))
-        await repo.save(_make_invite(invite_id="i2", approval_id="appr-B"))
+        await repo.save(
+            _make_invite(
+                invite_id="i2", approval_id="appr-B", target_agent_id="agent-coo"
+            )
+        )
 
         rows = await repo.query(
             ConversationInviteFilterSpec(approval_id=NotBlankStr("appr-A"))
@@ -266,8 +276,14 @@ class TestConversationInviteRepository:
     async def test_count(self, backend: PersistenceBackend) -> None:
         await _seed_conversation(backend)
         repo = _repo(backend)
+        # Distinct targets: the partial-unique index admits only one
+        # PENDING invite per (conversation, target_agent_id).
         await repo.save(_make_invite(invite_id="ic-a", approval_id="a-ca"))
-        await repo.save(_make_invite(invite_id="ic-b", approval_id="a-cb"))
+        await repo.save(
+            _make_invite(
+                invite_id="ic-b", approval_id="a-cb", target_agent_id="agent-coo"
+            )
+        )
         assert await repo.count(ConversationInviteFilterSpec()) >= 2
 
     async def test_transition_if_flips_state_atomically(
