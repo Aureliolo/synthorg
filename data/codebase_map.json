@@ -1570,7 +1570,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 604,
+      "loc": 600,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"

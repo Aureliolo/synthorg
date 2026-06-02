@@ -1,17 +1,12 @@
 # module-kind: orchestrator
 """On-startup wiring for the optional feature engines.
 
-Extracted from :mod:`synthorg.api.app` so the application factory stays
-focused on construction + the god-module gate keeps net-shrinking. Each
-``_wire_*`` helper composes one feature's services into its state slice
-once persistence (and, where required, a provider) is connected; all are
-best-effort + idempotent (a slice field already set short-circuits) so a
-re-entered lifespan does not double-wire and a missing collaborator
-leaves the feature's controllers to 503 rather than poisoning startup.
-
-``wire_features_on_startup`` runs them in dependency order (docs and
-project_brain first; research reads the knowledge service; the narrator
-reads docs + brain; the proposer follows the chat backend).
+Each ``_wire_*`` helper composes one feature's services into its state
+slice once persistence (and, where required, a provider) is connected;
+all are best-effort + idempotent (an already-set slice field
+short-circuits), so a re-entered lifespan never double-wires and a
+missing collaborator leaves its controllers to 503 rather than poisoning
+startup. ``wire_features_on_startup`` runs them in dependency order.
 """
 
 from typing import TYPE_CHECKING
