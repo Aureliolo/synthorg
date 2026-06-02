@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 627,
+      "loc": 626,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/analytics.py",
       "owning_feature": "api_core"
@@ -2298,7 +2298,7 @@
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/budget/coordination_store.py",
       "owning_feature": "budget"
@@ -2823,7 +2823,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/communication/async_tasks/models.py",
       "owning_feature": "communication"
@@ -3117,7 +3117,7 @@
     },
     {
       "kind": "code",
-      "loc": 336,
+      "loc": 335,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/service.py",
       "owning_feature": "communication"
@@ -6344,7 +6344,7 @@
     },
     {
       "kind": "code",
-      "loc": 514,
+      "loc": 511,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_apply.py",
       "owning_feature": "engine"
@@ -6365,7 +6365,7 @@
     },
     {
       "kind": "code",
-      "loc": 315,
+      "loc": 312,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_loops.py",
       "owning_feature": "engine"
@@ -7205,7 +7205,7 @@
     },
     {
       "kind": "code",
-      "loc": 295,
+      "loc": 292,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_llm.py",
       "owning_feature": "workspace"
@@ -7366,7 +7366,7 @@
     },
     {
       "kind": "code",
-      "loc": 491,
+      "loc": 490,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/evaluator.py",
       "owning_feature": "hr"
@@ -7562,7 +7562,7 @@
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/collaboration_override_store.py",
       "owning_feature": "hr"
@@ -7597,7 +7597,7 @@
     },
     {
       "kind": "code",
-      "loc": 334,
+      "loc": 333,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/llm_calibration_sampler.py",
       "owning_feature": "hr"
@@ -7618,14 +7618,14 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 141,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/multi_window_strategy.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/quality_override_store.py",
       "owning_feature": "hr"
@@ -7653,28 +7653,28 @@
     },
     {
       "kind": "complex_service",
-      "loc": 913,
+      "loc": 912,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/performance/tracker.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 35,
+      "loc": 34,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/trend_protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 39,
+      "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/window_protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 109,
+      "loc": 108,
       "loc_cap": 500,
       "module": "src/synthorg/hr/persistence_protocol.py",
       "owning_feature": "hr"
@@ -7807,7 +7807,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 692,
+      "loc": 691,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/registry.py",
       "owning_feature": "hr"
@@ -7926,7 +7926,7 @@
     },
     {
       "kind": "code",
-      "loc": 522,
+      "loc": 521,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/service.py",
       "owning_feature": "hr"
@@ -9039,7 +9039,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 762,
+      "loc": 733,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/backends/mem0/adapter.py",
       "owning_feature": "memory"
@@ -9060,6 +9060,13 @@
     },
     {
       "kind": "code",
+      "loc": 38,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/backends/mem0/client_protocol.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
       "loc": 405,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/config.py",
@@ -9067,7 +9074,7 @@
     },
     {
       "kind": "code",
-      "loc": 659,
+      "loc": 657,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/mappers.py",
       "owning_feature": "memory"
@@ -9347,7 +9354,7 @@
     },
     {
       "kind": "code",
-      "loc": 269,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/memory/factory.py",
       "owning_feature": "memory"
@@ -16452,7 +16459,7 @@
     },
     {
       "kind": "code",
-      "loc": 265,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/security/trust/milestone_strategy.py",
       "owning_feature": "security"
@@ -18559,7 +18566,7 @@
     },
     {
       "kind": "code",
-      "loc": 150,
+      "loc": 149,
       "loc_cap": 500,
       "module": "src/synthorg/workers/backend_services.py",
       "owning_feature": "runtime"

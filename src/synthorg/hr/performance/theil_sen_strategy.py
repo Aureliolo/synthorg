@@ -4,6 +4,7 @@ Robust non-parametric estimator for trend slopes.  Computes median
 of all pairwise slopes. Pure function, no I/O, no external deps.
 """
 
+from datetime import datetime
 from itertools import combinations
 from typing import TYPE_CHECKING, Final
 
@@ -13,8 +14,6 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.performance import PERF_TREND_COMPUTED
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
@@ -81,7 +80,7 @@ class TheilSenTrendStrategy:
         self,
         *,
         metric_name: NotBlankStr,
-        values: tuple[tuple[AwareDatetime, float], ...],
+        values: tuple[tuple[datetime, float], ...],
         window_size: NotBlankStr,
     ) -> TrendResult:
         """Detect trend direction using Theil-Sen estimator.

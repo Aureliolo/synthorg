@@ -7,7 +7,7 @@ guards (sequential) -> execute.
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -43,8 +43,6 @@ from synthorg.observability.events.hr import (
 )
 
 if TYPE_CHECKING:
-    from typing import Protocol
-
     from synthorg.hr.hiring_service import HiringService
     from synthorg.hr.offboarding_service import OffboardingService
     from synthorg.hr.scaling.config import ScalingConfig
@@ -55,16 +53,17 @@ if TYPE_CHECKING:
         ScalingTrigger,
     )
 
-    class AgentLookup(Protocol):
-        """Protocol for agent registry lookups."""
 
-        async def get(self, agent_id: str) -> Any | None:
-            """Retrieve an agent by ID.
+class AgentLookup(Protocol):
+    """Protocol for agent registry lookups."""
 
-            Returns:
-                The matching ``Any``, or ``None`` when no match is found.
-            """
-            ...
+    async def get(self, agent_id: str) -> Any | None:
+        """Retrieve an agent by ID.
+
+        Returns:
+            The matching ``Any``, or ``None`` when no match is found.
+        """
+        ...
 
 
 logger = get_logger(__name__)

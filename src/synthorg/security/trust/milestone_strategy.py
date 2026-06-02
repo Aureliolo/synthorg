@@ -23,8 +23,6 @@ from synthorg.security.trust.levels import (
 from synthorg.security.trust.models import TrustEvaluationResult, TrustState
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.security.trust.config import MilestoneCriteria, TrustConfig
@@ -171,7 +169,7 @@ class MilestoneTrustStrategy:
         milestone: MilestoneCriteria,
         snapshot: AgentPerformanceSnapshot,
         state: TrustState,
-        now: AwareDatetime,
+        now: datetime,
     ) -> bool:
         """Check whether all milestone criteria are met.
 
@@ -219,7 +217,7 @@ class MilestoneTrustStrategy:
         milestone: MilestoneCriteria,
         snapshot: AgentPerformanceSnapshot,
         state: TrustState,
-        now: AwareDatetime,
+        now: datetime,
     ) -> bool:
         """Check time active and clean history criteria.
 
@@ -260,7 +258,7 @@ class MilestoneTrustStrategy:
         *,
         state: TrustState,
         snapshot: AgentPerformanceSnapshot,
-        now: AwareDatetime,
+        now: datetime,
     ) -> ToolAccessLevel | None:
         """Check for trust decay conditions.
 

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.backends.mem0.client_protocol import Mem0Client
 from synthorg.memory.backends.mem0.mappers import (
     PUBLISHER_KEY,
     SHARED_NAMESPACE,
@@ -46,7 +47,6 @@ from synthorg.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.memory.backends.mem0.adapter import Mem0Client
     from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
 
 

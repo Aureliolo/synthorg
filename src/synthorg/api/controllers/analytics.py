@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Final, NamedTuple
+from typing import TYPE_CHECKING, Annotated, Any, Final, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State
@@ -49,7 +49,6 @@ from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from typing import Any
 
     from synthorg.hr.performance.models import TaskMetricRecord
 

@@ -6,17 +6,14 @@ Returns None for aggregate values when data points < min_data_points.
 
 import math
 import re
-from datetime import timedelta
-from typing import TYPE_CHECKING, Final
+from datetime import datetime, timedelta
+from typing import Final
 
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TaskMetricRecord, WindowMetrics
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import PERF_WINDOW_INSUFFICIENT_DATA
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 _DEFAULT_MIN_DATA_POINTS: Final[int] = 5
@@ -79,7 +76,7 @@ class MultiWindowStrategy:
         self,
         records: tuple[TaskMetricRecord, ...],
         *,
-        now: AwareDatetime,
+        now: datetime,
     ) -> tuple[WindowMetrics, ...]:
         """Compute aggregate metrics for each configured window.
 

@@ -31,8 +31,6 @@ from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.budget.tracker import CostTracker
     from synthorg.hr.performance.models import CollaborationMetricRecord
     from synthorg.providers.protocol import CompletionProvider
@@ -179,7 +177,7 @@ class LlmCalibrationSampler:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
     ) -> tuple[LlmCalibrationRecord, ...]:
         """Query stored calibration records.
 

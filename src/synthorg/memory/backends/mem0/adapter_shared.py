@@ -9,6 +9,7 @@ Relies on ``_sparse_encoder``, ``_qdrant_client``, ``_mem0_config``,
 
 from typing import TYPE_CHECKING
 
+from synthorg.memory.backends.mem0.client_protocol import Mem0Client
 from synthorg.memory.backends.mem0.shared import (
     publish_shared,
     retract_shared,
@@ -20,7 +21,6 @@ from synthorg.memory.errors import MemoryRetrievalError
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
-    from synthorg.memory.backends.mem0.adapter import Mem0Client
     from synthorg.memory.backends.mem0.config import Mem0BackendConfig
     from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
     from synthorg.memory.sparse import BM25Tokenizer

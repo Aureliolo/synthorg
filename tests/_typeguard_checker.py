@@ -29,10 +29,12 @@ can register the checker before installing the import hook, without pulling any
 """
 
 import warnings
-from typing import Any
+from types import UnionType
+from typing import Any, Union
 from unittest.mock import Mock
 
 import typeguard
+from pydantic import Discriminator
 from typeguard import (
     ForwardRefPolicy,
     TypeCheckerCallable,
@@ -130,6 +132,48 @@ def _pydantic_generic_lookup(
     return _check
 
 
+_UNION_ORIGINS = frozenset({Union, UnionType})
+
+
+def _pydantic_discriminated_union_lookup(
+    origin_type: Any,
+    args: tuple[Any, ...],
+    extras: tuple[Any, ...],
+) -> TypeCheckerCallable | None:
+    """Skip checks for a pydantic discriminated union (e.g. ``JsonValue``).
+
+    pydantic encodes member selection for a ``Discriminator``-tagged union in a
+    runtime callable typeguard never executes; typeguard instead tries each
+    member structurally and rejects values the discriminator would accept (a
+    nested ``JsonValue`` dict fails every flat member, for instance). typeguard
+    cannot faithfully evaluate such a union, so skip it: pydantic still
+    validates the real value at the model boundary via the field.
+
+    The skip emits a ``TypeHintWarning`` so the unchecked surface stays
+    countable, like the forward-ref WARN path.
+    """
+    if origin_type in _UNION_ORIGINS and any(
+        isinstance(extra, Discriminator) for extra in extras
+    ):
+
+        def _skip(
+            value: Any,
+            _origin_type: Any,
+            _args: tuple[Any, ...],
+            _memo: TypeCheckMemo,
+        ) -> None:
+            warnings.warn(
+                "Skipping type check: a pydantic discriminated union "
+                "(e.g. JsonValue) cannot be evaluated at runtime; pydantic "
+                "validates the value at the model boundary.",
+                TypeHintWarning,
+                stacklevel=2,
+            )
+
+        return _skip
+    return None
+
+
 def _mocked_annotation_lookup(
     origin_type: Any,
     args: tuple[Any, ...],
@@ -175,11 +219,12 @@ _registered = False
 def register_policy_honoring_checker() -> None:
     """Install the WARN-activation checker extensions at the front of the chain.
 
-    Registers three lookups: the NameError-tolerant wrapper (eager-eval
+    Registers four lookups: the NameError-tolerant wrapper (eager-eval
     ``TYPE_CHECKING``-only signatures), the unbound-pydantic-generic relaxation,
-    and the mocked-annotation skip (a patched annotation type that resolves to a
-    ``Mock``). Idempotent: a repeat call is a no-op, so re-importing this module
-    (e.g. each xdist worker re-running conftest) does not stack duplicate lookups.
+    the mocked-annotation skip (a patched annotation type that resolves to a
+    ``Mock``), and the pydantic discriminated-union skip (e.g. ``JsonValue``).
+    Idempotent: a repeat call is a no-op, so re-importing this module (e.g. each
+    xdist worker re-running conftest) does not stack duplicate lookups.
     """
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
@@ -193,4 +238,5 @@ def register_policy_honoring_checker() -> None:
     typeguard.checker_lookup_functions.insert(0, _pydantic_generic_lookup)
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
+    typeguard.checker_lookup_functions.insert(0, _pydantic_discriminated_union_lookup)
     _registered = True

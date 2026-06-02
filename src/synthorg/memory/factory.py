@@ -50,7 +50,6 @@ def _create_mem0_backend(
     """
     from synthorg.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
     from synthorg.memory.backends.mem0.config import (  # noqa: PLC0415
-        Mem0EmbedderConfig,
         build_config_from_company_config,
     )
 

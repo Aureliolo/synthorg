@@ -4,15 +4,13 @@ Defines the interface for pluggable rolling-window aggregation
 strategies (see Agents design page, D11).
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from synthorg.hr.performance.models import (
     TaskMetricRecord,
     WindowMetrics,
 )
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 
 # MultiWindowStrategy impl in multi_window_strategy.py + PerformanceTracker
@@ -39,7 +37,7 @@ class MetricsWindowStrategy(Protocol):
         self,
         records: tuple[TaskMetricRecord, ...],
         *,
-        now: AwareDatetime,
+        now: datetime,
     ) -> tuple[WindowMetrics, ...]:
         """Compute aggregate metrics for each configured time window.
 

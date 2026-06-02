@@ -7,6 +7,7 @@ keep the worktree strategy module under the 800-line budget.
 
 import asyncio
 import re
+from collections.abc import Callable, Coroutine
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
@@ -18,14 +19,12 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_SEMANTIC_CONFLICT,
 )
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+type GitRunner = Callable[..., Coroutine[object, object, tuple[int, str, str]]]
 
+if TYPE_CHECKING:
     from synthorg.engine.workspace.config import SemanticAnalysisConfig
     from synthorg.engine.workspace.models import MergeConflict, Workspace
     from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
-
-    type GitRunner = Callable[..., Coroutine[object, object, tuple[int, str, str]]]
 
 logger = get_logger(__name__)
 

@@ -79,10 +79,6 @@ class LlmSemanticAnalyzer:
         self._cost_tracker = cost_tracker
 
         if config is None:
-            from synthorg.engine.workspace.config import (  # noqa: PLC0415
-                SemanticAnalysisConfig,
-            )
-
             config = SemanticAnalysisConfig()
         self._config = config
 

@@ -18,7 +18,7 @@ connected). Stop order is reversed and best-effort so one slow
 component cannot strand the others.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -34,8 +34,6 @@ from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from synthorg.core.clock import Clock
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
     from synthorg.workers.claim import JetStreamTaskQueue

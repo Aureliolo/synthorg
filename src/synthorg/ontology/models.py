@@ -12,7 +12,7 @@ relationships, and drift analysis within the semantic ontology.
    cycle through ``core.__init__``.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Self
 
@@ -176,7 +176,7 @@ class EntityDefinition(BaseModel):
 
     @field_validator("created_at", "updated_at")
     @classmethod
-    def _validate_utc(cls, v: AwareDatetime) -> AwareDatetime:
+    def _validate_utc(cls, v: datetime) -> datetime:
         """Reject non-UTC timestamps.
 
         Returns:
