@@ -237,6 +237,6 @@ def register_policy_honoring_checker() -> None:
     # catch.
     typeguard.checker_lookup_functions.insert(0, _pydantic_generic_lookup)
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
-    typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
     typeguard.checker_lookup_functions.insert(0, _pydantic_discriminated_union_lookup)
+    typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
     _registered = True

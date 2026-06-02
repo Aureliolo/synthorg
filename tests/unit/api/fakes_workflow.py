@@ -50,8 +50,8 @@ class FakeWorkflowDefinitionRepository:
         self._definitions[definition.id] = copy.deepcopy(definition)
         return True
 
-    async def get(self, definition_id: str) -> WorkflowDefinition | None:
-        stored = self._definitions.get(definition_id)
+    async def get(self, entity_id: str) -> WorkflowDefinition | None:
+        stored = self._definitions.get(entity_id)
         return copy.deepcopy(stored) if stored is not None else None
 
     async def query(
@@ -81,8 +81,8 @@ class FakeWorkflowDefinitionRepository:
             result = [d for d in result if d.workflow_type == filter_spec.workflow_type]
         return len(result)
 
-    async def delete(self, definition_id: str) -> bool:
-        return self._definitions.pop(definition_id, None) is not None
+    async def delete(self, entity_id: str) -> bool:
+        return self._definitions.pop(entity_id, None) is not None
 
 
 class FakeWorkflowExecutionRepository:

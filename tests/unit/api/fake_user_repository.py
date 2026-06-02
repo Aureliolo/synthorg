@@ -48,17 +48,17 @@ class FakeUserRepository:
         """
         self._users[user.id] = copy.deepcopy(user)
 
-    async def save(self, user: User) -> None:
-        existing = self._users.get(user.id)
+    async def save(self, entity: User) -> None:
+        existing = self._users.get(entity.id)
         # Username uniqueness
         for u in self._users.values():
-            if u.username == user.username and u.id != user.id:
+            if u.username == entity.username and u.id != entity.id:
                 msg = "UNIQUE constraint failed: users.username"
                 raise ConstraintViolationError(msg, constraint=USERS_USERNAME_UNIQUE)
         # CEO uniqueness (partial unique index on role='ceo')
-        if user.role == HumanRole.CEO:
+        if entity.role == HumanRole.CEO:
             for u in self._users.values():
-                if u.role == HumanRole.CEO and u.id != user.id:
+                if u.role == HumanRole.CEO and u.id != entity.id:
                     msg = "UNIQUE constraint failed: idx_single_ceo"
                     raise ConstraintViolationError(
                         msg,
@@ -68,12 +68,12 @@ class FakeUserRepository:
         if (
             existing is not None
             and existing.role == HumanRole.CEO
-            and user.role != HumanRole.CEO
+            and entity.role != HumanRole.CEO
         ):
             other_ceos = sum(
                 1
                 for u in self._users.values()
-                if u.role == HumanRole.CEO and u.id != user.id
+                if u.role == HumanRole.CEO and u.id != entity.id
             )
             if other_ceos == 0:
                 msg = "Cannot remove the last CEO"
@@ -85,12 +85,12 @@ class FakeUserRepository:
         if (
             existing is not None
             and OrgRole.OWNER in existing.org_roles
-            and OrgRole.OWNER not in user.org_roles
+            and OrgRole.OWNER not in entity.org_roles
         ):
             other_owners = sum(
                 1
                 for u in self._users.values()
-                if u.id != user.id and OrgRole.OWNER in u.org_roles
+                if u.id != entity.id and OrgRole.OWNER in u.org_roles
             )
             if other_owners == 0:
                 msg = "Cannot remove the last owner"
@@ -98,10 +98,10 @@ class FakeUserRepository:
                     msg,
                     constraint=LAST_OWNER_TRIGGER,
                 )
-        self._users[user.id] = copy.deepcopy(user)
+        self._users[entity.id] = copy.deepcopy(entity)
 
-    async def get(self, user_id: str) -> User | None:
-        user = self._users.get(user_id)
+    async def get(self, entity_id: str) -> User | None:
+        user = self._users.get(entity_id)
         return copy.deepcopy(user) if user is not None else None
 
     async def get_by_username(self, username: str) -> User | None:
@@ -165,18 +165,18 @@ class FakeUserRepository:
     async def count_by_role(self, role: HumanRole) -> int:
         return sum(1 for u in self._users.values() if u.role == role)
 
-    async def delete(self, user_id: str) -> bool:
-        if is_system_user(user_id):
+    async def delete(self, entity_id: str) -> bool:
+        if is_system_user(entity_id):
             msg = "System user cannot be deleted"
             raise QueryError(msg)
-        user = self._users.get(user_id)
+        user = self._users.get(entity_id)
         if user is None:
             return False
         if user.role == HumanRole.CEO:
             other_ceos = sum(
                 1
                 for u in self._users.values()
-                if u.role == HumanRole.CEO and u.id != user_id
+                if u.role == HumanRole.CEO and u.id != entity_id
             )
             if other_ceos == 0:
                 msg = "Cannot remove the last CEO"
@@ -188,7 +188,7 @@ class FakeUserRepository:
             other_owners = sum(
                 1
                 for u in self._users.values()
-                if u.id != user_id and OrgRole.OWNER in u.org_roles
+                if u.id != entity_id and OrgRole.OWNER in u.org_roles
             )
             if other_owners == 0:
                 msg = "Cannot remove the last owner"
@@ -196,5 +196,5 @@ class FakeUserRepository:
                     msg,
                     constraint=LAST_OWNER_TRIGGER,
                 )
-        del self._users[user_id]
+        del self._users[entity_id]
         return True

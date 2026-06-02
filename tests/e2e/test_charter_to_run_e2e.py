@@ -215,6 +215,17 @@ class _FakeCharterRepo:
     async def get(self, entity_id: str) -> ProjectCharter | None:
         return self.items.get(entity_id)
 
+    async def delete(self, entity_id: str) -> bool:
+        return self.items.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[ProjectCharter, ...]:
+        return tuple(self.items.values())[offset : offset + limit]
+
+    async def count(self, filter_spec: CharterFilterSpec) -> int:
+        return len(await self.query(filter_spec, limit=len(self.items)))
+
     async def query(
         self,
         filter_spec: CharterFilterSpec,

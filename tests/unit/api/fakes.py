@@ -1129,11 +1129,11 @@ class FakeProjectRepository:
             raise RecordNotFoundError(msg)
         self._projects[project.id] = project
 
-    async def save(self, project: Project) -> None:
-        self._projects[project.id] = project
+    async def save(self, entity: Project) -> None:
+        self._projects[entity.id] = entity
 
-    async def get(self, project_id: NotBlankStr) -> Project | None:
-        return self._projects.get(project_id)
+    async def get(self, entity_id: NotBlankStr) -> Project | None:
+        return self._projects.get(entity_id)
 
     async def list_items(
         self,
@@ -1166,8 +1166,8 @@ class FakeProjectRepository:
             result = [p for p in result if p.lead == filter_spec.lead]
         return len(result)
 
-    async def delete(self, project_id: NotBlankStr) -> bool:
-        return self._projects.pop(project_id, None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._projects.pop(entity_id, None) is not None
 
 
 class FakeArtifactStorage:

@@ -39,17 +39,17 @@ class InMemoryConnectionRepository:
     def __init__(self) -> None:
         self._store: dict[str, Connection] = {}
 
-    async def save(self, connection: Connection) -> None:
+    async def save(self, entity: Connection) -> None:
         """Persist a connection (deep-copied on write)."""
-        self._store[connection.name] = copy.deepcopy(connection)
+        self._store[entity.name] = copy.deepcopy(entity)
 
-    async def get(self, name: str) -> Connection | None:
+    async def get(self, entity_id: str) -> Connection | None:
         """Retrieve by name (deep-copied on read).
 
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        existing = self._store.get(name)
+        existing = self._store.get(entity_id)
         return copy.deepcopy(existing) if existing is not None else None
 
     async def list_items(
@@ -104,13 +104,13 @@ class InMemoryConnectionRepository:
             if c.connection_type == filter_spec.connection_type
         )
 
-    async def delete(self, name: str) -> bool:
+    async def delete(self, entity_id: str) -> bool:
         """Delete by name.
 
         Returns:
             ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
-        return self._store.pop(name, None) is not None
+        return self._store.pop(entity_id, None) is not None
 
 
 class InMemoryConnectionSecretRepository:
@@ -151,26 +151,26 @@ class InMemoryOAuthStateRepository:
     def __init__(self) -> None:
         self._store: dict[str, OAuthState] = {}
 
-    async def save(self, state: OAuthState) -> None:
+    async def save(self, entity: OAuthState) -> None:
         """Persist a state (deep-copied)."""
-        self._store[state.state_token] = copy.deepcopy(state)
+        self._store[entity.state_token] = copy.deepcopy(entity)
 
-    async def get(self, state_token: str) -> OAuthState | None:
+    async def get(self, entity_id: str) -> OAuthState | None:
         """Retrieve by token (deep-copied).
 
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
-        existing = self._store.get(state_token)
+        existing = self._store.get(entity_id)
         return copy.deepcopy(existing) if existing is not None else None
 
-    async def delete(self, state_token: str) -> bool:
+    async def delete(self, entity_id: str) -> bool:
         """Delete by token.
 
         Returns:
             ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
-        return self._store.pop(state_token, None) is not None
+        return self._store.pop(entity_id, None) is not None
 
     async def list_items(
         self,
@@ -221,7 +221,7 @@ class InMemoryWebhookReceiptRepository:
     def __init__(self) -> None:
         self._store: list[WebhookReceipt] = []
 
-    async def save(self, receipt: WebhookReceipt) -> None:
+    async def save(self, entity: WebhookReceipt) -> None:
         """Persist a receipt (deep-copied), upserting by id.
 
         Mirrors the durable repos' insert-or-replace semantics so a
@@ -229,21 +229,21 @@ class InMemoryWebhookReceiptRepository:
         duplicate row that ``get`` / ``list_items`` would then disagree
         on.
         """
-        snapshot = copy.deepcopy(receipt)
+        snapshot = copy.deepcopy(entity)
         for i, existing in enumerate(self._store):
-            if str(existing.id) == str(receipt.id):
+            if str(existing.id) == str(entity.id):
                 self._store[i] = snapshot
                 return
         self._store.append(snapshot)
 
-    async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
+    async def get(self, entity_id: NotBlankStr) -> WebhookReceipt | None:
         """Look up a receipt by id (deep-copied).
 
         Returns:
             The matching entity, or ``None`` when no row matches.
         """
         for r in self._store:
-            if str(r.id) == str(receipt_id):
+            if str(r.id) == str(entity_id):
                 return copy.deepcopy(r)
         return None
 
@@ -263,14 +263,14 @@ class InMemoryWebhookReceiptRepository:
         sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
         return tuple(copy.deepcopy(r) for r in sliced)
 
-    async def delete(self, receipt_id: NotBlankStr) -> bool:
+    async def delete(self, entity_id: NotBlankStr) -> bool:
         """Delete a receipt by id.
 
         Returns:
             ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         for i, r in enumerate(self._store):
-            if str(r.id) == str(receipt_id):
+            if str(r.id) == str(entity_id):
                 self._store.pop(i)
                 return True
         return False
