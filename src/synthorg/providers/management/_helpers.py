@@ -15,6 +15,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_LITELLM_LOOKUP_SKIPPED,
     PROVIDER_LITELLM_MODELS_EMPTY,
     PROVIDER_LITELLM_MODELS_LOADED,
+    PROVIDER_UPDATE_AUTH_TYPE_UNEXPECTED,
 )
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management.dtos import (
@@ -171,11 +172,20 @@ def apply_update(
                     updates[f] = None
 
     updated_auth_type = updates.get("auth_type", existing.auth_type)
-    final_auth_type = (
-        updated_auth_type
-        if isinstance(updated_auth_type, AuthType)
-        else existing.auth_type
-    )
+    if isinstance(updated_auth_type, AuthType):
+        final_auth_type = updated_auth_type
+    else:
+        # Defensive: ``auth_type`` is always an ``AuthType`` (from the
+        # validated request or the existing config). Log before falling
+        # back so a future deserialisation mismatch that silently keeps
+        # the old auth type (and mis-gates credential clearing) is visible
+        # rather than failing silently.
+        logger.warning(
+            PROVIDER_UPDATE_AUTH_TYPE_UNEXPECTED,
+            value_type=type(updated_auth_type).__name__,
+            kept_auth_type=existing.auth_type.value,
+        )
+        final_auth_type = existing.auth_type
     _apply_credential_updates(updates, request, final_auth_type)
 
     # Use model_validate (not model_copy) to run validators on the merged result

@@ -1,7 +1,6 @@
 # mypy: disable-error-code="explicit-any"
 """Tests for LiteLLM driver multi-auth support."""
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
@@ -15,6 +14,7 @@ from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
 )
+from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared.fake_clock import FakeClock
@@ -49,7 +49,7 @@ def _make_config(
     )
 
 
-def _build_kwargs(config: ProviderConfig) -> Mapping[str, object]:
+def _build_kwargs(config: ProviderConfig) -> _AcompletionKwargs:
     """Extract _build_kwargs result from a driver."""
     driver = LiteLLMDriver("test-provider", config)
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]

@@ -254,7 +254,12 @@ class TestExtractToolCalls:
         assert result[0].name == "a"
         assert result[1].name == "b"
 
-    def test_invalid_json_arguments_returns_empty_dict(self) -> None:
+    def test_invalid_json_arguments_drops_tool_call(self) -> None:
+        """Unparseable JSON arguments drop the tool call (not emit empty args).
+
+        Matches the streaming accumulator: a tool never runs with
+        silently-emptied arguments in either path.
+        """
         raw: list[object] = [
             {
                 "id": "call_001",
@@ -263,7 +268,7 @@ class TestExtractToolCalls:
         ]
         result = extract_tool_calls(raw)
 
-        assert result[0].arguments == {}
+        assert result == ()
 
     def test_pre_parsed_dict_arguments(self) -> None:
         raw: list[object] = [
@@ -279,13 +284,13 @@ class TestExtractToolCalls:
 
         assert result[0].arguments == {"key": "value"}
 
-    def test_non_finite_string_arguments_returns_empty_dict(self) -> None:
-        """JSON args with an ``Infinity`` literal degrade to empty dict.
+    def test_non_finite_string_arguments_drops_tool_call(self) -> None:
+        """JSON args with an ``Infinity`` literal drop the tool call.
 
         ``json.loads`` accepts ``Infinity`` by default, but ``ToolCall``
         forbids non-finite floats (``allow_inf_nan=False``); the gate in
-        ``_parse_arguments`` drops them so extraction yields a usable
-        ``ToolCall`` instead of raising at construction.
+        ``_parse_arguments`` drops the call so a tool never runs with
+        silently-emptied arguments, instead of raising at construction.
         """
         raw: list[object] = [
             {
@@ -295,11 +300,10 @@ class TestExtractToolCalls:
         ]
         result = extract_tool_calls(raw)
 
-        assert len(result) == 1
-        assert result[0].arguments == {}
+        assert result == ()
 
-    def test_non_finite_nested_dict_arguments_returns_empty_dict(self) -> None:
-        """Pre-parsed args carrying a nested non-finite float degrade to empty."""
+    def test_non_finite_nested_dict_arguments_drops_tool_call(self) -> None:
+        """Pre-parsed args carrying a nested non-finite float drop the call."""
         raw: list[object] = [
             {
                 "id": "call_001",
@@ -311,8 +315,19 @@ class TestExtractToolCalls:
         ]
         result = extract_tool_calls(raw)
 
-        assert len(result) == 1
-        assert result[0].arguments == {}
+        assert result == ()
+
+    def test_non_dict_non_str_arguments_drops_tool_call(self) -> None:
+        """Arguments that are neither a JSON string nor a dict drop the call."""
+        raw: list[object] = [
+            {
+                "id": "call_001",
+                "function": {"name": "test", "arguments": [1, 2, 3]},
+            },
+        ]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
 
     def test_missing_function_skips_entry(self) -> None:
         raw: list[object] = [{"id": "call_001"}]

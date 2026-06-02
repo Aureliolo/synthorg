@@ -194,16 +194,24 @@ def extract_tool_calls(raw: list[object] | None) -> tuple[ToolCall, ...]:
             )
             continue
         name = _get(func, "name", "")
-        raw_args = _get(func, "arguments", "{}")
-        arguments = _parse_arguments(raw_args)
-        if isinstance(call_id, str) and isinstance(name, str) and call_id and name:
-            calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
-        else:
+        if not (
+            isinstance(call_id, str) and isinstance(name, str) and call_id and name
+        ):
             logger.warning(
                 PROVIDER_TOOL_CALL_INCOMPLETE,
                 tool_id=call_id,
                 tool_name=name,
             )
+            continue
+        raw_args = _get(func, "arguments", "{}")
+        arguments = _parse_arguments(raw_args, tool_id=call_id, tool_name=name)
+        # Drop the tool call when arguments cannot be parsed rather than
+        # emitting one with silently-emptied arguments: the streaming
+        # accumulator path drops on the same failures, so a real tool never
+        # runs with the wrong (empty) arguments in either path.
+        if arguments is None:
+            continue
+        calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
 
     return tuple(calls)
 
@@ -220,7 +228,12 @@ def _get(obj: object, key: str, default: object) -> object:
     return getattr(obj, key, default)
 
 
-def _parse_arguments(raw: object) -> dict[str, JsonValue]:
+def _parse_arguments(
+    raw: object,
+    *,
+    tool_id: str,
+    tool_name: str,
+) -> dict[str, JsonValue] | None:
     """Parse tool call arguments from string or dict form.
 
     Expected inputs are ``str`` (JSON) or ``dict``, but any type is
@@ -228,10 +241,14 @@ def _parse_arguments(raw: object) -> dict[str, JsonValue]:
 
     Args:
         raw: JSON string, pre-parsed dict, or other value.
+        tool_id: The owning tool call id, for failure-log correlation.
+        tool_name: The owning tool name, for failure-log correlation.
 
     Returns:
-        Parsed arguments dict.  Returns empty dict on parse failure or
-        when the arguments are not finite, JSON-serialisable values.
+        The parsed arguments dict, or ``None`` when the arguments cannot
+        be parsed, are not a JSON object, or are not finite,
+        JSON-serialisable values.  The caller drops the tool call on
+        ``None`` rather than emitting one with silently-emptied arguments.
     """
     if isinstance(raw, dict):
         candidate: dict[str, JsonValue] = dict(raw)
@@ -241,30 +258,43 @@ def _parse_arguments(raw: object) -> dict[str, JsonValue]:
         except json.JSONDecodeError, ValueError:
             logger.warning(
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                tool_id=tool_id,
+                tool_name=tool_name,
                 args_length=len(raw),
             )
-            return {}
+            return None
         if not isinstance(parsed, dict):
             logger.warning(
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                tool_id=tool_id,
+                tool_name=tool_name,
                 args_length=len(raw),
                 parsed_type=type(parsed).__name__,
             )
-            return {}
+            return None
         candidate = dict(parsed)
     else:
-        return {}
+        logger.warning(
+            PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+            tool_id=tool_id,
+            tool_name=tool_name,
+            raw_type=type(raw).__name__,
+            reason="unexpected_arguments_type",
+        )
+        return None
     # ``ToolCall.arguments`` forbids non-finite floats (allow_inf_nan=False)
     # and must hold JSON-serialisable values.  ``json.loads`` accepts the
     # ``NaN`` / ``Infinity`` literals by default, so gate the result here:
-    # arguments that will not round-trip degrade to ``{}`` instead of
+    # arguments that will not round-trip drop the tool call instead of
     # raising a ValidationError when the ``ToolCall`` is constructed.
     try:
         json.dumps(candidate, allow_nan=False)
     except ValueError, TypeError:
         logger.warning(
             PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+            tool_id=tool_id,
+            tool_name=tool_name,
             reason="non_finite_or_unserialisable",
         )
-        return {}
+        return None
     return candidate

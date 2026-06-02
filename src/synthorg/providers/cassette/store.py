@@ -223,6 +223,10 @@ class CassetteInteraction(BaseModel):
     request_hash: NotBlankStr = Field(description="Canonical request hash")
     lane: int = Field(ge=0, description="Per-task FIFO lane ordinal")
     seq: int = Field(ge=0, description="FIFO index within (hash, lane)")
+    # ``object`` (not ``JsonValue`` like the replayed ``CassetteRecordedError``
+    # context): this is a shape-agnostic, never-replayed human copy whose values
+    # come straight from the pluggable redactor's ``object`` output, so the
+    # field declares no JSON-value invariant the redactor cannot honour.
     request_repr: dict[str, object] = Field(
         default_factory=dict,
         description="Redacted human-readable request copy (never replayed)",
@@ -452,9 +456,20 @@ class CassetteSession:
                 key: self._redactor.redact(value)
                 for key, value in error.context.items()
             }
-        return outcome.model_copy(
-            update={"error": error.model_copy(update={"context": ctx})},
+        # The pluggable redactor returns ``object``; rebuild via
+        # ``model_validate`` (not ``model_copy(update=...)``, which skips
+        # validation) so the redacted context is enforced against
+        # ``CassetteRecordedError.context``'s ``dict[str, JsonValue]`` type
+        # here, at the boundary, rather than failing later in ``json.dumps``
+        # at cassette-write time.
+        redacted_error = CassetteRecordedError.model_validate(
+            {
+                "error_class": error.error_class,
+                "message": error.message,
+                "context": ctx,
+            }
         )
+        return outcome.model_copy(update={"error": redacted_error})
 
     def _serialise(
         self,

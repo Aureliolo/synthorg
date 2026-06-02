@@ -12280,7 +12280,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 128,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/provider.py",
       "owning_feature": "observability"
@@ -14905,7 +14905,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 104,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/errors.py",
       "owning_feature": "providers"
@@ -14940,7 +14940,7 @@
     },
     {
       "kind": "code",
-      "loc": 523,
+      "loc": 528,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/store.py",
       "owning_feature": "providers"
@@ -14982,28 +14982,28 @@
     },
     {
       "kind": "adapter",
-      "loc": 739,
+      "loc": 783,
       "loc_cap": 700,
       "module": "src/synthorg/providers/drivers/litellm_driver.py",
       "owning_feature": "providers"
     },
     {
-      "kind": "code",
-      "loc": 50,
-      "loc_cap": 500,
+      "kind": "declarative",
+      "loc": 56,
+      "loc_cap": null,
       "module": "src/synthorg/providers/drivers/litellm_kwargs.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 136,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/litellm_tool_accumulator.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 217,
+      "loc": 243,
       "loc_cap": 500,
       "module": "src/synthorg/providers/drivers/mappers.py",
       "owning_feature": "providers"
@@ -15080,7 +15080,7 @@
     },
     {
       "kind": "code",
-      "loc": 353,
+      "loc": 358,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/_helpers.py",
       "owning_feature": "providers"
@@ -15101,14 +15101,14 @@
     },
     {
       "kind": "code",
-      "loc": 547,
+      "loc": 553,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/capability_dtos.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 733,
+      "loc": 737,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/dtos.py",
       "owning_feature": "providers"
@@ -15122,7 +15122,7 @@
     },
     {
       "kind": "code",
-      "loc": 182,
+      "loc": 196,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/preset_override_service.py",
       "owning_feature": "providers"

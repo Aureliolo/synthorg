@@ -60,6 +60,15 @@ PROVIDER_MODEL_ADDED: Final[str] = "provider.management.model_added"
 PROVIDER_MODELS_SYNCED: Final[str] = "provider.management.models_synced"
 PROVIDER_CREDENTIALS_ROTATED: Final[str] = "provider.management.credentials_rotated"
 PROVIDER_RATE_LIMITS_UPDATED: Final[str] = "provider.management.rate_limits_updated"
+PROVIDER_UPDATE_AUTH_TYPE_UNEXPECTED: Final[str] = (
+    "provider.management.update_auth_type_unexpected"
+)
+PROVIDER_PRESET_OVERRIDE_UPDATED: Final[str] = (
+    "provider.management.preset_override_updated"
+)
+PROVIDER_PRESET_OVERRIDE_DELETED: Final[str] = (
+    "provider.management.preset_override_deleted"
+)
 
 # ── Provider model discovery ───────────────────────────────
 

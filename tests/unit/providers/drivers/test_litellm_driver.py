@@ -775,6 +775,36 @@ class TestGetModelCapabilities:
         assert caps.max_output_tokens == 4096
 
     @pytest.mark.parametrize(
+        "bad_max_output",
+        [
+            pytest.param({"structured": "unsupported"}, id="dict"),
+            pytest.param([128_000], id="list"),
+            pytest.param("not-a-number", id="non_numeric_str"),
+            pytest.param(True, id="bool"),
+        ],
+    )
+    async def test_non_numeric_max_output_falls_back(
+        self,
+        bad_max_output: object,
+    ) -> None:
+        """A non-numeric ``max_output_tokens`` falls back instead of raising.
+
+        The ``Any`` -> ``object`` retype means ``int(raw)`` can no longer be
+        called blindly; an unexpected type must degrade to the configured
+        fallback rather than raising out of capability discovery.
+        """
+        driver = _make_driver()
+        model_info = {"max_output_tokens": bad_max_output}
+
+        with patch(
+            _PATCH_MODEL_INFO,
+            return_value=model_info,
+        ):
+            caps = await driver.get_model_capabilities("medium")
+
+        assert caps.max_output_tokens == 4096
+
+    @pytest.mark.parametrize(
         (
             "supports_native_streaming",
             "supports_function_calling",

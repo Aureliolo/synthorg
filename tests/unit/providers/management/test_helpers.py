@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from synthorg.api.dto_providers import UpdateProviderRequest
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
@@ -14,6 +14,7 @@ from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.management._helpers import (
     _apply_credential_updates,
+    _coerce_cost,
     apply_update,
     build_discovery_headers,
     models_from_litellm,
@@ -155,6 +156,57 @@ class TestApplyUpdateAuthTransitions:
         assert result.api_key is None
         assert result.subscription_token == "test-subscription-token"
         assert result.tos_accepted_at is not None
+
+    def test_non_auth_type_value_logs_and_rejects(self) -> None:
+        """A non-``AuthType`` ``auth_type`` is logged and rejected loudly.
+
+        ``UpdateProviderRequest`` validation normally rejects an invalid
+        ``auth_type``; ``model_construct`` bypasses it to reach
+        ``apply_update``'s defensive ``isinstance`` guard. The guard logs
+        before falling back to the existing auth type, and the bad value
+        is then rejected by the final ``ProviderConfig`` validation rather
+        than silently applied.
+        """
+        existing = _make_config(auth_type=AuthType.API_KEY, api_key="sk-old")
+        request = UpdateProviderRequest.model_construct(
+            auth_type="bogus",  # type: ignore[arg-type]  # deliberately invalid
+            api_key=None,
+            clear_api_key=False,
+            subscription_token=None,
+            clear_subscription_token=False,
+            tos_accepted=False,
+        )
+        with (
+            patch("synthorg.providers.management._helpers.logger") as mock_logger,
+            pytest.raises(ValidationError),
+        ):
+            apply_update(existing, request)
+        mock_logger.warning.assert_called_once()
+        assert (
+            mock_logger.warning.call_args.args[0]
+            == "provider.management.update_auth_type_unexpected"
+        )
+
+
+@pytest.mark.unit
+class TestCoerceCost:
+    """Direct tests for the ``_coerce_cost`` numeric guard."""
+
+    @pytest.mark.parametrize("value", [0.000015, 0, 1, 0.0])
+    def test_accepts_real_numbers(self, value: float) -> None:
+        assert _coerce_cost(value) == float(value)
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_rejects_bool(self, value: bool) -> None:
+        """``bool`` is an ``int`` subtype; reject it so ``True`` is not 1.0."""
+        with pytest.raises(TypeError):
+            _coerce_cost(value)
+
+    @pytest.mark.parametrize("value", ["0.001", None, [1, 2], {"a": 1}])
+    def test_rejects_non_numeric(self, value: object) -> None:
+        """Strings and containers are rejected (caller skips the entry)."""
+        with pytest.raises(TypeError):
+            _coerce_cost(value)  # type: ignore[arg-type]
 
 
 def _fake_model_cost() -> dict[str, Any]:

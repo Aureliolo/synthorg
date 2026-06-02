@@ -22,7 +22,7 @@ model, ...) stay in ``dto_providers.py``.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Annotated, Literal, Self, cast
+from typing import Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
@@ -288,13 +288,22 @@ class ProviderAuditEvent(BaseModel):
         Returns:
             A plain ``dict`` copy of the payload with all immutable
             containers converted to ``dict``/``list`` for JSON encoding.
+
+        Raises:
+            TypeError: If the thawed payload is not a ``dict`` (only
+                possible when ``_freeze_payload`` was bypassed).
         """
         thawed = _recursively_thaw(payload)
-        # Outer container is always a Mapping after thaw because
-        # ``payload`` is typed as ``Mapping[str, JsonValue]``.  Defensive
-        # ``cast`` rather than ``assert`` so ``-O`` builds keep the
-        # contract.
-        return cast("dict[str, JsonValue]", thawed)
+        # ``_recursively_thaw`` returns ``object``; the outer container is
+        # always a ``dict`` here because ``payload`` is a ``Mapping`` that
+        # thaws to a ``dict``. Verify at runtime (an ``isinstance`` check,
+        # not a bare ``cast``) so a caller that bypasses ``_freeze_payload``
+        # fails fast with a clear error instead of laundering a wrong type
+        # through the serializer.
+        if not isinstance(thawed, dict):
+            msg = f"thawed audit payload is {type(thawed).__name__}, expected dict"
+            raise TypeError(msg)
+        return thawed
 
 
 # ── Rate-limit override ───────────────────────────────────────────────

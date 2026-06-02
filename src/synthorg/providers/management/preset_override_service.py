@@ -24,6 +24,10 @@ from typing import TYPE_CHECKING
 from pydantic import JsonValue
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.provider import (
+    PROVIDER_PRESET_OVERRIDE_DELETED,
+    PROVIDER_PRESET_OVERRIDE_UPDATED,
+)
 from synthorg.providers.errors import ProviderValidationError
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
@@ -112,6 +116,11 @@ class PresetOverrideService:
         self._validate_against_preset(preset, merged)
 
         await self._repo.save(merged)
+        logger.info(
+            PROVIDER_PRESET_OVERRIDE_UPDATED,
+            preset_name=preset_name,
+            fields_changed=[*sorted(updates.keys())],
+        )
         if self._audit_service is not None:
             payload: dict[str, JsonValue] = {
                 "fields_changed": [*sorted(updates.keys())],
@@ -137,6 +146,11 @@ class PresetOverrideService:
             existed (still emits an audit row to record intent).
         """
         removed = await self._repo.delete(preset_name)
+        logger.info(
+            PROVIDER_PRESET_OVERRIDE_DELETED,
+            preset_name=preset_name,
+            removed=removed,
+        )
         if self._audit_service is not None:
             await self._audit_service.record(
                 provider_name=preset_name,

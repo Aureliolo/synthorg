@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Typed keyword-argument assembly for the LiteLLM ``acompletion`` call.
 
 Isolates the anti-corruption mapping between SynthOrg's
@@ -11,18 +12,25 @@ from typing import TypedDict
 from synthorg.providers.models import CompletionConfig
 
 
-class _AcompletionKwargs(TypedDict, total=False):
-    """Typed view of the keyword arguments handed to ``litellm.acompletion``.
-
-    litellm types ``acompletion`` with precise per-parameter signatures,
-    so an opaque ``dict[str, object]`` cannot be splatted into it. This
-    ``total=False`` TypedDict enumerates exactly the parameters the driver
-    sets; splatting it matches each key to the corresponding ``acompletion``
-    parameter by name (``api_base`` flows through litellm's own ``**kwargs``).
-    """
+class _AcompletionRequiredKwargs(TypedDict):
+    """Keyword arguments the driver always sets on every ``acompletion`` call."""
 
     model: str
     messages: list[dict[str, object]]
+
+
+class _AcompletionKwargs(_AcompletionRequiredKwargs, total=False):
+    """Typed view of the keyword arguments handed to ``litellm.acompletion``.
+
+    litellm types ``acompletion`` with precise per-parameter names, so
+    passing an opaque ``dict[str, object]`` would not type-check at the
+    call site.  This TypedDict enumerates exactly the parameters the
+    driver sets: ``model`` and ``messages`` are always present (inherited
+    from ``_AcompletionRequiredKwargs``); the rest are optional. Splatting
+    it matches each key to the corresponding ``acompletion`` parameter by
+    name.
+    """
+
     tools: list[dict[str, object]]
     stream: bool
     stream_options: dict[str, bool]
@@ -40,21 +48,23 @@ def _apply_completion_config(
     kwargs: _AcompletionKwargs,
     config: CompletionConfig | None,
 ) -> _AcompletionKwargs:
-    """Merge ``CompletionConfig`` fields into ``kwargs`` in place.
+    """Return a new kwargs mapping with ``CompletionConfig`` fields merged in.
 
     Returns:
-        The same ``kwargs`` mapping, with config fields applied.
+        A copy of ``kwargs`` with the config fields applied; the input
+        mapping is left unmodified.
     """
+    merged = kwargs.copy()
     if config is None:
-        return kwargs
+        return merged
     if config.temperature is not None:
-        kwargs["temperature"] = config.temperature
+        merged["temperature"] = config.temperature
     if config.max_tokens is not None:
-        kwargs["max_tokens"] = config.max_tokens
+        merged["max_tokens"] = config.max_tokens
     if config.stop_sequences:
-        kwargs["stop"] = list(config.stop_sequences)
+        merged["stop"] = list(config.stop_sequences)
     if config.top_p is not None:
-        kwargs["top_p"] = config.top_p
+        merged["top_p"] = config.top_p
     if config.timeout is not None:
-        kwargs["timeout"] = config.timeout
-    return kwargs
+        merged["timeout"] = config.timeout
+    return merged

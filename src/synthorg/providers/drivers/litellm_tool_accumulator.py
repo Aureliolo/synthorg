@@ -66,12 +66,15 @@ class _ToolCallAccumulator:
         """Build a ``ToolCall`` if enough data accumulated.
 
         Returns ``None`` if either ``id`` or ``name`` is still empty
-        (malformed/incomplete streaming deltas), or if the argument JSON
-        could not be parsed.
+        (malformed/incomplete streaming deltas), if the argument JSON could
+        not be parsed, if it does not parse to a JSON object, or if the
+        arguments contain non-finite floats that would not round-trip
+        through ``ToolCall``'s ``allow_inf_nan=False`` constraint.
 
         Returns:
-            A fully assembled ``ToolCall`` when ``id`` and ``name`` are
-            both set and arguments parse as JSON, or ``None`` otherwise.
+            A fully assembled ``ToolCall`` when ``id`` and ``name`` are both
+            set and the arguments are a finite, JSON-serialisable object, or
+            ``None`` otherwise.
         """
         if not self.id or not self.name:
             if self.arguments:
@@ -92,7 +95,16 @@ class _ToolCallAccumulator:
                 args_length=len(self.arguments) if self.arguments else 0,
             )
             return None
-        args: dict[str, JsonValue] = parsed if isinstance(parsed, dict) else {}
+        if not isinstance(parsed, dict):
+            logger.warning(
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                tool_name=self.name,
+                tool_id=self.id,
+                parsed_type=type(parsed).__name__,
+                reason="non_object_json_value",
+            )
+            return None
+        args: dict[str, JsonValue] = parsed
         # ``ToolCall.arguments`` forbids non-finite floats (allow_inf_nan=False);
         # ``json.loads`` accepts the ``NaN`` / ``Infinity`` literals, so drop the
         # tool call when its arguments will not round-trip rather than raising a

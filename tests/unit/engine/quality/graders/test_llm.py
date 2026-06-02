@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.engine.quality.graders.llm import (
     LLMRubricGrader,
@@ -447,7 +448,7 @@ class TestLLMRubricGraderInvalidGrades:
             ToolCall,
         )
 
-        args: dict[str, Any] = {
+        args: dict[str, JsonValue] = {
             "per_criterion_grades": {"correctness": 0.9, "completeness": 0.9},
             "verdict": "pass",
             "confidence": 0.9,
@@ -596,11 +597,14 @@ class TestLLMRubricGraderInvalidGrades:
         Non-finite values can no longer reach the grader through a
         ``ToolCall`` (its ``arguments`` forbid them via
         ``allow_inf_nan=False``, and ``mappers._parse_arguments`` drops
-        any that ``json.loads`` accepted), so this exercises
-        ``_parse_unit_interval`` directly -- the grader keeps the finite
-        check as a safety net for any non-``ToolCall`` feed, and a
-        non-finite grade still maps to a REFER reason rather than being
-        trusted.
+        any that ``json.loads`` accepted), so the end-to-end REFER path is
+        unreachable for these inputs by construction. This exercises the
+        retained safety-net function directly: a non-finite grade must be
+        rejected (a reason string, which the grader maps to REFER) rather
+        than parsed into a trusted float.
         """
         result = _parse_unit_interval(non_finite_grade, label="correctness")
-        assert result == "correctness is not finite"
+        # Rejection returns a reason string (not the float); assert the
+        # behaviour and the cause without pinning the exact message.
+        assert isinstance(result, str)
+        assert "finite" in result

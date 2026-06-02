@@ -49,6 +49,7 @@ from pydantic import JsonValue
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
@@ -94,7 +95,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from synthorg.config.schema import ProviderConfig, ProviderModelConfig
-    from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.providers.models import (
         ChatMessage,
         CompletionConfig,
@@ -299,6 +299,12 @@ class LiteLLMDriver(BaseCompletionProvider):
             reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
         if not isinstance(raw_stream, AsyncIterator):
+            logger.warning(
+                PROVIDER_CALL_ERROR,
+                provider=self._provider_name,
+                model=model,
+                reason="non_streaming_response_to_streaming_request",
+            )
             msg = (
                 f"Provider {self._provider_name} returned a "
                 "non-streaming response to a streaming request"
@@ -395,10 +401,10 @@ class LiteLLMDriver(BaseCompletionProvider):
         raw_max_output = (
             info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback
         )
-        max_output = (
-            int(raw_max_output)
-            if isinstance(raw_max_output, int | float | str)
-            else fallback
+        max_output = self._coerce_max_output_tokens(
+            raw_max_output,
+            fallback=fallback,
+            litellm_model=litellm_model,
         )
         streaming_raw = info.get("supports_native_streaming")
         supports_streaming = True if streaming_raw is None else bool(streaming_raw)
@@ -669,6 +675,8 @@ class LiteLLMDriver(BaseCompletionProvider):
                     PROVIDER_CALL_ERROR,
                     provider=provider,
                     model=model,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise handle_exc(exc, model) from exc
 
@@ -721,7 +729,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             )
 
         raw_tc = getattr(delta, "tool_calls", None)
-        if raw_tc:
+        if raw_tc and isinstance(raw_tc, list):
             accumulate_tool_call_deltas(raw_tc, pending)
 
         usage_obj = getattr(chunk, "usage", None)
@@ -782,7 +790,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                         model=model,
                     )
                     return errors.RateLimitError(
-                        str(exc),
+                        safe_error_description(exc),
                         retry_after=self._extract_retry_after(exc),
                         context=ctx,
                     )
@@ -800,7 +808,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                     )
                 return our_type(
                     f"Provider {self._provider_name} error",
-                    context={**ctx, "detail": str(exc)},
+                    context={**ctx, "detail": safe_error_description(exc)},
                 )
 
         if isinstance(exc, errors.ProviderError):
@@ -808,7 +816,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         return errors.ProviderInternalError(
             f"Unexpected error from provider {self._provider_name}",
-            context={**ctx, "detail": str(exc)},
+            context={**ctx, "detail": safe_error_description(exc)},
         )
 
     @staticmethod
@@ -842,6 +850,43 @@ class LiteLLMDriver(BaseCompletionProvider):
     # ── LiteLLM model info ───────────────────────────────────────
 
     @staticmethod
+    def _coerce_max_output_tokens(
+        raw: object,
+        *,
+        fallback: int,
+        litellm_model: str,
+    ) -> int:
+        """Coerce a LiteLLM ``max_output_tokens`` value to ``int``.
+
+        Falls back to ``fallback`` (logging a warning) when the value is a
+        bool, a non-numeric string, or any non-numeric type, rather than
+        silently mis-reporting the context window or letting an
+        unexpected type raise out of capability discovery.
+
+        Returns:
+            The coerced token count, or ``fallback`` when ``raw`` cannot be
+            coerced.
+        """
+        if isinstance(raw, bool) or not isinstance(raw, int | float | str):
+            logger.warning(
+                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+                model=litellm_model,
+                reason="max_output_tokens_unexpected_type",
+                raw_type=type(raw).__name__,
+            )
+            return fallback
+        try:
+            return int(raw)
+        except ValueError, TypeError:
+            logger.warning(
+                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+                model=litellm_model,
+                reason="max_output_tokens_not_coercible",
+                raw_type=type(raw).__name__,
+            )
+            return fallback
+
+    @staticmethod
     def _get_litellm_model_info(
         litellm_model: str,
     ) -> dict[str, object]:
@@ -868,6 +913,8 @@ class LiteLLMDriver(BaseCompletionProvider):
             logger.warning(
                 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
                 model=litellm_model,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return {}
         return info if isinstance(info, dict) else {}
