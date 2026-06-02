@@ -32,6 +32,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
         "build_red_team_agent_identity",
+        "build_vision_verifier_gate",
     ),
     depends_on=(),
 )

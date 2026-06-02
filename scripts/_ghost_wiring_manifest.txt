@@ -60,6 +60,9 @@ ENFORCED PushQueueCoordinator #1974 -- constructed per-project by engine/workspa
 ENFORCED BrowserTool #1992 -- constructed by tools/factory.py::_build_browser_tools behind the BROWSER sandbox category; EPIC #1987 hands-and-senses headless browser
 ENFORCED SSIMDiffer #1992 -- default ScreenshotDiffer constructed by tools/browser/browser_tool.py::BrowserTool.__init__
 ENFORCED WorkspaceBaselineStore #1992 -- constructed by tools/browser/browser_tool.py::BrowserTool.__init__; per-workspace baseline-screenshot resolver
+ENFORCED DesktopTool #1993 -- constructed by tools/factory.py::_build_desktop_tools when a desktop-capable sandbox is configured; EPIC #1987 virtual-desktop tool driven through the in-container Xvfb/xdotool executor
+ENFORCED build_vision_verifier_gate #1993 -- called by workers/runtime_builder._build_vision_gate_or_none behind security.vision_verify; builds the VisionVerifierGate chained into the review gate to flag deliverable-vs-brief mismatch before done
+ENFORCED EnvironmentService #1994 -- constructed in api/_app_wiring.py::_wire_environment_service behind a connected persistence backend; provisions the per-project reproducible-environment declaration so the sandbox builds from the same declaration a fresh clone gets
 ENFORCED build_red_team_runtime #1986 -- called at boot by workers/runtime_builder._build_red_team_runtime_or_none behind CompanyConfig.security.red_team.enabled; returns RedTeamRuntime carrying the gate + tool + repo + runner
 ENFORCED RedTeamGateService #1986 -- constructed by security/redteam/builder.build_red_team_runtime; coordinates the inline AgentEngine.run + grounding stub + severity-tiered routing for one deliverable
 ENFORCED AgentEngineRunner #1986 -- constructed by security/redteam/builder.build_red_team_runtime; production AgentRunner that builds the transient red-team Task and delegates to AgentEngine.run

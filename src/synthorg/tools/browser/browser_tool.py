@@ -96,6 +96,7 @@ from synthorg.tools.browser.errors import (
     BrowserScreenshotError,
     BrowserStartCommandError,
 )
+from synthorg.tools.network_validator import is_allowed_http_scheme
 
 if TYPE_CHECKING:
     from synthorg.tools.browser._protocols import ScreenshotDiffer
@@ -1065,6 +1066,19 @@ class BrowserTool(BaseTool):
             BrowserArgumentError: If the related operation fails.
         """
         if args.url:
+            # The url field is for navigating to a web target only:
+            # restrict it to http/https so a caller cannot smuggle a
+            # local-file, data, javascript, or leading-dash flag-injection
+            # scheme through it and escape the workspace. Local files go
+            # through the path field below, which is workspace-scoped and
+            # traversal-checked. Loopback and private targets stay allowed:
+            # the browser drives the app-under-test inside the sandbox.
+            if not is_allowed_http_scheme(args.url):
+                raise BrowserArgumentError(
+                    "url must use http:// or https:// (use the 'path' "
+                    "field for workspace-relative local files)",
+                    context={"url": args.url},
+                )
             return args.url
         if args.path:
             normalised = args.path.replace("\\", "/")

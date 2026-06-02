@@ -28,6 +28,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "EmbeddedGitBackend",
         "LocalPathGitBackend",
         "ExternalRemoteGitBackend",
+        "EnvironmentService",
     ),
     depends_on=(),
 )

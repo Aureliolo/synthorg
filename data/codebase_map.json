@@ -1556,7 +1556,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 54,
+      "loc": 58,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/deliverable_receipt_wiring.py",
       "owning_feature": "api_core"
@@ -1612,7 +1612,7 @@
     },
     {
       "kind": "code",
-      "loc": 249,
+      "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -7016,7 +7016,7 @@
     },
     {
       "kind": "feature",
-      "loc": 29,
+      "loc": 30,
       "loc_cap": 100,
       "module": "src/synthorg/engine/workspace/feature.py",
       "owning_feature": "workspace"
@@ -8829,7 +8829,7 @@
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/config.py",
       "owning_feature": "knowledge"
@@ -15927,7 +15927,7 @@
     },
     {
       "kind": "feature",
-      "loc": 33,
+      "loc": 34,
       "loc_cap": 100,
       "module": "src/synthorg/security/feature.py",
       "owning_feature": "security"
@@ -16270,7 +16270,7 @@
     },
     {
       "kind": "code",
-      "loc": 36,
+      "loc": 41,
       "loc_cap": 500,
       "module": "src/synthorg/security/state.py",
       "owning_feature": "security"
@@ -17460,7 +17460,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1053,
+      "loc": 1060,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/browser/browser_tool.py",
       "owning_feature": "tools"
@@ -17894,7 +17894,7 @@
     },
     {
       "kind": "feature",
-      "loc": 29,
+      "loc": 30,
       "loc_cap": 100,
       "module": "src/synthorg/tools/feature.py",
       "owning_feature": "tools"

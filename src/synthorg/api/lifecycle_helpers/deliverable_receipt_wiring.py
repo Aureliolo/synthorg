@@ -23,9 +23,11 @@ async def _wire_deliverable_receipts(app_state: AppState) -> None:
 
     Gated on a connected persistence backend and a wired docs service
     (no docs => no deliverables to attach receipts to). The brain is
-    optional (decisions degrade to empty without it). The built service
-    is parked on its slice and injected into the review gate so a
-    completed deliverable emits its provenance receipt.
+    optional (decisions degrade to empty without it) and so is the
+    red-team report store published on the security slice by the runtime
+    wiring (the red_team receipt section degrades to empty without it).
+    The built service is parked on its slice and injected into the review
+    gate so a completed deliverable emits its provenance receipt.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
     from synthorg.deliverable_receipts.state_slice import (  # noqa: PLC0415
@@ -37,6 +39,7 @@ async def _wire_deliverable_receipts(app_state: AppState) -> None:
         persistence_of,
     )
     from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+    from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
 
     if app_state.slice(PersistenceStateSlice).backend is None:
         return
@@ -57,6 +60,7 @@ async def _wire_deliverable_receipts(app_state: AppState) -> None:
         clock=app_state.clock,
         default_currency=app_state.config.budget.currency,
         brain_service=app_state.slice(ProjectBrainStateSlice).service,
+        redteam_reports=app_state.slice(SecurityStateSlice).red_team_reports,
         cassette_config=resolve_cassette_config(),
     )
     app_state.swap_slice(DeliverableReceiptStateSlice(service=service))

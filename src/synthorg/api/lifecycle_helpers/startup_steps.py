@@ -183,10 +183,24 @@ async def install_runtime_services(
     # runtime wiring once the boot engine exists, attached here so a
     # review pipeline supplied with red_team_input reaches the live
     # gate. ``None`` when the red-team subsystem is disabled.
-    if services.red_team_runtime is not None and review_gate_service is not None:
-        review_gate_service.set_red_team_gate(
-            services.red_team_runtime.gate,
+    if services.red_team_runtime is not None:
+        from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
+
+        # Publish the per-execution red-team report store so the
+        # deliverable-receipt builder (wired later in
+        # wire_features_on_startup) can snapshot a run's findings into
+        # its receipt. Partial wire keeps the audit log / trust service
+        # / autonomy strategy already on the slice. Independent of the
+        # review gate: receipts need the store even where no review gate
+        # is wired.
+        app_state.wire(
+            SecurityStateSlice,
+            red_team_reports=services.red_team_runtime.report_repo,
         )
+        if review_gate_service is not None:
+            review_gate_service.set_red_team_gate(
+                services.red_team_runtime.gate,
+            )
     # Bring the real client-request, goal/objective, and
     # task-board work-entry paths online: ensure the configured
     # default projects exist and attach the entry adapters. No-op
