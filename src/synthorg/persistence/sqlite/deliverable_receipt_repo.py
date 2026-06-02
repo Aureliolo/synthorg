@@ -1,3 +1,4 @@
+# module-kind: repository
 """SQLite repository implementation for deliverable receipts."""
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
@@ -267,19 +268,27 @@ class SQLiteDeliverableReceiptRepository:
     def _to_row(self, receipt: DeliverableReceipt) -> dict[str, object]:
         """Flatten a receipt into a row dict (full model in payload_json).
 
+        The payload is serialised from a UTC-normalised copy so the
+        ``issued_at`` inside ``payload_json`` matches the normalised
+        value stored in the indexed column (a round-trip read otherwise
+        returns a timezone that diverges from what queries filter on).
+
         Returns:
             Result of type ``dict[str, object]``.
         """
+        normalised = receipt.model_copy(
+            update={"issued_at": normalize_utc(receipt.issued_at)}
+        )
         return {
-            "receipt_id": receipt.receipt_id,
-            "task_id": receipt.task_id,
-            "project_id": receipt.project_id,
-            "execution_id": receipt.execution_id,
-            "deliverable_doc_slug": receipt.deliverable_doc_slug,
-            "issued_at": format_iso_utc(normalize_utc(receipt.issued_at)),
-            "total_cost": receipt.total_cost,
-            "currency": receipt.currency,
-            "payload_json": receipt.model_dump_json(),
+            "receipt_id": normalised.receipt_id,
+            "task_id": normalised.task_id,
+            "project_id": normalised.project_id,
+            "execution_id": normalised.execution_id,
+            "deliverable_doc_slug": normalised.deliverable_doc_slug,
+            "issued_at": format_iso_utc(normalised.issued_at),
+            "total_cost": normalised.total_cost,
+            "currency": normalised.currency,
+            "payload_json": normalised.model_dump_json(),
         }
 
     def _row_to_model(self, row: dict[str, object]) -> DeliverableReceipt:

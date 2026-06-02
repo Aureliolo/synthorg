@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import {
   getDeliverableReceipt,
@@ -87,18 +87,37 @@ function useReceiptValidation(projectId: string, slug: string): ValidationState 
   const [result, setResult] = useState<ReceiptValidationResult | null>(null)
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight validation on unmount so the async run never
+  // calls setResult/setError/setValidating on an unmounted component.
+  useEffect(
+    () => () => {
+      controllerRef.current?.abort()
+    },
+    [],
+  )
 
   const validate = useCallback(() => {
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     setValidating(true)
     setError(null)
     const run = async (): Promise<void> => {
       try {
-        setResult(await validateDeliverableReceipt(projectId, slug))
+        const validation = await validateDeliverableReceipt(
+          projectId,
+          slug,
+          controller.signal,
+        )
+        if (!controller.signal.aborted) setResult(validation)
       } catch (err) {
+        if (controller.signal.aborted) return
         log.warn('Failed to validate receipt:', getErrorMessage(err))
         setError(getErrorMessage(err))
       } finally {
-        setValidating(false)
+        if (!controller.signal.aborted) setValidating(false)
       }
     }
     void run()

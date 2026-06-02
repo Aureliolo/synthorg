@@ -40,8 +40,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageRecord
-from tests._shared import mock_of
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock, mock_of
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryDeliverableReceiptRepository,

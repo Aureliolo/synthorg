@@ -23,8 +23,7 @@ from synthorg.security.redteam.models import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import mock_of
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock, mock_of
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryKnowledgeUsageRecordRepository,

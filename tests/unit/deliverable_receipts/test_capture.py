@@ -16,8 +16,7 @@ from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSpec
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import mock_of
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock, mock_of
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryKnowledgeUsageRecordRepository,

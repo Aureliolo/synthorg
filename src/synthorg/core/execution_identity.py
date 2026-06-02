@@ -14,16 +14,13 @@ rather than inventing identifiers. Natively async-aware, so child tasks
 spawned inside the scope inherit the binding.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 __all__ = [
     "ExecutionIdentity",
