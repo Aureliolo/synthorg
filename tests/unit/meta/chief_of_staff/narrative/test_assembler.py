@@ -235,3 +235,15 @@ class TestSafeUrl:
 
     def test_relative_path_preserved(self) -> None:
         assert _safe_url("../sibling/doc") == "../sibling/doc"
+
+    def test_leading_whitespace_protocol_relative_coerced(self) -> None:
+        # Browsers trim leading whitespace from href, so " //evil" would
+        # bypass a naive startswith check and resolve as an open-redirect.
+        assert _safe_url(" //evil.example.com/x") == "#external-protocol-relative"
+
+    def test_leading_whitespace_disallowed_scheme_coerced(self) -> None:
+        assert _safe_url("  javascript:alert(1)") == "#external-javascript"
+
+    def test_leading_whitespace_https_preserved(self) -> None:
+        # A permitted scheme behind whitespace stays navigable.
+        assert _safe_url(" https://example.com/x") == " https://example.com/x"

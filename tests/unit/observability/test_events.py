@@ -389,6 +389,7 @@ class TestEventConstants:
         # Event names are part of the public observability contract;
         # asserting the literal value protects against silent renames.
         from synthorg.observability.events.chief_of_staff import (
+            COS_NARRATIVE_DECISION_UNAVAILABLE,
             COS_NARRATIVE_FRAMES_TRUNCATED,
             COS_NARRATIVE_GENERATED,
             COS_NARRATIVE_GENERATION_FAILED,
@@ -415,6 +416,9 @@ class TestEventConstants:
         assert COS_NARRATIVE_PROSE_FALLBACK == "chief_of_staff.narrative.prose_fallback"
         assert COS_NARRATIVE_FRAMES_TRUNCATED == (
             "chief_of_staff.narrative.frames_truncated"
+        )
+        assert COS_NARRATIVE_DECISION_UNAVAILABLE == (
+            "chief_of_staff.narrative.decision_unavailable"
         )
 
     def test_config_events_exist(self) -> None:

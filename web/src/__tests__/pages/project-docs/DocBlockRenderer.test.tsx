@@ -36,4 +36,18 @@ describe('DocBlockRenderer link sanitization', () => {
       '#brain-entry-dec-1',
     )
   })
+
+  it('coerces protocol-relative urls hidden behind leading whitespace', () => {
+    // Browsers trim leading whitespace from href, so " //evil" would
+    // resolve as an open-redirect if the prefix check ran untrimmed.
+    render(<DocBlockRenderer block={linkBlock(' //evil.example.com')} />)
+
+    expect(screen.getByRole('link')).toHaveAttribute('href', '#')
+  })
+
+  it('coerces whitespace-prefixed disallowed-scheme urls', () => {
+    render(<DocBlockRenderer block={linkBlock(' javascript:alert(1)')} />)
+
+    expect(screen.getByRole('link')).toHaveAttribute('href', '#')
+  })
 })

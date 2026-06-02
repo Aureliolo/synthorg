@@ -26,8 +26,9 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     AgentTurnTally,
     RunNarrativeInputs,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
+    COS_NARRATIVE_DECISION_UNAVAILABLE,
     COS_NARRATIVE_FRAMES_TRUNCATED,
     COS_NARRATIVE_SOURCE_UNAVAILABLE,
 )
@@ -196,14 +197,33 @@ class NarrativeReader:
         decision_ids = tuple(
             s.entry_id for s in summaries if s.entry_kind is BrainEntryKind.DECISION
         )[:MAX_DECISIONS]
+
         # The per-id fetches are independent; run them concurrently under a
         # TaskGroup so a many-decision brief does not pay N serial round-trips.
+        # Each fetch is best-effort: narrative generation must not be sunk by
+        # one unreadable decision (a transient backend error or a since-deleted
+        # entry), so a failing fetch is logged and dropped rather than
+        # propagated to cancel its siblings.
+        async def _get_entry(entry_id: NotBlankStr) -> BrainEntry | None:
+            try:
+                return await self._brain.get_current(
+                    project_id=project_id, entry_id=entry_id
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    COS_NARRATIVE_DECISION_UNAVAILABLE,
+                    project_id=project_id,
+                    entry_id=entry_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                return None
+
         async with asyncio.TaskGroup() as group:
             tasks = [
-                group.create_task(
-                    self._brain.get_current(project_id=project_id, entry_id=entry_id)
-                )
-                for entry_id in decision_ids
+                group.create_task(_get_entry(entry_id)) for entry_id in decision_ids
             ]
         decisions = tuple(
             entry for task in tasks if (entry := task.result()) is not None

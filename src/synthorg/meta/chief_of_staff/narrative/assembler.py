@@ -173,14 +173,19 @@ def _safe_url(url: str) -> str:
     browser resolves it against the page protocol, so it is an
     open-redirect vector; it is coerced too.
 
+    Leading whitespace is stripped before the scheme checks because
+    browsers trim it from ``href`` attributes, so ``" //evil"`` and
+    ``" javascript:..."`` would otherwise slip past a naive prefix test.
+
     Returns:
         ``url`` unchanged when its scheme is permitted (or it is a
         genuine relative path / fragment), or a sanitised relative
         anchor otherwise.
     """
-    if url.startswith("//"):
+    trimmed = url.strip()
+    if trimmed.startswith("//"):
         return "#external-protocol-relative"
-    scheme, sep, _ = url.partition(":")
+    scheme, sep, _ = trimmed.partition(":")
     if not sep or "/" in scheme or scheme.lower() in _ALLOWED_URL_SCHEMES:
         return url
     return f"#external-{scheme.lower()}"

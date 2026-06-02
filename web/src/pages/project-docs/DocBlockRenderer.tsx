@@ -79,11 +79,19 @@ const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
 // dangerous schemes at write time, but guard the render path too so a
 // disallowed (javascript:, data:) or protocol-relative (//host) url can
 // never reach the href attribute. Relative paths and #fragments pass.
+// The url is trimmed first because browsers strip leading whitespace
+// from href, so " javascript:..." / " //host" would otherwise bypass
+// the prefix and URL-parse checks; an unparseable url carrying any
+// scheme is rejected rather than passed through.
 function sanitizeHref(url: string): string {
-  if (url.startsWith('//')) return '#'
+  const trimmed = url.trim()
+  if (trimmed.startsWith('//')) return '#'
   try {
-    return ALLOWED_LINK_SCHEMES.has(new URL(url).protocol) ? url : '#'
+    return ALLOWED_LINK_SCHEMES.has(new URL(trimmed).protocol) ? url : '#'
   } catch {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+      return '#'
+    }
     return url
   }
 }

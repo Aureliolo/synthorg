@@ -14,7 +14,10 @@ from synthorg.meta.chief_of_staff.narrative.errors import (
     NarrativeSourceUnavailableError,
 )
 from synthorg.meta.chief_of_staff.narrative.reader import NarrativeReader
-from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_FRAMES_TRUNCATED
+from synthorg.observability.events.chief_of_staff import (
+    COS_NARRATIVE_DECISION_UNAVAILABLE,
+    COS_NARRATIVE_FRAMES_TRUNCATED,
+)
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameAggregate,
@@ -161,7 +164,7 @@ def _reader(  # noqa: PLR0913 -- test builder with keyword-only knobs
     frames: tuple[FlightRecorderFrame, ...] = (),
     summaries: tuple[BrainSummary, ...] = (),
     entry: BrainEntry | None = None,
-    entry_by_id: dict[str, BrainEntry | None] | None = None,
+    entry_by_id: dict[str, BrainEntry | BaseException | None] | None = None,
     query_pages: Sequence[Sequence[FlightRecorderFrame]] | None = None,
     currency: str = "USD",
 ) -> NarrativeReader:
@@ -175,7 +178,10 @@ def _reader(  # noqa: PLR0913 -- test builder with keyword-only knobs
 
         async def _get(*, project_id: str, entry_id: str) -> BrainEntry | None:
             del project_id
-            return entry_by_id.get(entry_id)
+            result = entry_by_id.get(entry_id)
+            if isinstance(result, BaseException):
+                raise result
+            return result
 
         get_current = AsyncMock(side_effect=_get)
     else:
@@ -276,6 +282,31 @@ class TestNarrativeReader:
             task_id=NotBlankStr("task-1"), project_id=NotBlankStr("proj-1")
         )
         assert {d.entry_id for d in inputs.decisions} == {"dec-1"}
+
+    async def test_gather_brain_tolerates_decision_fetch_error(self) -> None:
+        # A transient backend error on one decision fetch is best-effort:
+        # it is logged and dropped so the remaining decisions still load,
+        # rather than cancelling the whole concurrent TaskGroup.
+        reader = _reader(
+            task=_task(),
+            aggregate=_aggregate(),
+            frames=(_frame(agent_id="agent-a", turn_index=1),),
+            summaries=(_decision_summary(), _decision_summary_b()),
+            entry_by_id={
+                "dec-1": _decision_entry(),
+                "dec-2": RuntimeError("backend unavailable"),
+            },
+        )
+        with structlog.testing.capture_logs() as events:
+            inputs = await reader.gather(
+                task_id=NotBlankStr("task-1"), project_id=NotBlankStr("proj-1")
+            )
+        assert {d.entry_id for d in inputs.decisions} == {"dec-1"}
+        assert any(
+            e["event"] == COS_NARRATIVE_DECISION_UNAVAILABLE
+            and e["entry_id"] == "dec-2"
+            for e in events
+        )
 
     async def test_pages_across_multiple_batches(
         self, monkeypatch: pytest.MonkeyPatch

@@ -194,7 +194,14 @@ def _citation_to_source(citation: Citation) -> SourceRef:
             url=_clip(ref),
             kind=NotBlankStr("external_url"),
         )
-    prefix, label_word = _INTERNAL_KIND_RENDER[citation.source_kind]
+    render_info = _INTERNAL_KIND_RENDER.get(citation.source_kind)
+    if render_info is None:
+        # A CitationKind added after this map was written renders under a
+        # generic prefix rather than raising KeyError mid-narrative.
+        prefix = "source"
+        label_word = citation.source_kind.value.replace("_", " ").capitalize()
+    else:
+        prefix, label_word = render_info
     return SourceRef(
         label=_clip(f"{label_word} {ref}{locator}"),
         url=_clip(f"#{prefix}-{ref}"),

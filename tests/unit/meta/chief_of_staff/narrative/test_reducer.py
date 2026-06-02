@@ -162,6 +162,34 @@ class TestReduceRun:
         assert source.url == "https://example.com/rfc"
         assert source.kind == "external_url"
 
+    def test_unmapped_citation_kind_renders_generic_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A CitationKind added after the render map was written must not
+        # raise KeyError mid-narrative; it falls back to a generic prefix
+        # and a humanised label. Simulate the future enum member by
+        # emptying the map so an existing internal kind hits the fallback.
+        import synthorg.meta.chief_of_staff.narrative.reducer as reducer_mod
+
+        monkeypatch.setattr(reducer_mod, "_INTERNAL_KIND_RENDER", {})
+        reduced = reduce_run(
+            _inputs(
+                decisions=(
+                    _decision_entry(
+                        citations=(
+                            Citation(
+                                source_ref=NotBlankStr("k9"),
+                                source_kind=CitationKind.KNOWLEDGE_SOURCE,
+                            ),
+                        )
+                    ),
+                )
+            )
+        )
+        source = reduced.decisions[0].sources[0]
+        assert source.url == "#source-k9"
+        assert source.label.startswith("Knowledge source k9")
+
     def test_sources_lead_with_brief_and_dedup(self) -> None:
         shared = Citation(
             source_ref=NotBlankStr("task-1"), source_kind=CitationKind.TASK
