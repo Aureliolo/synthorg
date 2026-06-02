@@ -13,6 +13,7 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.attribution import AgentContribution
@@ -125,13 +126,14 @@ class TestGetSnapshotsFaultIsolation:
 
         tracker.get_snapshot = AsyncMock(side_effect=fake_get_snapshot)  # type: ignore[method-assign]
 
-        results = await tracker.get_snapshots(
-            (
-                NotBlankStr("good-a"),
-                NotBlankStr("bad"),
-                NotBlankStr("good-c"),
-            ),
-        )
+        with suppress_type_checks():
+            results = await tracker.get_snapshots(
+                (
+                    NotBlankStr("good-a"),
+                    NotBlankStr("bad"),
+                    NotBlankStr("good-c"),
+                ),
+            )
 
         assert len(results) == 3
         assert results[0] is snapshot_a

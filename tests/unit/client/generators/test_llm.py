@@ -2,9 +2,11 @@
 """Unit tests for LLMGenerator."""
 
 import json
+from collections.abc import Iterator
 from typing import cast, override
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.client.generators import LLMGenerator
 from synthorg.client.models import GenerationContext
@@ -20,6 +22,19 @@ from synthorg.providers.models import (
 from synthorg.providers.protocol import CompletionProvider
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_stub_provider() -> Iterator[None]:
+    """Suppress typeguard: every test drives an intentional minimal stub.
+
+    ``_StubProvider`` implements only the ``complete`` method the generator
+    exercises and deliberately does not satisfy the full ``CompletionProvider``
+    protocol, so the runtime protocol check is suppressed. These tests verify
+    generator behaviour, not provider type conformance.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _StubProvider:

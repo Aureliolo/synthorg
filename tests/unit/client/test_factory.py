@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.client.adapters import (
     DirectAdapter,
@@ -206,13 +207,14 @@ class TestRequirementGeneratorFactory:
 
     def test_llm_happy_path(self) -> None:
         """``llm`` strategy with provider + model returns an LLMGenerator."""
-        impl = build_requirement_generator(
-            RequirementGeneratorConfig(
-                strategy="llm",
-                llm_model=NotBlankStr("test-small-001"),
-            ),
-            provider=_StubProvider(),  # type: ignore[arg-type]
-        )
+        with suppress_type_checks():
+            impl = build_requirement_generator(
+                RequirementGeneratorConfig(
+                    strategy="llm",
+                    llm_model=NotBlankStr("test-small-001"),
+                ),
+                provider=_StubProvider(),  # type: ignore[arg-type]
+            )
         assert isinstance(impl, LLMGenerator)
 
     def test_template_requires_path(self) -> None:

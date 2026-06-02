@@ -1,6 +1,7 @@
 """Tests for the output scan policy factory."""
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import AutonomyLevel
 from synthorg.security.autonomy.models import EffectiveAutonomy
@@ -72,5 +73,8 @@ class TestBuildOutputScanPolicy:
 
     def test_unknown_policy_type_raises_type_error(self) -> None:
         """Unknown policy type raises TypeError."""
-        with pytest.raises(TypeError, match="Unknown output scan policy type"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(TypeError, match="Unknown output scan policy type"),
+        ):
             build_output_scan_policy("invalid_type")  # type: ignore[arg-type]

@@ -13,15 +13,29 @@ not acquire the lock; it sets ``self._stop_event`` so the running
 """
 
 import asyncio
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.client.config import ContinuousModeConfig
 from synthorg.client.continuous import ContinuousMode
 from synthorg.client.models import SimulationConfig, SimulationMetrics
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_fake_runner() -> Iterator[None]:
+    """Suppress typeguard: tests drive an intentional ``_FakeRunner`` double.
+
+    The fake records ``run()`` invocations and does not satisfy the concrete
+    runner type ``ContinuousMode`` is annotated against; these tests verify
+    lifecycle behaviour, not runner type conformance.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _FakeRunner:

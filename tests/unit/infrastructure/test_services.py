@@ -9,10 +9,12 @@ events, integration health) are already exercised via the MCP handler
 tests (``tests/unit/meta/mcp/test_handlers_infrastructure.py``).
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.core.types import NotBlankStr
@@ -261,6 +263,18 @@ class TestSetupFacadeService:
 
 
 class TestSimulationFacadeService:
+    @pytest.fixture(autouse=True)
+    def _suppress_typeguard(self) -> Iterator[None]:
+        """Suppress typeguard: tests pass ``SimpleNamespace`` state doubles.
+
+        ``SimulationFacadeService`` is exercised with ``SimpleNamespace``
+        stand-ins for the client simulation state to drive capability-gap and
+        delegation paths; these verify facade behaviour, not state type
+        conformance.
+        """
+        with suppress_type_checks():
+            yield
+
     async def test_list_capability_gap_without_method(self) -> None:
         service = SimulationFacadeService(state=SimpleNamespace())  # type: ignore[arg-type]
         with pytest.raises(CapabilityNotSupportedError):

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.engine.prompt_safety import (
@@ -240,7 +241,10 @@ class TestFormatMemoryContext:
     def test_unsupported_injection_point_raises_value_error(self) -> None:
         """Unsupported InjectionPoint raises ValueError."""
         memories = (_make_scored(content="test"),)
-        with pytest.raises(ValueError, match="Unsupported injection point"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(ValueError, match="Unsupported injection point"),
+        ):
             _format_memory_context(
                 memories,
                 estimator=DefaultTokenEstimator(),

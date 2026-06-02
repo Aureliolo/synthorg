@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from typing import override
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -345,7 +346,10 @@ class TestResolveCurrency:
 @pytest.mark.unit
 class TestContextValidation:
     async def test_rejects_non_tracker(self) -> None:
-        with pytest.raises(TypeError, match="cost_tracker must be a CostTracker"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(TypeError, match="cost_tracker must be a CostTracker"),
+        ):
             async with cost_recording_scope(
                 cost_tracker="not-a-tracker",  # type: ignore[arg-type]
                 agent_id=NotBlankStr("agent-1"),

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
@@ -142,5 +143,6 @@ class TestSteeringInbox:
                 msg = "db down"
                 raise RuntimeError(msg)
 
-        inbox = BrainBackedSteeringInbox(_BoomRepo())  # type: ignore[arg-type]
+        with suppress_type_checks():
+            inbox = BrainBackedSteeringInbox(_BoomRepo())  # type: ignore[arg-type]
         assert await inbox.pending(project_id=_PROJECT) == ()

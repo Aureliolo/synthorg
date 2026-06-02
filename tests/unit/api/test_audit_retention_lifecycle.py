@@ -14,8 +14,10 @@ Covers:
 """
 
 import asyncio
+from collections.abc import Iterator
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.audit_retention import (
@@ -33,6 +35,16 @@ from tests.unit.api.fakes import FakePersistenceBackend
 
 _APPROVAL_CRITICAL = "approval_urgency_critical_seconds"
 _APPROVAL_HIGH = "approval_urgency_high_seconds"
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard() -> Iterator[None]:
+    """Suppress typeguard: tests drive a ``_FakeConfigResolver`` double and a
+    ``FakePersistenceBackend``; these verify retention / approval-urgency
+    resolution behaviour, not resolver / backend type conformance.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _FakeConfigResolver:

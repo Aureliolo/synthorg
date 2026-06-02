@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
 from synthorg.memory.backends.mem0.config import Mem0EmbedderConfig
@@ -54,7 +55,10 @@ class TestCreateMemoryBackend:
 
     def test_mem0_wrong_embedder_type_raises(self) -> None:
         config = CompanyMemoryConfig(backend="mem0")
-        with pytest.raises(MemoryConfigError, match="must be a Mem0EmbedderConfig"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(MemoryConfigError, match="must be a Mem0EmbedderConfig"),
+        ):
             create_memory_backend(config, embedder="not-a-config")  # type: ignore[arg-type]
 
     def test_config_build_error_wraps_as_memory_config_error(self) -> None:

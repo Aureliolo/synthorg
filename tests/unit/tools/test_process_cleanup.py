@@ -1,15 +1,30 @@
 """Tests for the subprocess transport cleanup utility."""
 
 from asyncio.subprocess import Process
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock, PropertyMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.tools._process_cleanup import close_subprocess_transport
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_simplenamespace_proc() -> Iterator[None]:
+    """Suppress typeguard: tests pass ``SimpleNamespace`` transport-state doubles.
+
+    ``close_subprocess_transport`` is exercised against hand-built
+    ``SimpleNamespace`` stand-ins for ``asyncio.subprocess.Process`` to drive
+    each transport state; these verify cleanup behaviour, not ``Process`` type
+    conformance.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class TestCloseSubprocessTransport:

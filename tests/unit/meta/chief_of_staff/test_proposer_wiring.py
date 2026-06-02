@@ -4,6 +4,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.app_builders import build_chief_of_staff_proposer
 from synthorg.api.approval_store import ApprovalStore
@@ -147,13 +148,14 @@ class TestBuildChiefOfStaffProposer:
         assert result is None
 
     def test_builds_when_all_present(self) -> None:
-        result = build_chief_of_staff_proposer(
-            ChiefOfStaffConfig(propose_enabled=True),
-            provider_registry=_FakeRegistry(providers=["p"]),  # type: ignore[arg-type]
-            approval_store=ApprovalStore(),
-            repositories=_repos(),
-            cost_tracker=None,
-        )
+        with suppress_type_checks():
+            result = build_chief_of_staff_proposer(
+                ChiefOfStaffConfig(propose_enabled=True),
+                provider_registry=_FakeRegistry(providers=["p"]),  # type: ignore[arg-type]
+                approval_store=ApprovalStore(),
+                repositories=_repos(),
+                cost_tracker=None,
+            )
         assert isinstance(result, ChiefOfStaffProposer)
 
 

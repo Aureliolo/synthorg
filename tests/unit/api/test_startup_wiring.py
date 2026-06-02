@@ -261,7 +261,7 @@ class TestWireApprovalGate:
         repo = _FakeParkedContextRepo()
         persistence = _FakeParkedPersistence(parked_contexts=repo)
 
-        with structlog.testing.capture_logs() as captured:
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
             await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
 
         gate = state.slice(ApprovalStateSlice).gate
