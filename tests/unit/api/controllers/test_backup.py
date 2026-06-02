@@ -6,11 +6,11 @@ bootstrapping a full Litestar app, we call the raw function via
 ``handler.fn(self, ...)``.
 """
 
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from litestar.datastructures import State
 from litestar.exceptions import InternalServerException
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
@@ -72,11 +72,11 @@ def _make_restore_response(
     )
 
 
-def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
-    """Create a mock Litestar State with a mock BackupService in app_state.
+def _make_state_and_service() -> tuple[State, AsyncMock]:
+    """Create a Litestar ``State`` carrying a mock BackupService in app_state.
 
     Returns:
-        Tuple of (mock_state, mock_backup_service).
+        Tuple of (state, mock_backup_service).
     """
     service = AsyncMock(spec=BackupService)
     # The controller now wraps every backup in idempotency_service.
@@ -103,10 +103,11 @@ def _make_state_and_service() -> tuple[SimpleNamespace, AsyncMock]:
             ApiCoreStateSlice: {"idempotency_service": idempotency_service},
         },
     )
-    # ``state.app_state`` must return the bound ``AppState`` exactly as
-    # assigned; ``SimpleNamespace`` is a plain attribute container with
-    # no auto-mocking, so the read is a direct attribute lookup.
-    return SimpleNamespace(app_state=app_state), service
+    # Carry the bound ``AppState`` on a real ``State`` so the controller's
+    # ``state.app_state`` read is exercised against the genuine litestar type.
+    state = State()
+    state.app_state = app_state
+    return state, service
 
 
 def _controller() -> BackupController:

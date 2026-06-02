@@ -7,12 +7,12 @@ with HTTP 409 Conflict.
 """
 
 import asyncio
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from litestar.connection import Request
+from litestar.datastructures import State
 
 from synthorg.api.controllers.simulations import (
     SimulationController,
@@ -38,7 +38,7 @@ def _make_config(simulation_id: str = "sim-001") -> SimulationConfig:
     )
 
 
-def _make_state(*, claim_succeeds: bool) -> SimpleNamespace:
+def _make_state(*, claim_succeeds: bool) -> State:
     """Build a mocked Litestar state with a controllable register_if_absent.
 
     When *claim_succeeds* is ``True``, ``register_if_absent`` returns
@@ -63,10 +63,7 @@ def _make_state(*, claim_succeeds: bool) -> SimpleNamespace:
         client_simulation_state=sim_state,
         config_resolver=MagicMock(spec=ConfigResolver),
     )
-    # ``state.app_state`` must return the bound ``AppState`` exactly as
-    # assigned; ``SimpleNamespace`` is a plain attribute container with
-    # no auto-mocking, so the read is a direct attribute lookup.
-    return SimpleNamespace(app_state=app_state)
+    return State({"app_state": app_state})
 
 
 def _make_request() -> MagicMock:
@@ -121,11 +118,17 @@ class TestSimulationsIdempotency:
         # subsequent ``task.add_done_callback`` calls in the
         # controller's spawn block work without needing the runner
         # body to actually run.
-        def _spawn_dummy_task(coro: Any, *_a: Any, **_kw: Any) -> asyncio.Task[Any]:
+        async def _noop() -> None:
+            return None
+
+        def _spawn_dummy_task(coro: Any, *_a: Any, **_kw: Any) -> asyncio.Task[None]:
+            # Close the real runner coro (we are not exercising it) and hand
+            # back a genuine, immediately-completing ``Task`` so the
+            # controller's ``spawned_task: asyncio.Task[None]`` assignment and
+            # its ``add_done_callback`` wiring are satisfied. ``loop.create_task``
+            # is used (not the patched ``asyncio.create_task``) to build it.
             coro.close()
-            fut: asyncio.Future[None] = asyncio.get_event_loop().create_future()
-            fut.set_result(None)
-            return fut  # type: ignore[return-value]
+            return asyncio.get_event_loop().create_task(_noop())
 
         with (
             patch(

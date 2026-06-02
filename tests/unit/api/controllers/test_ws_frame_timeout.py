@@ -10,6 +10,7 @@ consume server resources.
 import asyncio
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.controllers.ws import _receive_loop
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod
@@ -72,14 +73,19 @@ async def test_receive_loop_closes_after_frame_timeout() -> None:
     user = _make_auth_user()
 
     started = asyncio.get_event_loop().time()
-    await _receive_loop(
-        socket,  # type: ignore[arg-type]
-        subscribed=set(),
-        filters={},
-        conn_user=user,
-        outbound_queue=outbound,
-        frame_timeout_seconds=timeout_seconds,
-    )
+    # ``socket`` is a behavioural ``_SilentSocket`` stand-in for a concrete
+    # WebSocket; suppress the runtime check at the same boundary as the static
+    # ``# type: ignore[arg-type]`` (the test verifies the idle-timeout close,
+    # not socket type conformance).
+    with suppress_type_checks():
+        await _receive_loop(
+            socket,  # type: ignore[arg-type]
+            subscribed=set(),
+            filters={},
+            conn_user=user,
+            outbound_queue=outbound,
+            frame_timeout_seconds=timeout_seconds,
+        )
     elapsed = asyncio.get_event_loop().time() - started
 
     assert socket.closed is True

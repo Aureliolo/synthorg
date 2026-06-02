@@ -11,11 +11,11 @@ correctly invokes the idempotency service when the key is supplied.
 """
 
 import inspect
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.backup import BackupController
@@ -51,7 +51,7 @@ def _make_manifest() -> BackupManifest:
 def _make_state(
     *,
     run_idempotent: Any,
-) -> tuple[SimpleNamespace, MagicMock]:
+) -> tuple[State, MagicMock]:
     # ``MagicMock(spec=BackupService)`` auto-mocks ``create_backup``
     # as an AsyncMock. Set ``return_value`` on the auto-mock directly
     # so the spec-bound interface is preserved (replacing the
@@ -68,10 +68,7 @@ def _make_state(
             ApiCoreStateSlice: {"idempotency_service": idempotency_service},
         },
     )
-    # ``state.app_state`` must return the bound ``AppState`` exactly as
-    # assigned; ``SimpleNamespace`` is a plain attribute container with
-    # no auto-mocking, so the read is a direct attribute lookup.
-    return SimpleNamespace(app_state=app_state), service
+    return State({"app_state": app_state}), service
 
 
 class TestRequiredIdempotencyKey:

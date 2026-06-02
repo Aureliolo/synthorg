@@ -6,11 +6,12 @@ structured error out of the API surface increments the counter
 partitioned by RFC 9457 category and HTTP status class.
 """
 
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from litestar import Request
+from litestar.testing import RequestFactory
 
 from synthorg.api import exception_handlers
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -18,19 +19,15 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 pytestmark = pytest.mark.unit
 
 
-def _fake_request() -> Any:
-    """Build a minimal request-shaped object.
+def _fake_request() -> Request[Any, Any, Any]:
+    """Build a real ``Request`` that accepts ``application/json``.
 
     ``_build_response`` calls ``_wants_problem_json(request)``, which
-    inspects ``request.accept.best_match``; returning a match that is
-    not the problem+json type keeps the code path on the envelope
-    branch and avoids touching Litestar internals we don't care about
-    for metric emission.
+    inspects ``request.accept.best_match``; an ``application/json`` Accept
+    header negotiates to the plain-JSON envelope branch (not problem+json),
+    which is the path these metric-emission assertions exercise.
     """
-    accept = SimpleNamespace(
-        best_match=lambda _types: "application/json",
-    )
-    return SimpleNamespace(accept=accept)
+    return RequestFactory().get(path="/", headers={"accept": "application/json"})
 
 
 # Exhaustive matrix: every ErrorCategory value paired with a canonical

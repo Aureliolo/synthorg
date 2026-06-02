@@ -15,6 +15,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.controllers.events import (
     _run_revalidation_tick,
@@ -158,12 +159,12 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
         role=HumanRole.CEO,
         auth_method=AuthMethod.JWT,
     )
-    gen = events_mod._sse_event_stream(
-        _FakeHub(),  # type: ignore[arg-type]
-        "sess-1",
-        app_state=app_state,
-        user=user,
-    )
+    # ``_FakeHub`` is a behavioural subscribe/unsubscribe stand-in for a
+    # concrete ``EventStreamHub``; the runtime check is suppressed at the same
+    # boundary as the static ``# type: ignore[arg-type]`` (the test verifies the
+    # revoked-event emission, not hub type conformance). The suppression spans
+    # the iteration because typeguard checks the generator's args on first
+    # ``__anext__``, not at construction.
     saw_revoked = False
     iterations = 0
     # Real asyncio.wait_for drives the loop sleep, so the cap is a
@@ -171,14 +172,21 @@ async def test_sse_event_stream_emits_revoked_when_role_demoted(
     # AUTH_REVALIDATE_INTERVAL_SECONDS; 200 iterations at 20ms gives
     # 4s of headroom for slow CI without masking a regression.
     iteration_cap = 200
-    async for event in gen:
-        iterations += 1
-        if event.get("event") == "revoked":
-            payload = json.loads(event["data"])
-            assert payload["reason"] == "role_demoted"
-            saw_revoked = True
-            break
-        assert iterations < iteration_cap
+    with suppress_type_checks():
+        gen = events_mod._sse_event_stream(
+            _FakeHub(),  # type: ignore[arg-type]
+            "sess-1",
+            app_state=app_state,
+            user=user,
+        )
+        async for event in gen:
+            iterations += 1
+            if event.get("event") == "revoked":
+                payload = json.loads(event["data"])
+                assert payload["reason"] == "role_demoted"
+                saw_revoked = True
+                break
+            assert iterations < iteration_cap
     assert saw_revoked, "SSE stream never emitted the revoked event"
 
 

@@ -142,7 +142,8 @@ class TestSecurityHeadersHook:
     async def test_non_http_scope_is_skipped(self) -> None:
         """Non-HTTP scopes (WebSocket, lifespan) are not modified."""
         message: Any = {
-            "type": "websocket.connect",
+            "type": "websocket.accept",
+            "subprotocol": None,
             "headers": [],
         }
         scope: Any = {"type": ScopeType.WEBSOCKET}

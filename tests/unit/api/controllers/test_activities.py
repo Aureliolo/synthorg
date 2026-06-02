@@ -1,7 +1,7 @@
 """Tests for org-wide activity feed endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast, override
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,7 +22,7 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
-from tests._shared import LoopAsyncClient
+from tests._shared import FakeClock, LoopAsyncClient
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -31,21 +31,20 @@ _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 _AGENT_ID = "00000000-0000-0000-0000-000000000aaa"
 
 
-class _FrozenDatetime(datetime):
-    """Subclass that makes ``now()`` return the fixed ``_NOW``."""
-
-    @override
-    @classmethod
-    def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
-        return _NOW
-
-
 @pytest.fixture(autouse=True)
-def _freeze_controller_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure the activities controller sees a deterministic 'now'."""
-    import synthorg.api.controllers.activities as mod
+def _freeze_controller_time(
+    async_test_client: LoopAsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Inject a ``FakeClock`` so the activities controller sees a fixed 'now'.
 
-    monkeypatch.setattr(mod, "datetime", _FrozenDatetime)
+    The controller reads time through the ``app_state.clock`` seam, so the
+    deterministic clock is swapped onto the shared app state for the test
+    (auto-reverted) rather than monkey-patching the module's ``datetime``
+    name -- which would also poison typeguard's annotation resolution.
+    """
+    app_state = async_test_client.app.state.app_state
+    monkeypatch.setattr(app_state, "clock", FakeClock(start=_NOW))
 
 
 def _make_lifecycle_event(

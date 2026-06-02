@@ -15,11 +15,15 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import pytest
 import structlog.testing
 from litestar import Router
+from litestar.datastructures import State
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers.webhooks import _shared as webhooks_shared
 from synthorg.api.controllers.webhooks.retry import WebhooksRetryController
-from synthorg.api.services.idempotency_service import IdempotencyResult
+from synthorg.api.services.idempotency_service import (
+    IdempotencyResult,
+    IdempotencyService,
+)
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
@@ -30,26 +34,24 @@ from synthorg.persistence.protocol import PersistenceBackend
 from tests._shared import make_app_state, mock_of
 
 
-class _PassThroughIdempotencyService:
-    """Test stub: invokes callback directly and returns its result.
+async def _passthrough_run_idempotent(
+    *,
+    scope: str,
+    key: str,
+    callback: Any,
+) -> IdempotencyResult:
+    """Invoke the callback directly and return its result as fresh.
 
     Tests assert on the controller's transition lifecycle (CAS + plain
     status writes + log emission). The real ``IdempotencyService``
     semantics (claim/poll/replay) are tested in
-    ``tests/unit/api/services/test_idempotency_service.py``; here we
-    pass through so the controller's callback runs exactly once and
-    its exceptions reach the test as-is.
+    ``tests/unit/api/services/test_idempotency_service.py``; here we pass
+    through so the controller's callback runs exactly once and its
+    exceptions reach the test as-is.
     """
-
-    async def run_idempotent(
-        self,
-        *,
-        scope: NotBlankStr,
-        key: NotBlankStr,
-        callback: Any,
-    ) -> IdempotencyResult:
-        result = await callback()
-        return IdempotencyResult(result=result, fresh=True, timed_out=False)
+    del scope, key
+    result = await callback()
+    return IdempotencyResult(result=result, fresh=True, timed_out=False)
 
 
 # Litestar's ``@post`` decorator wraps the controller method into an
@@ -87,7 +89,7 @@ def _build_state(
     receipt: WebhookReceipt | None,
     cas_result: bool = True,
     plain_results: list[bool] | None = None,
-) -> tuple[dict[str, Any], AsyncMock, AsyncMock, AsyncMock]:
+) -> tuple[State, AsyncMock, AsyncMock, AsyncMock]:
     """Build a minimal Litestar State dict with the persistence stubs.
 
     Returns ``(state, get_mock, cas_mock, plain_mock)`` so tests can
@@ -121,11 +123,13 @@ def _build_state(
         message_bus=object(),
         slices={
             ApiCoreStateSlice: {
-                "idempotency_service": _PassThroughIdempotencyService(),
+                "idempotency_service": mock_of[IdempotencyService](
+                    run_idempotent=_passthrough_run_idempotent,
+                ),
             },
         },
     )
-    state: dict[str, Any] = {"app_state": app_state}
+    state = State({"app_state": app_state})
     return state, get_mock, cas_mock, plain_mock
 
 

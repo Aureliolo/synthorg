@@ -5,8 +5,6 @@ handler logic (503 when unwired, the raise-ceiling guard, the happy
 path) is covered without standing up a full TestClient.
 """
 
-from types import SimpleNamespace
-from typing import cast
 from uuid import uuid4
 
 import pytest
@@ -14,6 +12,7 @@ from litestar.datastructures import State
 
 from synthorg.api.controllers.budget_forecast import (
     ForecastBudgetController,
+    ForecastRequest,
     RaiseCeilingRequest,
 )
 from synthorg.budget.config import BudgetConfig
@@ -21,6 +20,8 @@ from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.domain_errors import ConflictError, ServiceUnavailableError
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit
@@ -51,6 +52,54 @@ class _FakeForecastRepo:
     async def save(self, entity: Forecast) -> None:
         self.saved.append(entity)
         self.rows[str(entity.forecast_id)] = entity
+
+    async def delete(self, entity_id: object) -> bool:
+        return self.rows.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        rows = list(self.rows.values())
+        return tuple(rows[offset : offset + limit])
+
+    async def transition_if(
+        self,
+        entity_id: object,
+        from_state: ForecastDecision,
+        to_state: ForecastDecision,
+        **updates: object,
+    ) -> bool:
+        existing = self.rows.get(str(entity_id))
+        if existing is None or existing.decision is not from_state:
+            return False
+        self.rows[str(entity_id)] = existing.model_copy(
+            update={"decision": to_state, **updates},
+        )
+        return True
+
+    def _filter(self, spec: CostForecastFilterSpec) -> list[Forecast]:
+        rows = list(self.rows.values())
+        if spec.brief_hash is not None:
+            rows = [f for f in rows if f.brief_hash == spec.brief_hash]
+        if spec.decision is not None:
+            rows = [f for f in rows if f.decision is spec.decision]
+        return rows
+
+    async def query(
+        self,
+        filter_spec: CostForecastFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        rows = self._filter(filter_spec)
+        return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: CostForecastFilterSpec) -> int:
+        return len(self._filter(filter_spec))
 
 
 def _state(
@@ -101,7 +150,7 @@ async def test_create_forecast_503_when_unwired() -> None:
     with pytest.raises(ServiceUnavailableError):
         await ForecastBudgetController.create_forecast.fn(
             controller,
-            data=cast("object", SimpleNamespace()),
+            data=ForecastRequest(brief_text="brief", role_skeleton=("role-1",)),
             state=state,
         )
 

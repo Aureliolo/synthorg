@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import jwt
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -721,10 +722,16 @@ class TestLogoutIdempotency:
             audience=USER_AUDIENCE,
         )["jti"]
 
-        response = await bare_client.post(
-            "/api/v1/auth/logout",
-            headers=headers,
-        )
+        # The spy session store is a minimal ``SimpleNamespace(revoke=...)`` that
+        # cannot satisfy the full ``SessionRepository`` protocol (it declares a
+        # ``_revoked`` data attribute plus the whole repository surface). This test
+        # verifies the revoke call + 204 contract, not store type conformance, so
+        # the server-side runtime check is suppressed for the logout request.
+        with suppress_type_checks():
+            response = await bare_client.post(
+                "/api/v1/auth/logout",
+                headers=headers,
+            )
         assert response.status_code == 204
         self._assert_clear_cookies(response)
         revoke_spy.assert_awaited_once_with(expected_jti)
@@ -743,10 +750,15 @@ class TestLogoutIdempotency:
         )
         self._install_spy_session_store(app_state, revoke_spy, monkeypatch)
 
-        response = await bare_client.post(
-            "/api/v1/auth/logout",
-            headers=make_auth_headers(role=HumanRole.CEO),
-        )
+        # See the sibling test: the spy session store cannot satisfy the full
+        # ``SessionRepository`` protocol, so the server-side runtime check is
+        # suppressed for the logout request (the test asserts the 204 + revoke
+        # contract, not store type conformance).
+        with suppress_type_checks():
+            response = await bare_client.post(
+                "/api/v1/auth/logout",
+                headers=make_auth_headers(role=HumanRole.CEO),
+            )
         # Idempotent contract: the client is trying to recover from
         # stale state, so a transient revoke failure must not mask
         # the cookie-clear with a 500.

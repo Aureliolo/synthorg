@@ -17,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
+from litestar.datastructures import State
+from litestar.testing import RequestFactory
 
 from synthorg.api.api_core_state import ApiCoreStateSlice
 from synthorg.api.controllers import _webhooks_wiring
@@ -141,10 +143,10 @@ class TestPublishWithDurableIdempotency:
         app_state = make_app_state(
             slices={ApiCoreStateSlice: {"idempotency_service": idem_service}},
         )
-        state: dict[str, Any] = {"app_state": app_state}
+        state = State({"app_state": app_state})
 
         cached = await webhooks_shared._publish_with_durable_idempotency(
-            state=state,  # type: ignore[arg-type]
+            state=state,
             connection_name="conn-b",
             event_type="push",
             nonce="sha256:deadbeef",
@@ -342,14 +344,11 @@ class TestReceiveWebhookEndToEnd:
     def _build_state(request_headers: dict[str, str]) -> tuple[Any, Any]:
         """Build minimal Litestar State + Request stubs.
 
-        Returns ``(state_dict, request_stub)``. The controller only
-        touches ``state["app_state"].connection_catalog`` /
+        Returns ``(state, request)``. The controller only touches
+        ``state["app_state"].connection_catalog`` /
         ``config.integrations.webhooks.max_payload_bytes`` /
         ``message_bus`` plus ``request.headers``.
         """
-
-        class _StubRequest:
-            headers = request_headers
 
         class _ConfigWebhooks:
             max_payload_bytes = 1_000_000
@@ -365,8 +364,9 @@ class TestReceiveWebhookEndToEnd:
             connection_catalog=object(),
             message_bus=_FakeBus(),
         )
-        state: dict[str, Any] = {"app_state": app_state}
-        return state, _StubRequest()
+        state = State({"app_state": app_state})
+        request = RequestFactory().get(path="/", headers=request_headers)
+        return state, request
 
     async def _invoke_branch(
         self,

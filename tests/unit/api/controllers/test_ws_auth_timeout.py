@@ -16,8 +16,21 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.controllers.ws import _WS_CLOSE_AUTH_FAILED, _read_auth_message
+
+
+async def _read_auth(socket: Any) -> str | None:
+    """Drive ``_read_auth_message`` with a behavioural ``_NeverResolvingSocket``.
+
+    ``socket`` is a hang-forever stand-in for a concrete ``WebSocket``; the
+    runtime check is suppressed at the same boundary as the static
+    ``# type: ignore[arg-type]`` these calls carried, because the tests verify
+    the timeout/close path, not socket type conformance.
+    """
+    with suppress_type_checks():
+        return await _read_auth_message(socket)
 
 
 class _NeverResolvingSocket:
@@ -77,7 +90,7 @@ class TestWsAuthTimeoutKillSwitch:
             _fake_wait_for,
         )
 
-        result = await _read_auth_message(socket)  # type: ignore[arg-type]
+        result = await _read_auth(socket)
 
         assert result is None
         assert seen["timeout"] == pytest.approx(5.0)
@@ -104,7 +117,7 @@ class TestWsAuthTimeoutKillSwitch:
             _fake_wait_for,
         )
 
-        result = await _read_auth_message(socket)  # type: ignore[arg-type]
+        result = await _read_auth(socket)
 
         # The inner timeout (100s) was honored: the handler passed the
         # app_state value straight into wait_for, not a hardcoded number.
@@ -139,6 +152,6 @@ class TestWsAuthTimeoutKillSwitch:
             _fake_wait_for,
         )
 
-        await _read_auth_message(socket)  # type: ignore[arg-type]
+        await _read_auth(socket)
 
         assert seen["timeout"] == pytest.approx(42.0)
