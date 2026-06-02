@@ -11,6 +11,7 @@ from datetime import datetime
 
 from pydantic import AwareDatetime
 
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.deliverable_receipts.models import DeliverableReceipt
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
@@ -100,6 +101,9 @@ class InMemoryKnowledgeUsageRecordRepository:
         self._records: list[KnowledgeUsageRecord] = []
 
     async def append(self, record: KnowledgeUsageRecord) -> None:
+        if any(r.record_id == record.record_id for r in self._records):
+            msg = f"Knowledge usage record {record.record_id!r} already exists"
+            raise DuplicateRecordError(msg)
         self._records.append(record)
 
     async def query(
@@ -141,6 +145,9 @@ class InMemoryCodeExecutionRecordRepository:
         self._records: list[CodeExecutionRecord] = []
 
     async def append(self, record: CodeExecutionRecord) -> None:
+        if any(r.record_id == record.record_id for r in self._records):
+            msg = f"Code execution record {record.record_id!r} already exists"
+            raise DuplicateRecordError(msg)
         self._records.append(record)
 
     async def query(

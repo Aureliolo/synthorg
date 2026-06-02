@@ -2132,6 +2132,8 @@ CREATE INDEX idx_knowledge_usage_execution
 ON knowledge_usage_record (execution_id, recorded_at DESC);
 CREATE INDEX idx_knowledge_usage_task
 ON knowledge_usage_record (task_id);
+CREATE INDEX idx_knowledge_usage_project
+ON knowledge_usage_record (project_id, recorded_at DESC);
 CREATE INDEX idx_knowledge_usage_source
 ON knowledge_usage_record (source_id);
 
@@ -2155,3 +2157,5 @@ CREATE INDEX idx_code_execution_execution
 ON code_execution_record (execution_id, executed_at DESC);
 CREATE INDEX idx_code_execution_task
 ON code_execution_record (task_id);
+CREATE INDEX idx_code_execution_project
+ON code_execution_record (project_id, executed_at DESC);

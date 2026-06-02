@@ -201,7 +201,12 @@ class PostgresCodeExecutionRecordRepository:
             QueryError: If the row cannot be deserialized.
         """
         try:
-            return CodeExecutionRecord.model_validate(row)
+            data = dict(row)
+            # psycopg returns TIMESTAMPTZ in the session timezone, not
+            # necessarily UTC; normalise on read so the model carries a UTC
+            # instant consistently with the write path's ``_to_row``.
+            data["executed_at"] = normalize_utc(data["executed_at"])
+            return CodeExecutionRecord.model_validate(data)
         except ValidationError as exc:
             msg = f"Failed to deserialize code record {row.get('record_id')!r}"
             logger.warning(

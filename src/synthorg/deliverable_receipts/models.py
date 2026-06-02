@@ -74,7 +74,14 @@ class ReceiptDecisionEntry(BaseModel):
 
 
 class ReceiptTestEntry(BaseModel):
-    """One test run executed during the deliverable's production."""
+    """One test run executed during the deliverable's production.
+
+    Carries only the audit signal (command, exit code, pass/timeout): the
+    raw stdout/stderr tails stay on the internal ``code_execution_record``
+    and are deliberately NOT surfaced here, since the receipt is returned
+    over REST and rendered in the dashboard where sandbox output could leak
+    secrets.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
@@ -83,10 +90,6 @@ class ReceiptTestEntry(BaseModel):
     returncode: int = Field(description="Process exit code")
     passed: bool = Field(description="True iff returncode 0 and not timed out")
     timed_out: bool = Field(description="Whether the run hit its time limit")
-    stdout_tail: str | None = Field(
-        default=None,
-        description="Tail of captured stdout, length-bounded at capture",
-    )
     executed_at: AwareDatetime = Field(description="When the run finished")
 
     @model_validator(mode="after")

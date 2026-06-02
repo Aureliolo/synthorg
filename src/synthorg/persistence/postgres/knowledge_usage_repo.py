@@ -197,7 +197,12 @@ class PostgresKnowledgeUsageRecordRepository:
             QueryError: If the row cannot be deserialized.
         """
         try:
-            return KnowledgeUsageRecord.model_validate(row)
+            data = dict(row)
+            # psycopg returns TIMESTAMPTZ in the session timezone, not
+            # necessarily UTC; normalise on read so the model carries a UTC
+            # instant consistently with the write path's ``_to_row``.
+            data["recorded_at"] = normalize_utc(data["recorded_at"])
+            return KnowledgeUsageRecord.model_validate(data)
         except ValidationError as exc:
             msg = f"Failed to deserialize usage record {row.get('record_id')!r}"
             logger.warning(

@@ -134,6 +134,52 @@ async def test_sources_deduped_and_resolved() -> None:
     assert all(s.content_hash == _HASH for s in receipt.sources)
 
 
+async def test_source_hash_is_the_captured_one_not_the_live_registry() -> None:
+    # The receipt must carry the hash captured at retrieval time, not the
+    # source's current registry hash; otherwise the validator's drift check
+    # compares two live values and can never fire.
+    captured = "a" * 64
+    drifted_live = "b" * 64
+    usage = InMemoryKnowledgeUsageRecordRepository()
+    await usage.append(
+        KnowledgeUsageRecord(
+            task_id="t-1",
+            execution_id="exec-1",
+            project_id="p-1",
+            source_id="s1",
+            chunk_id="c1",
+            content_hash=captured,
+        ),
+    )
+
+    def _drifted_source(source_id: str) -> KnowledgeSource:
+        return KnowledgeSource(
+            source_id=source_id,
+            source_type=SourceType.REPO,
+            uri=f"repo://{source_id}",
+            title=f"Source {source_id}",
+            content_hash=drifted_live,
+            status=SourceStatus.INDEXED,
+            chunk_count=1,
+            created_at=_NOW,
+            updated_at=_NOW,
+            last_indexed_at=_NOW,
+        )
+
+    builder = _builder(
+        usage=usage,
+        code=InMemoryCodeExecutionRecordRepository(),
+        sources_get=AsyncMock(
+            spec=KnowledgeSourceRepository.get,
+            side_effect=_drifted_source,
+        ),
+    )
+    receipt = await builder.build(
+        task=_task(), execution_id="exec-1", deliverable_doc_slug="d"
+    )
+    assert receipt.sources[0].content_hash == captured
+
+
 async def test_unresolved_source_kept_with_placeholder() -> None:
     usage = InMemoryKnowledgeUsageRecordRepository()
     await usage.append(

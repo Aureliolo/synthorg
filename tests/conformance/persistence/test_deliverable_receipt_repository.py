@@ -51,7 +51,6 @@ def _receipt(  # noqa: PLR0913 -- keyword-only test builder
                 returncode=0,
                 passed=True,
                 timed_out=False,
-                stdout_tail="5 passed",
                 executed_at=_NOW,
             ),
         )

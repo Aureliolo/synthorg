@@ -3985,7 +3985,7 @@
     },
     {
       "kind": "service",
-      "loc": 309,
+      "loc": 303,
       "loc_cap": 600,
       "module": "src/synthorg/deliverable_receipts/builder.py",
       "owning_feature": "deliverable_receipts"
@@ -4013,14 +4013,14 @@
     },
     {
       "kind": "declarative",
-      "loc": 173,
+      "loc": 175,
       "loc_cap": null,
       "module": "src/synthorg/deliverable_receipts/models.py",
       "owning_feature": "deliverable_receipts"
     },
     {
       "kind": "service",
-      "loc": 151,
+      "loc": 144,
       "loc_cap": 600,
       "module": "src/synthorg/deliverable_receipts/renderer.py",
       "owning_feature": "deliverable_receipts"
@@ -4041,7 +4041,7 @@
     },
     {
       "kind": "service",
-      "loc": 147,
+      "loc": 155,
       "loc_cap": 600,
       "module": "src/synthorg/deliverable_receipts/validator.py",
       "owning_feature": "deliverable_receipts"
@@ -13673,7 +13673,7 @@
     },
     {
       "kind": "code",
-      "loc": 185,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -13862,7 +13862,7 @@
     },
     {
       "kind": "code",
-      "loc": 181,
+      "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -17390,7 +17390,7 @@
     },
     {
       "kind": "code",
-      "loc": 218,
+      "loc": 223,
       "loc_cap": 500,
       "module": "src/synthorg/tools/code_runner.py",
       "owning_feature": "tools"

@@ -156,7 +156,9 @@ class TestCassetteChecks:
         )
         result = await validator.validate(receipt)
         assert result.valid is False
-        assert any("unreadable" in e for e in result.errors)
+        assert any("could not be read" in e for e in result.errors)
+        # The opaque reason must not leak the internal filesystem path.
+        assert all("absent.json" not in e for e in result.errors)
 
     async def test_hash_drift_fails(self, tmp_path: Path) -> None:
         path = tmp_path / "cassette.json"

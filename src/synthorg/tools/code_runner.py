@@ -3,11 +3,11 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.core.execution_identity import current_execution_identity
@@ -65,6 +65,7 @@ class CodeRunnerTool(BaseTool):
         *,
         sandbox: SandboxBackend,
         code_execution_records: CodeExecutionRecordRepository | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Initialize the code runner tool.
 
@@ -75,6 +76,9 @@ class CodeRunnerTool(BaseTool):
                 ``purpose='tests'`` runs into the deliverable receipt's
                 provenance bundle. When ``None`` (or outside a bound
                 execution scope) no record is written.
+            clock: Clock seam for the capture record's ``executed_at``;
+                defaults to ``SystemClock`` and is overridden with a
+                ``FakeClock`` in tests.
         """
         super().__init__(
             name="code_runner",
@@ -87,6 +91,7 @@ class CodeRunnerTool(BaseTool):
         )
         self._sandbox = sandbox
         self._code_execution_records = code_execution_records
+        self._clock = clock or SystemClock()
 
     @override
     async def execute(
@@ -224,7 +229,7 @@ class CodeRunnerTool(BaseTool):
                     timed_out=result.timed_out,
                     stdout_tail=stdout_tail,
                     stderr_tail=stderr_tail,
-                    executed_at=datetime.now(UTC),
+                    executed_at=self._clock.now(),
                 )
             )
         except Exception as exc:

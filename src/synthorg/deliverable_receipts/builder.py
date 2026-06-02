@@ -35,6 +35,7 @@ from synthorg.persistence.code_execution_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordFilterSpec
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSpec
+from synthorg.project_brain.errors import BrainEntryNotFoundError
 from synthorg.project_brain.models import BrainEntryKind
 from synthorg.security.redteam.errors import RedTeamReportNotFoundError
 from synthorg.security.redteam.models import (
@@ -144,26 +145,24 @@ class ReceiptBuilder:
             first_by_source.setdefault(row.source_id, row.chunk_id)
             hashes.setdefault(row.source_id, row.content_hash)
         entries: list[ReceiptSourceEntry] = []
+        # Resolved sequentially on purpose: these are repository round-trips
+        # on a single shared connection, so a TaskGroup fan-out yields no
+        # speedup (aiosqlite serialises) and risks pool exhaustion on
+        # Postgres. The distinct-source count is small in practice.
         for source_id, chunk_id in first_by_source.items():
             source = await self._knowledge_sources.get(source_id)
-            if source is None:
-                entries.append(
-                    ReceiptSourceEntry(
-                        source_id=source_id,
-                        chunk_id=chunk_id,
-                        title=_UNRESOLVED_TITLE,
-                        uri=source_id,
-                        content_hash=hashes[source_id],
-                    )
-                )
-                continue
+            title = _UNRESOLVED_TITLE if source is None else source.title
+            uri = source_id if source is None else source.uri
             entries.append(
                 ReceiptSourceEntry(
                     source_id=source_id,
                     chunk_id=chunk_id,
-                    title=source.title,
-                    uri=source.uri,
-                    content_hash=source.content_hash,
+                    title=title,
+                    uri=uri,
+                    # The hash captured at retrieval time, NOT the live
+                    # registry value: the validator compares this against
+                    # the current source hash to detect content drift.
+                    content_hash=hashes[source_id],
                 )
             )
         return tuple(entries)
@@ -184,11 +183,19 @@ class ReceiptBuilder:
             limit=_SIGNAL_QUERY_LIMIT,
         )
         entries: list[ReceiptDecisionEntry] = []
+        # Sequential for the same reason as ``_sources``: shared-connection
+        # repository reads, small N. An entry listed by ``list_current`` can
+        # be deleted before ``get_entry`` runs (TOCTOU); skip that entry
+        # rather than letting a single missing decision sink the whole
+        # best-effort receipt build.
         for summary in summaries:
-            entry = await self._brain_service.get_entry(
-                project_id=task.project,
-                entry_id=summary.entry_id,
-            )
+            try:
+                entry = await self._brain_service.get_entry(
+                    project_id=task.project,
+                    entry_id=summary.entry_id,
+                )
+            except BrainEntryNotFoundError:
+                continue
             entries.append(
                 ReceiptDecisionEntry(
                     entry_id=entry.entry_id,
@@ -261,7 +268,6 @@ class ReceiptBuilder:
                 returncode=row.returncode,
                 passed=row.passed,
                 timed_out=row.timed_out,
-                stdout_tail=row.stdout_tail,
                 executed_at=row.executed_at,
             )
             for row in rows

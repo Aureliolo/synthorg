@@ -52,7 +52,6 @@ describe('ReceiptPanel', () => {
                   returncode: 0,
                   passed: true,
                   timed_out: false,
-                  stdout_tail: 'ok',
                   executed_at: '2026-05-20T00:00:00Z',
                 },
               ],

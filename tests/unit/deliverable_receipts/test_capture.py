@@ -121,7 +121,12 @@ def _sandbox(*, returncode: int = 0, timed_out: bool = False) -> SandboxBackend:
 class TestCodeExecutionCapture:
     async def test_records_test_run_within_scope(self) -> None:
         records = InMemoryCodeExecutionRecordRepository()
-        tool = CodeRunnerTool(sandbox=_sandbox(), code_execution_records=records)
+        clock = FakeClock()
+        tool = CodeRunnerTool(
+            sandbox=_sandbox(),
+            code_execution_records=records,
+            clock=clock,
+        )
         with execution_identity_scope(_IDENTITY):
             await tool.execute(
                 arguments={
@@ -134,6 +139,8 @@ class TestCodeExecutionCapture:
         assert len(rows) == 1
         assert rows[0].passed is True
         assert rows[0].returncode == 0
+        # ``executed_at`` comes from the injected Clock seam, not wall-clock.
+        assert rows[0].executed_at == clock.now()
 
     async def test_general_run_not_recorded(self) -> None:
         records = InMemoryCodeExecutionRecordRepository()

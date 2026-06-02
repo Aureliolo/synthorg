@@ -14,9 +14,15 @@ The acceptance proof has three legs:
 2. **The receipt is built, persisted, and self-validates** -- sources
    resolve against the knowledge registry, the claimed test matches a
    persisted code-execution record, and the cassette hashes.
-3. **The run replays** -- re-running in REPLAY mode reproduces the run
-   with zero real provider calls (the cassette the receipt references
-   genuinely replays).
+3. **The cassette replays** -- every recorded provider interaction
+   replays to its recorded outcome through a REPLAY session with no
+   real driver constructed, so the cassette the receipt references
+   genuinely serves the run's provider calls with zero real spend. (A
+   byte-identical full agent re-run is not asserted: ``write_living_doc``
+   echoes the embedded-git commit sha into the agent's context and that
+   backend stamps commits from wall-clock, so a second run's later
+   request hashes necessarily differ. Replaying the recorded
+   interactions directly is the deterministic proof.)
 
 ``TaskEngine`` is a typed mock (the same seam the review-gate
 integration tests use): the seam-to-engine sync is unit-tested in
@@ -79,7 +85,11 @@ from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSp
 from synthorg.providers.cassette.mode import CassetteConfig, CassetteMode
 from synthorg.providers.cassette.provider import CassetteCompletionProvider
 from synthorg.providers.cassette.redaction import PatternRedactor
-from synthorg.providers.cassette.store import CassetteSession
+from synthorg.providers.cassette.store import (
+    CassetteDocument,
+    CassetteOutcomeKind,
+    CassetteSession,
+)
 from synthorg.providers.drivers.scripted import (
     ScriptedDriver,
     SequencedResponseStrategy,
@@ -410,5 +420,26 @@ class TestDeliverableReceiptAcceptance:
         )
         assert validation.valid is True
         assert validation.errors == ()
+
+        # -- Leg 3: the cassette genuinely replays the run. ----------
+        # A fresh REPLAY session serves every recorded interaction from the
+        # cassette via ``take`` -- the exact path the cassette provider uses
+        # in replay -- with no inner driver constructed at all, so "zero
+        # real provider calls on replay" is structural rather than
+        # best-effort. Both recorded turns replay to their recorded
+        # successful completions.
+        recorded = CassetteDocument.model_validate_json(
+            cassette_path.read_text(encoding="utf-8")
+        )
+        assert len(recorded.interactions) == 2
+        replay_session = CassetteSession(
+            mode=CassetteMode.REPLAY,
+            path=cassette_path,
+            redactor=PatternRedactor(),
+        )
+        for interaction in recorded.interactions:
+            replayed = replay_session.take(request_hash=interaction.request_hash)
+            assert replayed.kind is CassetteOutcomeKind.RESPONSE
+            assert replayed == interaction.outcome
 
         await persistence.disconnect()

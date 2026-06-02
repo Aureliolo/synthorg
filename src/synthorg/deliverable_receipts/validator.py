@@ -23,6 +23,9 @@ from pydantic import ValidationError
 
 from synthorg.deliverable_receipts.models import ReceiptValidationResult
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.deliverable_receipts import (
+    RECEIPT_CASSETTE_UNAVAILABLE,
+)
 from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
 from synthorg.providers.cassette.store import CassetteDocument
 from synthorg.security.redteam.errors import RedTeamReportNotFoundError
@@ -101,23 +104,32 @@ class ReceiptValidator:
         try:
             data = path.read_bytes()
         except OSError as exc:
-            return [
-                f"cassette {receipt.cassette.path!r} is unreadable: "
-                f"{safe_error_description(exc)}"
-            ]
+            # The cassette path is an internal filesystem location: log it
+            # server-side but return an opaque reason so the REST validation
+            # response (visible to any read-access caller) does not disclose
+            # host directory layout.
+            logger.warning(
+                RECEIPT_CASSETTE_UNAVAILABLE,
+                path=str(path),
+                reason="unreadable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ["referenced cassette could not be read"]
         digest = hashlib.sha256(data).hexdigest()
         if digest != receipt.cassette.content_hash:
-            return [
-                f"cassette content hash drifted (receipt "
-                f"{receipt.cassette.content_hash!r} != file {digest!r})"
-            ]
+            return ["cassette content hash drifted from the recorded digest"]
         try:
             CassetteDocument.model_validate_json(data.decode())
         except (ValidationError, UnicodeDecodeError) as exc:
-            return [
-                f"cassette {receipt.cassette.path!r} is not a valid cassette: "
-                f"{safe_error_description(exc)}"
-            ]
+            logger.warning(
+                RECEIPT_CASSETTE_UNAVAILABLE,
+                path=str(path),
+                reason="unparseable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ["referenced cassette is not a valid cassette document"]
         return []
 
     async def _check_tests(self, receipt: DeliverableReceipt) -> list[str]:

@@ -14,11 +14,9 @@ from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import (
     BulletListBlock,
-    DecisionBlock,
     DocBlock,
     HeadingBlock,
     MetricBlock,
-    ProseBlock,
 )
 from synthorg.observability import get_logger
 
@@ -38,8 +36,6 @@ RECEIPT_HEADING: str = "Provenance Receipt"
 RECEIPT_AUTHOR: NotBlankStr = NotBlankStr("_system:deliverable-receipts")
 
 _BULLET_LIMIT: int = 1024
-_DECISION_LIMIT: int = 4096
-_PROSE_LIMIT: int = 8192
 _COST_DECIMALS: int = 4
 
 
@@ -138,17 +134,19 @@ def _sources_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
 
 
 def _decisions_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
+    # Render only structured handles (entry id + revision), never the
+    # agent-authored title/rationale: this section is indexed into the
+    # trusted PROJECT_DOC RAG channel, and brain-authored prose is
+    # attacker-influenceable. Full rationale lives in the receipt record
+    # (REST API + dashboard panel), which is not indexed into memory.
     if not receipt.decisions:
         return []
-    blocks: list[DocBlock] = [HeadingBlock(level=3, text="Key decisions")]
-    blocks.extend(
-        DecisionBlock(
-            decision=_clip(d.title, _DECISION_LIMIT),
-            rationale=_clip(d.rationale, _DECISION_LIMIT),
-        )
-        for d in receipt.decisions
-    )
-    return blocks
+    items = tuple(f"{d.entry_id} (rev {d.revision})" for d in receipt.decisions)
+    return [
+        HeadingBlock(level=3, text="Key decisions"),
+        MetricBlock(name="Decisions recorded", value=str(len(receipt.decisions))),
+        BulletListBlock(items=items),
+    ]
 
 
 def _tests_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
@@ -161,19 +159,24 @@ def _tests_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
 
 
 def _test_item(test: ReceiptTestEntry) -> str:
+    # Omit the agent-authored command string (indexed into the trusted doc
+    # channel); the record id + result are the safe cross-reference handles.
     verdict = "PASS" if test.passed else "FAIL"
-    return _clip(f"{verdict} (rc={test.returncode}): {test.command}", _BULLET_LIMIT)
+    return f"{verdict} (rc={test.returncode}) [{test.record_id}]"
 
 
 def _red_team_blocks(receipt: DeliverableReceipt) -> list[DocBlock]:
     red_team = receipt.red_team
     if red_team is None:
         return []
+    # Omit the red-team summary prose (attacker-influenced, indexed into the
+    # trusted doc channel); structured counts only. Full summary lives in the
+    # receipt record.
     return [
         HeadingBlock(level=3, text="Red-team review"),
         MetricBlock(name="Verdict", value=red_team.verdict.value),
         MetricBlock(name="Findings", value=str(red_team.finding_count)),
-        ProseBlock(text=_clip(red_team.summary, _PROSE_LIMIT)),
+        MetricBlock(name="High+ findings", value=str(red_team.high_plus_count)),
     ]
 
 

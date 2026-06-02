@@ -13450,8 +13450,6 @@ export type components = {
             readonly record_id: string;
             /** @description Process exit code */
             readonly returncode: number;
-            /** @description Tail of captured stdout, length-bounded at capture */
-            readonly stdout_tail: string | null;
             /** @description Whether the run hit its time limit */
             readonly timed_out: boolean;
         };
