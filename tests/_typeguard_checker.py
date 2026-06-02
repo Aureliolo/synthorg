@@ -175,10 +175,11 @@ _registered = False
 def register_policy_honoring_checker() -> None:
     """Install the WARN-activation checker extensions at the front of the chain.
 
-    Registers the NameError-tolerant wrapper (eager-eval ``TYPE_CHECKING``-only
-    signatures) and the unbound-pydantic-generic relaxation. Idempotent: a repeat
-    call is a no-op, so re-importing this module (e.g. each xdist worker
-    re-running conftest) does not stack duplicate lookups.
+    Registers three lookups: the NameError-tolerant wrapper (eager-eval
+    ``TYPE_CHECKING``-only signatures), the unbound-pydantic-generic relaxation,
+    and the mocked-annotation skip (a patched annotation type that resolves to a
+    ``Mock``). Idempotent: a repeat call is a no-op, so re-importing this module
+    (e.g. each xdist worker re-running conftest) does not stack duplicate lookups.
     """
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
