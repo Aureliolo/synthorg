@@ -281,7 +281,7 @@ class PostgresWorkflowDefinitionRepository:
             raise QueryError(msg) from exc
         return inserted
 
-    async def save(self, definition: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
 
         The upsert enforces optimistic concurrency: updates only
@@ -290,21 +290,21 @@ class PostgresWorkflowDefinitionRepository:
         semver string with no concurrency semantics.
 
         Args:
-            definition: Workflow definition model to persist.
+            entity: Workflow definition model to persist.
 
         Raises:
             QueryError: If the database operation fails.
             PersistenceVersionConflictError: If optimistic concurrency check fails.
         """
-        self._require_valid_revision(definition)
+        self._require_valid_revision(entity)
 
-        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
-        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
-        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
-        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in entity.nodes])
+        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in entity.edges])
+        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in entity.inputs])
+        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in entity.outputs])
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                if definition.revision > 1:
+                if entity.revision > 1:
                     # Update path: optimistic concurrency via WHERE
                     # revision = incoming_revision - 1.  If no row exists
                     # at all this is also a revision conflict (you can't
@@ -319,19 +319,19 @@ class PostgresWorkflowDefinitionRepository:
                         WHERE id = %s AND revision = %s
                         """,
                         (
-                            definition.name,
-                            definition.description,
-                            definition.workflow_type.value,
-                            definition.version,
+                            entity.name,
+                            entity.description,
+                            entity.workflow_type.value,
+                            entity.version,
                             inputs_jsonb,
                             outputs_jsonb,
-                            definition.is_subworkflow,
+                            entity.is_subworkflow,
                             nodes_jsonb,
                             edges_jsonb,
-                            definition.updated_at,
-                            definition.revision,
-                            definition.id,
-                            definition.revision - 1,
+                            entity.updated_at,
+                            entity.revision,
+                            entity.id,
+                            entity.revision - 1,
                         ),
                     )
                 else:
@@ -348,47 +348,47 @@ class PostgresWorkflowDefinitionRepository:
                         ON CONFLICT(id) DO NOTHING
                         """,
                         (
-                            definition.id,
-                            definition.name,
-                            definition.description,
-                            definition.workflow_type.value,
-                            definition.version,
+                            entity.id,
+                            entity.name,
+                            entity.description,
+                            entity.workflow_type.value,
+                            entity.version,
                             inputs_jsonb,
                             outputs_jsonb,
-                            definition.is_subworkflow,
+                            entity.is_subworkflow,
                             nodes_jsonb,
                             edges_jsonb,
-                            definition.created_by,
-                            definition.created_at,
-                            definition.updated_at,
-                            definition.revision,
+                            entity.created_by,
+                            entity.created_at,
+                            entity.updated_at,
+                            entity.revision,
                         ),
                     )
                 if cur.rowcount == 0:
-                    if definition.revision > 1:
+                    if entity.revision > 1:
                         msg = (
                             f"Revision conflict saving workflow definition"
-                            f" {definition.id!r}: expected revision"
-                            f" {definition.revision - 1}, not found"
+                            f" {entity.id!r}: expected revision"
+                            f" {entity.revision - 1}, not found"
                         )
                     else:
                         msg = (
-                            f"Workflow definition {definition.id!r} already"
+                            f"Workflow definition {entity.id!r} already"
                             f" exists: cannot create revision 1 over an"
                             f" existing row"
                         )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=definition.id,
+                        definition_id=entity.id,
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
                 await conn.commit()
         except psycopg.Error as exc:
-            msg = f"Failed to save workflow definition {definition.id!r}"
+            msg = f"Failed to save workflow definition {entity.id!r}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                definition_id=definition.id,
+                definition_id=entity.id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

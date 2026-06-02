@@ -35,8 +35,8 @@ class FakeWorkflowDefinitionRepository:
     def __init__(self) -> None:
         self._definitions: dict[str, WorkflowDefinition] = {}
 
-    async def save(self, definition: WorkflowDefinition) -> None:
-        self._definitions[definition.id] = copy.deepcopy(definition)
+    async def save(self, entity: WorkflowDefinition) -> None:
+        self._definitions[entity.id] = copy.deepcopy(entity)
 
     async def create_if_absent(self, definition: WorkflowDefinition) -> bool:
         if definition.id in self._definitions:
@@ -290,15 +290,12 @@ class FakeSubworkflowRepository:
         self._rows: dict[tuple[str, str], WorkflowDefinition] = {}
         self._definition_repo = definition_repo
 
-    async def save(self, definition: WorkflowDefinition) -> None:
-        key = (definition.id, definition.version)
+    async def save(self, entity: WorkflowDefinition) -> None:
+        key = (entity.id, entity.version)
         if key in self._rows:
-            msg = (
-                f"Subworkflow {definition.id!r} version "
-                f"{definition.version!r} already exists"
-            )
+            msg = f"Subworkflow {entity.id!r} version {entity.version!r} already exists"
             raise DuplicateRecordError(msg)
-        self._rows[key] = copy.deepcopy(definition)
+        self._rows[key] = copy.deepcopy(entity)
 
     async def get(
         self,

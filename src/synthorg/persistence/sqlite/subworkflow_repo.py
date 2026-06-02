@@ -248,11 +248,11 @@ class SQLiteSubworkflowRepository:
         self._db = db
         self._write_context = write_context
 
-    async def save(self, definition: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition) -> None:
         """Insert a new subworkflow version row.
 
         Args:
-            definition: The workflow definition to publish.  Its ``id``
+            entity: The workflow definition to publish.  Its ``id``
                 becomes the ``subworkflow_id`` and its ``version`` the
                 semver coordinate.
 
@@ -261,16 +261,16 @@ class SQLiteSubworkflowRepository:
             QueryError: On any other database failure.
         """
         nodes_json = json.dumps(
-            [n.model_dump(mode="json") for n in definition.nodes],
+            [n.model_dump(mode="json") for n in entity.nodes],
         )
         edges_json = json.dumps(
-            [e.model_dump(mode="json") for e in definition.edges],
+            [e.model_dump(mode="json") for e in entity.edges],
         )
         inputs_json = json.dumps(
-            [i.model_dump(mode="json") for i in definition.inputs],
+            [i.model_dump(mode="json") for i in entity.inputs],
         )
         outputs_json = json.dumps(
-            [o.model_dump(mode="json") for o in definition.outputs],
+            [o.model_dump(mode="json") for o in entity.outputs],
         )
         async with self._write_context():
             try:
@@ -281,44 +281,44 @@ INSERT INTO subworkflows
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        definition.id,
-                        definition.version,
-                        definition.name,
-                        definition.description,
-                        definition.workflow_type.value,
+                        entity.id,
+                        entity.version,
+                        entity.name,
+                        entity.description,
+                        entity.workflow_type.value,
                         inputs_json,
                         outputs_json,
                         nodes_json,
                         edges_json,
-                        definition.created_by,
-                        definition.created_at.astimezone(UTC).isoformat(),
-                        definition.updated_at.astimezone(UTC).isoformat(),
+                        entity.created_by,
+                        entity.created_at.astimezone(UTC).isoformat(),
+                        entity.updated_at.astimezone(UTC).isoformat(),
                     ),
                 )
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
                 await self._db.rollback()
                 msg = (
-                    f"Subworkflow {definition.id!r} version "
-                    f"{definition.version!r} already exists"
+                    f"Subworkflow {entity.id!r} version "
+                    f"{entity.version!r} already exists"
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=definition.id,
-                    version=definition.version,
+                    subworkflow_id=entity.id,
+                    version=entity.version,
                     error=msg,
                 )
                 raise DuplicateRecordError(msg) from exc
             except sqlite3.Error as exc:
                 await self._db.rollback()
                 msg = (
-                    f"Failed to save subworkflow {definition.id!r} version "
-                    f"{definition.version!r}"
+                    f"Failed to save subworkflow {entity.id!r} version "
+                    f"{entity.version!r}"
                 )
                 logger.warning(
                     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                    subworkflow_id=definition.id,
-                    version=definition.version,
+                    subworkflow_id=entity.id,
+                    version=entity.version,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

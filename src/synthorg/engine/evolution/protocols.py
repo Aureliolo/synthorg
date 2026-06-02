@@ -23,7 +23,7 @@ from synthorg.hr.performance.models import (
 from synthorg.memory.models import MemoryEntry
 
 
-def _default_triggered_at() -> AwareDatetime:
+def _default_triggered_at() -> datetime:
     """Return current time in UTC."""
     return datetime.now(UTC)
 

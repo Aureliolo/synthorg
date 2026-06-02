@@ -93,24 +93,25 @@ def _policy_honoring_lookup(
     return _wrap(inner)
 
 
-def _unbound_pydantic_generic_lookup(
+def _pydantic_generic_lookup(
     origin_type: Any,
     args: tuple[Any, ...],
     extras: tuple[Any, ...],
 ) -> TypeCheckerCallable | None:
-    """Relax a pydantic generic parameterized by a free TypeVar to its base.
+    """Relax a pydantic generic alias (``Model[X]``) to its origin base class.
 
-    pydantic v2 builds a distinct subclass for ``Model[X]``. When ``X`` is still
-    a free TypeVar (a generic repository annotating ``Model[T]`` with its own
-    unbound parameter, e.g. ``VersionSnapshot[T]``), the runtime value is a bare
-    ``Model`` instance, which is NOT an instance of the ``Model[T]`` subclass, so
-    typeguard's fallback ``isinstance`` check raises. An unbound TypeVar cannot
-    constrain the type argument at runtime, so the correct check is against the
-    origin base class. Fully-parameterized generics (``Model[Concrete]``,
-    ``parameters == ()``) are left to typeguard's strict check.
+    pydantic v2 builds a DISTINCT subclass for ``Model[X]`` (both ``Model[T]``
+    with a free TypeVar and ``Model[Concrete]``). This codebase constructs these
+    snapshots BARE (``VersionSnapshot(...)``, generically, without binding the
+    parameter), so the runtime value is a plain ``Model`` instance that is NOT an
+    instance of the ``Model[X]`` subclass, and typeguard's fallback ``isinstance``
+    check raises. The type argument is erased on bare construction, so the honest
+    runtime check is against the origin base class; pydantic has already validated
+    the inner fields on construction, and the parameter distinction is a
+    static-typing concern (mypy) rather than a runtime one.
     """
     meta = getattr(origin_type, "__pydantic_generic_metadata__", None)
-    if not meta or not meta.get("parameters"):
+    if not meta:
         return None
     base = meta.get("origin")
     if base is None:
@@ -178,7 +179,7 @@ def register_policy_honoring_checker() -> None:
     # ``_policy_honoring_lookup``) would route a mocked annotation type to
     # ``check_protocol`` and raise a ``TypeError`` the NameError wrapper does not
     # catch.
-    typeguard.checker_lookup_functions.insert(0, _unbound_pydantic_generic_lookup)
+    typeguard.checker_lookup_functions.insert(0, _pydantic_generic_lookup)
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
     _registered = True

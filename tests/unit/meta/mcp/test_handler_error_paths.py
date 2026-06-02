@@ -12,10 +12,12 @@ covered without per-handler boilerplate.
 """
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers import build_handler_map
@@ -27,6 +29,20 @@ from synthorg.observability.events.mcp import (
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_chaos_doubles() -> Iterator[None]:
+    """Suppress typeguard for this error-path module.
+
+    Every test here injects ``_UniversalFailingService`` doubles whose only job
+    is to raise on call. The instrumented engine service accessors return-check
+    those doubles against the concrete service types, which would pre-empt the
+    ``except`` branches under test; there is no meaningful type to enforce when
+    the service is a deliberately-broken stub.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _UniversalFailingService:

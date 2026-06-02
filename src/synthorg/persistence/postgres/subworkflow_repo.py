@@ -204,17 +204,17 @@ class PostgresSubworkflowRepository:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
 
-    async def save(self, definition: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition) -> None:
         """Insert a new subworkflow version row.
 
         Raises:
             DuplicateRecordError: If a row with the same key already exists.
             QueryError: If the database query fails.
         """
-        nodes = [n.model_dump(mode="json") for n in definition.nodes]
-        edges = [e.model_dump(mode="json") for e in definition.edges]
-        inputs = [i.model_dump(mode="json") for i in definition.inputs]
-        outputs = [o.model_dump(mode="json") for o in definition.outputs]
+        nodes = [n.model_dump(mode="json") for n in entity.nodes]
+        edges = [e.model_dump(mode="json") for e in entity.edges]
+        inputs = [i.model_dump(mode="json") for i in entity.inputs]
+        outputs = [o.model_dump(mode="json") for o in entity.outputs]
         try:
             async with self._pool.connection() as conn:
                 await conn.execute(
@@ -224,41 +224,35 @@ INSERT INTO subworkflows
      inputs, outputs, nodes, edges, created_by, created_at, updated_at)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
-                        definition.id,
-                        definition.version,
-                        definition.name,
-                        definition.description,
-                        definition.workflow_type.value,
+                        entity.id,
+                        entity.version,
+                        entity.name,
+                        entity.description,
+                        entity.workflow_type.value,
                         Jsonb(inputs),
                         Jsonb(outputs),
                         Jsonb(nodes),
                         Jsonb(edges),
-                        definition.created_by,
-                        definition.created_at,
-                        definition.updated_at,
+                        entity.created_by,
+                        entity.created_at,
+                        entity.updated_at,
                     ),
                 )
         except psycopg.errors.UniqueViolation as exc:
-            msg = (
-                f"Subworkflow {definition.id!r} version "
-                f"{definition.version!r} already exists"
-            )
+            msg = f"Subworkflow {entity.id!r} version {entity.version!r} already exists"
             logger.warning(
                 PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=definition.id,
-                version=definition.version,
+                subworkflow_id=entity.id,
+                version=entity.version,
                 error=msg,
             )
             raise DuplicateRecordError(msg) from exc
         except psycopg.Error as exc:
-            msg = (
-                f"Failed to save subworkflow {definition.id!r} version "
-                f"{definition.version!r}"
-            )
+            msg = f"Failed to save subworkflow {entity.id!r} version {entity.version!r}"
             logger.warning(
                 PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
-                subworkflow_id=definition.id,
-                version=definition.version,
+                subworkflow_id=entity.id,
+                version=entity.version,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

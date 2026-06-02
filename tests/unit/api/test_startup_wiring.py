@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import structlog
+from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.integrations_wiring import auto_wire_integrations
@@ -117,7 +118,12 @@ class TestWireWorkflowObserver:
         )
         task_engine = _FakeTaskEngine()
 
-        with structlog.testing.capture_logs() as captured:
+        # ``_FakeTaskEngine`` / ``_FakeWorkflowPersistence`` are structural
+        # doubles for the concrete ``TaskEngine`` and the workflow repos; the
+        # runtime check is suppressed for the same reason the static
+        # ``# type: ignore[arg-type]`` is present (the test verifies wiring
+        # behaviour, not type conformance of the fakes).
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
             await _wire_workflow_observer(task_engine, persistence, state)  # type: ignore[arg-type]
 
         notes = [e for e in captured if e["event"] == API_APP_STARTUP]
@@ -138,7 +144,10 @@ class TestWireWorkflowObserver:
         )
         task_engine = _FakeTaskEngine()
 
-        with structlog.testing.capture_logs() as captured:
+        # Structural doubles for the concrete ``TaskEngine`` / workflow repos;
+        # suppress the runtime check at the same boundary as the static
+        # ``# type: ignore[arg-type]`` (behavioural wiring test, not a type test).
+        with structlog.testing.capture_logs() as captured, suppress_type_checks():
             await _wire_workflow_observer(task_engine, persistence, state)  # type: ignore[arg-type]
 
         # No fallback INFO log: the resolver was used.

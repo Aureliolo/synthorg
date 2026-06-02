@@ -93,7 +93,9 @@ from tests._typeguard_checker import register_policy_honoring_checker
 
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
 register_policy_honoring_checker()
-typeguard.install_import_hook(["synthorg.core", "synthorg.persistence"])
+typeguard.install_import_hook(
+    ["synthorg.core", "synthorg.persistence", "synthorg.engine"]
+)
 
 import asyncio  # noqa: E402
 import contextlib  # noqa: E402

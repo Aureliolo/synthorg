@@ -164,7 +164,16 @@ class TestUnboundPydanticGeneric:
         # pydantic-built Snapshot[U] subclass); with it the base check passes.
         check_type(bare, unbound)
 
-    def test_concrete_parameterization_still_checked(self) -> None:
+    def test_concrete_parameterization_relaxes_to_base(self) -> None:
         register_policy_honoring_checker()
+        # A bare instance (constructed without binding the parameter) passes a
+        # concrete ``Model[Concrete]`` annotation: pydantic erases the type
+        # argument on bare construction, so the runtime check is against the base.
+        check_type(_Snapshot(payload=_Payload()), _Snapshot[_Payload])
+
+    def test_non_instance_still_rejected(self) -> None:
+        register_policy_honoring_checker()
+        # The relaxation is to the ORIGIN base, not to ``Any``: a value that is
+        # not even a base-class instance still raises.
         with pytest.raises(TypeCheckError):
             check_type("not a snapshot", _Snapshot[_Payload])
