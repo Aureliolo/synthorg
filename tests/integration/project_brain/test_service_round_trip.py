@@ -320,6 +320,53 @@ class TestProjectBrainRoundTrip:
         finally:
             await harness.backend.disconnect()
 
+    async def test_multi_session_gap_resume_answers_from_brain(
+        self, tmp_path: Path
+    ) -> None:
+        """After a restart over durable storage, a new agent answers what is
+        decided / open / blocked from the brain rather than re-deriving."""
+        first = await _build(tmp_path)
+        await _seed_resume_state(first)
+
+        # Model a multi-session gap: the durable stores (memory backend,
+        # SQL brain repo, git workspace) survive while the service and
+        # facade objects are reconstructed, as on a process restart.
+        resumed = await _build(
+            tmp_path,
+            memory_backend=first.backend,
+            repo=first.repo,
+        )
+        try:
+            entries = await resumed.facade.retrieve(
+                agent_id=_BOB,
+                project_id=_PROJECT,
+                query=MemoryQuery(text=NotBlankStr("checkout"), limit=20),
+            )
+            brain_hits = [e for e in entries if f"<{TAG_BRAIN_STATE}>" in e.content]
+            assert brain_hits, "brain state must survive a multi-session gap"
+            corpus = "\n".join(e.content for e in brain_hits).lower()
+            assert "event-sourcing" in corpus  # the decision outcome
+            assert "queue backend" in corpus  # the open question subject
+            assert "staging" in corpus  # the blocker subject
+
+            # The structured durable path answers the same question through
+            # the freshly-built service, proving it reads persisted state.
+            service = resumed.runtime.brain_service  # type: ignore[attr-defined]
+            decided = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.ACCEPTED
+            )
+            open_qs = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.OPEN
+            )
+            blocked = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.BLOCKED
+            )
+            assert {d.entry_kind for d in decided} == {BrainEntryKind.DECISION}
+            assert {q.entry_kind for q in open_qs} == {BrainEntryKind.OPEN_QUESTION}
+            assert {b.entry_kind for b in blocked} == {BrainEntryKind.BLOCKER}
+        finally:
+            await first.backend.disconnect()
+
     async def test_reindex_replaces_prior_chunks(self, tmp_path: Path) -> None:
         harness = await _build(tmp_path)
         try:
