@@ -968,7 +968,7 @@
     },
     {
       "kind": "code",
-      "loc": 195,
+      "loc": 177,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/project_docs.py",
       "owning_feature": "api_core"
@@ -1577,7 +1577,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 99,
+      "loc": 108,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/narrative_wiring.py",
       "owning_feature": "api_core"
@@ -10117,7 +10117,7 @@
     },
     {
       "kind": "service",
-      "loc": 171,
+      "loc": 179,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/narrative/assembler.py",
       "owning_feature": "meta"

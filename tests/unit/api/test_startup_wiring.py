@@ -7,6 +7,7 @@ tunnel wiring path, and the once-only contract on `set_ontology_service`.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast, override
 from unittest.mock import AsyncMock
 
@@ -20,6 +21,7 @@ from synthorg.api.lifecycle_builder import (
     _wire_approval_gate,
     _wire_workflow_observer,
 )
+from synthorg.api.lifecycle_helpers import narrative_wiring
 from synthorg.api.lifecycle_helpers.feature_wiring import (
     _guard_conversational_persistence,
 )
@@ -30,11 +32,14 @@ from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.state import EngineStateSlice
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
 from synthorg.memory.embedding.training_sources import TrajectoryTrainingDataSource
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.config import load_self_improvement_config
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -45,6 +50,7 @@ from synthorg.observability.events.memory import (
 from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
@@ -508,3 +514,48 @@ class TestWireFineTuneOrchestrator:
             and e.get("operation") == "startup_wire"
         ]
         assert len(degraded) == 1
+
+
+@pytest.mark.unit
+class TestWireRunNarrator:
+    """The post-run narrator wires best-effort behind narrative_enabled."""
+
+    async def test_best_effort_when_attach_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A narrator-construction failure must not abort startup: the
+        # pipeline is simply left narrator-less and the failure is logged.
+        enabled = SimpleNamespace(
+            chief_of_staff=ChiefOfStaffConfig(narrative_enabled=True)
+        )
+        monkeypatch.setattr(
+            "synthorg.meta.config.load_self_improvement_config",
+            AsyncMock(spec=load_self_improvement_config, return_value=enabled),
+        )
+
+        def _boom(*_: object, **__: object) -> None:
+            msg = "provider exploded"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(narrative_wiring, "_attach_narrator", _boom)
+        state = _make_state(
+            slices={
+                PersistenceStateSlice: {"backend": FakePersistenceBackend()},
+                EngineStateSlice: {"work_pipeline": mock_of[WorkPipeline]()},
+            }
+        )
+
+        with structlog.testing.capture_logs() as captured:
+            await narrative_wiring.wire_run_narrator(
+                state,
+                provider_registry=mock_of[ProviderRegistry](),
+                cost_tracker=None,
+            )
+
+        failed = [
+            e
+            for e in captured
+            if str(e.get("note", "")).startswith("narrator construction failed")
+        ]
+        assert len(failed) == 1
+        assert failed[0]["error_type"] == "RuntimeError"

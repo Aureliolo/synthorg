@@ -21,7 +21,7 @@ from synthorg.api.pagination import (
     encode_countless_seek_meta,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -62,14 +62,10 @@ def _docs_service(state: State) -> DocsService:
 
 
 DocTypeFilter = Annotated[
-    NotBlankStr | None,
+    DocType | None,
     QueryParameter(
         required=False,
-        max_length=QUERY_MAX_LENGTH,
-        description=(
-            "Filter by doc_type (status_report / deliverable / "
-            "knowledge_note / codebase_analysis / run_narrative)"
-        ),
+        description="Filter by doc_type (closed DocType enum)",
     ),
 ]
 
@@ -102,22 +98,6 @@ SearchLimit = Annotated[
 ]
 
 
-def _parse_doc_type(value: NotBlankStr | None) -> DocType | None:
-    """Return parse doc type.
-
-    Raises:
-        ValidationError: Raised on the corresponding failure path.
-    """
-    if value is None:
-        return None
-    try:
-        return DocType(value)
-    except ValueError as exc:
-        valid = ", ".join(t.value for t in DocType)
-        msg = f"Invalid doc_type: {value!r}. Valid values: {valid}"
-        raise ValidationError(msg) from exc
-
-
 class ProjectDocsController(Controller):
     """Read-only endpoints for living documentation."""
 
@@ -139,12 +119,11 @@ class ProjectDocsController(Controller):
         Returns:
             ``PaginatedResponse[DocSummary]`` instance.
         """
-        parsed = _parse_doc_type(doc_type)
         secret = cursor_secret_of(state.app_state)
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         summaries = await _docs_service(state).list_docs(
             project_id=NotBlankStr(project_id),
-            doc_type=parsed,
+            doc_type=doc_type,
             tag=tag,
             limit=limit + 1,
             offset=offset,

@@ -22939,8 +22939,8 @@ export interface operations {
             readonly query?: {
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
-                /** @description Filter by doc_type (status_report / deliverable / knowledge_note / codebase_analysis / run_narrative) */
-                readonly doc_type?: string | null;
+                /** @description Filter by doc_type (closed DocType enum) */
+                readonly doc_type?: "status_report" | "deliverable" | "knowledge_note" | "codebase_analysis" | "run_narrative" | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
                 /** @description Filter by tag (exact match) */

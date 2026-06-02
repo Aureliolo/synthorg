@@ -34,6 +34,7 @@ from synthorg.meta.chief_of_staff.narrative.models import (
 _SECTION_LEVEL: int = 2
 _BULLET_MAX: int = 1024
 _ALLOWED_URL_SCHEMES: frozenset[str] = frozenset({"http", "https", "mailto"})
+_AUTHORITY_SLASHES: frozenset[str] = frozenset({"/", "\\"})
 _NO_DECISIONS = "No decisions were recorded for this run."
 _NO_CONTRIBUTIONS = "No agent activity was recorded for this run."
 
@@ -171,7 +172,10 @@ def _safe_url(url: str) -> str:
 
     A protocol-relative URL (``//host/path``) has no scheme but the
     browser resolves it against the page protocol, so it is an
-    open-redirect vector; it is coerced too.
+    open-redirect vector; it is coerced too. Both leading characters are
+    tested against forward-slash and backslash because browsers normalise
+    backslashes to forward slashes, so backslash-authority forms resolve
+    as protocol-relative authorities just like ``//host``.
 
     Leading whitespace is stripped before the scheme checks because
     browsers trim it from ``href`` attributes, so ``" //evil"`` and
@@ -183,7 +187,10 @@ def _safe_url(url: str) -> str:
         anchor otherwise.
     """
     trimmed = url.strip()
-    if trimmed.startswith("//"):
+    # Slice indexing (``[:1]`` / ``[1:2]``) yields a 0- or 1-char string
+    # without risking IndexError, so a too-short url simply fails the
+    # membership test rather than needing an explicit length guard.
+    if trimmed[:1] in _AUTHORITY_SLASHES and trimmed[1:2] in _AUTHORITY_SLASHES:
         return "#external-protocol-relative"
     scheme, sep, _ = trimmed.partition(":")
     if not sep or "/" in scheme or scheme.lower() in _ALLOWED_URL_SCHEMES:

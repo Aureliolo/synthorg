@@ -9,7 +9,7 @@ already-built work pipeline; it is best-effort and idempotent.
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
 
@@ -58,12 +58,25 @@ async def wire_run_narrator(
             reason="narrative_disabled",
         )
         return
-    _attach_narrator(
-        app_state,
-        config=config,
-        provider_registry=provider_registry,
-        cost_tracker=cost_tracker,
-    )
+    # Narrator construction is best-effort: a misconfigured collaborator
+    # must not abort app startup, so a failure leaves the pipeline
+    # narrator-less (completed briefs simply produce no narrative) rather
+    # than propagating. Mirrors the charter / research wiring helpers.
+    try:
+        _attach_narrator(
+            app_state,
+            config=config,
+            provider_registry=provider_registry,
+            cost_tracker=cost_tracker,
+        )
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="chief_of_staff_narrator",
+            note="narrator construction failed; pipeline unchanged",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def _attach_narrator(

@@ -50,4 +50,15 @@ describe('DocBlockRenderer link sanitization', () => {
 
     expect(screen.getByRole('link')).toHaveAttribute('href', '#')
   })
+
+  it.each(['\\\\evil.example.com', '/\\evil.example.com', '\\/evil.example.com'])(
+    'coerces backslash-authority urls (%s)',
+    (raw) => {
+      // Browsers normalise backslashes to forward slashes, so these
+      // resolve as protocol-relative authorities just like '//host'.
+      render(<DocBlockRenderer block={linkBlock(raw)} />)
+
+      expect(screen.getByRole('link')).toHaveAttribute('href', '#')
+    },
+  )
 })

@@ -247,3 +247,16 @@ class TestSafeUrl:
     def test_leading_whitespace_https_preserved(self) -> None:
         # A permitted scheme behind whitespace stays navigable.
         assert _safe_url(" https://example.com/x") == " https://example.com/x"
+
+    @pytest.mark.parametrize(
+        "raw",
+        [r"\\evil.example.com", r"/\evil.example.com", r"\/evil.example.com"],
+    )
+    def test_backslash_authority_coerced(self, raw: str) -> None:
+        # Browsers normalise backslashes to forward slashes, so a
+        # backslash-authority form is an open-redirect vector just like
+        # ``//host`` and must be coerced.
+        assert _safe_url(raw) == "#external-protocol-relative"
+
+    def test_leading_whitespace_backslash_authority_coerced(self) -> None:
+        assert _safe_url("  \\\\evil.example.com") == "#external-protocol-relative"

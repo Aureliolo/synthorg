@@ -165,6 +165,13 @@ class TestDocsRepository:
         )
         assert fetched is not None
         assert fetched.doc_type is DocType.CODEBASE_ANALYSIS
+        analyses = await backend.project_docs.query(
+            DocsFilterSpec(
+                project_id=NotBlankStr("proj-1"),
+                doc_type=DocType.CODEBASE_ANALYSIS,
+            )
+        )
+        assert {r.slug for r in analyses} == {"intake-analysis"}
 
     async def test_query_by_tag(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
