@@ -13344,7 +13344,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 120,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/audit_protocol.py",
       "owning_feature": "persistence"
@@ -13379,7 +13379,7 @@
     },
     {
       "kind": "code",
-      "loc": 156,
+      "loc": 157,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/checkpoint_protocol.py",
       "owning_feature": "persistence"
@@ -13561,7 +13561,7 @@
     },
     {
       "kind": "code",
-      "loc": 197,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/idempotency_protocol.py",
       "owning_feature": "persistence"
@@ -13701,7 +13701,7 @@
     },
     {
       "kind": "code",
-      "loc": 403,
+      "loc": 402,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/audit_repository.py",
       "owning_feature": "persistence"
@@ -13764,7 +13764,7 @@
     },
     {
       "kind": "repository",
-      "loc": 187,
+      "loc": 188,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -13876,7 +13876,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 84,
+      "loc": 83,
       "loc_cap": null,
       "module": "src/synthorg/persistence/postgres/decision/_sql.py",
       "owning_feature": "persistence"
@@ -13911,7 +13911,7 @@
     },
     {
       "kind": "code",
-      "loc": 293,
+      "loc": 294,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/flight_recorder_repo.py",
       "owning_feature": "persistence"
@@ -13932,7 +13932,7 @@
     },
     {
       "kind": "code",
-      "loc": 393,
+      "loc": 392,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -13953,7 +13953,7 @@
     },
     {
       "kind": "repository",
-      "loc": 183,
+      "loc": 184,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -14121,7 +14121,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/seen_claims_repo.py",
       "owning_feature": "persistence"
@@ -14422,7 +14422,7 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 279,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/audit_repository.py",
       "owning_feature": "persistence"
@@ -14471,7 +14471,7 @@
     },
     {
       "kind": "repository",
-      "loc": 197,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -14583,7 +14583,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": null,
       "module": "src/synthorg/persistence/sqlite/decision/_sql.py",
       "owning_feature": "persistence"
@@ -14618,7 +14618,7 @@
     },
     {
       "kind": "code",
-      "loc": 298,
+      "loc": 299,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/flight_recorder_repo.py",
       "owning_feature": "persistence"
@@ -14632,14 +14632,14 @@
     },
     {
       "kind": "code",
-      "loc": 402,
+      "loc": 400,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/hr_repositories.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 373,
+      "loc": 372,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -14660,7 +14660,7 @@
     },
     {
       "kind": "repository",
-      "loc": 189,
+      "loc": 190,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -14828,7 +14828,7 @@
     },
     {
       "kind": "code",
-      "loc": 153,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/seen_claims_repo.py",
       "owning_feature": "persistence"
@@ -14849,7 +14849,7 @@
     },
     {
       "kind": "code",
-      "loc": 369,
+      "loc": 370,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/ssrf_violation_repo.py",
       "owning_feature": "persistence"

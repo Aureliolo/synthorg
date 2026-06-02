@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -69,7 +70,10 @@ async def test_get_translates_corrupt_row_to_query_error() -> None:
     }
     repo = PostgresPresetOverrideRepo(_FakePool(corrupt))  # type: ignore[arg-type]
 
-    with pytest.raises(QueryError):
+    # The corrupt ``updated_at`` int trips the repository's fail-closed guard;
+    # suppress typeguard so that guard (QueryError) runs instead of typeguard
+    # rejecting the int against the datetime annotation first.
+    with pytest.raises(QueryError), suppress_type_checks():
         await repo.get(NotBlankStr("p1"))
 
 

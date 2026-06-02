@@ -26,7 +26,8 @@ from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability.events.integrations import (
     WEBHOOK_RECEIPT_STATUS_TRANSITIONED,
 )
-from tests._shared import make_app_state
+from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import make_app_state, mock_of
 
 
 class _PassThroughIdempotencyService:
@@ -115,11 +116,8 @@ def _build_state(
         update_status = plain_mock
         update_status_if_current = cas_mock
 
-    class _Persistence:
-        webhook_receipts = _WebhookReceipts()
-
     app_state = make_app_state(
-        persistence=_Persistence(),
+        persistence=mock_of[PersistenceBackend](webhook_receipts=_WebhookReceipts()),
         message_bus=object(),
         slices={
             ApiCoreStateSlice: {

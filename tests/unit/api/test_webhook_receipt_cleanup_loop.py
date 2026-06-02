@@ -23,11 +23,12 @@ from synthorg.persistence.connection_protocol import (
     ConnectionRepository,
     WebhookReceiptRepository,
 )
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import registered_default_float, registered_default_int
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -90,7 +91,7 @@ def _build_app_state(  # noqa: PLR0913 -- each kwarg controls a distinct stub ax
     # ``AsyncMock(spec=WebhookReceiptRepository)`` has already created
     # a properly specced ``cleanup_old_for_connection`` attribute.
     webhook_repo.cleanup_old_for_connection.side_effect = _cleanup
-    persistence = SimpleNamespace(
+    persistence = mock_of[PersistenceBackend](
         connections=connections_repo,
         webhook_receipts=webhook_repo,
     )

@@ -12,7 +12,6 @@ tests under ``tests/unit/persistence/``).
 """
 
 import asyncio
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -24,8 +23,9 @@ from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
 from synthorg.api.services.idempotency_service import IdempotencyService
 from synthorg.api.state import AppState
 from synthorg.persistence.connection_protocol import OAuthStateRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -44,7 +44,7 @@ def _build_app_state(
     else:
         oauth_states = AsyncMock(spec=OAuthStateRepository)
         oauth_states.cleanup_expired.side_effect = oauth_cleanup_side_effect
-    persistence = SimpleNamespace(oauth_states=oauth_states)
+    persistence = mock_of[PersistenceBackend](oauth_states=oauth_states)
     idempotency_service = AsyncMock(spec=IdempotencyService)
     idempotency_service.cleanup_expired.return_value = None
     return make_app_state(

@@ -13,8 +13,9 @@ from synthorg.api.controllers.ws_revalidation import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -185,7 +186,7 @@ class _FakeApp:
             users_repo.get.side_effect = RuntimeError("transient db blip")
         else:
             users_repo.get.return_value = persisted_user
-        persistence = type("Pst", (), {"users": users_repo})()
+        persistence = mock_of[PersistenceBackend](users=users_repo)
         app_state = make_app_state(persistence=persistence)
         # Tight revalidation-window bounds so the transient-failure
         # regression test can saturate the window in a few iterations.

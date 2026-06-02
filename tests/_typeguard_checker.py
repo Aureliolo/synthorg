@@ -30,6 +30,7 @@ can register the checker before installing the import hook, without pulling any
 
 import warnings
 from typing import Any
+from unittest.mock import Mock
 
 import typeguard
 from typeguard import (
@@ -128,6 +129,35 @@ def _unbound_pydantic_generic_lookup(
     return _check
 
 
+def _mocked_annotation_lookup(
+    origin_type: Any,
+    args: tuple[Any, ...],
+    extras: tuple[Any, ...],
+) -> TypeCheckerCallable | None:
+    """Skip the check when the annotation type itself is a ``Mock``.
+
+    A test that patches a class used in a typeguard-instrumented annotation
+    (e.g. ``patch("...AsyncConnectionPool")`` against ``pool: AsyncConnectionPool
+    | None``) makes typeguard evaluate that annotation to a ``Mock`` at runtime,
+    which then misroutes to ``check_protocol`` (a ``Mock``'s ``_is_protocol`` is
+    truthy) and raises ``TypeError: ... is not a Protocol``. typeguard already
+    skips when the VALUE is a ``Mock``; this is the symmetric case for the
+    annotation TYPE, where there is nothing meaningful to check against.
+    """
+    if isinstance(origin_type, Mock):
+
+        def _skip(
+            value: Any,
+            _origin_type: Any,
+            _args: tuple[Any, ...],
+            _memo: TypeCheckMemo,
+        ) -> None:
+            return None
+
+        return _skip
+    return None
+
+
 _registered = False
 
 
@@ -142,6 +172,13 @@ def register_policy_honoring_checker() -> None:
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
         return
+    # Each ``insert(0, ...)`` prepends, so the LAST inserted runs FIRST.
+    # ``_mocked_annotation_lookup`` must run before the others: a Mock's
+    # ``_is_protocol`` is truthy, so the builtin (delegated to by
+    # ``_policy_honoring_lookup``) would route a mocked annotation type to
+    # ``check_protocol`` and raise a ``TypeError`` the NameError wrapper does not
+    # catch.
     typeguard.checker_lookup_functions.insert(0, _unbound_pydantic_generic_lookup)
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
+    typeguard.checker_lookup_functions.insert(0, _mocked_annotation_lookup)
     _registered = True
