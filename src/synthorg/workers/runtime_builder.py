@@ -63,7 +63,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.state import optional_persistence_of, persistence_of
+from synthorg.persistence.state import code_execution_records_of, persistence_of
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -291,7 +291,6 @@ async def _build_tool_registry(
 
     browser_settings = await resolve_browser_settings(config_resolver_of(app_state))
     desktop_settings = await resolve_desktop_settings(config_resolver_of(app_state))
-    backend = optional_persistence_of(app_state)
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -308,9 +307,7 @@ async def _build_tool_registry(
         web_request_timeout=web_request_timeout,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
-        code_execution_records=(
-            backend.code_execution_records if backend is not None else None
-        ),
+        code_execution_records=code_execution_records_of(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

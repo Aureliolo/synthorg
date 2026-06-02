@@ -1472,8 +1472,8 @@
     },
     "src/synthorg/workers/runtime_builder.py": {
       "cap": 600,
-      "loc": 872,
-      "ratio": 1.453,
+      "loc": 869,
+      "ratio": 1.448,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/worker.py": {

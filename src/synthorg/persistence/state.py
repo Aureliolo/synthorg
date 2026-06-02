@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
@@ -49,25 +52,26 @@ def persistence_of(app_state: AppStateSliceMixin) -> PersistenceBackend:
     )
 
 
-def optional_persistence_of(
+def code_execution_records_of(
     app_state: AppStateSliceMixin,
-) -> PersistenceBackend | None:
-    """Return the connected persistence backend, or ``None`` when absent.
+) -> CodeExecutionRecordRepository | None:
+    """Return the code-execution record repository, or ``None`` if unwired.
 
-    Companion to :func:`persistence_of` for call sites that can operate
-    without a backend and must not raise when a dev / empty-company run
-    has no backend wired. Used to wire persistence-bound repositories
-    that are themselves optional (e.g. the code-runner's append-only
-    record store), so a backend-less runtime still builds rather than
-    503-ing the whole tool registry.
+    Companion to :func:`persistence_of` for the optional capture path:
+    the code-runner persists ``purpose='tests'`` runs into this
+    append-only store, but a dev / empty-company run with no backend
+    must still build its tool registry. Returning ``None`` lets the
+    code-runner no-op its capture rather than 503-ing the whole runtime.
 
     Args:
         app_state: The application state (any slice-reader).
 
     Returns:
-        The connected persistence backend, or ``None`` when unwired.
+        The append-only code-execution record repository, or ``None``
+        when no backend is wired.
     """
-    return app_state.slice(PersistenceStateSlice).backend
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.code_execution_records if backend is not None else None
 
 
 def persistence_backend_label(app_state: AppStateSliceMixin) -> str:
