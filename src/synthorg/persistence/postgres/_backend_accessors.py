@@ -117,6 +117,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.code_execution_protocol import (
+        CodeExecutionRecordRepository,
+    )
     from synthorg.persistence.codebase_structure_map_protocol import (
         CodebaseStructureMapRepository,
     )
@@ -129,6 +132,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.cost_record_protocol import CostRecordRepository
     from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
     from synthorg.persistence.decision_protocol import DecisionRepository
+    from synthorg.persistence.deliverable_receipt_protocol import (
+        DeliverableReceiptRepository,
+    )
     from synthorg.persistence.docs_protocol import DocsRepository
     from synthorg.persistence.flight_recorder_protocol import (
         FlightRecorderFrameRepository,
@@ -137,6 +143,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.knowledge_protocol import (
         ChunkProvenanceRepository,
         KnowledgeSourceRepository,
+    )
+    from synthorg.persistence.knowledge_usage_protocol import (
+        KnowledgeUsageRecordRepository,
     )
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
     from synthorg.persistence.meeting_cooldown_protocol import (
@@ -230,6 +239,9 @@ class _PostgresBackendRepositoryAccessors:
     _api_keys: ApiKeyRepository | None
     _checkpoints: CheckpointRepository | None
     _flight_recorder_frames: FlightRecorderFrameRepository | None
+    _deliverable_receipts: DeliverableReceiptRepository | None
+    _knowledge_usage_records: KnowledgeUsageRecordRepository | None
+    _code_execution_records: CodeExecutionRecordRepository | None
     _heartbeats: HeartbeatRepository | None
     _agent_states: AgentStateRepository | None
     _settings: SettingsRepository | None
@@ -437,6 +449,42 @@ class _PostgresBackendRepositoryAccessors:
         return self._require_connected(
             self._flight_recorder_frames,
             "flight_recorder_frames",
+        )
+
+    @property
+    def deliverable_receipts(self) -> DeliverableReceiptRepository:
+        """Repository for deliverable provenance-receipt persistence.
+
+        Returns:
+            Result of type ``DeliverableReceiptRepository``.
+        """
+        return self._require_connected(
+            self._deliverable_receipts,
+            "deliverable_receipts",
+        )
+
+    @property
+    def knowledge_usage_records(self) -> KnowledgeUsageRecordRepository:
+        """Repository for per-run knowledge-usage capture persistence.
+
+        Returns:
+            Result of type ``KnowledgeUsageRecordRepository``.
+        """
+        return self._require_connected(
+            self._knowledge_usage_records,
+            "knowledge_usage_records",
+        )
+
+    @property
+    def code_execution_records(self) -> CodeExecutionRecordRepository:
+        """Repository for per-run code-execution capture persistence.
+
+        Returns:
+            Result of type ``CodeExecutionRecordRepository``.
+        """
+        return self._require_connected(
+            self._code_execution_records,
+            "code_execution_records",
         )
 
     @property

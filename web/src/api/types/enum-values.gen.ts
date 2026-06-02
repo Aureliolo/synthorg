@@ -636,6 +636,30 @@ export const REBALANCE_MODE_VALUES = [
 ] as const
 export type RebalanceMode = (typeof REBALANCE_MODE_VALUES)[number]
 
+export const RED_TEAM_ATTACK_SURFACE_VALUES = [
+    'correctness',
+    'security',
+    'requirements',
+    'grounding',
+] as const
+export type RedTeamAttackSurface = (typeof RED_TEAM_ATTACK_SURFACE_VALUES)[number]
+
+export const RED_TEAM_SEVERITY_VALUES = [
+    'info',
+    'low',
+    'medium',
+    'high',
+    'critical',
+] as const
+export type RedTeamSeverity = (typeof RED_TEAM_SEVERITY_VALUES)[number]
+
+export const RED_TEAM_VERDICT_VALUES = [
+    'pass',
+    'pass_with_findings',
+    'block',
+] as const
+export type RedTeamVerdict = (typeof RED_TEAM_VERDICT_VALUES)[number]
+
 export const REPORT_PERIOD_VALUES = [
     'daily',
     'weekly',

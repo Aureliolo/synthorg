@@ -307,6 +307,7 @@ async def _build_tool_registry(
         web_request_timeout=web_request_timeout,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
+        code_execution_records=persistence_of(app_state).code_execution_records,
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

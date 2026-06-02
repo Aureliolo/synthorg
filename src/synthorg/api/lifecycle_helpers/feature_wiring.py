@@ -26,6 +26,9 @@ from synthorg.api.lifecycle_helpers.conversational_wiring import (
     wire_conversational_actor,
     wire_group_chat_service,
 )
+from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
+    _wire_deliverable_receipts,
+)
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
@@ -628,6 +631,7 @@ async def wire_features_on_startup(
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
     await _wire_knowledge_engine(app_state)
+    await _wire_deliverable_receipts(app_state)
     await _wire_fine_tune_orchestrator(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)
     await _wire_charter_engine(

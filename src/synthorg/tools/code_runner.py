@@ -3,11 +3,14 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_FAILED,
@@ -15,12 +18,24 @@ from synthorg.observability.events.code_runner import (
     CODE_RUNNER_EXECUTE_SUCCESS,
     CODE_RUNNER_INVALID_LANGUAGE,
 )
+from synthorg.observability.events.deliverable_receipts import (
+    TEST_RUN_RECORD_FAILED,
+    TEST_RUN_RECORDED,
+)
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionPurpose,
+    CodeExecutionRecord,
+)
 from synthorg.tools._misc_args import CodeRunnerArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError
 
 if TYPE_CHECKING:
+    from synthorg.persistence.code_execution_protocol import (
+        CodeExecutionRecordRepository,
+    )
     from synthorg.tools.sandbox.protocol import SandboxBackend
+    from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
@@ -29,6 +44,11 @@ _LANGUAGE_COMMANDS: Final[dict[str, tuple[str, str]]] = {
     "javascript": ("node", "-e"),
     "bash": ("bash", "-c"),
 }
+
+#: Maximum characters of captured stdout/stderr kept on a test record.
+_OUTPUT_TAIL_LIMIT: Final[int] = 2000
+#: Maximum characters of the executed command kept on a test record.
+_COMMAND_REPR_LIMIT: Final[int] = 500
 
 
 class CodeRunnerTool(BaseTool):
@@ -40,12 +60,21 @@ class CodeRunnerTool(BaseTool):
 
     args_model: ClassVar[type[BaseModel] | None] = CodeRunnerArgs
 
-    def __init__(self, *, sandbox: SandboxBackend) -> None:
+    def __init__(
+        self,
+        *,
+        sandbox: SandboxBackend,
+        code_execution_records: CodeExecutionRecordRepository | None = None,
+    ) -> None:
         """Initialize the code runner tool.
 
         Args:
             sandbox: Sandboxed execution backend that enforces
                 isolation and resource control.
+            code_execution_records: Optional repository for capturing
+                ``purpose='tests'`` runs into the deliverable receipt's
+                provenance bundle. When ``None`` (or outside a bound
+                execution scope) no record is written.
         """
         super().__init__(
             name="code_runner",
@@ -57,6 +86,7 @@ class CodeRunnerTool(BaseTool):
             parameters_schema=CodeRunnerArgs.model_json_schema(),
         )
         self._sandbox = sandbox
+        self._code_execution_records = code_execution_records
 
     @override
     async def execute(
@@ -76,6 +106,7 @@ class CodeRunnerTool(BaseTool):
         code = cast("str", arguments["code"])
         language = cast("str", arguments["language"])
         timeout = cast("float | None", arguments.get("timeout"))
+        purpose = cast("str", arguments.get("purpose", "general"))
 
         if language not in _LANGUAGE_COMMANDS:
             logger.warning(
@@ -116,6 +147,15 @@ class CodeRunnerTool(BaseTool):
                 metadata={"language": language},
             )
 
+        if purpose == "tests":
+            await self._record_test_run(
+                result,
+                language=language,
+                command=command,
+                flag=flag,
+                code=code,
+            )
+
         if result.success:
             logger.debug(
                 CODE_RUNNER_EXECUTE_SUCCESS,
@@ -146,4 +186,61 @@ class CodeRunnerTool(BaseTool):
                 "timed_out": result.timed_out,
                 "language": language,
             },
+        )
+
+    async def _record_test_run(
+        self,
+        result: SandboxResult,
+        *,
+        language: str,
+        command: str,
+        flag: str,
+        code: str,
+    ) -> None:
+        """Capture a ``purpose='tests'`` run for the deliverable receipt.
+
+        No-ops when no repository is wired or when called outside a
+        bound execution scope. Best-effort: a capture failure logs and
+        returns rather than failing the tool call.
+        """
+        if self._code_execution_records is None:
+            return
+        identity = current_execution_identity()
+        if identity is None or identity.project_id is None:
+            return
+        command_repr = f"{command} {flag} {code}"[:_COMMAND_REPR_LIMIT]
+        stdout_tail = result.stdout[-_OUTPUT_TAIL_LIMIT:] if result.stdout else None
+        stderr_tail = result.stderr[-_OUTPUT_TAIL_LIMIT:] if result.stderr else None
+        try:
+            await self._code_execution_records.append(
+                CodeExecutionRecord(
+                    task_id=identity.task_id,
+                    execution_id=identity.execution_id,
+                    project_id=identity.project_id,
+                    purpose=CodeExecutionPurpose.TESTS,
+                    command=command_repr,
+                    returncode=result.returncode,
+                    passed=result.success,
+                    timed_out=result.timed_out,
+                    stdout_tail=stdout_tail,
+                    stderr_tail=stderr_tail,
+                    executed_at=datetime.now(UTC),
+                )
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                TEST_RUN_RECORD_FAILED,
+                execution_id=identity.execution_id,
+                language=language,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.debug(
+            TEST_RUN_RECORDED,
+            execution_id=identity.execution_id,
+            task_id=identity.task_id,
+            returncode=result.returncode,
+            passed=result.success,
         )

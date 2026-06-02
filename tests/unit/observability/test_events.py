@@ -361,6 +361,9 @@ class TestEventConstants:
             # Long-horizon project brain: append / index / snapshot / search /
             # history / facade-fanout / replay events.
             "project_brain",
+            # Deliverable provenance receipts: build / render / validate +
+            # knowledge-usage and test-run capture events.
+            "deliverable_receipts",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

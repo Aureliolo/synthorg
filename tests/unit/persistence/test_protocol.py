@@ -83,6 +83,11 @@ from synthorg.persistence.workflow_definition_protocol import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionRepository,
 )
+from tests.unit.deliverable_receipts._fakes import (
+    InMemoryCodeExecutionRecordRepository,
+    InMemoryDeliverableReceiptRepository,
+    InMemoryKnowledgeUsageRecordRepository,
+)
 from tests.unit.research._fakes import InMemoryResearchRunRepository
 
 if TYPE_CHECKING:
@@ -1226,6 +1231,18 @@ class _FakeBackend:
         # Concrete fake so the protocol-conformance suite catches drift
         # between ``ResearchRunRepository`` and the backend's exposure path.
         return InMemoryResearchRunRepository()
+
+    @property
+    def deliverable_receipts(self) -> InMemoryDeliverableReceiptRepository:
+        return InMemoryDeliverableReceiptRepository()
+
+    @property
+    def knowledge_usage_records(self) -> InMemoryKnowledgeUsageRecordRepository:
+        return InMemoryKnowledgeUsageRecordRepository()
+
+    @property
+    def code_execution_records(self) -> InMemoryCodeExecutionRecordRepository:
+        return InMemoryCodeExecutionRecordRepository()
 
     @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:

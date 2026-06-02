@@ -66,5 +66,6 @@ def build_knowledge_service(  # noqa: PLR0913 -- cohesive boot-time wiring
         config=config,
         html_fetcher=html_fetcher,
         ticket_fetcher=ticket_fetcher,
+        usage_records=persistence.knowledge_usage_records,
         clock=clock,
     )

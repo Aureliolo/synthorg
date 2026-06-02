@@ -49,6 +49,9 @@ if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
     from synthorg.memory.consolidation.wiki_export import WikiExporter
     from synthorg.memory.org.protocol import OrgMemoryBackend
+    from synthorg.persistence.code_execution_protocol import (
+        CodeExecutionRecordRepository,
+    )
     from synthorg.persistence.memory_protocol import OrgFactRepository
     from synthorg.tools.analytics.config import AnalyticsToolsConfig
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
@@ -362,6 +365,7 @@ def _build_async_task_tools(
 def _build_code_execution_tools(
     *,
     sandbox: SandboxBackend | None,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate the built-in code execution tools.
 
@@ -374,7 +378,12 @@ def _build_code_execution_tools(
         return ()
     from synthorg.tools.code_runner import CodeRunnerTool  # noqa: PLC0415
 
-    return (CodeRunnerTool(sandbox=sandbox),)
+    return (
+        CodeRunnerTool(
+            sandbox=sandbox,
+            code_execution_records=code_execution_records,
+        ),
+    )
 
 
 def _build_other_tools() -> tuple[BaseTool, ...]:
@@ -511,6 +520,7 @@ def build_default_tools(  # noqa: PLR0913
     architect_agent_id: str = _DEFAULT_ARCHITECT_AGENT_ID,
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
 ) -> tuple[BaseTool, ...]:
     """Instantiate all built-in workspace tools.
 
@@ -584,6 +594,10 @@ def build_default_tools(  # noqa: PLR0913
             entirely.
         architect_writes_enabled: ``SEMI`` autonomy opt-in flag.
             Ignored unless ``architect_autonomy_level`` is ``SEMI``.
+        code_execution_records: Append-only repository the
+            ``code_runner`` tool writes a ``CodeExecutionRecord`` to on
+            each ``purpose=tests`` run.  ``None`` disables test-run
+            capture (the receipt's ``tests`` block stays empty).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -671,7 +685,10 @@ def build_default_tools(  # noqa: PLR0913
         ),
     )
     all_tools.extend(
-        _build_code_execution_tools(sandbox=code_execution_sandbox),
+        _build_code_execution_tools(
+            sandbox=code_execution_sandbox,
+            code_execution_records=code_execution_records,
+        ),
     )
     all_tools.extend(
         _build_browser_tools(
@@ -734,6 +751,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     web_request_timeout: float,
     browser_settings: BrowserSettings | None = None,
     desktop_settings: DesktopSettings | None = None,
+    code_execution_records: CodeExecutionRecordRepository | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -790,6 +808,10 @@ def build_default_tools_from_config(  # noqa: PLR0913
         desktop_settings: Operator-resolved ``DesktopSettings``.  When
             ``None`` the DesktopTool uses model defaults (the
             deterministic ``xvfb`` driver).
+        code_execution_records: Append-only repository the
+            ``code_runner`` tool writes a ``CodeExecutionRecord`` to on
+            each ``purpose=tests`` run.  ``None`` disables test-run
+            capture (the receipt's ``tests`` block stays empty).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -936,4 +958,5 @@ def build_default_tools_from_config(  # noqa: PLR0913
         architect_agent_id=architect_agent_id,
         architect_autonomy_level=architect_autonomy_level,
         architect_writes_enabled=architect_writes_enabled,
+        code_execution_records=code_execution_records,
     )

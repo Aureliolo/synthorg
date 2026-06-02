@@ -42,8 +42,7 @@
         "build_chief_of_staff_proposer",
         "build_role_router",
         "build_group_chat_service",
-        "build_conversational_actor",
-        "build_chief_of_staff_narrator"
+        "build_conversational_actor"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -325,6 +324,27 @@
         "metrics_store",
         "coordination_service",
         "ceremony_policy_service"
+      ]
+    },
+    {
+      "controllers": [
+        "DeliverableReceiptController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/deliverable_receipts",
+      "ghost_wired_symbols": [
+        "build_deliverable_receipt_service",
+        "DeliverableReceiptService",
+        "ReceiptBuilder",
+        "ReceiptValidator",
+        "ReceiptRenderer"
+      ],
+      "mcp_tool_names": [],
+      "name": "deliverable_receipts",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service"
       ]
     },
     {
@@ -1195,6 +1215,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-02T08:54:30.504725Z",
+  "generated_at": "2026-06-02T05:13:40.892524Z",
   "schema_version": 1
 }

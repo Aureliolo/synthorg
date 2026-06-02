@@ -74,6 +74,11 @@ from tests.unit.api.fakes_workflow import (
     FakeWorkflowExecutionRepository,
     FakeWorkflowVersionRepository,
 )
+from tests.unit.deliverable_receipts._fakes import (
+    InMemoryCodeExecutionRecordRepository,
+    InMemoryDeliverableReceiptRepository,
+    InMemoryKnowledgeUsageRecordRepository,
+)
 from tests.unit.knowledge._fakes import (
     FakeChunkProvenanceRepository,
     FakeKnowledgeSourceRepository,
@@ -699,6 +704,9 @@ class FakePersistenceBackend(PersistenceBackend):
         self._knowledge_sources = FakeKnowledgeSourceRepository()
         self._knowledge_provenance = FakeChunkProvenanceRepository()
         self._research_runs = InMemoryResearchRunRepository()
+        self._deliverable_receipts = InMemoryDeliverableReceiptRepository()
+        self._knowledge_usage_records = InMemoryKnowledgeUsageRecordRepository()
+        self._code_execution_records = InMemoryCodeExecutionRecordRepository()
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
@@ -896,6 +904,21 @@ class FakePersistenceBackend(PersistenceBackend):
     @property
     def research_runs(self) -> InMemoryResearchRunRepository:
         return self._research_runs
+
+    @override
+    @property
+    def deliverable_receipts(self) -> InMemoryDeliverableReceiptRepository:
+        return self._deliverable_receipts
+
+    @override
+    @property
+    def knowledge_usage_records(self) -> InMemoryKnowledgeUsageRecordRepository:
+        return self._knowledge_usage_records
+
+    @override
+    @property
+    def code_execution_records(self) -> InMemoryCodeExecutionRecordRepository:
+        return self._code_execution_records
 
     @override
     @property
