@@ -14394,7 +14394,7 @@
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 44,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/_shared.py",
       "owning_feature": "persistence"
