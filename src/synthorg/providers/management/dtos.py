@@ -727,13 +727,8 @@ class ProbeLocalResponse(BaseModel):
     ) -> dict[str, ProbePresetResponse | str]:
         """Unwrap ``MappingProxyType`` to plain ``dict`` for JSON encode.
 
-        ``results`` / ``errors`` are stored as ``MappingProxyType`` after
-        ``__init__`` for immutability, but Pydantic-core cannot encode a
-        ``MappingProxyType`` directly, so the field serializer hands it a
-        plain ``dict`` copy.
-
         Returns:
-            A plain ``dict`` copy of the mapping for JSON encoding.
+            A plain ``dict`` copy (``MappingProxyType`` is not JSON-encodable).
         """
         return dict(value)
 

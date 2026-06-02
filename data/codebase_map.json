@@ -14940,7 +14940,7 @@
     },
     {
       "kind": "code",
-      "loc": 528,
+      "loc": 523,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/store.py",
       "owning_feature": "providers"
@@ -14982,7 +14982,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 783,
+      "loc": 721,
       "loc_cap": 700,
       "module": "src/synthorg/providers/drivers/litellm_driver.py",
       "owning_feature": "providers"
@@ -14992,6 +14992,13 @@
       "loc": 56,
       "loc_cap": null,
       "module": "src/synthorg/providers/drivers/litellm_kwargs.py",
+      "owning_feature": "providers"
+    },
+    {
+      "kind": "code",
+      "loc": 70,
+      "loc_cap": 500,
+      "module": "src/synthorg/providers/drivers/litellm_model_info.py",
       "owning_feature": "providers"
     },
     {
@@ -15101,14 +15108,14 @@
     },
     {
       "kind": "code",
-      "loc": 553,
+      "loc": 548,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/capability_dtos.py",
       "owning_feature": "providers"
     },
     {
       "kind": "code",
-      "loc": 737,
+      "loc": 733,
       "loc_cap": 500,
       "module": "src/synthorg/providers/management/dtos.py",
       "owning_feature": "providers"

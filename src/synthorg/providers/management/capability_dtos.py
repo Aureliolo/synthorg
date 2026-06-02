@@ -115,15 +115,10 @@ def _recursively_freeze(value: object) -> object:
 def _recursively_thaw(value: object) -> object:
     """Inverse of :func:`_recursively_freeze` for JSON serialisation.
 
-    Pydantic-core / msgspec cannot encode ``MappingProxyType`` directly,
-    so each immutable container is converted back to its mutable
-    JSON-friendly counterpart (``dict`` / ``list``).  Tuples become
-    lists for the same reason.  Sets / frozensets are rejected by
-    :func:`_recursively_freeze` so the inverse never sees them either,
-    but keep the explicit rejection here so a caller that bypasses
-    ``_freeze_payload`` (e.g. by mutating the model after construction)
-    fails fast at serialise time rather than emitting a non-deterministic
-    audit row.
+    Pydantic-core cannot encode ``MappingProxyType`` directly, so each
+    immutable container is thawed back to ``dict`` / ``list``. Sets are
+    rejected here too so a post-construction ``_freeze_payload`` bypass
+    fails fast instead of emitting a non-deterministic audit row.
 
     Returns:
         A JSON-serialisable copy of *value* with ``MappingProxyType``
@@ -291,15 +286,11 @@ class ProviderAuditEvent(BaseModel):
 
         Raises:
             TypeError: If the thawed payload is not a ``dict`` (only
-                possible when ``_freeze_payload`` was bypassed).
+                reachable when ``_freeze_payload`` was bypassed).
         """
         thawed = _recursively_thaw(payload)
-        # ``_recursively_thaw`` returns ``object``; the outer container is
-        # always a ``dict`` here because ``payload`` is a ``Mapping`` that
-        # thaws to a ``dict``. Verify at runtime (an ``isinstance`` check,
-        # not a bare ``cast``) so a caller that bypasses ``_freeze_payload``
-        # fails fast with a clear error instead of laundering a wrong type
-        # through the serializer.
+        # Check at runtime (not a bare ``cast``) so a bypass of
+        # ``_freeze_payload`` fails fast rather than laundering a wrong type.
         if not isinstance(thawed, dict):
             msg = f"thawed audit payload is {type(thawed).__name__}, expected dict"
             raise TypeError(msg)

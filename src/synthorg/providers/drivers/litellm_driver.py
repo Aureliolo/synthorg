@@ -56,8 +56,6 @@ from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
-    PROVIDER_MODEL_INFO_UNAVAILABLE,
-    PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
     PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_RATE_LIMITED,
     PROVIDER_RETRY_AFTER_PARSE_FAILED,
@@ -70,6 +68,10 @@ from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_kwargs import (
     _AcompletionKwargs,
     _apply_completion_config,
+)
+from synthorg.providers.drivers.litellm_model_info import (
+    coerce_max_output_tokens,
+    get_litellm_model_info,
 )
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
@@ -395,13 +397,13 @@ class LiteLLMDriver(BaseCompletionProvider):
             config and LiteLLM info.
         """
         litellm_model = f"{self._routing_key}/{model_config.id}"
-        info = self._get_litellm_model_info(litellm_model)
+        info = get_litellm_model_info(litellm_model)
 
         fallback = self._config.defaults.fallback_max_output_tokens
         raw_max_output = (
             info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback
         )
-        max_output = self._coerce_max_output_tokens(
+        max_output = coerce_max_output_tokens(
             raw_max_output,
             fallback=fallback,
             litellm_model=litellm_model,
@@ -846,78 +848,6 @@ class LiteLLMDriver(BaseCompletionProvider):
                 raw_value=repr(raw),
             )
             return None
-
-    # ── LiteLLM model info ───────────────────────────────────────
-
-    @staticmethod
-    def _coerce_max_output_tokens(
-        raw: object,
-        *,
-        fallback: int,
-        litellm_model: str,
-    ) -> int:
-        """Coerce a LiteLLM ``max_output_tokens`` value to ``int``.
-
-        Falls back to ``fallback`` (logging a warning) when the value is a
-        bool, a non-numeric string, or any non-numeric type, rather than
-        silently mis-reporting the context window or letting an
-        unexpected type raise out of capability discovery.
-
-        Returns:
-            The coerced token count, or ``fallback`` when ``raw`` cannot be
-            coerced.
-        """
-        if isinstance(raw, bool) or not isinstance(raw, int | float | str):
-            logger.warning(
-                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
-                model=litellm_model,
-                reason="max_output_tokens_unexpected_type",
-                raw_type=type(raw).__name__,
-            )
-            return fallback
-        try:
-            return int(raw)
-        except ValueError, TypeError:
-            logger.warning(
-                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
-                model=litellm_model,
-                reason="max_output_tokens_not_coercible",
-                raw_type=type(raw).__name__,
-            )
-            return fallback
-
-    @staticmethod
-    def _get_litellm_model_info(
-        litellm_model: str,
-    ) -> dict[str, object]:
-        """Query LiteLLM for static model metadata.
-
-        Returns empty dict if the model is unknown to LiteLLM.
-        Uses config defaults when metadata is unavailable.
-
-        Returns:
-            A dict of LiteLLM model metadata fields, or an empty dict
-            when the model is unknown or the lookup raises.
-        """
-        try:
-            raw = _litellm.get_model_info(model=litellm_model)
-            info: dict[str, object] = dict(raw) if raw else {}
-        except KeyError, ValueError:
-            logger.info(
-                PROVIDER_MODEL_INFO_UNAVAILABLE,
-                model=litellm_model,
-            )
-            return {}
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
-                model=litellm_model,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            return {}
-        return info if isinstance(info, dict) else {}
 
 
 # ── Module-level helpers ─────────────────────────────────────────
