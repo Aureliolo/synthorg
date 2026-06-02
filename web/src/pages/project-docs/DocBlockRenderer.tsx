@@ -73,10 +73,25 @@ function MetricBlockView({ block }: { block: MetricBlock }) {
   )
 }
 
+const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
+
+// Defense-in-depth: the backend LinkBlock validator already rejects
+// dangerous schemes at write time, but guard the render path too so a
+// disallowed (javascript:, data:) or protocol-relative (//host) url can
+// never reach the href attribute. Relative paths and #fragments pass.
+function sanitizeHref(url: string): string {
+  if (url.startsWith('//')) return '#'
+  try {
+    return ALLOWED_LINK_SCHEMES.has(new URL(url).protocol) ? url : '#'
+  } catch {
+    return url
+  }
+}
+
 function LinkBlockView({ block }: { block: LinkBlock }) {
   return (
     <a
-      href={block.url}
+      href={sanitizeHref(block.url)}
       className="text-primary underline hover:no-underline"
       rel="noopener noreferrer"
       target="_blank"

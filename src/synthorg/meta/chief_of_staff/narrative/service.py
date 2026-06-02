@@ -10,6 +10,7 @@ the latest narrative. A run with no recorded activity is a benign skip
 (returns ``None``).
 """
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocBlock, DocMetadata
@@ -22,6 +23,7 @@ from synthorg.meta.chief_of_staff.narrative.constants import (
     TASK_TAG_PREFIX,
 )
 from synthorg.meta.chief_of_staff.narrative.errors import (
+    NarrativeGenerationError,
     NarrativeSourceUnavailableError,
 )
 from synthorg.meta.chief_of_staff.narrative.models import ReducedRun
@@ -31,6 +33,7 @@ from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesi
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATED,
+    COS_NARRATIVE_GENERATION_FAILED,
     COS_NARRATIVE_GENERATION_STARTED,
     COS_NARRATIVE_SOURCE_UNAVAILABLE,
 )
@@ -72,6 +75,11 @@ class ChiefOfStaffNarrator:
         Returns:
             The persisted :class:`DocMetadata`, or ``None`` when the run
             recorded no activity to narrate.
+
+        Raises:
+            NarrativeGenerationError: When the sources were present but
+                assembling or persisting the narrative failed (the
+                best-effort pipeline trigger logs and degrades on this).
         """
         logger.info(
             COS_NARRATIVE_GENERATION_STARTED,
@@ -90,8 +98,24 @@ class ChiefOfStaffNarrator:
             return None
         reduced = reduce_run(inputs)
         prose = await self._synthesiser.write_prose(reduced)
-        body = assemble_blocks(reduced, prose)
-        metadata = await self._persist(reduced, body)
+        try:
+            body = assemble_blocks(reduced, prose)
+            metadata = await self._persist(reduced, body)
+        except Exception as exc:
+            # Sources were present but assembly or persistence failed.
+            # Surface a typed error the best-effort pipeline trigger logs
+            # and degrades on, rather than leaking a raw backend exception.
+            reraise_critical(exc)
+            logger.warning(
+                COS_NARRATIVE_GENERATION_FAILED,
+                task_id=task_id,
+                project_id=project_id,
+                execution_id=reduced.execution_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "failed to assemble or persist the run narrative"
+            raise NarrativeGenerationError(msg) from exc
         logger.info(
             COS_NARRATIVE_GENERATED,
             task_id=task_id,

@@ -8,6 +8,9 @@ project-brain decisions and still-live items recorded against the brief.
 It returns a :class:`RunNarrativeInputs` and performs no synthesis.
 """
 
+import asyncio
+
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.narrative.constants import (
     BRAIN_LIST_LIMIT,
@@ -23,6 +26,11 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     AgentTurnTally,
     RunNarrativeInputs,
 )
+from synthorg.observability import get_logger
+from synthorg.observability.events.chief_of_staff import (
+    COS_NARRATIVE_FRAMES_TRUNCATED,
+    COS_NARRATIVE_SOURCE_UNAVAILABLE,
+)
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameFilterSpec,
@@ -36,6 +44,8 @@ from synthorg.project_brain.models import (
     BrainSummary,
 )
 from synthorg.project_brain.service import ProjectBrainService
+
+logger = get_logger(__name__)
 
 # Statuses that mean an item is still live at run end (an open question,
 # a standing blocker, an active risk, an unresolved dependency).
@@ -51,7 +61,7 @@ _LIVE_STATUSES: frozenset[BrainEntryStatus] = frozenset(
 class NarrativeReader:
     """Reads flight-recorder frames and brain entries for one run."""
 
-    __slots__ = ("_brain", "_frames", "_task_repo")
+    __slots__ = ("_brain", "_currency", "_frames", "_task_repo")
 
     def __init__(
         self,
@@ -59,10 +69,12 @@ class NarrativeReader:
         frames: FlightRecorderFrameRepository,
         brain: ProjectBrainService,
         task_repo: TaskRepository,
+        currency: CurrencyCode = DEFAULT_CURRENCY,
     ) -> None:
         self._frames = frames
         self._brain = brain
         self._task_repo = task_repo
+        self._currency = currency
 
     async def gather(
         self,
@@ -85,16 +97,44 @@ class NarrativeReader:
         """
         task = await self._task_repo.get(task_id)
         if task is None:
-            msg = f"task {task_id!r} not found; nothing to narrate"
+            # A task that just completed but is absent is a data-integrity
+            # concern, not a routine skip: log it at WARNING so it stands
+            # out from the benign no-frames case below.
+            logger.warning(
+                COS_NARRATIVE_SOURCE_UNAVAILABLE,
+                task_id=task_id,
+                project_id=project_id,
+                reason="task_not_found",
+            )
+            msg = "task not found; nothing to narrate"
             raise NarrativeSourceUnavailableError(msg)
         aggregate = await self._frames.get_aggregate(
             FlightRecorderFrameFilterSpec(task_id=task_id)
         )
         execution_id = aggregate.latest_execution_id
         if execution_id is None:
-            msg = f"task {task_id!r} has no recorded frames; nothing to narrate"
+            # A brief that ran but recorded no frames is an expected,
+            # benign skip (e.g. it completed before any agent turn).
+            logger.debug(
+                COS_NARRATIVE_SOURCE_UNAVAILABLE,
+                task_id=task_id,
+                project_id=project_id,
+                reason="no_frames_recorded",
+            )
+            msg = "no recorded frames; nothing to narrate"
             raise NarrativeSourceUnavailableError(msg)
         frames = await self._scan_frames(execution_id)
+        if len(frames) >= MAX_FRAMES_SCANNED:
+            # The scan bound was hit, so the roster and tallies reflect
+            # only the newest frames; surface the truncation rather than
+            # let an operator read a partial narrative as complete.
+            logger.warning(
+                COS_NARRATIVE_FRAMES_TRUNCATED,
+                task_id=task_id,
+                execution_id=execution_id,
+                frames_scanned=len(frames),
+                max_turn_index=aggregate.max_turn_index,
+            )
         decisions, open_items = await self._gather_brain(
             project_id=project_id, task_id=task_id
         )
@@ -105,6 +145,7 @@ class NarrativeReader:
             brief_title=task.title,
             final_status=task.status,
             total_cost=aggregate.total_cost,
+            currency=self._currency,
             total_turns=aggregate.max_turn_index,
             frame_count=len(frames),
             decisions=decisions,
@@ -155,17 +196,22 @@ class NarrativeReader:
         decision_ids = tuple(
             s.entry_id for s in summaries if s.entry_kind is BrainEntryKind.DECISION
         )[:MAX_DECISIONS]
-        decisions: list[BrainEntry] = []
-        for entry_id in decision_ids:
-            entry = await self._brain.get_current(
-                project_id=project_id, entry_id=entry_id
-            )
-            if entry is not None:
-                decisions.append(entry)
+        # The per-id fetches are independent; run them concurrently under a
+        # TaskGroup so a many-decision brief does not pay N serial round-trips.
+        async with asyncio.TaskGroup() as group:
+            tasks = [
+                group.create_task(
+                    self._brain.get_current(project_id=project_id, entry_id=entry_id)
+                )
+                for entry_id in decision_ids
+            ]
+        decisions = tuple(
+            entry for task in tasks if (entry := task.result()) is not None
+        )
         open_items = tuple(s for s in summaries if s.status in _LIVE_STATUSES)[
             :MAX_OPEN_ITEMS
         ]
-        return tuple(decisions), open_items
+        return decisions, open_items
 
 
 def _tally_agents(
@@ -178,21 +224,19 @@ def _tally_agents(
     """
     counts: dict[str, int] = {}
     costs: dict[str, float] = {}
-    tools: dict[str, list[str]] = {}
+    tools: dict[str, set[str]] = {}
     for frame in frames:
         agent = frame.agent_id
         counts[agent] = counts.get(agent, 0) + 1
         costs[agent] = costs.get(agent, 0.0) + frame.cost
-        seen = tools.setdefault(agent, [])
-        for tool in frame.tool_calls:
-            if tool not in seen:
-                seen.append(tool)
+        seen = tools.setdefault(agent, set())
+        seen.update(tool for tool in frame.tool_calls if tool)
     tallies = tuple(
         AgentTurnTally(
             agent_id=NotBlankStr(agent),
             turn_count=counts[agent],
             cost=costs[agent],
-            tools=tuple(tools[agent]),
+            tools=tuple(NotBlankStr(tool) for tool in sorted(tools[agent])),
         )
         for agent in counts
     )

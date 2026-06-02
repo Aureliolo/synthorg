@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Work pipeline protocol.
 
 The single coherent path every entry adapter feeds: a typed

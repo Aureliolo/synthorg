@@ -54,9 +54,9 @@ def reduce_run(inputs: RunNarrativeInputs) -> ReducedRun:
     )
     open_items = tuple(
         OpenItem(
-            kind=NotBlankStr(summary.entry_kind.value),
+            kind=summary.entry_kind,
             title=NotBlankStr(_clip(summary.title)),
-            status=NotBlankStr(summary.status.value),
+            status=summary.status,
         )
         for summary in inputs.open_items
     )
@@ -66,6 +66,7 @@ def reduce_run(inputs: RunNarrativeInputs) -> ReducedRun:
         execution_id=inputs.execution_id,
         brief_title=inputs.brief_title,
         final_status=inputs.final_status,
+        currency=inputs.currency,
         metrics=_metrics(
             inputs, decision_count=len(decisions), open_count=len(open_items)
         ),
@@ -121,7 +122,11 @@ def _metrics(
         RunMetric(name="Final status", value=NotBlankStr(inputs.final_status.value)),
         RunMetric(name="Turns", value=NotBlankStr(str(inputs.total_turns))),
         RunMetric(name="Agents", value=NotBlankStr(str(len(inputs.agent_turns)))),
-        RunMetric(name="Total cost", value=NotBlankStr(f"{inputs.total_cost:.2f}")),
+        RunMetric(
+            name="Total cost",
+            value=NotBlankStr(f"{inputs.total_cost:.2f}"),
+            unit=inputs.currency,
+        ),
         RunMetric(name="Decisions", value=NotBlankStr(str(decision_count))),
         RunMetric(name="Open items", value=NotBlankStr(str(open_count))),
     )
@@ -142,7 +147,7 @@ def _outcomes(
     return (
         _clip(f"Final status: {inputs.final_status.value}"),
         _clip(f"{inputs.total_turns} turns across {agent_count} agent(s)"),
-        _clip(f"Total cost: {inputs.total_cost:.2f}"),
+        _clip(f"Total cost: {inputs.total_cost:.2f} {inputs.currency}"),
         _clip(
             f"{decision_count} decision(s) recorded, "
             f"{open_count} open item(s) remaining"

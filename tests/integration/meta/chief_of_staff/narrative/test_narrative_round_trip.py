@@ -6,21 +6,22 @@ flight recorder and project brain supply the run's facts, a scripted
 provider supplies the connective prose, and the test asserts the
 generated ``run_narrative`` living doc commits to the docs branch and
 reads back through the dashboard read path with the trustworthy
-structured blocks intact. This is the end-to-end check the issue's
-acceptance ("persisted with the project, an auditor can trust") demands
-for the per-brief pipeline seam.
+structured blocks intact. A second test drives a real
+:class:`DefaultWorkPipeline.run` through to completion with the narrator
+attached, proving the post-run trigger seam persists a narrative on a
+genuine pipeline run, not just on a direct ``generate`` call.
 """
 
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog
 
 from synthorg.core.enums import DocType, GitBackendType, Priority, TaskStatus, TaskType
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.factory import build_docs_service
@@ -29,6 +30,15 @@ from synthorg.docs_engine.models import (
     LinkBlock,
     MetricBlock,
 )
+from synthorg.docs_engine.service import DocsService
+from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.pipeline.models import RoutingVerdict, WorkItem, WorkSource
+from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
+from synthorg.engine.pipeline.service import DefaultWorkPipeline
+from synthorg.engine.routing.models import RoutingCandidate
+from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workspace.git_backend import (
     GitBackendConfig,
     GitBackendDeps,
@@ -37,6 +47,7 @@ from synthorg.engine.workspace.git_backend import (
 from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
+from synthorg.hr.registry import AgentRegistryService
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.factory import (
@@ -48,6 +59,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameAggregate,
     FlightRecorderFrameRepository,
 )
+from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.project_brain.models import (
     BrainEntry,
@@ -62,7 +74,9 @@ from synthorg.project_brain.service import ProjectBrainService
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import FakeClock, mock_of
+from tests._shared.scripted_provider import make_e2e_identity
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakeDocsRepository
 
@@ -73,7 +87,7 @@ _PROJECT = NotBlankStr("proj-1")
 _TASK = NotBlankStr("task-1")
 
 
-async def _docs_service(tmp_path: Path) -> Any:
+async def _docs_service(tmp_path: Path) -> DocsService:
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
         config,
@@ -240,3 +254,100 @@ class TestNarrativeRoundTrip:
             task_repo=mock_of[TaskRepository](),
         )
         assert narrator is None
+
+    async def test_narrative_generated_on_real_pipeline_run(
+        self, tmp_path: Path
+    ) -> None:
+        """A genuine DefaultWorkPipeline.run persists a narrative.
+
+        Closes the acceptance gap: the post-run trigger seam is exercised
+        through the full pipeline spine, not just a direct generate() call.
+        """
+        docs_service = await _docs_service(tmp_path)
+        narrator = _real_narrator(docs_service)
+        pipeline = _runnable_pipeline(narrator)
+
+        with structlog.testing.capture_logs() as events:
+            result = await pipeline.run(_pipeline_work_item())
+
+        assert result.final_task_status is TaskStatus.COMPLETED
+        generated = [e for e in events if e["event"] == COS_NARRATIVE_GENERATED]
+        assert len(generated) == 1
+        slug = NotBlankStr(str(generated[0]["slug"]))
+        doc = await docs_service.read_doc(project_id=_PROJECT, slug=slug)
+        assert doc.doc_type is DocType.RUN_NARRATIVE
+        assert any(isinstance(b, DecisionBlock) for b in doc.body)
+
+
+def _real_narrator(docs_service: DocsService) -> object:
+    brain = mock_of[ProjectBrainService](
+        list_current=AsyncMock(return_value=(_decision_summary(),)),
+        get_current=AsyncMock(return_value=_decision_entry()),
+    )
+    frames = mock_of[FlightRecorderFrameRepository](
+        get_aggregate=AsyncMock(return_value=_aggregate()),
+        query=AsyncMock(side_effect=[(_frame("agent-a", 1),), ()]),
+    )
+    narrator = build_chief_of_staff_narrator(
+        ChiefOfStaffConfig(narrative_enabled=True),
+        provider=mock_of[CompletionProvider](
+            complete=AsyncMock(return_value=_prose_response())
+        ),
+        docs_service=docs_service,
+        brain_service=brain,
+        frames=frames,
+        task_repo=mock_of[TaskRepository](get=AsyncMock(return_value=_task())),
+    )
+    assert narrator is not None
+    return narrator
+
+
+def _pipeline_work_item() -> WorkItem:
+    return WorkItem(
+        origin_adapter_id="harness",
+        source=WorkSource.SIMULATION,
+        title="Ship checkout",
+        raw_intent="Build the checkout flow end to end.",
+        project=_PROJECT,
+        requested_by=NotBlankStr("operator-1"),
+        correlation_id="corr-1",
+    )
+
+
+def _runnable_pipeline(narrator: object) -> DefaultWorkPipeline:
+    """A DefaultWorkPipeline whose mocked phases drive a clean solo run."""
+    identity = make_e2e_identity()
+    completed = _task()
+    intake = mock_of[IntakeEngine]()
+    intake.process.return_value = (
+        None,
+        IntakeResult.accepted_result(request_id="corr-1", task_id=_TASK),
+    )
+    task_engine = mock_of[TaskEngine]()
+    task_engine.get_task.return_value = completed
+    project_repo = mock_of[ProjectRepository]()
+    project_repo.get.return_value = mock_of[Project]()
+    routing = mock_of[WorkRoutingPolicy]()
+    routing.decide.return_value = RoutingVerdict.LEAF
+    scorer = mock_of[AgentTaskScorer]()
+    scorer.min_score = 0.1
+    scorer.score.return_value = RoutingCandidate(
+        agent_identity=identity, score=0.9, reason="test"
+    )
+    worker = mock_of[WorkerExecutionService]()
+    worker.execute_once.return_value = completed
+    registry = mock_of[AgentRegistryService]()
+    registry.list_active.return_value = (identity,)
+    pipeline = DefaultWorkPipeline(
+        intake_engine=intake,
+        task_engine=task_engine,
+        project_repository=project_repo,
+        routing_policy=routing,
+        scorer=scorer,
+        worker_execution_service=worker,
+        coordinator=None,
+        agent_registry=registry,
+        clock=FakeClock(),
+    )
+    pipeline.attach_narrator(narrator)  # type: ignore[arg-type]
+    return pipeline

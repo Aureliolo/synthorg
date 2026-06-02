@@ -128,7 +128,7 @@ src/synthorg/meta/
   chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition
     prompts.py         -- Analysis + explanation + clarify-propose prompt templates
-    config.py          -- ChiefOfStaffConfig (learning, alerts, chat, propose)
+    config.py          -- ChiefOfStaffConfig (learning, alerts, chat, propose, narrative)
     models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert,
                           ChatQuery/Response, Conversation, ConversationTurn,
                           ProposedWork, ProposeDecision, ConversationalProposal,
@@ -141,6 +141,16 @@ src/synthorg/meta/
     alerts.py          -- ProactiveAlertService + LoggingAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
     propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
+    narrative/         -- Documentary mode (post-run run narrative)
+      models.py        -- RunNarrativeInputs, ReducedRun, NarrativeProse, SourceRef
+      constants.py     -- Scan / decision / agent / source bounds + section titles
+      errors.py        -- NarrativeSourceUnavailableError, NarrativeGenerationError
+      reader.py        -- NarrativeReader (flight-recorder + brain + task seams)
+      reducer.py       -- reduce_run (deterministic fact rollup)
+      assembler.py     -- assemble_blocks (typed DocBlock body, sourced)
+      synthesiser.py   -- NarrativeSynthesiser (LLM connective prose only)
+      service.py       -- ChiefOfStaffNarrator (orchestrate + persist)
+      factory.py       -- build_chief_of_staff_narrator (ghost-wiring entry)
 
   telemetry/           -- Cross-deployment analytics (opt-in, anonymized)
     config.py          -- CrossDeploymentAnalyticsConfig (disabled by default)
@@ -269,6 +279,11 @@ self_improvement:
     propose_max_proposals_per_turn: 5        # Approval-queue fan-out bound
     propose_max_clarification_turns: 5       # Cap before force-closing the conversation
     propose_default_risk_level: medium       # Risk stamp on each parked ApprovalItem
+    # Documentary mode: post-run run narrative. All opt-in.
+    narrative_enabled: false                 # Master switch
+    narrative_model: example-small-001       # LLM model id (connective prose only)
+    narrative_temperature: 0.4               # Slightly above propose: readable prose
+    narrative_max_tokens: 2000               # Per-call token budget
   schedule:
     cycle_interval_hours: 168       # Weekly
     inflection_trigger_enabled: true

@@ -18,11 +18,13 @@ class TestNarrativeErrors:
         assert err.error_code is ErrorCode.NARRATIVE_SOURCE_UNAVAILABLE
         assert err.retryable is False
 
-    def test_generation_error_is_retryable_internal(self) -> None:
+    def test_generation_error_is_non_retryable_internal(self) -> None:
         err = NarrativeGenerationError()
         assert err.error_category is ErrorCategory.INTERNAL
         assert err.error_code is ErrorCode.NARRATIVE_GENERATION_ERROR
-        assert err.retryable is True
+        # Non-retryable like its sibling: a fresh run regenerates the
+        # narrative, so the API surface should not advertise client retry.
+        assert err.retryable is False
 
     def test_codes_are_in_internal_band(self) -> None:
         assert str(ErrorCode.NARRATIVE_SOURCE_UNAVAILABLE.value).startswith("8")

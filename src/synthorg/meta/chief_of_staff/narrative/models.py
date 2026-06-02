@@ -20,14 +20,30 @@ from pydantic import (
     StringConstraints,
 )
 
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.project_brain.models import BrainEntry, BrainSummary
+from synthorg.meta.chief_of_staff.narrative.constants import DECISION_TEXT_MAX
+from synthorg.project_brain.models import (
+    BrainEntry,
+    BrainEntryKind,
+    BrainEntryStatus,
+    BrainSummary,
+)
 
 # ── Bounded text aliases ─────────────────────────────────────────────
 
 NarrativeProseText = Annotated[str, StringConstraints(min_length=1, max_length=8192)]
 """Bounded non-empty prose paragraph."""
+
+DecisionProseText = Annotated[
+    str, StringConstraints(min_length=1, max_length=DECISION_TEXT_MAX)
+]
+"""Decision outcome / rationale, bounded to the ``DecisionBlock`` limit.
+
+The brain rationale may run to 8192 chars, but a ``DecisionBlock`` caps
+its text at ``DECISION_TEXT_MAX``; the reducer clips to this bound before
+construction, so the type advertises the real limit rather than 8192."""
 
 ShortLabel = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 """Bounded non-empty label (decision title, metric name, source label)."""
@@ -50,7 +66,7 @@ class AgentTurnTally(BaseModel):
     agent_id: NotBlankStr = Field(description="Contributing agent")
     turn_count: int = Field(ge=1, description="Turns this agent produced")
     cost: float = Field(ge=0.0, description="Summed cost of this agent's turns")
-    tools: tuple[str, ...] = Field(
+    tools: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Distinct tool names this agent invoked",
     )
@@ -73,6 +89,10 @@ class RunNarrativeInputs(BaseModel):
     brief_title: NotBlankStr = Field(description="Human-readable brief title")
     final_status: TaskStatus = Field(description="Terminal task status")
     total_cost: float = Field(ge=0.0, description="Summed run cost")
+    currency: CurrencyCode = Field(
+        default=DEFAULT_CURRENCY,
+        description="ISO 4217 code the run's costs are denominated in",
+    )
     total_turns: int = Field(ge=0, description="Highest turn index recorded")
     frame_count: int = Field(ge=0, description="Frames pulled for the run")
     decisions: tuple[BrainEntry, ...] = Field(
@@ -113,8 +133,8 @@ class ReducedDecision(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     title: ShortLabel = Field(description="Decision title")
-    outcome: NarrativeProseText = Field(description="The option chosen")
-    rationale: NarrativeProseText = Field(description="Why this decision")
+    outcome: DecisionProseText = Field(description="The option chosen")
+    rationale: DecisionProseText = Field(description="Why this decision")
     alternatives: tuple[ShortLabel, ...] = Field(
         default=(),
         description="Options considered and not chosen",
@@ -133,7 +153,7 @@ class AgentContribution(BaseModel):
     agent_id: NotBlankStr = Field(description="Contributing agent")
     turn_count: int = Field(ge=1, description="Turns produced")
     cost: float = Field(ge=0.0, description="Summed cost")
-    tools: tuple[str, ...] = Field(default=(), description="Tools invoked")
+    tools: tuple[NotBlankStr, ...] = Field(default=(), description="Tools invoked")
 
 
 class OpenItem(BaseModel):
@@ -141,9 +161,9 @@ class OpenItem(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    kind: NotBlankStr = Field(description="Item kind (open_question, risk, ...)")
+    kind: BrainEntryKind = Field(description="Item kind (open_question, risk, ...)")
     title: ShortLabel = Field(description="Item title")
-    status: NotBlankStr = Field(description="Lifecycle status")
+    status: BrainEntryStatus = Field(description="Lifecycle status")
 
 
 class RunMetric(BaseModel):
@@ -171,6 +191,10 @@ class ReducedRun(BaseModel):
     execution_id: NotBlankStr = Field(description="Execution id")
     brief_title: NotBlankStr = Field(description="Brief title")
     final_status: TaskStatus = Field(description="Terminal task status")
+    currency: CurrencyCode = Field(
+        default=DEFAULT_CURRENCY,
+        description="ISO 4217 code the run's costs are denominated in",
+    )
     metrics: tuple[RunMetric, ...] = Field(
         default=(),
         description="Run metrics (turns, cost, agents, status)",

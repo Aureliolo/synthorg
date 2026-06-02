@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.narrative.constants import FALLBACK_SUMMARY
 from synthorg.meta.chief_of_staff.narrative.models import (
@@ -94,6 +95,26 @@ class TestWriteProse:
     async def test_malformed_json_falls_back(self) -> None:
         prose = await _synth_returning("not json at all").write_prose(_run())
         assert prose.summary == FALLBACK_SUMMARY
+
+    async def test_empty_response_falls_back(self) -> None:
+        prose = await _synth_returning("").write_prose(_run())
+        assert prose.summary == FALLBACK_SUMMARY
+
+    async def test_untrusted_content_is_wrapped(self) -> None:
+        # The agent-authored brief title (and the formatted record) must
+        # enter the prompt fenced via wrap_untrusted, never raw, so a
+        # malicious title cannot inject instructions into the model call.
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(return_value=_response(json.dumps({"summary": "ok"})))
+        )
+        synth = NarrativeSynthesiser(provider=provider, config=ChiefOfStaffConfig())
+        await synth.write_prose(_run())
+        messages = provider.complete.await_args.args[0]
+        content = messages[0].content
+        assert wrap_untrusted(TAG_TASK_DATA, "Ship checkout") in content
+        # The decision rationale (agent-authored) flows through the fenced
+        # record block, so it appears in the prompt too.
+        assert "Auditability wins." in content
 
     async def test_provider_error_falls_back(self) -> None:
         prose = await _synth_raising(RuntimeError("provider down")).write_prose(_run())

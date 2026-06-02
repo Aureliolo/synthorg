@@ -1,3 +1,4 @@
+# module-kind: service
 """Pre-flight cost forecast gate at the work-entry seam.
 
 The gate sits between an entry adapter (intake, task-board, objective,

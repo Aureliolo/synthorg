@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.tracker import CostTracker
+    from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -34,20 +36,9 @@ async def wire_run_narrator(
     missing collaborator leaves the pipeline narrator-less so completed
     briefs simply produce no narrative.
     """
-    from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
-    from synthorg.engine.state import (  # noqa: PLC0415
-        EngineStateSlice,
-        work_pipeline_of,
-    )
-    from synthorg.meta.chief_of_staff.narrative.factory import (  # noqa: PLC0415
-        build_chief_of_staff_narrator,
-    )
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
-    from synthorg.persistence.state import (  # noqa: PLC0415
-        PersistenceStateSlice,
-        persistence_of,
-    )
-    from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
     from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
 
     if (
@@ -61,9 +52,46 @@ async def wire_run_narrator(
     )
     config = meta_self_improvement.chief_of_staff
     if not config.narrative_enabled:
+        logger.debug(
+            COS_NARRATIVE_SKIPPED,
+            service="chief_of_staff_narrator",
+            reason="narrative_disabled",
+        )
         return
+    _attach_narrator(
+        app_state,
+        config=config,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )
+
+
+def _attach_narrator(
+    app_state: AppState,
+    *,
+    config: ChiefOfStaffConfig,
+    provider_registry: ProviderRegistry,
+    cost_tracker: CostTracker | None,
+) -> None:
+    """Build the narrator and attach it to the work pipeline.
+
+    Pulls the run-cost currency from the wired budget config (falling back
+    to the system default) so the narrative renders costs with a unit.
+    """
+    from synthorg.budget.currency import DEFAULT_CURRENCY  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.docs_engine.state import DocsStateSlice  # noqa: PLC0415
+    from synthorg.engine.state import work_pipeline_of  # noqa: PLC0415
+    from synthorg.meta.chief_of_staff.narrative.factory import (  # noqa: PLC0415
+        build_chief_of_staff_narrator,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+    from synthorg.project_brain.state import ProjectBrainStateSlice  # noqa: PLC0415
+
     available = provider_registry.list_providers()
     provider = provider_registry.get(available[0]) if available else None
+    budget_config = app_state.slice(BudgetStateSlice).budget_config
+    currency = budget_config.currency if budget_config else DEFAULT_CURRENCY
     narrator = build_chief_of_staff_narrator(
         config,
         provider=provider,
@@ -72,6 +100,7 @@ async def wire_run_narrator(
         frames=persistence_of(app_state).flight_recorder_frames,
         task_repo=persistence_of(app_state).tasks,
         cost_tracker=cost_tracker,
+        currency=currency,
     )
     if narrator is None:
         logger.info(

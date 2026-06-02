@@ -129,3 +129,4 @@ COS_NARRATIVE_SOURCE_UNAVAILABLE: Final[str] = (
 )
 COS_NARRATIVE_SKIPPED: Final[str] = "chief_of_staff.narrative.skipped"
 COS_NARRATIVE_PROSE_FALLBACK: Final[str] = "chief_of_staff.narrative.prose_fallback"
+COS_NARRATIVE_FRAMES_TRUNCATED: Final[str] = "chief_of_staff.narrative.frames_truncated"

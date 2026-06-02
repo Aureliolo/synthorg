@@ -39,5 +39,5 @@ class NarrativeGenerationError(DomainError):
     default_message: ClassVar[str] = "Run narrative generation failed"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     error_code: ClassVar[ErrorCode] = ErrorCode.NARRATIVE_GENERATION_ERROR
-    retryable: ClassVar[bool] = True
+    retryable: ClassVar[bool] = False
     status_code: ClassVar[int] = 500

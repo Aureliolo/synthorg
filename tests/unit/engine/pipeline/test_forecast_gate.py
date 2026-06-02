@@ -76,6 +76,7 @@ class _StubWorkPipeline:
 
     def __init__(self) -> None:
         self.calls: list[WorkItem] = []
+        self.narrator: RunNarrator | None = None
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         self.calls.append(work_item)

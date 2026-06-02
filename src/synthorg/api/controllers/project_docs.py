@@ -66,7 +66,10 @@ DocTypeFilter = Annotated[
     QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
-        description="Filter by doc_type (status_report / deliverable / knowledge_note)",
+        description=(
+            "Filter by doc_type (status_report / deliverable / "
+            "knowledge_note / codebase_analysis / run_narrative)"
+        ),
     ),
 ]
 

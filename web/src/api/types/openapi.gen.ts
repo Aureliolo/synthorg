@@ -22939,7 +22939,7 @@ export interface operations {
             readonly query?: {
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
-                /** @description Filter by doc_type (status_report / deliverable / knowledge_note) */
+                /** @description Filter by doc_type (status_report / deliverable / knowledge_note / codebase_analysis / run_narrative) */
                 readonly doc_type?: string | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;

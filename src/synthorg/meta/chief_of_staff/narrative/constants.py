@@ -31,8 +31,9 @@ BRAIN_LIST_LIMIT: Final[int] = 500
 # realistic brief.
 MAX_DECISIONS: Final[int] = 50
 
-# The "who did what" roster lists at most this many agents; a run with
-# more contributors is summarised by contribution volume.
+# The "who did what" roster lists at most this many agents, ordered by
+# contribution volume; a run with more contributors omits the
+# lower-volume agents from the roster.
 MAX_AGENTS_LISTED: Final[int] = 25
 
 # Per-agent tool roster shown in the contribution bullet.

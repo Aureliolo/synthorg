@@ -113,7 +113,8 @@ def _append_contributions(
         return
     items = tuple(
         _clip(
-            f"{c.agent_id}: {c.turn_count} turn(s), cost {c.cost:.2f}"
+            f"{c.agent_id}: {c.turn_count} turn(s), "
+            f"cost {c.cost:.2f} {reduced.currency}"
             + (f", tools: {', '.join(c.tools)}" if c.tools else "")
         )
         for c in reduced.contributions
@@ -168,10 +169,17 @@ def _safe_url(url: str) -> str:
     might carry an unexpected scheme; rather than fail the whole
     narrative, render it as a non-navigable relative anchor.
 
+    A protocol-relative URL (``//host/path``) has no scheme but the
+    browser resolves it against the page protocol, so it is an
+    open-redirect vector; it is coerced too.
+
     Returns:
-        ``url`` unchanged when its scheme is permitted (or relative), or
-        a sanitised relative anchor otherwise.
+        ``url`` unchanged when its scheme is permitted (or it is a
+        genuine relative path / fragment), or a sanitised relative
+        anchor otherwise.
     """
+    if url.startswith("//"):
+        return "#external-protocol-relative"
     scheme, sep, _ = url.partition(":")
     if not sep or "/" in scheme or scheme.lower() in _ALLOWED_URL_SCHEMES:
         return url

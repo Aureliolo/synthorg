@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.models import DecisionBlock
 from synthorg.meta.chief_of_staff.narrative.assembler import assemble_blocks
 from synthorg.meta.chief_of_staff.narrative.constants import (
     DECISION_TEXT_MAX,
@@ -114,7 +115,15 @@ class TestReduceRun:
         assert len(reduced.decisions[0].rationale) == DECISION_TEXT_MAX
         # The clipped rationale must survive real block construction.
         blocks = assemble_blocks(reduced, NarrativeProse(summary="A clean run."))
-        assert blocks
+        assert any(isinstance(b, DecisionBlock) for b in blocks)
+
+    def test_cost_metric_carries_currency(self) -> None:
+        reduced = reduce_run(_inputs())
+        cost = next(m for m in reduced.metrics if m.name == "Total cost")
+        # The default-currency inputs render the cost metric with a unit,
+        # never a bare number (regional-defaults).
+        assert cost.unit == "USD"
+        assert reduced.currency == "USD"
 
     def test_decision_citations_become_sources(self) -> None:
         reduced = reduce_run(

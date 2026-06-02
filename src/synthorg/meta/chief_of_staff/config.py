@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Configuration for Chief of Staff advanced capabilities.
 
 Defines frozen Pydantic config for proposal outcome learning,

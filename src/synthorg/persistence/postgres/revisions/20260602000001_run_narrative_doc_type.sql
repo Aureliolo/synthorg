@@ -1,6 +1,6 @@
 -- depends: 20260531000001_conversational_org_interface
 
--- Documentary mode (#1985): widen the project_docs.doc_type CHECK to
+-- Widen the project_docs.doc_type CHECK to
 -- admit 'run_narrative' (the Chief-of-Staff run narrative) and
 -- 'codebase_analysis' (the DocType member shipped without a matching
 -- CHECK entry, so a brownfield-intake write would have failed at

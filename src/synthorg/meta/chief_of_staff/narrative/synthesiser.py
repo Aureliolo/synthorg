@@ -25,7 +25,11 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_PROSE_FALLBACK
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+)
 from synthorg.providers.protocol import CompletionProvider
 
 logger = get_logger(__name__)
@@ -61,41 +65,15 @@ class NarrativeSynthesiser:
             The model's :class:`NarrativeProse`, or a deterministic
             fallback when the call fails or returns nothing usable.
         """
-        prompt = RUN_NARRATIVE_PROSE_PROMPT.format(
-            brief_title=wrap_untrusted(TAG_TASK_DATA, reduced.brief_title),
-            final_status=reduced.final_status.value,
-            record=wrap_untrusted(TAG_TASK_DATA, _format_record(reduced)),
-        )
-        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
-        config = CompletionConfig(
-            temperature=self._config.narrative_temperature,
-            max_tokens=self._config.narrative_max_tokens,
-        )
-        try:
-            async with cost_recording_scope(
-                cost_tracker=self._cost_tracker,
-                agent_id=_NARRATOR_AGENT,
-                task_id=_NARRATOR_TASK_ID,
-                call_category=LLMCallCategory.SYSTEM,
-            ):
-                response = await asyncio.wait_for(
-                    self._provider.complete(
-                        messages,
-                        self._config.narrative_model,
-                        config=config,
-                    ),
-                    timeout=self._config.agent_call_timeout_seconds,
-                )
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                COS_NARRATIVE_PROSE_FALLBACK,
-                reason="provider_call_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+        response = await self._call_provider(reduced)
+        if response is None:
             return _fallback()
         raw = (response.content or "").strip()
+        if not raw:
+            logger.warning(
+                COS_NARRATIVE_PROSE_FALLBACK, reason="empty_response_content"
+            )
+            return _fallback()
         parsed = extract_json_from_llm_response(
             raw,
             logger_callback=lambda detail: logger.warning(
@@ -114,6 +92,48 @@ class NarrativeSynthesiser:
             contributions=_clean(parsed.get("contributions")),
             outcomes=_clean(parsed.get("outcomes")),
         )
+
+    async def _call_provider(self, reduced: ReducedRun) -> CompletionResponse | None:
+        """Call the provider for the run's prose under cost + timeout scope.
+
+        Returns:
+            The provider response, or ``None`` when the call fails (the
+            caller degrades to the deterministic fallback).
+        """
+        prompt = RUN_NARRATIVE_PROSE_PROMPT.format(
+            brief_title=wrap_untrusted(TAG_TASK_DATA, reduced.brief_title),
+            final_status=reduced.final_status.value,
+            record=wrap_untrusted(TAG_TASK_DATA, _format_record(reduced)),
+        )
+        messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
+        config = CompletionConfig(
+            temperature=self._config.narrative_temperature,
+            max_tokens=self._config.narrative_max_tokens,
+        )
+        try:
+            async with cost_recording_scope(
+                cost_tracker=self._cost_tracker,
+                agent_id=_NARRATOR_AGENT,
+                task_id=_NARRATOR_TASK_ID,
+                call_category=LLMCallCategory.SYSTEM,
+            ):
+                return await asyncio.wait_for(
+                    self._provider.complete(
+                        messages,
+                        self._config.narrative_model,
+                        config=config,
+                    ),
+                    timeout=self._config.agent_call_timeout_seconds,
+                )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                COS_NARRATIVE_PROSE_FALLBACK,
+                reason="provider_call_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
 
 def _fallback() -> NarrativeProse:

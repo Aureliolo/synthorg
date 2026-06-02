@@ -30,6 +30,7 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     RunMetric,
     SourceRef,
 )
+from synthorg.project_brain.models import BrainEntryKind, BrainEntryStatus
 
 pytestmark = pytest.mark.unit
 
@@ -105,6 +106,50 @@ class TestAssembleBlocks:
         prose_texts = [b.text for b in blocks if isinstance(b, ProseBlock)]
         assert any("No decisions were recorded" in t for t in prose_texts)
 
+    def test_no_contributions_placeholder(self) -> None:
+        blocks = assemble_blocks(_run(), _prose())
+        prose_texts = [b.text for b in blocks if isinstance(b, ProseBlock)]
+        assert any("No agent activity was recorded" in t for t in prose_texts)
+
+    def test_contribution_cost_carries_currency(self) -> None:
+        blocks = assemble_blocks(
+            _run(
+                contributions=(
+                    AgentContribution(
+                        agent_id=NotBlankStr("agent-a"), turn_count=3, cost=1.5
+                    ),
+                )
+            ),
+            _prose(),
+        )
+        bullet_text = [
+            item for b in blocks if isinstance(b, BulletListBlock) for item in b.items
+        ]
+        # _run() defaults to the system currency (USD); the cost must
+        # render with a unit, never as a bare number.
+        assert any("cost 1.50 USD" in t for t in bullet_text)
+
+    def test_malicious_source_url_coerced_end_to_end(self) -> None:
+        # A javascript: or protocol-relative citation that flows through
+        # the assembler must reach the LinkBlock as a non-navigable anchor.
+        blocks = assemble_blocks(
+            _run(
+                sources=(
+                    SourceRef(
+                        label="Evil", url="javascript:alert(1)", kind=NotBlankStr("x")
+                    ),
+                    SourceRef(
+                        label="Redirect",
+                        url="//evil.example.com",
+                        kind=NotBlankStr("x"),
+                    ),
+                )
+            ),
+            _prose(),
+        )
+        urls = {b.url for b in blocks if isinstance(b, LinkBlock)}
+        assert urls == {"#external-javascript", "#external-protocol-relative"}
+
     def test_contributions_rendered(self) -> None:
         blocks = assemble_blocks(
             _run(
@@ -136,9 +181,9 @@ class TestAssembleBlocks:
             _run(
                 open_items=(
                     OpenItem(
-                        kind=NotBlankStr("risk"),
+                        kind=BrainEntryKind.RISK,
                         title="Latency",
-                        status=NotBlankStr("active"),
+                        status=BrainEntryStatus.ACTIVE,
                     ),
                 )
             ),
@@ -182,3 +227,11 @@ class TestSafeUrl:
 
     def test_disallowed_scheme_coerced(self) -> None:
         assert _safe_url("javascript:alert(1)") == "#external-javascript"
+
+    def test_protocol_relative_coerced(self) -> None:
+        # `//host` has no scheme but the browser resolves it against the
+        # page protocol: an open-redirect vector that must be coerced.
+        assert _safe_url("//evil.example.com/x") == "#external-protocol-relative"
+
+    def test_relative_path_preserved(self) -> None:
+        assert _safe_url("../sibling/doc") == "../sibling/doc"

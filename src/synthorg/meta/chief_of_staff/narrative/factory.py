@@ -7,6 +7,7 @@ or any required collaborator is absent, so the pipeline trigger stays a
 no-op rather than failing.
 """
 
+from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.tracker import CostTracker
 from synthorg.docs_engine.service import DocsService
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -15,6 +16,7 @@ from synthorg.meta.chief_of_staff.narrative.service import ChiefOfStaffNarrator
 from synthorg.meta.chief_of_staff.narrative.synthesiser import NarrativeSynthesiser
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_SKIPPED
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameRepository,
 )
@@ -34,6 +36,7 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
     frames: FlightRecorderFrameRepository | None,
     task_repo: TaskRepository | None,
     cost_tracker: CostTracker | None = None,
+    currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> ChiefOfStaffNarrator | None:
     """Construct the run narrator, or ``None`` when it cannot be wired.
 
@@ -45,12 +48,18 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         frames: Flight-recorder frame store (who did what, metrics).
         task_repo: Task read seam (brief title, final status).
         cost_tracker: Optional cost tracker for the prose call.
+        currency: ISO 4217 code the run's costs are denominated in.
 
     Returns:
         A ready :class:`ChiefOfStaffNarrator`, or ``None`` when
         documentary mode is disabled or any collaborator is missing.
     """
     if not config.narrative_enabled:
+        logger.debug(
+            COS_NARRATIVE_SKIPPED,
+            service="chief_of_staff_narrator",
+            reason="narrative_disabled",
+        )
         return None
     if (
         provider is None
@@ -60,7 +69,9 @@ def build_chief_of_staff_narrator(  # noqa: PLR0913 -- keyword-only DI of every 
         or task_repo is None
     ):
         return None
-    reader = NarrativeReader(frames=frames, brain=brain_service, task_repo=task_repo)
+    reader = NarrativeReader(
+        frames=frames, brain=brain_service, task_repo=task_repo, currency=currency
+    )
     synthesiser = NarrativeSynthesiser(
         provider=provider, config=config, cost_tracker=cost_tracker
     )

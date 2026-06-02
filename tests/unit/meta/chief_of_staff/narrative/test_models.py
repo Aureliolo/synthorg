@@ -14,6 +14,7 @@ from synthorg.meta.chief_of_staff.narrative.models import (
     RunMetric,
     SourceRef,
 )
+from synthorg.project_brain.models import BrainEntryKind, BrainEntryStatus
 
 pytestmark = pytest.mark.unit
 
@@ -55,9 +56,9 @@ class TestReducedModels:
             outcomes=("Checkout shipped",),
             open_items=(
                 OpenItem(
-                    kind=NotBlankStr("risk"),
+                    kind=BrainEntryKind.RISK,
                     title="Latency under load",
-                    status=NotBlankStr("active"),
+                    status=BrainEntryStatus.ACTIVE,
                 ),
             ),
             sources=(

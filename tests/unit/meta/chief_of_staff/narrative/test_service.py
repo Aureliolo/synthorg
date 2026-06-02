@@ -10,6 +10,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata, DocSummary
 from synthorg.docs_engine.service import DocsService
 from synthorg.meta.chief_of_staff.narrative.errors import (
+    NarrativeGenerationError,
     NarrativeSourceUnavailableError,
 )
 from synthorg.meta.chief_of_staff.narrative.models import (
@@ -99,6 +100,18 @@ class TestGenerate:
         # The dedup lookup keys on the brief, not the execution.
         assert list_docs.await_args is not None
         assert list_docs.await_args.kwargs["tag"] == NotBlankStr("task:task-1")
+
+    async def test_persist_failure_raises_generation_error(self) -> None:
+        # Sources present but the write failed: a typed error the pipeline
+        # trigger degrades on, not a raw backend exception.
+        gather = AsyncMock(return_value=_inputs())
+        list_docs = AsyncMock(return_value=())
+        write_doc = AsyncMock(side_effect=RuntimeError("git write failed"))
+        narrator = _narrator(gather=gather, list_docs=list_docs, write_doc=write_doc)
+        with pytest.raises(NarrativeGenerationError):
+            await narrator.generate(
+                task_id=NotBlankStr("task-1"), project_id=NotBlankStr("proj-1")
+            )
 
     async def test_source_unavailable_returns_none(self) -> None:
         gather = AsyncMock(side_effect=NarrativeSourceUnavailableError())

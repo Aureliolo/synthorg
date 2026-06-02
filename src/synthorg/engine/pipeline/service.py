@@ -1,3 +1,4 @@
+# module-kind: service
 """Default work pipeline implementation.
 
 Composes the already-wired runtime services into the single spine:
@@ -37,6 +38,7 @@ from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_NARRATIVE_GENERATION_FAILED,
+    COS_NARRATIVE_SKIPPED,
 )
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
@@ -223,10 +225,19 @@ class DefaultWorkPipeline:
         missing narrator is a no-op, and any error degrades to a logged
         warning. Critical interpreter errors still propagate.
         """
-        if self._narrator is None:
+        # Snapshot once: the attach is a monotonic None -> narrator late-bind,
+        # so a single load keeps the null-check and the call on the same value.
+        narrator = self._narrator
+        if narrator is None:
+            logger.debug(
+                COS_NARRATIVE_SKIPPED,
+                correlation_id=work_item.correlation_id,
+                task_id=task.id,
+                reason="no_narrator_attached",
+            )
             return
         try:
-            await self._narrator.generate(task_id=task.id, project_id=work_item.project)
+            await narrator.generate(task_id=task.id, project_id=work_item.project)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
