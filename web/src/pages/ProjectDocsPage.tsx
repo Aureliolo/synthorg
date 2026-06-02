@@ -165,7 +165,12 @@ export default function ProjectDocsPage() {
             onSelect={handleSelect}
             onFilterChange={setFilter}
           />
-          <DocViewer doc={doc} loading={docLoading} error={docError} />
+          <DocViewer
+            doc={doc}
+            loading={docLoading}
+            error={docError}
+            projectId={projectId}
+          />
         </div>
       </ErrorBoundary>
     </div>

@@ -82,6 +82,14 @@ class CodeRunnerArgs(BaseModel):
         le=600,
         description="Optional timeout in seconds (minimum 1)",
     )
+    purpose: Literal["general", "tests"] = Field(
+        default="general",
+        description=(
+            "Set to 'tests' when this run executes the project's test "
+            "suite, so its structured result is captured for the "
+            "deliverable's provenance receipt"
+        ),
+    )
 
 
 # ── Approval ────────────────────────────────────────────────────────

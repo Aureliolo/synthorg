@@ -1,0 +1,216 @@
+# module-kind: repository
+"""SQLite repository implementation for knowledge-usage records."""
+# ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
+
+import contextlib
+import sqlite3
+
+import aiosqlite
+from pydantic import AwareDatetime, ValidationError
+
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.deliverable_receipts import (
+    PERSISTENCE_KNOWLEDGE_USAGE_DELETE_FAILED,
+    PERSISTENCE_KNOWLEDGE_USAGE_DESERIALIZE_FAILED,
+    PERSISTENCE_KNOWLEDGE_USAGE_QUERY_FAILED,
+    PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared import normalize_utc
+from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageFilterSpec,
+    KnowledgeUsageRecord,
+)
+from synthorg.persistence.sqlite._shared import (
+    WriteContext,
+    is_unique_constraint_error,
+)
+
+logger = get_logger(__name__)
+
+_COLUMNS = (
+    "record_id, task_id, execution_id, project_id, "
+    "source_id, chunk_id, content_hash, recorded_at"
+)
+
+_INSERT_SQL = f"""\
+INSERT INTO knowledge_usage_record ({_COLUMNS}) VALUES (
+    :record_id, :task_id, :execution_id, :project_id,
+    :source_id, :chunk_id, :content_hash, :recorded_at
+)"""
+
+
+class SQLiteKnowledgeUsageRecordRepository:
+    """SQLite implementation of ``KnowledgeUsageRecordRepository``.
+
+    Args:
+        db: An open aiosqlite connection.
+        write_context: Async context manager that serializes writes on
+            the shared connection.
+    """
+
+    def __init__(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        write_context: WriteContext,
+    ) -> None:
+        self._db = db
+        self._write_context = write_context
+
+    async def append(self, record: KnowledgeUsageRecord) -> None:
+        """Persist one usage record (append-only).
+
+        Raises:
+            DuplicateRecordError: If a record with the same id exists.
+            QueryError: If the database query fails.
+        """
+        async with self._write_context():
+            try:
+                await self._db.execute(_INSERT_SQL, self._to_row(record))
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                if is_unique_constraint_error(exc):
+                    msg = f"Knowledge usage record {record.record_id!r} already exists"
+                    logger.warning(
+                        PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                        record_id=record.record_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise DuplicateRecordError(msg) from exc
+                msg = f"Failed to save knowledge usage record {record.record_id!r}"
+                logger.warning(
+                    PERSISTENCE_KNOWLEDGE_USAGE_SAVE_FAILED,
+                    record_id=record.record_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+
+    async def query(
+        self,
+        filter_spec: KnowledgeUsageFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[KnowledgeUsageRecord, ...]:
+        """Return records matching the filter, newest-first.
+
+        Returns:
+            The matching records.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        limit = validate_pagination_args(
+            limit, offset, event=PERSISTENCE_KNOWLEDGE_USAGE_QUERY_FAILED
+        )
+        where, params = self._build_where(filter_spec)
+        sql = (
+            f"SELECT {_COLUMNS} FROM knowledge_usage_record WHERE {where} "
+            "ORDER BY recorded_at DESC, record_id DESC LIMIT ? OFFSET ?"
+        )
+        params.extend([limit, offset])
+        try:
+            cursor = await self._db.execute(sql, params)
+            rows = await cursor.fetchall()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to query knowledge usage records"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_USAGE_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return tuple(self._row_to_model(dict(r)) for r in rows)
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        """Delete records with ``recorded_at < threshold``.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(
+                    "DELETE FROM knowledge_usage_record WHERE recorded_at < ?",
+                    (format_iso_utc(normalize_utc(threshold)),),
+                )
+                count = cursor.rowcount
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                with contextlib.suppress(sqlite3.Error, aiosqlite.Error):
+                    await self._db.rollback()
+                msg = "Failed to purge knowledge usage records by threshold"
+                logger.warning(
+                    PERSISTENCE_KNOWLEDGE_USAGE_DELETE_FAILED,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return count
+
+    def _build_where(
+        self, filter_spec: KnowledgeUsageFilterSpec
+    ) -> tuple[str, list[object]]:
+        """Build the WHERE clause + positional params for ``filter_spec``.
+
+        Returns:
+            ``(where_clause, params)`` without the leading ``WHERE``.
+        """
+        conditions: list[str] = []
+        params: list[object] = []
+        if filter_spec.execution_id is not None:
+            conditions.append("execution_id = ?")
+            params.append(filter_spec.execution_id)
+        if filter_spec.task_id is not None:
+            conditions.append("task_id = ?")
+            params.append(filter_spec.task_id)
+        if filter_spec.project_id is not None:
+            conditions.append("project_id = ?")
+            params.append(filter_spec.project_id)
+        if filter_spec.source_id is not None:
+            conditions.append("source_id = ?")
+            params.append(filter_spec.source_id)
+        where = " AND ".join(conditions) if conditions else "1=1"
+        return where, params
+
+    def _to_row(self, record: KnowledgeUsageRecord) -> dict[str, object]:
+        """Flatten a record into a row dict.
+
+        Returns:
+            Result of type ``dict[str, object]``.
+        """
+        data = record.model_dump(mode="json")
+        data["recorded_at"] = format_iso_utc(normalize_utc(record.recorded_at))
+        return data
+
+    def _row_to_model(self, row: dict[str, object]) -> KnowledgeUsageRecord:
+        """Convert a database row to a ``KnowledgeUsageRecord``.
+
+        Returns:
+            Result of type ``KnowledgeUsageRecord``.
+
+        Raises:
+            QueryError: If the row cannot be deserialized.
+        """
+        try:
+            return KnowledgeUsageRecord.model_validate(row)
+        except ValidationError as exc:
+            msg = f"Failed to deserialize usage record {row.get('record_id')!r}"
+            logger.warning(
+                PERSISTENCE_KNOWLEDGE_USAGE_DESERIALIZE_FAILED,
+                record_id=row.get("record_id"),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc

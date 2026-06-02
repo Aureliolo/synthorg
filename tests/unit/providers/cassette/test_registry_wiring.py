@@ -132,20 +132,20 @@ class TestBootResolver:
     """The Cat-2 bootstrap resolver honours env > default."""
 
     def test_default_is_inert(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from synthorg.api.auto_wire_phase1 import _resolve_cassette_config
+        from synthorg.api.auto_wire_phase1 import resolve_cassette_config
 
         monkeypatch.delenv("SYNTHORG_PROVIDERS_CASSETTE_MODE", raising=False)
-        assert _resolve_cassette_config() is None
+        assert resolve_cassette_config() is None
 
     def test_env_override_activates_replay(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        from synthorg.api.auto_wire_phase1 import _resolve_cassette_config
+        from synthorg.api.auto_wire_phase1 import resolve_cassette_config
 
         target = tmp_path / "boot.json"
         monkeypatch.setenv("SYNTHORG_PROVIDERS_CASSETTE_MODE", "replay")
         monkeypatch.setenv("SYNTHORG_PROVIDERS_CASSETTE_PATH", str(target))
-        cfg = _resolve_cassette_config()
+        cfg = resolve_cassette_config()
         assert cfg is not None
         assert cfg.mode is CassetteMode.REPLAY
         assert cfg.path == target
@@ -153,9 +153,9 @@ class TestBootResolver:
     def test_active_mode_without_path_is_rejected(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from synthorg.api.auto_wire_phase1 import _resolve_cassette_config
+        from synthorg.api.auto_wire_phase1 import resolve_cassette_config
 
         monkeypatch.setenv("SYNTHORG_PROVIDERS_CASSETTE_MODE", "record")
         monkeypatch.delenv("SYNTHORG_PROVIDERS_CASSETTE_PATH", raising=False)
         with pytest.raises(ValueError, match="path is required"):
-            _resolve_cassette_config()
+            resolve_cassette_config()

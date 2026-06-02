@@ -156,7 +156,7 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     return tracker
 
 
-def _resolve_cassette_config() -> CassetteConfig | None:
+def resolve_cassette_config() -> CassetteConfig | None:
     """Resolve the boot-time cassette config (Cat-2: env > default).
 
     Uses the sanctioned pre-init bootstrap resolver -- no ``os.environ`` read
@@ -201,7 +201,7 @@ def _wire_provider_registry(
     try:
         registry = ProviderRegistry.from_config(
             effective_config.providers,
-            cassette=_resolve_cassette_config(),
+            cassette=resolve_cassette_config(),
         )
     except Exception as exc:
         log_exception_redacted(

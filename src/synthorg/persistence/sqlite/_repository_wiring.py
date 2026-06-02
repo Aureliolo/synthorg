@@ -51,6 +51,9 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 from synthorg.persistence.sqlite.circuit_breaker_repo import (
     SQLiteCircuitBreakerStateRepository,
 )
+from synthorg.persistence.sqlite.code_execution_repo import (
+    SQLiteCodeExecutionRecordRepository,
+)
 from synthorg.persistence.sqlite.codebase_structure_map_repo import (
     SQLiteCodebaseStructureMapRepository,
 )
@@ -66,6 +69,9 @@ from synthorg.persistence.sqlite.custom_rule_repo import (
 )
 from synthorg.persistence.sqlite.decision import (
     SQLiteDecisionRepository,
+)
+from synthorg.persistence.sqlite.deliverable_receipt_repo import (
+    SQLiteDeliverableReceiptRepository,
 )
 from synthorg.persistence.sqlite.docs_repo import SQLiteDocsRepository
 from synthorg.persistence.sqlite.fine_tune_repo import (
@@ -91,6 +97,9 @@ from synthorg.persistence.sqlite.knowledge_provenance_repo import (
 )
 from synthorg.persistence.sqlite.knowledge_source_repo import (
     SQLiteKnowledgeSourceRepository,
+)
+from synthorg.persistence.sqlite.knowledge_usage_repo import (
+    SQLiteKnowledgeUsageRecordRepository,
 )
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
@@ -249,6 +258,9 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._api_keys = None
         self._checkpoints = None
         self._flight_recorder_frames = None
+        self._deliverable_receipts = None
+        self._knowledge_usage_records = None
+        self._code_execution_records = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -386,6 +398,18 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._flight_recorder_frames = SQLiteFlightRecorderFrameRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._deliverable_receipts = SQLiteDeliverableReceiptRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._knowledge_usage_records = SQLiteKnowledgeUsageRecordRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._code_execution_records = SQLiteCodeExecutionRecordRepository(
             self._db,
             write_context=self.write_context,
         )

@@ -51,6 +51,9 @@ from synthorg.persistence.checkpoint_protocol import (
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRepository,
 )
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
 from synthorg.persistence.codebase_structure_map_protocol import (
     CodebaseStructureMapRepository,
 )
@@ -67,6 +70,9 @@ from synthorg.persistence.custom_rule_protocol import (
     CustomRuleRepository,
 )
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deliverable_receipt_protocol import (
+    DeliverableReceiptRepository,
+)
 from synthorg.persistence.docs_protocol import DocsRepository
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,
@@ -84,6 +90,9 @@ from synthorg.persistence.idempotency_protocol import (
 from synthorg.persistence.knowledge_protocol import (
     ChunkProvenanceRepository,
     KnowledgeSourceRepository,
+)
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageRecordRepository,
 )
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,
@@ -197,6 +206,9 @@ class PersistenceBackend(Protocol):
         project_docs: Repository for living-documentation metadata persistence.
         knowledge_sources: Repository for the knowledge-source registry.
         knowledge_provenance: Repository for per-chunk knowledge provenance.
+        deliverable_receipts: Repository for deliverable provenance receipts.
+        knowledge_usage_records: Repository for per-run knowledge-usage capture.
+        code_execution_records: Repository for per-run code-execution capture.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
@@ -408,6 +420,21 @@ class PersistenceBackend(Protocol):
     @property
     def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
         """Repository for flight-recorder frame persistence."""
+        ...
+
+    @property
+    def deliverable_receipts(self) -> DeliverableReceiptRepository:
+        """Repository for deliverable provenance-receipt persistence."""
+        ...
+
+    @property
+    def knowledge_usage_records(self) -> KnowledgeUsageRecordRepository:
+        """Repository for per-run knowledge-usage capture persistence."""
+        ...
+
+    @property
+    def code_execution_records(self) -> CodeExecutionRecordRepository:
+        """Repository for per-run code-execution (test) capture persistence."""
         ...
 
     @property

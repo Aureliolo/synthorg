@@ -1,13 +1,15 @@
 import type { LivingDocument } from '@/api/types'
 import { DocBlockRenderer } from './DocBlockRenderer'
+import { ReceiptPanel } from './ReceiptPanel'
 
 export interface DocViewerProps {
   doc: LivingDocument | null
   loading: boolean
   error: string | null
+  projectId: string
 }
 
-export function DocViewer({ doc, loading, error }: DocViewerProps) {
+export function DocViewer({ doc, loading, error, projectId }: DocViewerProps) {
   if (loading && doc === null) {
     return (
       <div className="text-muted-foreground p-4 text-sm">
@@ -48,6 +50,15 @@ export function DocViewer({ doc, loading, error }: DocViewerProps) {
           </ul>
         )}
       </header>
+      {doc.doc_type === 'deliverable' && (
+        // Key by target so switching deliverables remounts the panel and
+        // resets its fetch/validation state (no stale result carries over).
+        <ReceiptPanel
+          key={`${projectId}::${doc.slug}`}
+          projectId={projectId}
+          slug={doc.slug}
+        />
+      )}
       <div className="flex flex-col gap-section-gap">
         {doc.body.map((block) => (
           <DocBlockRenderer key={block.block_id} block={block} />

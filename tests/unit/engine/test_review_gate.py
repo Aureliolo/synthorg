@@ -490,3 +490,127 @@ class TestReviewGateServiceDecisionRecording:
                 approved=True,
                 decided_by="bob",
             )
+
+
+class _RecordingReceiptSeam:
+    """Structural ``DeliverableReceiptSeam`` double for the build seam.
+
+    Records the tasks it was asked to build a receipt for and, when
+    ``error`` is set, raises it to exercise the non-fatal failure path.
+    """
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.calls: list[Task] = []
+        self._error = error
+
+    async def build_and_store(self, *, task: Task) -> object:
+        """Record the task and optionally raise the configured error."""
+        self.calls.append(task)
+        if self._error is not None:
+            raise self._error
+        return object()
+
+
+@pytest.mark.unit
+class TestReviewGateServiceReceiptSeam:
+    """Tests for the deliverable-receipt build seam on completion."""
+
+    async def test_completed_transition_triggers_receipt_build(self) -> None:
+        """Approving a review builds a receipt for the completed task."""
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        seam = _RecordingReceiptSeam()
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            receipt_service=seam,
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        assert len(seam.calls) == 1
+        assert seam.calls[0].id == "task-1"
+
+    async def test_rejection_does_not_build_receipt(self) -> None:
+        """Rejecting a review (IN_PROGRESS) never builds a receipt."""
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        seam = _RecordingReceiptSeam()
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            receipt_service=seam,
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=False,
+            decided_by="bob",
+            reason="needs rework",
+        )
+
+        assert seam.calls == []
+
+    async def test_receipt_build_failure_does_not_roll_back_transition(
+        self,
+    ) -> None:
+        """A receipt-build failure is swallowed; the transition stands.
+
+        The COMPLETED transition has already committed before the seam
+        fires, so a half-built provenance bundle must never propagate an
+        exception that would surface to the approver as a failed review.
+        """
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        seam = _RecordingReceiptSeam(error=RuntimeError("builder exploded"))
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            receipt_service=seam,
+        )
+
+        # Must NOT raise despite the seam raising.
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        # The transition committed and the seam was invoked exactly once.
+        mock_te.submit.assert_awaited_once()
+        mutation = mock_te.submit.call_args.args[0]
+        assert mutation.target_status == TaskStatus.COMPLETED
+        assert len(seam.calls) == 1
+
+    async def test_set_receipt_service_attaches_seam_post_construction(
+        self,
+    ) -> None:
+        """``set_receipt_service`` wires the seam after construction."""
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        seam = _RecordingReceiptSeam()
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+        )
+        service.set_receipt_service(seam)
+
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        assert len(seam.calls) == 1

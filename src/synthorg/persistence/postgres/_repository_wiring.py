@@ -41,6 +41,9 @@ from synthorg.persistence.postgres.checkpoint_repo import (
 from synthorg.persistence.postgres.circuit_breaker_repo import (
     PostgresCircuitBreakerStateRepository,
 )
+from synthorg.persistence.postgres.code_execution_repo import (
+    PostgresCodeExecutionRecordRepository,
+)
 from synthorg.persistence.postgres.codebase_structure_map_repo import (
     PostgresCodebaseStructureMapRepository,
 )
@@ -57,6 +60,9 @@ from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
 )
 from synthorg.persistence.postgres.decision import PostgresDecisionRepository
+from synthorg.persistence.postgres.deliverable_receipt_repo import (
+    PostgresDeliverableReceiptRepository,
+)
 from synthorg.persistence.postgres.docs_repo import PostgresDocsRepository
 from synthorg.persistence.postgres.fine_tune_repo import (
     PostgresFineTuneCheckpointRepository,
@@ -81,6 +87,9 @@ from synthorg.persistence.postgres.knowledge_provenance_repo import (
 )
 from synthorg.persistence.postgres.knowledge_source_repo import (
     PostgresKnowledgeSourceRepository,
+)
+from synthorg.persistence.postgres.knowledge_usage_repo import (
+    PostgresKnowledgeUsageRecordRepository,
 )
 from synthorg.persistence.postgres.mcp_installation_repo import (
     PostgresMcpInstallationRepository,
@@ -218,6 +227,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._api_keys = None
         self._checkpoints = None
         self._flight_recorder_frames = None
+        self._deliverable_receipts = None
+        self._knowledge_usage_records = None
+        self._code_execution_records = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -299,6 +311,9 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._api_keys = PostgresApiKeyRepository(pool)
         self._checkpoints = PostgresCheckpointRepository(pool)
         self._flight_recorder_frames = PostgresFlightRecorderFrameRepository(pool)
+        self._deliverable_receipts = PostgresDeliverableReceiptRepository(pool)
+        self._knowledge_usage_records = PostgresKnowledgeUsageRecordRepository(pool)
+        self._code_execution_records = PostgresCodeExecutionRecordRepository(pool)
         self._heartbeats = PostgresHeartbeatRepository(pool)
         self._agent_states = PostgresAgentStateRepository(pool)
         self._settings = PostgresSettingsRepository(pool)

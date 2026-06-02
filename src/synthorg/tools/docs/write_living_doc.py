@@ -15,6 +15,7 @@ from synthorg.core.enums import (
     ActionType,
     ToolCategory,
 )
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -90,6 +91,7 @@ class WriteLivingDocTool(BaseTool):
         try:
             parsed = WriteLivingDocArgs.model_validate(arguments)
             body = _materialise_body(parsed.body)
+            related_task_ids = _with_current_task(parsed.related_task_ids)
             metadata = await self._docs_service.write_doc(
                 project_id=self._project_id,
                 title=parsed.title,
@@ -97,7 +99,7 @@ class WriteLivingDocTool(BaseTool):
                 author_agent_id=self._author_agent_id,
                 body=body,
                 tags=parsed.tags,
-                related_task_ids=parsed.related_task_ids,
+                related_task_ids=related_task_ids,
                 slug=parsed.slug,
             )
         except (ValueError, TypeError) as exc:
@@ -143,6 +145,28 @@ class WriteLivingDocTool(BaseTool):
                 "head_commit_sha": metadata.head_commit_sha,
             },
         )
+
+
+def _with_current_task(
+    related_task_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Union the producing task id into the agent-supplied task links.
+
+    The deliverable-receipt builder resolves a task's deliverable doc by
+    scanning for the task id in ``related_task_ids``. Agents do not
+    reliably self-link, so the producing task (bound on the execution
+    identity for the duration of the run) is stamped here. Order is
+    preserved and the id is appended only when absent; outside a tracked
+    run the links pass through unchanged.
+
+    Returns:
+        ``related_task_ids`` with the current task id appended when it is
+        bound and not already present.
+    """
+    identity = current_execution_identity()
+    if identity is None or identity.task_id in related_task_ids:
+        return related_task_ids
+    return (*related_task_ids, identity.task_id)
 
 
 def _materialise_body(

@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 
 from synthorg._core.features import BaseFeatureStateSlice, require_service
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 
 if TYPE_CHECKING:
@@ -47,6 +50,28 @@ def persistence_of(app_state: AppStateSliceMixin) -> PersistenceBackend:
     return require_service(
         app_state.slice(PersistenceStateSlice).backend, "Persistence"
     )
+
+
+def code_execution_records_of(
+    app_state: AppStateSliceMixin,
+) -> CodeExecutionRecordRepository | None:
+    """Return the code-execution record repository, or ``None`` if unwired.
+
+    Companion to :func:`persistence_of` for the optional capture path:
+    the code-runner persists ``purpose='tests'`` runs into this
+    append-only store, but a dev / empty-company run with no backend
+    must still build its tool registry. Returning ``None`` lets the
+    code-runner no-op its capture rather than 503-ing the whole runtime.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The append-only code-execution record repository, or ``None``
+        when no backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.code_execution_records if backend is not None else None
 
 
 def persistence_backend_label(app_state: AppStateSliceMixin) -> str:

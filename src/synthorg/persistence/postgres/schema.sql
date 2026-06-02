@@ -2033,3 +2033,68 @@ CREATE INDEX idx_project_charters_conversation_id
 ON project_charters (conversation_id);
 CREATE INDEX idx_project_charters_created_id
 ON project_charters (created_at DESC, id DESC);
+
+-- ── Deliverable receipts (provenance bundles) ────────────────
+CREATE TABLE deliverable_receipt (
+    receipt_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    execution_id TEXT NOT NULL,
+    deliverable_doc_slug TEXT NOT NULL,
+    issued_at TIMESTAMPTZ NOT NULL,
+    total_cost DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (total_cost >= 0),
+    currency TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    payload_json TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_deliverable_receipt_task
+ON deliverable_receipt (task_id);
+CREATE INDEX idx_deliverable_receipt_project
+ON deliverable_receipt (project_id, issued_at DESC);
+CREATE INDEX idx_deliverable_receipt_slug
+ON deliverable_receipt (deliverable_doc_slug);
+
+-- ── Knowledge usage records (sources consulted per run) ──────
+CREATE TABLE knowledge_usage_record (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    execution_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_knowledge_usage_execution
+ON knowledge_usage_record (execution_id, recorded_at DESC);
+CREATE INDEX idx_knowledge_usage_task
+ON knowledge_usage_record (task_id);
+CREATE INDEX idx_knowledge_usage_project
+ON knowledge_usage_record (project_id, recorded_at DESC);
+CREATE INDEX idx_knowledge_usage_source
+ON knowledge_usage_record (source_id);
+
+-- ── Code execution records (test runs per run) ───────────────
+CREATE TABLE code_execution_record (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    execution_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    purpose TEXT NOT NULL CHECK (purpose IN ('general', 'tests')),
+    command TEXT NOT NULL,
+    returncode INTEGER NOT NULL,
+    passed BOOLEAN NOT NULL,
+    timed_out BOOLEAN NOT NULL,
+    stdout_tail TEXT,
+    stderr_tail TEXT,
+    executed_at TIMESTAMPTZ NOT NULL,
+    CHECK (passed = (returncode = 0 AND NOT timed_out))
+);
+
+CREATE INDEX idx_code_execution_execution
+ON code_execution_record (execution_id, executed_at DESC);
+CREATE INDEX idx_code_execution_task
+ON code_execution_record (task_id);
+CREATE INDEX idx_code_execution_project
+ON code_execution_record (project_id, executed_at DESC);

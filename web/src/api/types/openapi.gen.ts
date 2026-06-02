@@ -3201,6 +3201,40 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/docs/{slug}/receipt": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetReceipt */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsSlugReceiptGetReceipt"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/docs/{slug}/receipt/validate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ValidateReceipt */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsSlugReceiptValidateValidateReceipt"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/projects/{project_id}/docs/search": {
         readonly parameters: {
             readonly query?: never;
@@ -5785,6 +5819,19 @@ export type components = {
              */
             readonly success: boolean;
         };
+        /** ApiResponse[DeliverableReceipt] */
+        readonly ApiResponse_DeliverableReceipt_: {
+            readonly data: components["schemas"]["DeliverableReceipt"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
         /** ApiResponse[DemoGreeting] */
         readonly ApiResponse_DemoGreeting_: {
             readonly data: components["schemas"]["DemoGreeting"] | null;
@@ -6398,6 +6445,19 @@ export type components = {
         /** ApiResponse[ReadinessStatus] */
         readonly ApiResponse_ReadinessStatus_: {
             readonly data: components["schemas"]["ReadinessStatus"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ReceiptValidationResult] */
+        readonly ApiResponse_ReceiptValidationResult_: {
+            readonly data: components["schemas"]["ReceiptValidationResult"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -9215,6 +9275,47 @@ export type components = {
              */
             readonly entry_kind: "decision";
         };
+        /** DeliverableReceipt */
+        readonly DeliverableReceipt: {
+            /** @description Replayable cassette reference, when recording was active */
+            readonly cassette: components["schemas"]["ReceiptCassetteRef"] | null;
+            /** @description Currency of total_cost */
+            readonly currency: string;
+            /**
+             * @description Key decisions and rationale
+             * @default []
+             */
+            readonly decisions: readonly components["schemas"]["ReceiptDecisionEntry"][];
+            /** @description Slug of the deliverable living document */
+            readonly deliverable_doc_slug: string;
+            /** @description Run identifier the receipt covers */
+            readonly execution_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly issued_at: string;
+            /** @description Owning project */
+            readonly project_id: string;
+            /** @description Surrogate receipt identifier */
+            readonly receipt_id: string;
+            /** @description Adversarial-review snapshot, when one ran */
+            readonly red_team: components["schemas"]["ReceiptRedTeamEntry"] | null;
+            /**
+             * @description Distinct knowledge sources consulted
+             * @default []
+             */
+            readonly sources: readonly components["schemas"]["ReceiptSourceEntry"][];
+            /** @description Task that produced the deliverable */
+            readonly task_id: string;
+            /**
+             * @description Test runs and results
+             * @default []
+             */
+            readonly tests: readonly components["schemas"]["ReceiptTestEntry"][];
+            /** @description Aggregate run cost for the task */
+            readonly total_cost: number;
+        };
         /** DemoGreeting */
         readonly DemoGreeting: {
             readonly greeting: string;
@@ -9600,7 +9701,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -13284,6 +13385,82 @@ export type components = {
          * @enum {string}
          */
         readonly RebalanceMode: "none" | "scale_existing" | "reject_if_over";
+        /** ReceiptCassetteRef */
+        readonly ReceiptCassetteRef: {
+            /** @description SHA-256 of cassette bytes at issue */
+            readonly content_hash: string;
+            /** @description Cassette file path */
+            readonly path: string;
+        };
+        /** ReceiptDecisionEntry */
+        readonly ReceiptDecisionEntry: {
+            /** @description Stable brain-entry identifier */
+            readonly entry_id: string;
+            /** @description Why the decision was taken */
+            readonly rationale: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            /** @description Brain-entry revision captured */
+            readonly revision: number;
+            /** @description Decision title */
+            readonly title: string;
+        };
+        /** ReceiptRedTeamEntry */
+        readonly ReceiptRedTeamEntry: {
+            /** @description Total findings captured */
+            readonly finding_count: number;
+            /** @description Full findings snapshot */
+            readonly findings_snapshot: readonly components["schemas"]["RedTeamFinding"][];
+            /** @description Findings at or above HIGH severity */
+            readonly high_plus_count: number;
+            /** @description Red-team summary */
+            readonly summary: string;
+            readonly verdict: components["schemas"]["RedTeamVerdict"];
+        };
+        /** ReceiptSourceEntry */
+        readonly ReceiptSourceEntry: {
+            /** @description Retrieved chunk identifier */
+            readonly chunk_id: string;
+            /** @description SHA-256 of source content at capture */
+            readonly content_hash: string;
+            /** @description Stable knowledge source identifier */
+            readonly source_id: string;
+            /** @description Source title at capture time */
+            readonly title: string;
+            /** @description Source URI */
+            readonly uri: string;
+        };
+        /** ReceiptTestEntry */
+        readonly ReceiptTestEntry: {
+            /** @description Test command that was run */
+            readonly command: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly executed_at: string;
+            /** @description True iff returncode 0 and not timed out */
+            readonly passed: boolean;
+            /** @description Persisted code-execution record id */
+            readonly record_id: string;
+            /** @description Process exit code */
+            readonly returncode: number;
+            /** @description Whether the run hit its time limit */
+            readonly timed_out: boolean;
+        };
+        /** ReceiptValidationResult */
+        readonly ReceiptValidationResult: {
+            /**
+             * @description Human-readable inconsistencies; empty when valid
+             * @default []
+             */
+            readonly errors: readonly string[];
+            /** @description Whether all present signals are consistent */
+            readonly valid: boolean;
+        };
         /** RecommendedAction */
         readonly RecommendedAction: {
             /** @description Semantic action key */
@@ -13298,6 +13475,62 @@ export type components = {
             /** @description UI button text */
             readonly label: string;
         };
+        /**
+         * RedTeamAttackSurface
+         * @description The dimension along which the red-team attacked a deliverable.
+         *
+         *     Members:
+         *         CORRECTNESS: Does the deliverable do what was asked.
+         *         SECURITY: Input validation, secret handling, injection sinks,
+         *             authn/authz, OWASP-style defects.
+         *         REQUIREMENTS: Mismatch between brief / acceptance criteria
+         *             and the deliverable's actual content.
+         *         GROUNDING: Claims asserted without traceable sources;
+         *             hallucinated or ungrounded factual statements.
+         * @enum {string}
+         */
+        readonly RedTeamAttackSurface: "correctness" | "security" | "requirements" | "grounding";
+        /** RedTeamFinding */
+        readonly RedTeamFinding: {
+            readonly attack_surface: components["schemas"]["RedTeamAttackSurface"];
+            /** @default [] */
+            readonly citations: readonly string[];
+            readonly description: string;
+            /** @default [] */
+            readonly evidence: readonly string[];
+            readonly severity: components["schemas"]["RedTeamSeverity"];
+            /**
+             * @default agent
+             * @enum {string}
+             */
+            readonly source: "agent" | "heuristic" | "knowledge_substrate";
+            readonly suggested_fix: string | null;
+        };
+        /**
+         * RedTeamSeverity
+         * @description Severity of a single red-team finding.
+         *
+         *     Ordering is via :data:`_SEVERITY_RANK`. ``INFO`` is the floor
+         *     (purely advisory); ``CRITICAL`` is the ceiling (always blocks
+         *     completion regardless of autonomy).
+         * @enum {string}
+         */
+        readonly RedTeamSeverity: "info" | "low" | "medium" | "high" | "critical";
+        /**
+         * RedTeamVerdict
+         * @description Aggregate verdict the gate returns for a deliverable.
+         *
+         *     Members:
+         *         PASS: No findings; deliverable proceeds to COMPLETED.
+         *         PASS_WITH_FINDINGS: Findings exist but none meet the blocking
+         *             severity threshold under the current autonomy; deliverable
+         *             proceeds to COMPLETED with findings attached to the
+         *             audit record.
+         *         BLOCK: At least one finding meets the blocking threshold;
+         *             deliverable is routed back to IN_PROGRESS as rework.
+         * @enum {string}
+         */
+        readonly RedTeamVerdict: "pass" | "pass_with_findings" | "block";
         /** RedundancyRate */
         readonly RedundancyRate: {
             /** @description Number of similarity samples */
@@ -23024,6 +23257,68 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_tuple_DocVersion_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsSlugReceiptGetReceipt: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+                /** @description Resource identifier */
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_DeliverableReceipt_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsSlugReceiptValidateValidateReceipt: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+                /** @description Resource identifier */
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ReceiptValidationResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

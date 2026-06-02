@@ -329,6 +329,27 @@
     },
     {
       "controllers": [
+        "DeliverableReceiptController"
+      ],
+      "depends_on": [],
+      "directory": "src/synthorg/deliverable_receipts",
+      "ghost_wired_symbols": [
+        "build_deliverable_receipt_service",
+        "DeliverableReceiptService",
+        "ReceiptBuilder",
+        "ReceiptValidator",
+        "ReceiptRenderer"
+      ],
+      "mcp_tool_names": [],
+      "name": "deliverable_receipts",
+      "protocol_exports": [],
+      "settings_namespace": null,
+      "state_slice_fields": [
+        "service"
+      ]
+    },
+    {
+      "controllers": [
         "DemoController"
       ],
       "depends_on": [],
@@ -1195,6 +1216,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-02T08:54:30.504725Z",
+  "generated_at": "2026-06-02T09:31:16.058104Z",
   "schema_version": 1
 }

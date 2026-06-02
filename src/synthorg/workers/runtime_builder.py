@@ -63,7 +63,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.state import persistence_of
+from synthorg.persistence.state import code_execution_records_of, persistence_of
 from synthorg.providers.state import has_active_provider, provider_registry_of
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -307,6 +307,7 @@ async def _build_tool_registry(
         web_request_timeout=web_request_timeout,
         browser_settings=browser_settings,
         desktop_settings=desktop_settings,
+        code_execution_records=code_execution_records_of(app_state),
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends

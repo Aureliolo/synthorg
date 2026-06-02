@@ -58,6 +58,7 @@ import { companyHandlers } from './company'
 import { connectionsHandlers } from './connections'
 import { coordinationHandlers } from './coordination'
 import { customRulesHandlers } from './custom-rules'
+import { deliverableReceiptsHandlers } from './deliverableReceipts'
 import { escalationsHandlers } from './escalations'
 import { fineTuningHandlers } from './fine-tuning'
 import { healthHandlers } from './health'
@@ -118,6 +119,7 @@ export const defaultHandlers = [
   ...connectionsHandlers,
   ...coordinationHandlers,
   ...customRulesHandlers,
+  ...deliverableReceiptsHandlers,
   ...escalationsHandlers,
   ...fineTuningHandlers,
   ...healthHandlers,
@@ -162,6 +164,10 @@ export { authLoginSuccess, authSetupSuccess } from './auth'
 
 export { buildAuditEntry } from './audit'
 export { buildCharter } from './charter'
+export {
+  buildDeliverableReceipt,
+  buildReceiptValidationResult,
+} from './deliverableReceipts'
 export { buildConnection } from './connections'
 export { buildCustomRule } from './custom-rules'
 export { buildCloudPreset, buildLocalPreset } from './providers'

@@ -14,7 +14,9 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import SourceStatus, SourceType
+from synthorg.core.execution_identity import current_execution_identity
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.chunking import chunk_raw_document
 from synthorg.knowledge.constants import (
@@ -28,6 +30,10 @@ from synthorg.knowledge.errors import (
 from synthorg.knowledge.loaders import build_source_loader
 from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.deliverable_receipts import (
+    KNOWLEDGE_USAGE_RECORD_FAILED,
+    KNOWLEDGE_USAGE_RECORDED,
+)
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_INGEST_FAILED,
     KNOWLEDGE_LIST_REQUESTED,
@@ -39,6 +45,7 @@ from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SOURCE_UNCHANGED,
 )
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
+from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageRecord
 from synthorg.versioning.hashing import compute_text_hash
 
 if TYPE_CHECKING:
@@ -50,6 +57,9 @@ if TYPE_CHECKING:
     from synthorg.knowledge.loaders.web import HtmlFetcher
     from synthorg.knowledge.retrieval import KnowledgeRetriever
     from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
+    from synthorg.persistence.knowledge_usage_protocol import (
+        KnowledgeUsageRecordRepository,
+    )
 
 logger = get_logger(__name__)
 
@@ -84,6 +94,7 @@ class KnowledgeService:
         config: KnowledgeConfig,
         html_fetcher: HtmlFetcher | None = None,
         ticket_fetcher: TicketFetcher | None = None,
+        usage_records: KnowledgeUsageRecordRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sources = sources
@@ -92,6 +103,7 @@ class KnowledgeService:
         self._config = config
         self._html_fetcher = html_fetcher
         self._ticket_fetcher = ticket_fetcher
+        self._usage_records = usage_records
         self._clock = clock if clock is not None else SystemClock()
         # Per-source serialisation: concurrent ingest/reindex/delete of
         # the same source_id would otherwise race on the read-modify-
@@ -183,10 +195,72 @@ class KnowledgeService:
         project_id: NotBlankStr | None = None,
         limit: int = KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     ) -> tuple[KnowledgeHit, ...]:
-        """Return cited knowledge hits for *query* within scope."""
-        return await self._retriever.search(
+        """Return cited knowledge hits for *query* within scope.
+
+        When invoked inside a bound execution scope (an agent run), each
+        returned hit is recorded as a :class:`KnowledgeUsageRecord` so a
+        deliverable receipt can later enumerate the sources the run
+        consulted. Recording is best-effort: a capture failure never
+        fails the search.
+        """
+        hits = await self._retriever.search(
             query=query, project_id=project_id, limit=limit
         )
+        await self._record_usage(hits, search_project_id=project_id)
+        return hits
+
+    async def _record_usage(
+        self,
+        hits: tuple[KnowledgeHit, ...],
+        *,
+        search_project_id: NotBlankStr | None,
+    ) -> None:
+        """Append a usage record per hit for the bound run (best-effort).
+
+        No-ops when no usage repository is wired, when called outside a
+        bound execution scope, or when no project scope can be resolved.
+        """
+        if self._usage_records is None or not hits:
+            return
+        identity = current_execution_identity()
+        if identity is None:
+            return
+        project_id = identity.project_id or search_project_id
+        if project_id is None:
+            return
+        recorded = 0
+        for hit in hits:
+            citation = hit.citation
+            try:
+                await self._usage_records.append(
+                    KnowledgeUsageRecord(
+                        task_id=identity.task_id,
+                        execution_id=identity.execution_id,
+                        project_id=project_id,
+                        source_id=citation.source_id,
+                        chunk_id=citation.chunk_id,
+                        content_hash=citation.content_hash,
+                        recorded_at=self._clock.now(),
+                    )
+                )
+            except Exception as exc:
+                reraise_critical(exc)
+                logger.warning(
+                    KNOWLEDGE_USAGE_RECORD_FAILED,
+                    execution_id=identity.execution_id,
+                    source_id=citation.source_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
+            recorded += 1
+        if recorded:
+            logger.debug(
+                KNOWLEDGE_USAGE_RECORDED,
+                execution_id=identity.execution_id,
+                task_id=identity.task_id,
+                count=recorded,
+            )
 
     async def list_sources(
         self,

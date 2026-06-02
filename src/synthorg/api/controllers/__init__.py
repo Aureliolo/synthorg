@@ -146,6 +146,9 @@ from synthorg.api.controllers.workflow_versions import (
 from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.client.state import has_simulation_runtime
+from synthorg.deliverable_receipts.api_controller import (
+    DeliverableReceiptController,
+)
 
 # Core API controllers (always registered).
 #
@@ -167,6 +170,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ProjectController,
     ProjectBrainController,
     ProjectDocsController,
+    DeliverableReceiptController,
     ProjectKnowledgeController,
     GlobalKnowledgeController,
     TaskController,
@@ -348,6 +352,7 @@ __all__ = [
     "CoordinationController",
     "CoordinationMetricsController",
     "CustomRuleController",
+    "DeliverableReceiptController",
     "DepartmentController",
     "EscalationsController",
     "EvaluationConfigVersionController",

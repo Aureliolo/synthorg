@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, override
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._validation import (
     validate_agent,
@@ -576,21 +577,28 @@ class AgentEngine(
                             ),
                         },
                     )
-                return await self._execute(
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
+                # Bind the run identity (same execution_id flight frames
+                # carry) so capture leaves tag records the receipt joins on.
+                with run_identity_scope(
+                    execution_id=ctx.execution_id,
                     task_id=task_id,
-                    completion_config=completion_config,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                    start=start,
-                    timeout_seconds=timeout_seconds,
-                    tool_invoker=tool_invoker,
-                    effective_autonomy=effective_autonomy,
-                    provider=provider,
-                    project_budget=_project_budget,
-                )
+                    project_id=task.project,
+                ):
+                    return await self._execute(
+                        identity=identity,
+                        task=task,
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        completion_config=completion_config,
+                        ctx=ctx,
+                        system_prompt=system_prompt,
+                        start=start,
+                        timeout_seconds=timeout_seconds,
+                        tool_invoker=tool_invoker,
+                        effective_autonomy=effective_autonomy,
+                        provider=provider,
+                        project_budget=_project_budget,
+                    )
             except (MemoryError, RecursionError) as exc:
                 log_exception_redacted(
                     logger,

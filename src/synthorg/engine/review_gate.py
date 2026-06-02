@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_receipt
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.engine.task_sync import sync_to_task_engine
@@ -91,11 +92,17 @@ class ReviewGateService:
         persistence: PersistenceBackend | None = None,
         red_team_gate: RedTeamGate | None = None,
         vision_gate: VisionVerifierGate | None = None,
+        receipt_service: DeliverableReceiptSeam | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._persistence = persistence
         self._red_team_gate = red_team_gate
         self._vision_gate = vision_gate
+        self._receipt_service = receipt_service
+
+    def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
+        """Attach the receipt service after construction (boot wiring seam)."""
+        self._receipt_service = receipt_service
 
     def set_vision_gate(self, vision_gate: VisionVerifierGate) -> None:
         """Attach the vision gate after construction (boot wiring seam).
@@ -567,6 +574,8 @@ class ReviewGateService:
             reason=normalized_reason,
             approval_id=approval_id,
         )
+
+        await emit_receipt(self._receipt_service, task, target)
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:
         """Raise ``SelfReviewError`` when the decider is the executor.

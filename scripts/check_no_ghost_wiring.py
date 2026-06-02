@@ -93,6 +93,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # factory + strategy + tool-factory construction lets the manifest track
     # the research subsystem's wiring (#1989).
     "src/synthorg/research/",
+    # deliverable_receipts/ is reached at boot via
+    # api/lifecycle_helpers/feature_wiring.py::_wire_deliverable_receipts
+    # (build_deliverable_receipt_service); counting its factory construction
+    # lets the manifest track the provenance-receipt wiring (#1999).
+    "src/synthorg/deliverable_receipts/",
 )
 
 

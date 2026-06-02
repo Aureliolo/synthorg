@@ -1,17 +1,12 @@
 # module-kind: orchestrator
 """On-startup wiring for the optional feature engines.
 
-Extracted from :mod:`synthorg.api.app` so the application factory stays
-focused on construction + the god-module gate keeps net-shrinking. Each
-``_wire_*`` helper composes one feature's services into its state slice
-once persistence (and, where required, a provider) is connected; all are
-best-effort + idempotent (a slice field already set short-circuits) so a
-re-entered lifespan does not double-wire and a missing collaborator
-leaves the feature's controllers to 503 rather than poisoning startup.
-
-``wire_features_on_startup`` runs them in dependency order (docs and
-project_brain first; research reads the knowledge service; the narrator
-reads docs + brain; the proposer follows the chat backend).
+Each ``_wire_*`` helper composes one feature's services into its state
+slice once persistence (and, where required, a provider) is connected;
+all are best-effort + idempotent (an already-set slice field
+short-circuits), so a re-entered lifespan never double-wires and a
+missing collaborator leaves its controllers to 503 rather than poisoning
+startup. ``wire_features_on_startup`` runs them in dependency order.
 """
 
 from typing import TYPE_CHECKING
@@ -25,6 +20,9 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.lifecycle_helpers.conversational_wiring import (
     wire_conversational_actor,
     wire_group_chat_service,
+)
+from synthorg.api.lifecycle_helpers.deliverable_receipt_wiring import (
+    _wire_deliverable_receipts,
 )
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
@@ -628,6 +626,7 @@ async def wire_features_on_startup(
     await _wire_project_brain(app_state)
     await _wire_steering_service(app_state, provider_registry=provider_registry)
     await _wire_knowledge_engine(app_state)
+    await _wire_deliverable_receipts(app_state)
     await _wire_fine_tune_orchestrator(app_state)
     await _wire_research_engine(app_state, provider_registry=provider_registry)
     await _wire_charter_engine(
