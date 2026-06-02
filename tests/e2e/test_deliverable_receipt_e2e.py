@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.budget.tracker import CostTracker
+from synthorg.core.agent import ToolPermissions
 from synthorg.core.enums import (
     GitBackendType,
     SourceStatus,
@@ -324,7 +325,12 @@ class TestDeliverableReceiptAcceptance:
             provider_name=_PROVIDER,
         )
 
-        identity = make_e2e_identity()
+        # write_living_doc is ToolCategory.OTHER, which STANDARD does not
+        # grant; an explicit allow lets this deliverable-producing agent
+        # write the doc the receipt anchors on.
+        identity = make_e2e_identity(
+            tools=ToolPermissions(allowed=("write_living_doc",)),
+        )
         task = make_e2e_task(
             identity=identity,
             title="Auth module",
