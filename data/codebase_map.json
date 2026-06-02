@@ -10117,7 +10117,7 @@
     },
     {
       "kind": "service",
-      "loc": 179,
+      "loc": 175,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/narrative/assembler.py",
       "owning_feature": "meta"
