@@ -10,7 +10,7 @@ an empty / ``None`` section rather than failing the build.
 """
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -65,9 +65,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 #: Upper bound on rows pulled per signal when assembling a receipt.
-_SIGNAL_QUERY_LIMIT: int = 1000
+_SIGNAL_QUERY_LIMIT: Final[int] = 1000
 
-_UNRESOLVED_TITLE: str = "(unresolved source)"
+_UNRESOLVED_TITLE: Final[str] = "(unresolved source)"
 
 
 class ReceiptBuilder:

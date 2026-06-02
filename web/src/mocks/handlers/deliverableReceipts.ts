@@ -7,6 +7,7 @@ import type {
   DeliverableReceipt,
   ReceiptValidationResult,
 } from '@/api/types'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
 
 export function buildDeliverableReceipt(
@@ -20,7 +21,7 @@ export function buildDeliverableReceipt(
     deliverable_doc_slug: 'doc-default',
     issued_at: '2026-05-20T00:00:00Z',
     total_cost: 0,
-    currency: 'USD',
+    currency: DEFAULT_CURRENCY,
     sources: [],
     decisions: [],
     tests: [],

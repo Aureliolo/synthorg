@@ -1,3 +1,4 @@
+# module-kind: repository
 """Postgres implementation of the ``KnowledgeUsageRecordRepository`` protocol.
 
 Postgres sibling of ``persistence/sqlite/knowledge_usage_repo.py``.

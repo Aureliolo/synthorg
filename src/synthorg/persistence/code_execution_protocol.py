@@ -75,17 +75,20 @@ class CodeExecutionRecord(BaseModel):
 
     @model_validator(mode="after")
     def _passed_is_consistent(self) -> Self:
-        """A passing run must have exit code 0 and must not have timed out.
+        """``passed`` must be True iff exit code 0 and not timed out.
 
         Returns:
             The validated record.
 
         Raises:
-            ValueError: If ``passed`` is True while the run had a
-                non-zero exit code or timed out.
+            ValueError: If ``passed`` disagrees with the run outcome --
+                either True while the run had a non-zero exit code or
+                timed out, or False while the run exited 0 and did not
+                time out.
         """
-        if self.passed and (self.returncode != 0 or self.timed_out):
-            msg = "passed=True requires returncode==0 and timed_out=False"
+        expected_passed = self.returncode == 0 and not self.timed_out
+        if self.passed != expected_passed:
+            msg = "passed must be True iff returncode==0 and timed_out=False"
             raise ValueError(msg)
         return self
 

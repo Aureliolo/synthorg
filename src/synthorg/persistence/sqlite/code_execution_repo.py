@@ -1,3 +1,4 @@
+# module-kind: repository
 """SQLite repository implementation for code-execution (test) records."""
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 

@@ -8,7 +8,7 @@ idempotent: any prior receipt section (everything from the receipt
 heading onward) is stripped before the fresh section is appended.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
@@ -35,8 +35,8 @@ RECEIPT_HEADING: str = "Provenance Receipt"
 #: Synthetic author attributed to the receipt projection write.
 RECEIPT_AUTHOR: NotBlankStr = NotBlankStr("_system:deliverable-receipts")
 
-_BULLET_LIMIT: int = 1024
-_COST_DECIMALS: int = 4
+_BULLET_LIMIT: Final[int] = 1024
+_COST_DECIMALS: Final[int] = 4
 
 
 def _clip(text: str, limit: int) -> str:

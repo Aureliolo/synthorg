@@ -1,6 +1,6 @@
 import { apiClient, unwrap } from '../client'
-import type { DeliverableReceipt, ReceiptValidationResult } from '../types'
-import type { ApiResponse } from '../types/http'
+import type { DeliverableReceipt, ReceiptValidationResult } from '@/api/types'
+import type { ApiResponse } from '@/api/types/http'
 
 /**
  * Fetch the provenance receipt attached to a deliverable document.

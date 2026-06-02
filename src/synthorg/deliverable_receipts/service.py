@@ -8,7 +8,7 @@ receipt, persists it, and projects a human-readable section into the
 doc. It also serves reads and validation for the REST controller.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import DocType
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 #: Maximum deliverable docs scanned when resolving a task's deliverable.
-_DELIVERABLE_SCAN_LIMIT: int = 100
+_DELIVERABLE_SCAN_LIMIT: Final[int] = 100
 
 
 class DeliverableReceiptService:

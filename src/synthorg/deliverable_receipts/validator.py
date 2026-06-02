@@ -17,7 +17,7 @@ own snapshot stands (its internal counts are model-enforced).
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import ValidationError
 
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SIGNAL_QUERY_LIMIT: int = 1000
+_SIGNAL_QUERY_LIMIT: Final[int] = 1000
 
 
 class ReceiptValidator:
