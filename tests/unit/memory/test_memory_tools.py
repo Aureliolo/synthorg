@@ -129,10 +129,11 @@ class TestSearchMemoryTool:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        assert "query" in schema["properties"]
-        assert "limit" in schema["properties"]
-        assert "categories" in schema["properties"]
-        assert "query" in schema["required"]
+        schema_d = cast("dict[str, Any]", schema)
+        assert "query" in schema_d["properties"]
+        assert "limit" in schema_d["properties"]
+        assert "categories" in schema_d["properties"]
+        assert "query" in schema_d["required"]
 
     def test_schema_is_deep_copied(self) -> None:
         tool = SearchMemoryTool(
@@ -266,8 +267,9 @@ class TestRecallMemoryTool:
         schema = tool.parameters_schema
         assert schema is not None
         assert schema["type"] == "object"
-        assert "memory_id" in schema["properties"]
-        assert "memory_id" in schema["required"]
+        schema_d = cast("dict[str, Any]", schema)
+        assert "memory_id" in schema_d["properties"]
+        assert "memory_id" in schema_d["required"]
 
     def test_schema_is_deep_copied(self) -> None:
         tool = RecallMemoryTool(

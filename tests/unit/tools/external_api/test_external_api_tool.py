@@ -1,7 +1,7 @@
 """Unit tests for the governed ExternalApiTool."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -225,9 +225,13 @@ class TestExternalApiToolCredentials:
         # identically, so it reuses its approval instead of re-parking.
         store = ApprovalStore()
         tool = _build_tool(conn=_connection(sensitive=True), approval_store=store)
-        park_args = {"connection": "crm-api", "path": "/d", "headers": {"Host": "a"}}
+        park_args: dict[str, Any] = {
+            "connection": "crm-api",
+            "path": "/d",
+            "headers": {"Host": "a"},
+        }
         parked = await tool.execute(arguments=park_args)
-        approval_id = parked.metadata["approval_id"]
+        approval_id = cast("str", parked.metadata["approval_id"])
         item = await store.get(approval_id)
         assert item is not None
         await store.save(item.model_copy(update={"status": ApprovalStatus.APPROVED}))
@@ -319,7 +323,7 @@ class TestExternalApiToolApprovalGating:
             arguments={"connection": "crm-api", "path": "/data"},
         )
         assert result.metadata.get("requires_parking") is True
-        assert result.metadata["approval_id"].startswith("approval-")
+        assert cast("str", result.metadata["approval_id"]).startswith("approval-")
         assert result.metadata["action_type"] == _ACTION_TYPE
         assert provider.requests == []
 
@@ -364,9 +368,9 @@ class TestExternalApiToolApprovalGating:
             provider=provider,
             approval_store=store,
         )
-        args = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
         parked = await tool.execute(arguments=args)
-        approval_id = parked.metadata["approval_id"]
+        approval_id = cast("str", parked.metadata["approval_id"])
 
         # Human approves.
         item = await store.get(approval_id)
@@ -398,7 +402,7 @@ class TestExternalApiToolApprovalGating:
         )
         args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
         parked = await tool.execute(arguments=args)
-        approval_id = parked.metadata["approval_id"]
+        approval_id = cast("str", parked.metadata["approval_id"])
         item = await store.get(approval_id)
         assert item is not None
         await store.save(
@@ -434,7 +438,7 @@ class TestExternalApiToolApprovalGating:
         # by a second agent issuing the same call: the scan skips it and the
         # second caller parks its own approval instead of egressing.
         store = ApprovalStore()
-        args = {"connection": "crm-api", "path": "/data"}
+        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
         owner = _build_tool(
             conn=_connection(sensitive=True),
             approval_store=store,
@@ -442,7 +446,7 @@ class TestExternalApiToolApprovalGating:
             task_id="task-1",
         )
         parked = await owner.execute(arguments=args)
-        item = await store.get(parked.metadata["approval_id"])
+        item = await store.get(cast("str", parked.metadata["approval_id"]))
         assert item is not None
         await store.save(
             item.model_copy(update={"status": ApprovalStatus.APPROVED}),
@@ -475,7 +479,7 @@ class TestExternalApiToolApprovalGating:
             task_id="task-1",
         )
         parked = await owner.execute(arguments=args)
-        approval_id = parked.metadata["approval_id"]
+        approval_id = cast("str", parked.metadata["approval_id"])
         item = await store.get(approval_id)
         assert item is not None
         await store.save(

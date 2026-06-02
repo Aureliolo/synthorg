@@ -1,7 +1,7 @@
 """Tests for discovery tools (list_tools, load_tool, load_tool_resource)."""
 
 import json
-from typing import Any, override
+from typing import Any, cast, override
 
 import pytest
 
@@ -223,7 +223,10 @@ class TestLoadToolResourceTool:
         result = await tool.execute(
             arguments={"tool_name": "rich_tool", "resource_id": "guide"},
         )
-        assert result.metadata["should_load_resource"] == ("rich_tool", "guide")
+        assert cast("dict[str, Any]", result.metadata)["should_load_resource"] == [
+            "rich_tool",
+            "guide",
+        ]
 
     async def test_not_found_returns_error(self) -> None:
         invoker = _make_invoker()

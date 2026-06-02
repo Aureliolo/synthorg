@@ -34,7 +34,8 @@ planned network isolation.
 import asyncio
 import ipaddress
 import re
-from typing import Any, Final, Self
+from collections.abc import Sequence
+from typing import Final, Self
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -332,10 +333,20 @@ def _dns_failure(hostname: str, reason: str, message: str) -> str:
     return message
 
 
+type _AddrInfo = tuple[
+    object,
+    object,
+    object,
+    object,
+    tuple[str, int] | tuple[str, int, int, int],
+]
+"""A single ``socket.getaddrinfo`` entry; the last element is the sockaddr."""
+
+
 async def _resolve_dns(
     hostname: str,
     dns_timeout: float,
-) -> str | list[tuple[Any, ...]]:
+) -> str | Sequence[_AddrInfo]:
     """Resolve *hostname* via async DNS.
 
     Args:
@@ -383,7 +394,7 @@ async def _resolve_dns(
 
 def _check_resolved_ips(
     hostname: str,
-    results: list[tuple[Any, ...]],
+    results: Sequence[_AddrInfo],
 ) -> str | tuple[str, ...]:
     """Validate resolved IPs and return deduplicated public addresses.
 

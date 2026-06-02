@@ -5,7 +5,7 @@ file-size guard to prevent loading excessively large files into memory.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -214,7 +214,7 @@ class ReadFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Read a file and return its content.
 
@@ -225,9 +225,9 @@ class ReadFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` with the file content or an error.
         """
-        user_path: str = arguments["path"]
-        start_line: int | None = arguments.get("start_line")
-        end_line: int | None = arguments.get("end_line")
+        user_path = cast("str", arguments["path"])
+        start_line = cast("int | None", arguments.get("start_line"))
+        end_line = cast("int | None", arguments.get("end_line"))
 
         if err := self._validate_read_args(start_line, end_line):
             return err

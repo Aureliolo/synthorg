@@ -9,7 +9,7 @@ pluggable :class:`ExternalAccessProvider`.
 """
 
 from datetime import UTC
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
@@ -137,7 +137,7 @@ class ExternalApiTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Run a governed external API call.
 
         Returns:

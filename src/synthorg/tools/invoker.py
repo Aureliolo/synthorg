@@ -638,7 +638,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 return deepcopied
             safe_args = deepcopied
         try:
-            return await tool.execute(arguments=safe_args)
+            return await tool.execute(
+                arguments=safe_args,
+            )
         except (MemoryError, RecursionError) as exc:
             logger.warning(
                 TOOL_INVOKE_NON_RECOVERABLE,
@@ -705,6 +707,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 ),
                 is_error=True,
             )
+        raw_risk = result.metadata.get("risk_level", "high")
+        risk_value = raw_risk if isinstance(raw_risk, str) else "high"
         try:
             self._pending_escalations.append(
                 EscalationInfo(
@@ -714,9 +718,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                     action_type=str(
                         result.metadata.get("action_type", tool.action_type),
                     ),
-                    risk_level=ApprovalRiskLevel(
-                        result.metadata.get("risk_level", "high"),
-                    ),
+                    risk_level=ApprovalRiskLevel(risk_value),
                     reason="Agent requested human approval",
                 ),
             )
@@ -806,16 +808,18 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         sanitized = self._html_guard.sanitize(result.content)
         if sanitized.cleaned == result.content:
             return result
-        metadata = dict(result.metadata)
-        metadata["html_guard"] = {
-            "gap_detected": sanitized.gap_detected,
-            "gap_ratio": sanitized.gap_ratio,
-            "stripped_element_count": sanitized.stripped_element_count,
-        }
-        return ToolExecutionResult(
-            content=sanitized.cleaned,
-            is_error=result.is_error,
-            metadata=metadata,
+        return result.model_copy(
+            update={
+                "content": sanitized.cleaned,
+                "metadata": {
+                    **result.metadata,
+                    "html_guard": {
+                        "gap_detected": sanitized.gap_detected,
+                        "gap_ratio": sanitized.gap_ratio,
+                        "stripped_element_count": sanitized.stripped_element_count,
+                    },
+                },
+            },
         )
 
     async def _run_guarded(

@@ -7,9 +7,9 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 import copy
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.observability import get_logger
 
@@ -49,7 +49,7 @@ class ToolExecutionResult(BaseModel):
 
     content: str = Field(description="Tool output")
     is_error: bool = Field(default=False, description="Whether tool errored")
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Optional structured metadata",
     )
@@ -90,7 +90,7 @@ class BaseTool(ABC):
         *,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         category: ToolCategory,
         action_type: str | None = None,
     ) -> None:
@@ -128,7 +128,7 @@ class BaseTool(ABC):
                 raise ValueError(msg)
             self._action_type = str(DEFAULT_CATEGORY_ACTION_MAP[category])
         if parameters_schema is None:
-            self._parameters_schema: MappingProxyType[str, Any] | None = None
+            self._parameters_schema: MappingProxyType[str, JsonValue] | None = None
         else:
             # Build the typed model FIRST so a non-JSON value (set,
             # custom class, ...) fails fast at construction instead
@@ -161,7 +161,7 @@ class BaseTool(ABC):
         return self._description
 
     @property
-    def parameters_schema(self) -> dict[str, Any] | None:
+    def parameters_schema(self) -> dict[str, JsonValue] | None:
         """JSON Schema for tool parameters, or None if unspecified.
 
         Returns a deep copy to prevent mutation of internal state.
@@ -243,7 +243,7 @@ class BaseTool(ABC):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute the tool with the given arguments.
 

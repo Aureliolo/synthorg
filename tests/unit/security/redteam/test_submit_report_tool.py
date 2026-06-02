@@ -1,5 +1,7 @@
 """Unit tests for ``SubmitRedTeamReportTool``."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.security.redteam.errors import RedTeamReportValidationError
@@ -185,7 +187,7 @@ class TestExecutionIdArguments:
     ) -> None:
         schema = tool.parameters_schema
         assert schema is not None
-        properties = schema.get("properties", {})
+        properties = cast("dict[str, Any]", schema).get("properties", {})
         assert "execution_id" in properties
         assert "task_id" in properties
 

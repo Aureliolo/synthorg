@@ -7,6 +7,7 @@ project-B files) is exercised by the Docker-gated integration test.
 """
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import structlog.contextvars
@@ -82,14 +83,14 @@ class TestHostConfigBindsProjectSubtree:
         project_root = _make_project(tmp_path, "proj-a")
         sandbox = _sandbox(tmp_path)
         host_config = sandbox._build_host_config(project_root)
-        bind = host_config["Binds"][0]
+        bind = cast("dict[str, Any]", host_config)["Binds"][0]
         assert bind.startswith(f"{_to_posix_bind_path(project_root)}:")
         assert bind.endswith(":/workspace:ro") or ":/workspace:" in bind
 
     def test_default_bind_is_whole_workspace(self, tmp_path: Path) -> None:
         sandbox = _sandbox(tmp_path)
         host_config = sandbox._build_host_config()
-        bind = host_config["Binds"][0]
+        bind = cast("dict[str, Any]", host_config)["Binds"][0]
         assert bind.startswith(f"{_to_posix_bind_path(tmp_path)}:")
 
 

@@ -1,6 +1,6 @@
 """Tests for MCPBridgeTool."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -189,7 +189,7 @@ class TestBridgeToolWithCache:
             cache=result_cache,
         )
         result = await bridge.execute(
-            arguments={"obj": Unhashable()},
+            arguments=cast("dict[str, Any]", {"obj": Unhashable()}),
         )
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error

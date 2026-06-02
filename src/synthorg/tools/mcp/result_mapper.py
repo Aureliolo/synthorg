@@ -4,7 +4,7 @@ Pure function that maps MCP raw results to the internal
 ``ToolExecutionResult`` format used throughout the tool system.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from mcp.types import (
     AudioContent,
@@ -12,6 +12,7 @@ from mcp.types import (
     ImageContent,
     TextContent,
 )
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
@@ -47,7 +48,7 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
         Mapped ``ToolExecutionResult``.
     """
     parts: list[str] = []
-    attachments: list[dict[str, Any]] = []
+    attachments: list[dict[str, JsonValue]] = []
 
     for block in raw.content:
         if isinstance(block, TextContent):
@@ -82,10 +83,10 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
             parts.append(f"[unknown: {block_type}]")
 
     content = "\n".join(parts) if parts else ""
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, JsonValue] = {}
 
     if attachments:
-        metadata["attachments"] = attachments
+        metadata["attachments"] = cast("list[JsonValue]", attachments)
         logger.debug(
             MCP_RESULT_ATTACHMENT,
             attachment_count=len(attachments),

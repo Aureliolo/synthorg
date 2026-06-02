@@ -7,9 +7,9 @@ tagged checkout"). The transparent RAG path lives on
 memories on the normal ``memory.retrieve`` call.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
@@ -67,7 +67,7 @@ class SearchLivingDocsTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch a ``search_living_docs`` invocation to :class:`DocsService`.
 
@@ -119,19 +119,17 @@ class SearchLivingDocsTool(BaseTool):
             project_id=self._project_id,
             hit_count=len(hits),
         )
+        hit_dicts: list[JsonValue] = [
+            {
+                "doc_slug": h.doc_slug,
+                "doc_type": h.doc_type.value,
+                "relevance_score": h.relevance_score,
+            }
+            for h in hits
+        ]
         return ToolExecutionResult(
             content=_format_hits(hits),
-            metadata={
-                "hit_count": len(hits),
-                "hits": tuple(
-                    {
-                        "doc_slug": h.doc_slug,
-                        "doc_type": h.doc_type.value,
-                        "relevance_score": h.relevance_score,
-                    }
-                    for h in hits
-                ),
-            },
+            metadata={"hit_count": len(hits), "hits": hit_dicts},
         )
 
 

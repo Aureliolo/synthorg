@@ -7,7 +7,8 @@ reduce redundant calls to external MCP servers.
 import copy
 import threading
 from collections import OrderedDict
-from typing import Any, Final
+from collections.abc import Hashable
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
@@ -54,15 +55,15 @@ class MCPResultCache:
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._cache: OrderedDict[tuple[str, Any], tuple[float, ToolExecutionResult]] = (
-            OrderedDict()
-        )
+        self._cache: OrderedDict[
+            tuple[str, Hashable], tuple[float, ToolExecutionResult]
+        ] = OrderedDict()
         self._lock = threading.Lock()
 
     def get(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult | None:
         """Look up a cached result.
 
@@ -109,7 +110,7 @@ class MCPResultCache:
     def put(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         result: ToolExecutionResult,
     ) -> None:
         """Store a result in the cache.
@@ -123,7 +124,7 @@ class MCPResultCache:
             result: The ``ToolExecutionResult`` to cache.
         """
         key = self._make_key(tool_name, arguments)
-        evicted: list[tuple[str, Any]] = []
+        evicted: list[tuple[str, Hashable]] = []
         with self._lock:
             # Remove existing entry to refresh position
             if key in self._cache:
@@ -165,8 +166,8 @@ class MCPResultCache:
     @staticmethod
     def _make_key(
         tool_name: str,
-        arguments: dict[str, Any],
-    ) -> tuple[str, Any]:
+        arguments: dict[str, object],
+    ) -> tuple[str, Hashable]:
         """Build a hashable cache key.
 
         Args:
@@ -179,7 +180,7 @@ class MCPResultCache:
         return (tool_name, _make_hashable(arguments))
 
 
-def _make_hashable(obj: Any) -> Any:
+def _make_hashable(obj: object) -> Hashable:
     """Recursively freeze a value into a hashable form.
 
     Dicts become frozensets of (key, value) tuples, lists and tuples

@@ -1,7 +1,7 @@
 """Tests for sandbox sidecar-based network enforcement in container config."""
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import pytest
 
@@ -9,6 +9,11 @@ from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 
 pytestmark = pytest.mark.unit
+
+
+def _container_config(sandbox: DockerSandbox, **kwargs: Any) -> dict[str, Any]:
+    """Return the built container config as a freely-indexable mapping."""
+    return cast("dict[str, Any]", sandbox._build_container_config(**kwargs))
 
 
 def _build_config(  # noqa: PLR0913
@@ -29,7 +34,8 @@ def _build_config(  # noqa: PLR0913
         network_allow_all=network_allow_all,
     )
     sandbox = DockerSandbox(config=config, workspace=tmp_path)
-    return sandbox._build_container_config(
+    return _container_config(
+        sandbox,
         command="echo",
         args=("hello",),
         container_cwd="/workspace",
@@ -132,7 +138,8 @@ class TestNetworkModeOverride:
     def test_network_mode_overrides_default(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(network="bridge")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -144,7 +151,8 @@ class TestNetworkModeOverride:
     def test_no_override_uses_config_network(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(network="bridge")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -162,7 +170,8 @@ class TestEnforcementInactive:
     def test_no_enforcement_when_hosts_empty(self, tmp_path: Path) -> None:
         config = DockerSandboxConfig(network="bridge")
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -176,7 +185,8 @@ class TestEnforcementInactive:
 
     def test_default_config_no_enforcement(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -199,7 +209,8 @@ class TestAllowedHostsWithEnvOverrides:
             allowed_hosts=("example.com:443",),
         )
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
-        result = sandbox._build_container_config(
+        result = _container_config(
+            sandbox,
             command="echo",
             args=(),
             container_cwd="/workspace",
@@ -233,7 +244,8 @@ class TestAllowedHostsWithEnvOverrides:
         )
         sandbox = DockerSandbox(config=config, workspace=tmp_path)
         with pytest.raises(SandboxError, match="reserved"):
-            sandbox._build_container_config(
+            _container_config(
+                sandbox,
                 command="echo",
                 args=(),
                 container_cwd="/workspace",

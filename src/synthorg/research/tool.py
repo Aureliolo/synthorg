@@ -14,7 +14,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    JsonValue,
 )
 
 from synthorg.api.boundary import parse_typed
@@ -175,7 +174,7 @@ class ResearchTool(BaseTool):
         self._clock = clock if clock is not None else SystemClock()
 
     @override
-    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Run the research pipeline and return the cited report.
 
         Returns:

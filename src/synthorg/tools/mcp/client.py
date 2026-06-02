@@ -7,7 +7,7 @@ tool discovery and invocation through the MCP protocol.
 import asyncio
 import copy
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, NoReturn, Self
+from typing import TYPE_CHECKING, NoReturn, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -306,7 +306,7 @@ class MCPClient:
     async def call_tool(
         self,
         tool_name: str,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> MCPRawResult:
         """Invoke a tool on the connected server.
 

@@ -1,6 +1,6 @@
 """Tests for DeleteFileTool."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -30,8 +30,9 @@ class TestDeleteFileExecution:
         assert not result.is_error
         assert "Deleted" in result.content
         assert not (workspace / "hello.txt").exists()
-        assert result.metadata["path"] == "hello.txt"
-        assert result.metadata["size_bytes"] > 0
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["path"] == "hello.txt"
+        assert meta["size_bytes"] > 0
 
     async def test_delete_nonexistent_file(self, delete_tool: DeleteFileTool) -> None:
         result = await delete_tool.execute(arguments={"path": "does_not_exist.txt"})

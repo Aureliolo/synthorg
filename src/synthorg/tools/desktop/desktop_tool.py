@@ -1,3 +1,4 @@
+# module-kind: integration
 """Virtual desktop tool driving a headless X session in a DockerSandbox.
 
 Single unified tool that dispatches on ``DesktopToolArgs.mode``. The
@@ -21,7 +22,6 @@ import shutil
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Any,
     ClassVar,
     Final,
     LiteralString,
@@ -31,7 +31,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
@@ -61,6 +61,7 @@ from synthorg.tools.desktop._constants import (
     SESSION_START_TIMEOUT_SECONDS,
 )
 from synthorg.tools.desktop._models import (
+    ExecutorEnvelope,
     ExecutorScreenshotPayload,
     InputResult,
     LaunchResult,
@@ -179,7 +180,7 @@ class DesktopTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch on ``mode`` and return a structured result.
 
@@ -258,7 +259,7 @@ class DesktopTool(BaseTool):
             Result of type ``ToolExecutionResult``.
         """
         logger.debug(DESKTOP_INPUT_START, action=args.mode)
-        extra = {
+        extra: dict[str, JsonValue] = {
             "x": args.x,
             "y": args.y,
             "button": args.button,
@@ -357,7 +358,7 @@ class DesktopTool(BaseTool):
 
     def _parse_executor_result[T: BaseModel](
         self,
-        payload: dict[str, Any],
+        payload: ExecutorEnvelope,
         model: type[T],
         *,
         boundary: LiteralString,
@@ -396,12 +397,12 @@ class DesktopTool(BaseTool):
         *,
         operation: str,
         args: DesktopToolArgs,
-        extra: dict[str, Any],
-    ) -> dict[str, Any]:
+        extra: dict[str, JsonValue],
+    ) -> ExecutorEnvelope:
         """Run executor.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            The decoded executor result envelope.
 
         Raises:
             DesktopSessionError: If the related operation fails.
@@ -411,7 +412,7 @@ class DesktopTool(BaseTool):
         executor_container = (
             f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
         )
-        payload: dict[str, Any] = {
+        payload: dict[str, JsonValue] = {
             "operation": operation,
             "session": self._driver.session_config().model_dump(mode="json"),
             "settle_delay_seconds": args.settle_delay_seconds,
@@ -466,11 +467,21 @@ class DesktopTool(BaseTool):
                 context={"operation": operation},
             ) from exc
 
+        if not isinstance(decoded, dict):
+            logger.warning(
+                DESKTOP_EXECUTOR_FAILED,
+                operation=operation,
+                reason="non_object_output",
+            )
+            raise DesktopDomainError(
+                "Executor returned a non-object JSON payload",
+                context={"operation": operation},
+            )
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "DesktopDomainError")
             message = decoded.get("message", "executor returned an error")
             raise _map_executor_error(str(err_type), str(message), operation)
-        return cast("dict[str, Any]", decoded)
+        return cast("ExecutorEnvelope", decoded)
 
     async def _ensure_deployed_assets(self) -> None:
         """Stage the executor script into the workspace (idempotent).

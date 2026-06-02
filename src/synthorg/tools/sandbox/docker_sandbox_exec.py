@@ -21,9 +21,10 @@ import asyncio
 import hashlib
 import re
 import uuid
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
 
 import structlog.contextvars
+from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -61,6 +62,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import aiodocker
+    from aiodocker.execs import Exec
+    from aiodocker.stream import Stream
+    from aiodocker.types import JSONObject
 
     from synthorg.core.clock import Clock
     from synthorg.core.types import NotBlankStr
@@ -134,11 +138,11 @@ class DockerSandboxExecMixin:
             network_mode: str | None = None,
             owner_id: str | None = None,
             image_override: NotBlankStr | None = None,
-        ) -> dict[str, Any]:
+        ) -> dict[str, object]:
             """Build container config.
 
             Returns:
-                Mapping from ``str`` to ``Any``.
+                Mapping from ``str`` to ``object``.
             """
             ...
 
@@ -495,7 +499,7 @@ class DockerSandboxExecMixin:
     async def _create_started_container(
         self,
         docker: aiodocker.Docker,
-        config: dict[str, Any],
+        config: dict[str, object],
         sidecar_id: str | None,
     ) -> str:
         """Create + track + start the keep-alive container.
@@ -512,7 +516,7 @@ class DockerSandboxExecMixin:
             SandboxStartError: If creation or start fails.
         """
         try:
-            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
+            container = await docker.containers.create(cast("JSONObject", config))  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
             reraise_critical(exc)
             if sidecar_id:
@@ -646,11 +650,11 @@ class DockerSandboxExecMixin:
         args: tuple[str, ...],
         container_cwd: str,
         exec_env: dict[str, str],
-    ) -> Any:
+    ) -> Exec:
         """Create an exec instance in the running container.
 
         Returns:
-            Result of type ``Any``.
+            The aiodocker exec instance.
 
         Raises:
             SandboxStartError: If the exec instance cannot be created.
@@ -684,7 +688,7 @@ class DockerSandboxExecMixin:
     async def _drain_exec(
         self,
         docker: aiodocker.Docker,
-        exec_obj: Any,
+        exec_obj: Exec,
         container_id: str,
         timeout: float,  # noqa: ASYNC109
     ) -> tuple[str, str, bool]:
@@ -796,7 +800,7 @@ class DockerSandboxExecMixin:
         )
 
     @staticmethod
-    async def _collect_exec_output(stream: Any) -> tuple[str, str]:
+    async def _collect_exec_output(stream: Stream) -> tuple[str, str]:
         """Drain an aiodocker exec stream into ``(stdout, stderr)``.
 
         Non-TTY exec streams multiplex frames tagged stdout (1) or
@@ -836,7 +840,7 @@ class DockerSandboxExecMixin:
         return "".join(stdout_parts), "".join(stderr_parts)
 
     @staticmethod
-    async def _safe_close_stream(stream: Any) -> None:
+    async def _safe_close_stream(stream: Stream) -> None:
         """Close an exec stream, swallowing best-effort close errors."""
         try:
             await stream.close()
@@ -849,7 +853,7 @@ class DockerSandboxExecMixin:
             )
 
     @staticmethod
-    async def _exec_returncode(exec_obj: Any, container_id: str) -> int:
+    async def _exec_returncode(exec_obj: Exec, container_id: str) -> int:
         """Return the exec exit code, or ``-1`` if it cannot be read.
 
         Returns:
@@ -957,7 +961,7 @@ class DockerSandboxExecMixin:
         handle: ContainerHandle,
         cfg: ContainerLogShippingConfig,
         result: SandboxResult | None,
-    ) -> tuple[dict[str, Any], ...]:
+    ) -> tuple[dict[str, JsonValue], ...]:
         """Collect sidecar logs and ship container logs (best-effort).
 
         Never raises ordinary errors -- log shipping must not mask the
@@ -972,7 +976,7 @@ class DockerSandboxExecMixin:
         Returns:
             Parsed sidecar log entries (empty when disabled or absent).
         """
-        sidecar_logs: tuple[dict[str, Any], ...] = ()
+        sidecar_logs: tuple[dict[str, JsonValue], ...] = ()
         if handle.sidecar_id and cfg.enabled:
             try:
                 sidecar_logs = await collect_sidecar_logs(

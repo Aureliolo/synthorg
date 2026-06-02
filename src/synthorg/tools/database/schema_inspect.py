@@ -6,7 +6,7 @@ Always read-only.
 
 import asyncio
 import re
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
 import aiosqlite
 from pydantic import BaseModel
@@ -66,7 +66,7 @@ class SchemaInspectTool(BaseDatabaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Inspect the database schema.
 
@@ -77,8 +77,8 @@ class SchemaInspectTool(BaseDatabaseTool):
         Returns:
             A ``ToolExecutionResult`` with schema information.
         """
-        action: str = arguments["action"]
-        table_name: str | None = arguments.get("table_name")
+        action = cast("str", arguments["action"])
+        table_name = cast("str | None", arguments.get("table_name"))
 
         if action not in _ACTIONS:
             return ToolExecutionResult(

@@ -8,7 +8,7 @@ wrapped via ``wrap_untrusted`` before it can reach an agent prompt.
 """
 
 import builtins
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -66,7 +66,7 @@ class QueryStructureMapTool(BaseTool):
         self._project_id = project_id
 
     @override
-    async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Dispatch a ``query_structure_map`` invocation to the repository.
 
         Returns:

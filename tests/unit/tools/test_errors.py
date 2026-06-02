@@ -1,5 +1,7 @@
 """Tests for tool error hierarchy."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.tools.errors import (
@@ -23,7 +25,7 @@ class TestToolError:
         assert err.context == {}
 
     def test_context_stored(self) -> None:
-        ctx = {"tool": "echo", "detail": "missing arg"}
+        ctx: dict[str, Any] = {"tool": "echo", "detail": "missing arg"}
         err = ToolError("oops", context=ctx)
         assert err.context == ctx
 
@@ -74,7 +76,7 @@ class TestContextImmutability:
             err.context["new_key"] = "new_val"  # type: ignore[index]
 
     def test_original_dict_mutation_does_not_affect_error(self) -> None:
-        ctx = {"tool": "echo"}
+        ctx: dict[str, Any] = {"tool": "echo"}
         err = ToolError("oops", context=ctx)
         ctx["extra"] = "injected"
         assert "extra" not in err.context

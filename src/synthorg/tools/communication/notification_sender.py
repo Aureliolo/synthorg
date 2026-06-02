@@ -6,7 +6,7 @@ sinks (console, email, Slack, ntfy, etc.).
 """
 
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Final, Protocol, override, runtime_checkable
+from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
@@ -104,7 +104,7 @@ class NotificationSenderTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Send a notification.
 
@@ -128,7 +128,17 @@ class NotificationSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        body: str = arguments.get("body", "")
+        raw_body = arguments.get("body", "")
+        if not isinstance(raw_body, str):
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="invalid_body",
+            )
+            return ToolExecutionResult(
+                content="'body' must be a string if provided.",
+                is_error=True,
+            )
+        body = raw_body
         required_fields = {
             "category": arguments.get("category"),
             "severity": arguments.get("severity"),

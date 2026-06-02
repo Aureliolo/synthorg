@@ -5,7 +5,7 @@ from an MCP server, bridging MCP protocol calls into the internal
 tool system.
 """
 
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, override
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
@@ -67,7 +67,7 @@ class MCPBridgeTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute the MCP tool via the client.
 
@@ -90,7 +90,7 @@ class MCPBridgeTool(BaseTool):
 
     def _check_cache(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult | None:
         """Look up the cache, returning the result on hit.
 
@@ -125,7 +125,7 @@ class MCPBridgeTool(BaseTool):
 
     async def _invoke(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Call the remote MCP tool and map the result.
 
@@ -161,7 +161,7 @@ class MCPBridgeTool(BaseTool):
 
     def _store_in_cache(
         self,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
         result: ToolExecutionResult,
     ) -> None:
         """Store a successful result in the cache.

@@ -1,5 +1,7 @@
 """Tests for the metric collector tool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ToolCategory
@@ -146,7 +148,7 @@ class TestMetricCollectorTool:
         assert result.metadata["metric_name"] == "cpu_usage"
         assert result.metadata["value"] == 85.5
         assert result.metadata["unit"] == "percent"
-        assert result.metadata["tags"]["host"] == "worker-1"
+        assert cast("dict[str, Any]", result.metadata)["tags"]["host"] == "worker-1"
 
     def test_mock_sink_satisfies_protocol(
         self,
@@ -161,5 +163,6 @@ class TestMetricCollectorTool:
         tool = MetricCollectorTool(sink=mock_sink)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "metric_name" in schema["required"]
-        assert "value" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "metric_name" in required
+        assert "value" in required

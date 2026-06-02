@@ -1,5 +1,7 @@
 """Tests for the image generator tool."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -41,7 +43,7 @@ class TestImageGeneratorTool:
         tool = ImageGeneratorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "prompt" in schema["required"]
+        assert "prompt" in cast("dict[str, Any]", schema)["required"]
 
     async def test_execute_success(
         self,

@@ -4,7 +4,7 @@ import asyncio
 import os
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -249,7 +249,7 @@ class EditFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Edit a file by replacing text.
 
@@ -259,9 +259,9 @@ class EditFileTool(BaseFileSystemTool):
         Returns:
             A ``ToolExecutionResult`` confirming the edit or an error.
         """
-        user_path: str = arguments["path"]
-        old_text: str = arguments["old_text"]
-        new_text: str = arguments["new_text"]
+        user_path = cast("str", arguments["path"])
+        old_text = cast("str", arguments["old_text"])
+        new_text = cast("str", arguments["new_text"])
 
         if err := self._validate_edit_args(user_path, old_text, new_text):
             return err

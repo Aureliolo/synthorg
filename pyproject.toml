@@ -556,10 +556,6 @@ ignore_missing_imports = true
 module = "tree_sitter_language_pack.*"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "synthorg.tools.html_parse_guard"
-warn_unused_ignores = false
-
 # ──────────────────────────────────────────────────────────────────────
 # Per-package mypy overrides for strict++ rollout. Each block absorbs
 # the explicit-Any volume and missing-@override sites that already
@@ -700,7 +696,6 @@ disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
 module = "synthorg.tools.*"
-disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
@@ -828,6 +823,12 @@ ignore_names = [
     "judge_agent_id",  # JudgeEvaluator.evaluate (conflict_resolution)
     "agent_output",    # ExternalBenchmark.grade (hr/evaluation)
     "ticket_uri",      # TicketFetcher.fetch (knowledge/loaders)
+    "im1",             # _StructuralSimilarity.__call__ (tools/browser/_ssim_differ)
+    "im2",             # _StructuralSimilarity.__call__ (tools/browser/_ssim_differ)
+    "data_range",      # _StructuralSimilarity.__call__ (tools/browser/_ssim_differ)
+    # Names referenced only inside ``cast("Name", ...)`` string forms, which
+    # vulture cannot see; the TYPE_CHECKING import is genuinely required by mypy.
+    "JSONObject",      # aiodocker container-create config (tools/sandbox)
 ]
 
 # ---------------------------------------------------------------------------

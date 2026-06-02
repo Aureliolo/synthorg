@@ -7,7 +7,7 @@ per-task execution context by the tool factory; cross-project authority is
 checked by callers via the trust seam, not by the tool.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -75,7 +75,7 @@ class WriteBrainEntryTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Persist a create or revise of a brain entry.
 

@@ -1,6 +1,7 @@
 """Tests for the report generator tool."""
 
 import json
+from typing import Any, cast
 
 import pytest
 
@@ -192,5 +193,6 @@ class TestReportGeneratorTool:
         tool = ReportGeneratorTool(provider=mock_provider)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "report_type" in schema["required"]
-        assert "period" in schema["required"]
+        required = cast("dict[str, Any]", schema)["required"]
+        assert "report_type" in required
+        assert "period" in required

@@ -51,7 +51,13 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page
+
+    from synthorg.tools.browser._executor_types import BrowserPayload, Violation
+
 
 _DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
 _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
@@ -158,11 +164,11 @@ async () => {
 """
 
 
-async def _navigate(page: Any, payload: dict[str, Any]) -> dict[str, Any]:
+async def _navigate(page: Page, payload: BrowserPayload) -> dict[str, object]:
     """Navigate.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     url = payload["url"]
     wait_condition = payload.get("wait_condition") or "load"
@@ -187,13 +193,13 @@ async def _navigate(page: Any, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _screenshot(
-    page: Any,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
+    page: Page,
+    payload: BrowserPayload,
+) -> dict[str, object]:
     """Screenshot.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     out = _validated_sandbox_path(
         payload["screenshot_path"],
@@ -219,11 +225,11 @@ async def _screenshot(
     }
 
 
-def _empty_a11y_result(url: str, min_impact: str) -> dict[str, Any]:
+def _empty_a11y_result(url: str, min_impact: str) -> dict[str, object]:
     """A11y result when no axe script is staged in the sandbox.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
     """
     return {
         "url": url,
@@ -238,17 +244,17 @@ def _empty_a11y_result(url: str, min_impact: str) -> dict[str, Any]:
 
 
 def _partition_violations(
-    raw_violations: list[dict[str, Any]],
+    raw_violations: list[Violation],
     min_impact: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[Violation], list[Violation]]:
     """Sort axe-core violations into (failing, warning) buckets.
 
     Returns:
-        Tuple ``(list[dict[str, Any]], list[dict[str, Any]])``.
+        Tuple of (failing, warning) violation lists.
     """
     min_rank = _A11Y_RANK[min_impact]
-    violations: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
+    violations: list[Violation] = []
+    warnings: list[Violation] = []
     for entry in raw_violations:
         impact = entry.get("impact") or "minor"
         if impact not in _A11Y_RANK:
@@ -295,13 +301,13 @@ def _load_axe_script(axe_script_path: str) -> str:
 
 
 async def _accessibility(
-    page: Any,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
+    page: Page,
+    payload: BrowserPayload,
+) -> dict[str, object]:
     """Accessibility.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
 
     Raises:
         RuntimeError: If the operation fails at runtime.
@@ -336,14 +342,14 @@ async def _accessibility(
     }
 
 
-async def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
+async def _dispatch(payload: BrowserPayload) -> dict[str, object]:
     # Playwright is only available inside the sandbox image where this
     # script executes; importing lazily keeps the executor importable
     # for host-side static analysis without a host playwright install.
     """Dispatch.
 
     Returns:
-        Mapping from ``str`` to ``Any``.
+        Mapping from ``str`` to ``object``.
 
     Raises:
         ValueError: If an argument fails domain validation.
@@ -384,8 +390,8 @@ async def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
             page = await context.new_page()
             try:
                 navigation = await _navigate(page, payload)
-                screenshot_result: dict[str, Any] | None = None
-                a11y_result: dict[str, Any] | None = None
+                screenshot_result: dict[str, object] | None = None
+                a11y_result: dict[str, object] | None = None
                 if operation in {"capture", "screenshot"}:
                     if not payload.get("screenshot_path"):
                         raise ValueError(

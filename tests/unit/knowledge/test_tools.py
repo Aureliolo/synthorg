@@ -7,6 +7,7 @@ classifications, and the per-task factory binding.
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -71,8 +72,9 @@ class TestKnowledgeTools:
         assert "<memory-entry>" in result.content
         assert "checkout_secret" in result.content
         assert "auth.py" in result.content
-        assert result.metadata["hit_count"] >= 1
-        citations = result.metadata["citations"]
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["hit_count"] >= 1
+        citations = cast("list[dict[str, Any]]", meta["citations"])
         assert citations
         assert citations[0]["locator_kind"] == "code"
 
@@ -93,7 +95,7 @@ class TestKnowledgeTools:
         )
         assert result.is_error is False
         assert result.metadata["status"] == "indexed"
-        assert result.metadata["chunk_count"] >= 1
+        assert cast("dict[str, Any]", result.metadata)["chunk_count"] >= 1
 
     async def test_action_types(self) -> None:
         factory = await _factory()

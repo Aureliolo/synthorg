@@ -4,7 +4,7 @@ Uses Jinja2 ``SandboxedEnvironment`` for safe variable substitution
 with no arbitrary code execution.
 """
 
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, override
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
@@ -85,7 +85,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Render a template with variables.
 

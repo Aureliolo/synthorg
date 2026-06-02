@@ -20,10 +20,11 @@ import asyncio
 import fnmatch
 import platform
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import TYPE_CHECKING, Final, override
 
 import aiodocker
 import structlog.contextvars
+from pydantic import JsonValue
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -509,7 +510,7 @@ class DockerSandbox(
         network_mode: str | None = None,
         owner_id: str | None = None,
         image_override: NotBlankStr | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Build the Docker container creation config.
 
         Args:
@@ -595,14 +596,14 @@ class DockerSandbox(
         effective_root: Path | None = None,
         *,
         category: str = "",
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Build the Docker host config dict binding *effective_root*.
 
         *effective_root* defaults to the workspace root (whole-workspace
         mount) when not supplied.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            Mapping from ``str`` to ``object``.
         """
         root = effective_root if effective_root is not None else self._workspace
         bind_path = _to_posix_bind_path(root)
@@ -613,7 +614,7 @@ class DockerSandbox(
         )
         nano_cpus = int(self._config.cpu_limit * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.tmpfs_size},noexec,nosuid"
-        host_config: dict[str, Any] = {
+        host_config: dict[str, object] = {
             "Binds": [bind_str],
             "Tmpfs": {"/tmp": tmpfs_spec},  # noqa: S108
             "Memory": memory_bytes,
@@ -850,7 +851,7 @@ class DockerSandbox(
         )
 
         cfg = self._log_shipping_config
-        sidecar_logs: tuple[dict[str, Any], ...] = ()
+        sidecar_logs: tuple[dict[str, JsonValue], ...] = ()
         result: SandboxResult | None = None
         try:
             result = await self._exec_command(

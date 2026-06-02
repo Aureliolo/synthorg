@@ -4,9 +4,7 @@ Defines ``MCPToolInfo`` for discovered tool metadata and
 ``MCPRawResult`` for raw MCP call results before mapping.
 """
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.core.types import NotBlankStr
 
@@ -28,7 +26,7 @@ class MCPToolInfo(BaseModel):
         default="",
         description="Human-readable tool description",
     )
-    input_schema: dict[str, Any] = Field(
+    input_schema: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="JSON Schema for tool parameters",
     )
@@ -48,7 +46,7 @@ class MCPRawResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    content: tuple[Any, ...] = Field(
+    content: tuple[object, ...] = Field(
         default=(),
         description="MCP content blocks",
     )
@@ -56,7 +54,7 @@ class MCPRawResult(BaseModel):
         default=False,
         description="Whether the MCP call reported an error",
     )
-    structured_content: dict[str, Any] | None = Field(
+    structured_content: dict[str, JsonValue] | None = Field(
         default=None,
         description="Optional structured content from the result",
     )

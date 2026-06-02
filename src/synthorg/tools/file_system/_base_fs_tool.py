@@ -5,7 +5,9 @@ Provides the common ``ToolCategory.FILE_SYSTEM`` category and a
 """
 
 from abc import ABC
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import safe_error_description
@@ -66,7 +68,7 @@ class BaseFileSystemTool(BaseTool, ABC):
         workspace_root: Path,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         action_type: str | None = None,
     ) -> None:
         """Initialize with a workspace root and tool metadata.

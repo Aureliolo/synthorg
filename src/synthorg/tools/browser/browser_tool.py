@@ -23,10 +23,18 @@ import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast, override
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Final,
+    TypedDict,
+    assert_never,
+    cast,
+    override,
+)
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
@@ -55,7 +63,7 @@ from synthorg.observability.events.browser import (
     BROWSER_START_COMMAND_SUCCESS,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-from synthorg.tools.browser._args import BrowserToolArgs
+from synthorg.tools.browser._args import A11yImpact, BrowserToolArgs
 from synthorg.tools.browser._baseline import WorkspaceBaselineStore
 from synthorg.tools.browser._constants import (
     ACCESSIBILITY_SCAN_TIMEOUT_SECONDS,
@@ -107,6 +115,50 @@ _SHA256_HEX_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-f0-9]{64}$")
 # per-workspace, baselines are per-(spec, screenshot).
 _DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
 _BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
+
+
+class _NavPayload(TypedDict, total=False):
+    """Navigation sub-payload decoded from the in-container executor."""
+
+    requested_url: str
+    final_url: str
+    status_code: int | None
+    duration_seconds: float
+
+
+class _ScreenshotPayload(TypedDict, total=False):
+    """Screenshot sub-payload decoded from the in-container executor."""
+
+    saved_path: str
+    width: int
+    height: int
+    file_size_bytes: int
+    full_page: bool
+    sha256: str
+
+
+class _A11yPayload(TypedDict, total=False):
+    """Accessibility sub-payload decoded from the in-container executor."""
+
+    url: str
+    min_impact: A11yImpact
+    violations: list[dict[str, JsonValue]]
+    warnings: list[dict[str, JsonValue]]
+    total_affected_nodes: int
+    scan_duration_seconds: float
+    axe_version: str
+    passed: bool
+
+
+class _ExecutorResult(TypedDict, total=False):
+    """Top-level JSON envelope returned by the in-container executor."""
+
+    status: str
+    error_type: str
+    message: str
+    navigation: _NavPayload
+    screenshot: _ScreenshotPayload
+    accessibility: _A11yPayload
 
 
 def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
@@ -212,7 +264,7 @@ class BrowserTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch on ``mode`` and return a structured result.
 
@@ -698,11 +750,11 @@ class BrowserTool(BaseTool):
         args: BrowserToolArgs,
         screenshot_path: str | None,
         axe_container: str,
-    ) -> dict[str, Any]:
+    ) -> dict[str, JsonValue]:
         """Assemble the JSON payload sent to the in-container executor.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            Mapping from ``str`` to ``JsonValue``.
         """
         return {
             "operation": operation,
@@ -747,11 +799,11 @@ class BrowserTool(BaseTool):
         url: str,
         args: BrowserToolArgs,
         screenshot_path: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> _ExecutorResult:
         """Run executor.
 
         Returns:
-            Mapping from ``str`` to ``Any``.
+            The decoded executor result envelope.
 
         Raises:
             BrowserLaunchError: If the related operation fails.
@@ -830,12 +882,22 @@ class BrowserTool(BaseTool):
                 },
             ) from exc
 
+        if not isinstance(decoded, dict):
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                reason="non_object_output",
+            )
+            raise BrowserDomainError(
+                "Executor returned a non-object JSON payload",
+                context={"operation": operation},
+            )
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "BrowserDomainError")
             message = decoded.get("message", "executor returned an error")
             raise _map_executor_error(err_type, str(message), operation)
 
-        return cast("dict[str, Any]", decoded)
+        return cast("_ExecutorResult", decoded)
 
     async def _run_start_command(self, args: BrowserToolArgs) -> None:
         """Run start command.
@@ -891,7 +953,7 @@ class BrowserTool(BaseTool):
 
     def _build_navigation(
         self,
-        payload: dict[str, Any],
+        payload: _ExecutorResult,
         requested_url: str,
     ) -> NavigationResult:
         """Build navigation.
@@ -899,7 +961,7 @@ class BrowserTool(BaseTool):
         Returns:
             Result of type ``NavigationResult``.
         """
-        nav_payload = payload.get("navigation") or {}
+        nav_payload: _NavPayload = payload.get("navigation") or {}
         return NavigationResult(
             requested_url=requested_url,
             final_url=str(nav_payload.get("final_url", requested_url)),
@@ -909,7 +971,7 @@ class BrowserTool(BaseTool):
 
     def _build_screenshot(
         self,
-        payload: dict[str, Any],
+        payload: _ExecutorResult,
         host_path: Path,
     ) -> ScreenshotMetadata:
         """Build screenshot.
@@ -920,7 +982,7 @@ class BrowserTool(BaseTool):
         Raises:
             BrowserScreenshotError: If the related operation fails.
         """
-        ss_payload = payload.get("screenshot") or {}
+        ss_payload: _ScreenshotPayload = payload.get("screenshot") or {}
         if not ss_payload:
             raise BrowserScreenshotError(
                 "Executor returned no screenshot payload",
@@ -947,7 +1009,7 @@ class BrowserTool(BaseTool):
 
     def _build_a11y(
         self,
-        payload: dict[str, Any],
+        payload: _ExecutorResult,
         url: str,
         args: BrowserToolArgs,
     ) -> A11yScanResult:
@@ -956,7 +1018,7 @@ class BrowserTool(BaseTool):
         Returns:
             Result of type ``A11yScanResult``.
         """
-        a11y_payload = payload.get("accessibility") or {}
+        a11y_payload: _A11yPayload = payload.get("accessibility") or {}
         if not a11y_payload:
             return A11yScanResult(
                 url=url,
@@ -969,15 +1031,14 @@ class BrowserTool(BaseTool):
                 passed=True,
             )
         violations = tuple(
-            A11yViolation(**v) for v in a11y_payload.get("violations", [])
+            A11yViolation.model_validate(v) for v in a11y_payload.get("violations", [])
         )
-        warnings = tuple(A11yViolation(**v) for v in a11y_payload.get("warnings", []))
+        warnings = tuple(
+            A11yViolation.model_validate(v) for v in a11y_payload.get("warnings", [])
+        )
         return A11yScanResult(
             url=str(a11y_payload.get("url", url)),
-            min_impact=cast(
-                "Any",
-                a11y_payload.get("min_impact", args.min_impact),
-            ),
+            min_impact=a11y_payload.get("min_impact", args.min_impact),
             violations=violations,
             warnings=warnings,
             total_affected_nodes=int(

@@ -10,8 +10,9 @@ not a middleware.
 """
 
 import re
-from typing import Any, Final
+from typing import Final
 
+from lxml.html import HtmlElement, HTMLParser
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
@@ -271,9 +272,9 @@ class HTMLParseGuard:
         """
         doc = _parse_html_safely(raw)
         # Capture original text before stripping (single parse).
-        original_text = doc.text_content().strip()  # type: ignore[attr-defined]
+        original_text = doc.text_content().strip()
         stripped_count = self._strip_dangerous_elements(doc)
-        cleaned_text = doc.text_content().strip()  # type: ignore[attr-defined]
+        cleaned_text = doc.text_content().strip()
         gap_ratio = self._compute_gap_ratio(original_text, cleaned_text)
         gap_detected = gap_ratio > self._config.gap_threshold_ratio
 
@@ -294,7 +295,7 @@ class HTMLParseGuard:
         )
 
     @staticmethod
-    def _strip_event_handlers(doc: Any) -> int:
+    def _strip_event_handlers(doc: HtmlElement) -> int:
         """Strip event handler attributes from all elements.
 
         Returns:
@@ -311,7 +312,7 @@ class HTMLParseGuard:
         return stripped
 
     @staticmethod
-    def _strip_dangerous_elements(doc: Any) -> int:
+    def _strip_dangerous_elements(doc: HtmlElement) -> int:
         """Strip scripts, styles, comments, and hidden elements.
 
         Returns the count of stripped elements.
@@ -342,13 +343,13 @@ class HTMLParseGuard:
         return stripped
 
     @staticmethod
-    def _strip_hidden_elements(doc: Any) -> int:
+    def _strip_hidden_elements(doc: HtmlElement) -> int:
         """Strip elements hidden via attributes or CSS.
 
         Returns:
             Result of type ``int``.
         """
-        elements_to_drop: list[object] = []
+        elements_to_drop: list[HtmlElement] = []
         for element in doc.iter():
             if not hasattr(element, "tag") or not isinstance(element.tag, str):
                 continue
@@ -365,7 +366,7 @@ class HTMLParseGuard:
         dropped = 0
         for element in elements_to_drop:
             if getattr(element, "getparent", lambda: None)() is not None:
-                element.drop_tree()  # type: ignore[attr-defined]
+                element.drop_tree()
                 dropped += 1
 
         return dropped
@@ -382,7 +383,7 @@ class HTMLParseGuard:
         return min(hidden_len / original_len, 1.0)
 
 
-def _parse_html_safely(raw: str) -> Any:
+def _parse_html_safely(raw: str) -> HtmlElement:
     """Parse *raw* HTML with explicit XXE and entity-expansion defences.
 
     Replaces a bare ``lxml.html.fromstring`` call, which would
@@ -446,7 +447,7 @@ def _parse_html_safely(raw: str) -> Any:
     return lxml_html.fromstring(raw, parser=_SAFE_PARSER)
 
 
-def _build_safe_parser() -> Any:
+def _build_safe_parser() -> HTMLParser:
     """Build the shared ``HTMLParser`` used by :func:`_parse_html_safely`.
 
     ``no_network=True`` blocks external resource loads (the primary
@@ -465,7 +466,7 @@ def _build_safe_parser() -> Any:
     defence here rather than a parser flag.
 
     Returns:
-        Result of type ``Any``.
+        Result of type ``HTMLParser``.
     """
     from lxml import html as lxml_html  # noqa: PLC0415
 
@@ -477,7 +478,7 @@ def _build_safe_parser() -> Any:
     )
 
 
-_SAFE_PARSER: Final[Any] = _build_safe_parser()
+_SAFE_PARSER: Final[HTMLParser] = _build_safe_parser()
 """Module-scope HTML parser with XXE / entity-expansion defences.
 
 Reused across calls to avoid re-building lxml state on every

@@ -7,7 +7,9 @@ independently of ``DockerSandbox``.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from pydantic import JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -57,7 +59,7 @@ def parse_json_log_lines(
     *,
     max_log_bytes: int,
     sidecar_id_short: str,
-) -> tuple[dict[str, Any], ...]:
+) -> tuple[dict[str, JsonValue], ...]:
     """Parse raw log lines as JSON, skipping malformed entries.
 
     Byte counting uses character length as a fast approximation for
@@ -72,7 +74,7 @@ def parse_json_log_lines(
     Returns:
         Tuple of successfully parsed JSON dicts.
     """
-    parsed: list[dict[str, Any]] = []
+    parsed: list[dict[str, JsonValue]] = []
     cumulative = 0
     for line in raw_lines:
         stripped = line.strip()
@@ -105,7 +107,7 @@ async def collect_sidecar_logs(
     sidecar_id: str,
     *,
     config: ContainerLogShippingConfig,
-) -> tuple[dict[str, Any], ...]:
+) -> tuple[dict[str, JsonValue], ...]:
     """Collect and parse structured JSON logs from a sidecar.
 
     Reads sidecar stdout before container removal.  Each line is
@@ -191,7 +193,7 @@ async def ship_container_logs(  # noqa: PLR0913
     sidecar_id: str | None,
     stdout: str,
     stderr: str,
-    sidecar_logs: tuple[dict[str, Any], ...],
+    sidecar_logs: tuple[dict[str, JsonValue], ...],
     execution_time_ms: int,
 ) -> None:
     """Ship container logs through the structlog pipeline.
@@ -229,7 +231,7 @@ async def ship_container_logs(  # noqa: PLR0913
     if not config.enabled:
         return
     try:
-        event_kwargs: dict[str, Any] = {
+        event_kwargs: dict[str, object] = {
             "container_id": container_id[:12],
             "sidecar_id": sidecar_id[:12] if sidecar_id else None,
             "stdout_size": len(stdout),
@@ -247,7 +249,7 @@ async def ship_container_logs(  # noqa: PLR0913
             event_kwargs["stderr"] = stderr_trunc
             # Include sidecar entries that fit within remaining budget.
             if budget > 0 and sidecar_logs:
-                included: list[dict[str, Any]] = []
+                included: list[dict[str, JsonValue]] = []
                 for entry in sidecar_logs:
                     entry_est = len(str(entry))
                     if entry_est > budget:

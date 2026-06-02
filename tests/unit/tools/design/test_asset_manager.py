@@ -1,5 +1,7 @@
 """Tests for the asset manager tool."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.core.enums import ActionType, ToolCategory
@@ -50,6 +52,26 @@ class TestAssetManagerTool:
             }
         )
         result = await tool.execute(arguments={"action": "list", "tags": ["logo"]})
+        assert not result.is_error
+        assert "1 asset(s)" in result.content
+        assert "img-001" in result.content
+
+    async def test_list_filter_by_tuple_tags(self) -> None:
+        """Filter by a tuple ``tags`` value.
+
+        ``ToolInvoker`` passes ``args_model.model_dump(mode="python")``,
+        whose ``tags`` field is a tuple; tag filtering must apply rather
+        than silently returning every asset.
+        """
+        tool = AssetManagerTool(
+            assets={
+                "img-001": {"type": "image", "tags": ["logo", "brand"]},
+                "img-002": {"type": "image", "tags": ["banner"]},
+            }
+        )
+        result = await tool.execute(
+            arguments={"action": "list", "tags": ("logo",)},
+        )
         assert not result.is_error
         assert "1 asset(s)" in result.content
         assert "img-001" in result.content
@@ -148,7 +170,7 @@ class TestAssetManagerTool:
         assert "img-001" in result.content
 
     def test_initial_assets_are_deep_copied(self) -> None:
-        original = {"img-001": {"type": "image"}}
+        original: dict[str, dict[str, Any]] = {"img-001": {"type": "image"}}
         tool = AssetManagerTool(assets=original)
         tool._assets["img-001"]["type"] = "modified"
         assert original["img-001"]["type"] == "image"

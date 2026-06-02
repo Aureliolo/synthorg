@@ -1,5 +1,6 @@
 """Tests for CodeRunnerTool with mocked sandbox."""
 
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -53,10 +54,11 @@ class TestCodeRunnerInit:
         tool = CodeRunnerTool(sandbox=sandbox)
         schema = tool.parameters_schema
         assert schema is not None
-        assert "code" in schema["properties"]
-        assert "language" in schema["properties"]
-        assert "timeout" in schema["properties"]
-        assert schema["required"] == ["code", "language"]
+        props = cast("dict[str, Any]", schema)["properties"]
+        assert "code" in props
+        assert "language" in props
+        assert "timeout" in props
+        assert cast("dict[str, Any]", schema)["required"] == ["code", "language"]
 
 
 # ── Language mapping ────────────────────────────────────────────

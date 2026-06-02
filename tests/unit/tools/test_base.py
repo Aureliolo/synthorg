@@ -1,7 +1,7 @@
 # mypy: disable-error-code="explicit-any"
 """Tests for BaseTool ABC and ToolExecutionResult."""
 
-from typing import Any, override
+from typing import Any, cast, override
 
 import pytest
 from pydantic import ValidationError
@@ -116,7 +116,8 @@ class TestBaseTool:
         tool = _ConcreteTool(name="t", parameters_schema=schema)
         schema["properties"]["x"]["type"] = "integer"
         assert tool.parameters_schema is not None
-        assert tool.parameters_schema["properties"]["x"]["type"] == "string"
+        stored = cast("dict[str, Any]", tool.parameters_schema)
+        assert stored["properties"]["x"]["type"] == "string"
 
     def test_schema_internal_is_read_only(self) -> None:
         schema = {"type": "object", "properties": {"x": {"type": "string"}}}
@@ -144,10 +145,10 @@ class TestBaseTool:
         tool = _ConcreteTool(name="t", parameters_schema=schema)
         returned = tool.parameters_schema
         assert returned is not None
-        returned["properties"]["x"]["type"] = "integer"
+        cast("dict[str, Any]", returned)["properties"]["x"]["type"] = "integer"
         fresh = tool.parameters_schema
         assert fresh is not None
-        assert fresh["properties"]["x"]["type"] == "string"
+        assert cast("dict[str, Any]", fresh)["properties"]["x"]["type"] == "string"
 
     def test_to_definition(self) -> None:
         schema = {"type": "object", "properties": {"x": {"type": "string"}}}

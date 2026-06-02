@@ -7,7 +7,7 @@ on invoker state beyond the tool/arguments being validated.
 """
 
 import copy
-from typing import TYPE_CHECKING
+from typing import Never
 
 import jsonschema
 from pydantic import BaseModel
@@ -29,12 +29,8 @@ from synthorg.observability.events.tool import (
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
 )
 from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.tools.base import BaseTool
 from synthorg.tools.errors import ToolParameterError
-
-if TYPE_CHECKING:
-    from typing import Never
-
-    from synthorg.tools.base import BaseTool
 
 logger = get_logger(__name__)
 
@@ -48,7 +44,7 @@ def _no_remote_retrieve(uri: str) -> Never:
     raise NoSuchResource(uri)
 
 
-SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg]
+SAFE_REGISTRY = JsonSchemaRegistry(  # type: ignore[call-arg]
     retrieve=_no_remote_retrieve,
 )
 

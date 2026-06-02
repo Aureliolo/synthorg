@@ -1,5 +1,6 @@
 """Shared fixtures for terminal tool tests."""
 
+from collections.abc import Mapping
 from typing import Any
 
 import pytest
@@ -29,13 +30,15 @@ class MockSandbox:
         self.last_command: str | None = None
         self.last_args: tuple[str, ...] | None = None
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         command: str,
         args: tuple[str, ...] = (),
         cwd: Any = None,
-        env_overrides: dict[str, str] | None = None,
+        env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        owner_id: str | None = None,
+        project_id: str | None = None,
     ) -> SandboxResult:
         self.last_command = command
         self.last_args = args
@@ -47,6 +50,15 @@ class MockSandbox:
             returncode=self._returncode,
             timed_out=self._timed_out,
         )
+
+    async def release_owner(
+        self,
+        owner_id: str,
+        *,
+        project_id: str | None = None,
+        image_override: str | None = None,
+    ) -> None:
+        pass
 
     async def cleanup(self) -> None:
         pass

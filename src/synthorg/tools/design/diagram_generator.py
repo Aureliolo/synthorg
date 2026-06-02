@@ -5,7 +5,7 @@ by downstream tools or the web dashboard.  No external provider is
 required -- the tool outputs DSL text directly.
 """
 
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -89,7 +89,7 @@ class DiagramGeneratorTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Generate diagram markup from a description.
 
@@ -101,10 +101,10 @@ class DiagramGeneratorTool(BaseDesignTool):
         Returns:
             A ``ToolExecutionResult`` with the diagram DSL.
         """
-        diagram_type: str = arguments["diagram_type"]
-        description: str = arguments["description"]
-        title: str = arguments.get("title", "")
-        output_format: str = arguments.get("output_format", "mermaid")
+        diagram_type = cast("str", arguments["diagram_type"])
+        description = cast("str", arguments["description"])
+        title = cast("str", arguments.get("title", ""))
+        output_format = cast("str", arguments.get("output_format", "mermaid"))
 
         if diagram_type not in _DIAGRAM_TYPES:
             logger.warning(

@@ -6,7 +6,7 @@ stdlib ``html.parser`` module.
 """
 
 from html.parser import HTMLParser
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -208,7 +208,7 @@ class HtmlParserTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Parse HTML and extract content.
 
@@ -219,8 +219,8 @@ class HtmlParserTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with extracted content.
         """
-        html_content: str = arguments["html_content"]
-        mode: str = arguments.get("extract_mode", "text")
+        html_content = cast("str", arguments["html_content"])
+        mode = cast("str", arguments.get("extract_mode", "text"))
 
         if mode not in _EXTRACT_MODES:
             logger.warning(

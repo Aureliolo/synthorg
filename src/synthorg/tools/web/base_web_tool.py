@@ -6,7 +6,9 @@ shared URL validation helper.
 """
 
 from abc import ABC
-from typing import Any, Final
+from typing import Final
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger
@@ -36,7 +38,7 @@ class BaseWebTool(BaseTool, ABC):
         *,
         name: str,
         description: str = "",
-        parameters_schema: dict[str, Any] | None = None,
+        parameters_schema: dict[str, JsonValue] | None = None,
         action_type: str | None = None,
         network_policy: NetworkPolicy | None = None,
         request_timeout: float = _DEFAULT_REQUEST_TIMEOUT,

@@ -10,9 +10,9 @@ import re
 import smtplib
 import ssl
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -91,7 +91,7 @@ class EmailSenderTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Send an email.
 
@@ -117,9 +117,9 @@ class EmailSenderTool(BaseCommunicationTool):
                 is_error=True,
             )
 
-        to_addrs = arguments.get("to")
-        if not isinstance(to_addrs, list) or any(
-            not isinstance(addr, str) for addr in to_addrs
+        to_raw = arguments.get("to")
+        if not isinstance(to_raw, (list, tuple)) or any(
+            not isinstance(addr, str) for addr in to_raw
         ):
             logger.warning(
                 COMM_TOOL_EMAIL_VALIDATION_FAILED,
@@ -137,7 +137,7 @@ class EmailSenderTool(BaseCommunicationTool):
         # ``TypeError`` and bypass the structured envelope.
         cc_raw = arguments.get("cc")
         if cc_raw is not None and (
-            not isinstance(cc_raw, list)
+            not isinstance(cc_raw, (list, tuple))
             or any(not isinstance(addr, str) for addr in cc_raw)
         ):
             logger.warning(
@@ -150,7 +150,7 @@ class EmailSenderTool(BaseCommunicationTool):
             )
         bcc_raw = arguments.get("bcc")
         if bcc_raw is not None and (
-            not isinstance(bcc_raw, list)
+            not isinstance(bcc_raw, (list, tuple))
             or any(not isinstance(addr, str) for addr in bcc_raw)
         ):
             logger.warning(
@@ -161,8 +161,9 @@ class EmailSenderTool(BaseCommunicationTool):
                 content="'bcc' must be a list of email addresses.",
                 is_error=True,
             )
-        cc_addrs: list[str] = cc_raw or []
-        bcc_addrs: list[str] = bcc_raw or []
+        to_addrs = [addr for addr in to_raw if isinstance(addr, str)]
+        cc_addrs = [addr for addr in (cc_raw or []) if isinstance(addr, str)]
+        bcc_addrs = [addr for addr in (bcc_raw or []) if isinstance(addr, str)]
         subject = arguments.get("subject")
         if not isinstance(subject, str):
             logger.warning(
@@ -173,8 +174,8 @@ class EmailSenderTool(BaseCommunicationTool):
                 content="'subject' must be a string.",
                 is_error=True,
             )
-        body: str = arguments.get("body", "")
-        body_is_html: bool = arguments.get("body_is_html", False)
+        body = cast("str", arguments.get("body", ""))
+        body_is_html = cast("bool", arguments.get("body_is_html", False))
 
         all_recipients = to_addrs + cc_addrs + bcc_addrs
         if not all_recipients:
@@ -250,11 +251,13 @@ class EmailSenderTool(BaseCommunicationTool):
             recipient_count=len(all_recipients),
         )
 
+        to_meta = cast("list[JsonValue]", to_addrs)
+        cc_meta = cast("list[JsonValue]", cc_addrs)
         return ToolExecutionResult(
             content=(f"Email sent successfully to {len(all_recipients)} recipient(s)."),
             metadata={
-                "to": to_addrs,
-                "cc": cc_addrs,
+                "to": to_meta,
+                "cc": cc_meta,
                 "bcc_count": len(bcc_addrs),
                 "subject": subject,
             },

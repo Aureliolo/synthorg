@@ -10,7 +10,7 @@ It sets ``args_model = EchoArgs`` so the ``ToolInvoker`` validates
 automatically.
 """
 
-from typing import Any, ClassVar, override
+from typing import ClassVar, cast, override
 
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ class EchoTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Return the ``message`` argument as content.
 
@@ -56,4 +56,4 @@ class EchoTool(BaseTool):
         Returns:
             Result of type ``ToolExecutionResult``.
         """
-        return ToolExecutionResult(content=arguments["message"])
+        return ToolExecutionResult(content=cast("str", arguments["message"]))

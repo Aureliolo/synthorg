@@ -35,23 +35,25 @@ class TestCompactContextTool:
         tool = CompactContextTool()
         schema = tool.parameters_schema
         assert schema is not None
+        schema_d = cast("dict[str, Any]", schema)
         assert "properties" in schema
-        assert "strategy" in schema["properties"]
-        assert "reason" in schema["properties"]
+        assert "strategy" in schema_d["properties"]
+        assert "reason" in schema_d["properties"]
         assert "required" in schema
-        assert "strategy" in schema["required"]
-        assert "reason" in schema["required"]
+        assert "strategy" in schema_d["required"]
+        assert "reason" in schema_d["required"]
 
     def test_preserve_markers_optional_in_schema(self) -> None:
         """preserve_markers is optional with default True."""
         tool = CompactContextTool()
         schema = tool.parameters_schema
         assert schema is not None
-        assert "preserve_markers" in schema["properties"]
+        schema_d = cast("dict[str, Any]", schema)
+        assert "preserve_markers" in schema_d["properties"]
         # Should NOT be in required list since it has a default
-        assert "preserve_markers" not in schema["required"]
+        assert "preserve_markers" not in schema_d["required"]
         # Schema should indicate default is True
-        assert schema["properties"]["preserve_markers"]["default"] is True
+        assert schema_d["properties"]["preserve_markers"]["default"] is True
 
     async def test_execute_valid_args(self) -> None:
         """Execute with valid arguments returns ToolExecutionResult."""

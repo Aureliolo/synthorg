@@ -7,7 +7,7 @@ sandbox.
 
 import asyncio
 import secrets
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
@@ -27,6 +27,7 @@ from synthorg.tools.sandbox.errors import SandboxStartError
 
 if TYPE_CHECKING:
     import aiodocker
+    from aiodocker.types import JSONObject
 
     from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 
@@ -95,7 +96,7 @@ class DockerSandboxSidecarMixin:
         nano_cpus = int(_SIDECAR_CPU * _NANO_CPUS_MULTIPLIER)
         tmpfs_spec = f"size={self._config.sidecar_tmpfs_size},noexec,nosuid"
 
-        config: dict[str, Any] = {
+        config: dict[str, object] = {
             "Image": self._config.sidecar_image,
             "Env": env_list,
             "HostConfig": {
@@ -116,7 +117,7 @@ class DockerSandboxSidecarMixin:
         }
 
         try:
-            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
+            container = await docker.containers.create(cast("JSONObject", config))  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
             reraise_critical(exc)
             msg = f"Failed to create sidecar container: {safe_error_description(exc)}"

@@ -3,7 +3,7 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, Final, override
+from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
 from pydantic import BaseModel
 
@@ -62,7 +62,7 @@ class CodeRunnerTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute a code snippet in the sandbox.
 
@@ -73,9 +73,9 @@ class CodeRunnerTool(BaseTool):
         Returns:
             A ``ToolExecutionResult`` with execution output.
         """
-        code: str = arguments["code"]
-        language: str = arguments["language"]
-        timeout: float | None = arguments.get("timeout")
+        code = cast("str", arguments["code"])
+        language = cast("str", arguments["language"])
+        timeout = cast("float | None", arguments.get("timeout"))
 
         if language not in _LANGUAGE_COMMANDS:
             logger.warning(

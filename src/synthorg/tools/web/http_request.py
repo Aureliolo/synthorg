@@ -6,7 +6,7 @@ bodies are streamed and truncated at ``max_response_bytes`` to
 prevent memory exhaustion.
 """
 
-from typing import Any, ClassVar, Final, override
+from typing import ClassVar, Final, cast, override
 
 import httpx
 from pydantic import BaseModel
@@ -96,7 +96,7 @@ class HttpRequestTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute an HTTP request.
 
@@ -107,13 +107,15 @@ class HttpRequestTool(BaseWebTool):
         Returns:
             A ``ToolExecutionResult`` with the response body or error.
         """
-        url: str = arguments["url"]
-        method: str = arguments.get("method", "GET").upper()
-        headers: dict[str, str] = arguments.get("headers") or {}
-        body: str | None = arguments.get("body")
+        url = cast("str", arguments["url"])
+        method = cast("str", arguments.get("method", "GET")).upper()
+        headers = cast("dict[str, str]", arguments.get("headers") or {})
+        body = cast("str | None", arguments.get("body"))
         raw_timeout = arguments.get("timeout")
         timeout: float = (
-            raw_timeout if raw_timeout is not None else self._request_timeout
+            cast("float", raw_timeout)
+            if raw_timeout is not None
+            else self._request_timeout
         )
 
         if method not in _ALLOWED_METHODS:

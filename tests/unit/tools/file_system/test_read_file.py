@@ -1,6 +1,6 @@
 """Tests for ReadFileTool."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -24,7 +24,7 @@ class TestReadFileToolProperties:
     def test_has_schema(self, read_tool: ReadFileTool) -> None:
         schema = read_tool.parameters_schema
         assert schema is not None
-        assert "path" in schema["properties"]
+        assert "path" in cast("dict[str, Any]", schema)["properties"]
 
 
 @pytest.mark.unit
@@ -35,8 +35,9 @@ class TestReadFileExecution:
         result = await read_tool.execute(arguments={"path": "hello.txt"})
         assert not result.is_error
         assert "Hello, world!" in result.content
-        assert result.metadata["path"] == "hello.txt"
-        assert result.metadata["size_bytes"] > 0
+        meta = cast("dict[str, Any]", result.metadata)
+        assert meta["path"] == "hello.txt"
+        assert meta["size_bytes"] > 0
 
     async def test_read_empty_file(self, read_tool: ReadFileTool) -> None:
         result = await read_tool.execute(arguments={"path": "empty.txt"})
