@@ -144,6 +144,10 @@ def _mocked_annotation_lookup(
     truthy) and raises ``TypeError: ... is not a Protocol``. typeguard already
     skips when the VALUE is a ``Mock``; this is the symmetric case for the
     annotation TYPE, where there is nothing meaningful to check against.
+
+    The skip emits a ``TypeHintWarning`` (filtered to ``default`` in pyproject)
+    so it stays visible in the pytest warnings summary, keeping the unchecked
+    surface countable like the forward-ref WARN path rather than going dark.
     """
     if isinstance(origin_type, Mock):
 
@@ -153,7 +157,13 @@ def _mocked_annotation_lookup(
             _args: tuple[Any, ...],
             _memo: TypeCheckMemo,
         ) -> None:
-            return None
+            warnings.warn(
+                "Skipping type check: the annotation type resolved to a Mock "
+                f"({origin_type!r}); a patch is suppressing instrumentation at "
+                "this boundary.",
+                TypeHintWarning,
+                stacklevel=2,
+            )
 
         return _skip
     return None

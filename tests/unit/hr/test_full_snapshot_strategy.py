@@ -15,6 +15,8 @@ from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _suppress_typeguard_for_minimal_backends() -> Iterator[None]:

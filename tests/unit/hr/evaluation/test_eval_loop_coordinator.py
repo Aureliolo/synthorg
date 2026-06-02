@@ -25,6 +25,8 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _suppress_typeguard_for_report_doubles() -> Iterator[None]:

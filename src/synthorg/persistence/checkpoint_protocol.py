@@ -77,9 +77,10 @@ class CheckpointRepository(
     async def purge_before(self, threshold: datetime) -> int:
         """Delete checkpoints with ``saved_at < threshold``.
 
-        ``threshold`` must be timezone-aware UTC; naive datetimes are
-        rejected at the boundary so purge cut-offs do not depend on the
-        caller's local-time assumption.
+        ``threshold`` must be timezone-aware UTC; the plain ``datetime``
+        annotation does not enforce that, so implementations reject naive
+        values explicitly at the boundary, keeping purge cut-offs independent
+        of the caller's local-time assumption.
         """
         ...
 

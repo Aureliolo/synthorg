@@ -13379,7 +13379,7 @@
     },
     {
       "kind": "code",
-      "loc": 157,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/checkpoint_protocol.py",
       "owning_feature": "persistence"
@@ -13554,7 +13554,7 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 200,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/flight_recorder_protocol.py",
       "owning_feature": "persistence"
@@ -13911,14 +13911,14 @@
     },
     {
       "kind": "code",
-      "loc": 294,
+      "loc": 297,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/flight_recorder_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/heartbeat_repo.py",
       "owning_feature": "persistence"
@@ -14618,14 +14618,14 @@
     },
     {
       "kind": "code",
-      "loc": 299,
+      "loc": 302,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/flight_recorder_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/heartbeat_repo.py",
       "owning_feature": "persistence"

@@ -308,10 +308,10 @@ class SQLiteOrgFactRepository:
         # Marshal every Python value into its SQLite-bound shape BEFORE
         # the transaction opens.  ``format_iso_utc`` raises
         # ``ValueError`` on a naive ``created_at`` (defending against
-        # a regression that bypasses the ``datetime`` type
-        # guard); doing the marshal up here keeps that error path
-        # outside the ``try`` block, so we never strand a
-        # ``BEGIN IMMEDIATE`` transaction holding the write lock.
+        # a regression that lets a naive value reach the database);
+        # doing the marshal up here keeps that error path outside the
+        # ``try`` block, so we never strand a ``BEGIN IMMEDIATE``
+        # transaction holding the write lock.
         created_at_iso = format_iso_utc(fact.created_at)
         tags_json = _tags_to_json(fact.tags)
         async with self._write_context():

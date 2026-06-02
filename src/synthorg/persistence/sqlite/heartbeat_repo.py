@@ -135,7 +135,8 @@ INSERT OR REPLACE INTO heartbeats (
 
         Args:
             threshold: Heartbeats with ``last_heartbeat_at`` before
-                this timestamp are considered stale.
+                this timestamp are considered stale. Must be
+                timezone-aware; a naive value is rejected.
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
 
@@ -143,8 +144,11 @@ INSERT OR REPLACE INTO heartbeats (
             Tuple of matching rows; empty when no rows match.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the database query fails.
         """
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
         )

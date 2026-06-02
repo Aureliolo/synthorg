@@ -597,8 +597,8 @@ class PostgresOrgFactRepository:
         ``timestamp`` must be timezone-aware so psycopg binds it to the
         ``TIMESTAMPTZ`` parameter at a known instant; a naive datetime
         would otherwise bind in the session timezone and silently
-        produce a wrong-but-plausible snapshot.  The signature is
-        :class:`pydantic.datetime` to make that contract explicit.
+        produce a wrong-but-plausible snapshot.  The parameter is a
+        :class:`datetime.datetime`; callers must pass an aware value.
         Rows page in ``fact_id`` order so a cursor walk is repeatable
         across the same snapshot; callers needing the whole snapshot
         drain via :func:`synthorg.persistence._shared.collect_all`.

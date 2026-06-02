@@ -238,15 +238,18 @@ class SQLiteFlightRecorderFrameRepository:
     async def purge_before(self, threshold: datetime) -> int:
         """Delete frames with ``timestamp < threshold``.
 
-        ``threshold`` is an ``datetime`` so naive values cannot
-        slip through silently.
+        ``threshold`` must be timezone-aware; a naive value is rejected so the
+        cut-off cannot drift silently with the session timezone.
 
         Returns:
-            Numeric result of the operation.
+            Number of frames deleted.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the database query fails.
         """
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

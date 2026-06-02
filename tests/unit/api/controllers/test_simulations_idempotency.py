@@ -128,7 +128,7 @@ class TestSimulationsIdempotency:
             # its ``add_done_callback`` wiring are satisfied. ``loop.create_task``
             # is used (not the patched ``asyncio.create_task``) to build it.
             coro.close()
-            return asyncio.get_event_loop().create_task(_noop())
+            return asyncio.get_running_loop().create_task(_noop())
 
         with (
             patch(

@@ -72,7 +72,7 @@ async def test_receive_loop_closes_after_frame_timeout() -> None:
     outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=8)
     user = _make_auth_user()
 
-    started = asyncio.get_event_loop().time()
+    started = asyncio.get_running_loop().time()
     # ``socket`` is a behavioural ``_SilentSocket`` stand-in for a concrete
     # WebSocket; suppress the runtime check at the same boundary as the static
     # ``# type: ignore[arg-type]`` (the test verifies the idle-timeout close,
@@ -86,7 +86,7 @@ async def test_receive_loop_closes_after_frame_timeout() -> None:
             outbound_queue=outbound,
             frame_timeout_seconds=timeout_seconds,
         )
-    elapsed = asyncio.get_event_loop().time() - started
+    elapsed = asyncio.get_running_loop().time() - started
 
     assert socket.closed is True
     assert socket.close_code == 1008

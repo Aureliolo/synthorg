@@ -60,7 +60,7 @@ Cross-worker coordination rule (read before adding a new fixture):
 # the project's ``filterwarnings = ["error", ...]`` would promote that to a
 # hard error, exiting the suite with code 2 before any test runs.
 #
-# Installing the hook here (once activated) closes that gap: typeguard
+# Installing the hook here closes that gap: typeguard
 # rewrites the synthorg modules' bytecode as they are imported, before
 # the plugin's later (redundant) install attempt fires. That second
 # attempt still emits the InstrumentationWarning (the plugin has no way
@@ -70,14 +70,12 @@ Cross-worker coordination rule (read before adding a new fixture):
 # pytest installs the ini-driven filters, so an ini-level ignore
 # arrives too late.
 #
-# Activation is rolled out one source package at a time (incremental scoped
-# activation): the full ``synthorg`` surface fails ~1,500 resolved-type checks
-# at once, so each PR widens the instrumented scope and fixes that package's
-# failures in the same change. The package list passed to
-# ``install_import_hook`` MUST stay identical to ``--typeguard-packages`` in
-# pyproject.toml addopts: the hook here does the real bytecode rewrite (before
-# any collection import pulls a synthorg module in), and the plugin's later
-# install is the redundant attempt whose InstrumentationWarning is suppressed.
+# The hook is active at WARN across the full ``synthorg`` package. The package
+# list passed to ``install_import_hook`` MUST stay identical to
+# ``--typeguard-packages`` in pyproject.toml addopts: the hook here does the
+# real bytecode rewrite (before any collection import pulls a synthorg module
+# in), and the plugin's later install is the redundant attempt whose
+# InstrumentationWarning is suppressed.
 #
 # ``register_policy_honoring_checker`` makes the eager-eval NameError class (a
 # NamedTuple / TypedDict / Protocol / callable whose signature member is only

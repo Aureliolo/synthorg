@@ -111,14 +111,13 @@ class _CasMixin(_DecisionRepoBase):
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
             copy.deepcopy(dict(metadata or {}))
         )
-        # Reject naive datetimes explicitly.  The parameter type is
-        # ``datetime``, which Pydantic validates at model
-        # boundaries -- but this function accepts it as a raw
-        # argument, so there's no runtime enforcement until the
-        # draft ``DecisionRecord`` is constructed.  A naive datetime
-        # passed through ``astimezone(UTC)`` would silently convert
-        # assuming local time, producing a timestamp that disagrees
-        # with the caller's actual wall clock.  Fail fast instead.
+        # Reject naive datetimes explicitly.  The draft ``DecisionRecord``
+        # declares ``recorded_at: AwareDatetime``, which Pydantic validates
+        # on construction -- but this function takes a raw ``datetime``
+        # argument, so there is no runtime tz check until then.  A naive
+        # datetime passed through ``astimezone(UTC)`` would silently convert
+        # assuming local time, producing a timestamp that disagrees with
+        # the caller's actual wall clock.  Fail fast instead.
         if recorded_at.tzinfo is None:
             msg = (
                 f"recorded_at must be timezone-aware, got a naive "

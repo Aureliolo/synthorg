@@ -206,11 +206,12 @@ circular-import cycles) or rewriting the annotation as a string
 forward-ref. The full fix-volume would blow the 10k LOC / 200 file
 caps that bound this PR. PR 2 (feature-manifest substrate) restructures
 the import graph anyway: feature modules become runtime-importable so
-typeguard has far less to break on. Typeguard is deferred to a
-dedicated multi-PR programme (#2182 WARN activation, #2183 ERROR
-hardening); the realised scope -- ~1,500 resolved-type mismatches plus
+typeguard has far less to break on. Typeguard was deferred to a
+dedicated multi-PR programme; #2182 (WARN activation) has since landed
+across the full `synthorg` package, with #2183 (ERROR hardening)
+remaining. The realised scope -- ~1,500 resolved-type mismatches plus
 ~1,055 `TYPE_CHECKING`-guarded modules -- proved far larger than this
-PR-1 estimate. This is a deliberate scope choice, not a TODO.
+PR-1 estimate. This was a deliberate scope choice, not a TODO.
 
 ### New web tools
 
@@ -256,10 +257,10 @@ British dictionary).
 - DOC per-file-ignore creates implicit technical debt that later
   docstring PRs must drain (RESOLVED by #2065: the brace-expansion
   ignore is deleted and `DOC201/202/501` enforced across `src/synthorg/`).
-- Typeguard is wired but NOT activated in PR 1; activation (and the
+- Typeguard was wired but NOT activated in PR 1; activation (and the
   ~1,500 resolved-type mismatches plus ~1,055 `TYPE_CHECKING`-guarded
-  modules it surfaces) is deferred to the dedicated #2182 (WARN) +
-  #2183 (ERROR) programme rather than fixed inline here.
+  modules it surfaces) was deferred to a dedicated programme. #2182 (WARN)
+  has since landed; #2183 (ERROR) remains.
 
 ### Neutral
 
@@ -311,7 +312,7 @@ follow-ups below is the contract for "100% enforced".**
 |-----------|-----------|------------|
 | `_state_slice_immutability_baseline.txt` (empty) | PR 2 introduces every state slice; baseline must stay empty | Gate green after every PR 2 slice lands |
 | `_settings_namespace_baseline.txt` (1: `settings` namespace lacks definitions file) | PR 2 may file the missing `settings/definitions/settings.py` | Baseline drains to 0 |
-| Typeguard wiring | PR 2's manifest substrate was expected to eliminate most `TYPE_CHECKING`-only imports; in practice ~1,055 modules still guard signature types | Tracked by #2182 (WARN) + #2183 (ERROR); see Section F |
+| Typeguard wiring | PR 2's manifest substrate was expected to eliminate most `TYPE_CHECKING`-only imports; in practice ~1,055 modules still guard signature types | #2182 (WARN) landed; #2183 (ERROR) remains; see Section F |
 
 ### B. Lifted naturally by PR 3 (#2049)
 
@@ -401,7 +402,7 @@ and closed for the project to reach 100% strict enforcement.
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill (RESOLVED: `[tool.interrogate] fail-under` flipped to 95) | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components", sliced into 4 sub-issues: #2092 (Foundation: utils + hooks + lib), #2093 (Stores incl. websocket), #2094 (Components + API types/endpoints), #2095 (Pages + override deletion). The override block at `web/eslint.config.js:146-217` grows an `ignores:` list per sub-issue; PR D deletes the block. (RESOLVED: all sub-issues landed; the Pages tranche shipped as #2095 (D1) → D2a → #2141 (D2b), which deleted the `src/**/*.{ts,tsx}` override block entirely. The four caps now apply globally across `web/src/**`; the only surviving exemptions are `components/ui/**` (disables `max-lines-per-function` for cva variants) and the test/bench globs (disable all four).) | Large (4 PRs filed) |
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
-| Typeguard activation: a dedicated multi-PR programme, #2182 (WARN) + #2183 (ERROR) | Infrastructure landed under closed #2068: typeguard==4.5.2 in `[dependency-groups.test]`, ruff TC001/2/3 disabled project-wide (the convention shift), the `typeguard.install_import_hook(["synthorg"])` line plus the `--typeguard-packages=synthorg` / `--typeguard-forward-ref-policy=ERROR` `addopts` present-but-commented in `tests/conftest.py` + `pyproject.toml`, and `@suppress_type_checks` on `api.app.create_app`. #2050 attempted activation and reverted it: an authoritative full `pytest -m unit` with typeguard live (WARN) surfaced **1,949 failures across 231 test files** -- ~1,500 of them resolved-type `TypeCheckError`s that `forward_ref_policy` does NOT skip (`AwareDatetime`-vs-`datetime`, test doubles failing `Protocol`/`isinstance` checks, DTO generics), the single `Clock.now()` `AwareDatetime` return alone cascading to 978 lifespan-fixture failures, plus the ~1,055-module `TYPE_CHECKING`-guarded-signature class (`check_tuple`/`check_typed_dict`/`check_protocol`/`check_callable` eager-eval under PEP 649). That is far beyond #2050's scope and file cap, and typeguard is a Section-F follow-up, not a #2046 closure requirement. Activation is therefore tracked by #2182 (WARN: `AwareDatetime`->`datetime` source fixes + a policy-aware NameError-tolerant `checker_lookup` + ~87-file test-double conformance) and #2183 (ERROR: the ~1,055-module signature-import migration). | Large (multi-PR programme) |
+| Typeguard activation: a dedicated multi-PR programme, #2182 (WARN) + #2183 (ERROR) | Infrastructure landed under closed #2068: typeguard==4.5.2 in `[dependency-groups.test]`, ruff TC001/2/3 disabled project-wide (the convention shift), the `typeguard.install_import_hook(["synthorg"])` line plus the `--typeguard-packages=synthorg` / `--typeguard-forward-ref-policy=ERROR` `addopts` present-but-commented in `tests/conftest.py` + `pyproject.toml`, and `@suppress_type_checks` on `api.app.create_app`. #2050 attempted activation and reverted it: an authoritative full `pytest -m unit` with typeguard live (WARN) surfaced **1,949 failures across 231 test files** -- ~1,500 of them resolved-type `TypeCheckError`s that `forward_ref_policy` does NOT skip (`AwareDatetime`-vs-`datetime`, test doubles failing `Protocol`/`isinstance` checks, DTO generics), the single `Clock.now()` `AwareDatetime` return alone cascading to 978 lifespan-fixture failures, plus the ~1,055-module `TYPE_CHECKING`-guarded-signature class (`check_tuple`/`check_typed_dict`/`check_protocol`/`check_callable` eager-eval under PEP 649). That is far beyond #2050's scope and file cap, and typeguard is a Section-F follow-up, not a #2046 closure requirement. #2182 (WARN: `AwareDatetime`->`datetime` source fixes + a policy-honouring NameError-tolerant `checker_lookup` + test-double conformance) has since landed, activating typeguard at WARN across the full `synthorg` package; #2183 (ERROR: the ~1,055-module signature-import migration) remains. | Large (multi-PR programme) |
 | `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
 | `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
 | `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |
