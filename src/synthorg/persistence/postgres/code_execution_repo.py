@@ -1,3 +1,4 @@
+# module-kind: repository
 """Postgres implementation of the ``CodeExecutionRecordRepository`` protocol.
 
 Postgres sibling of ``persistence/sqlite/code_execution_repo.py``.

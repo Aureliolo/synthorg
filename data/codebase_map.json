@@ -13302,7 +13302,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 122,
+      "loc": 125,
       "loc_cap": null,
       "module": "src/synthorg/persistence/code_execution_protocol.py",
       "owning_feature": "persistence"
@@ -13672,7 +13672,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/code_execution_repo.py",
@@ -13861,7 +13861,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 183,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/knowledge_usage_repo.py",
@@ -14379,7 +14379,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 197,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/code_execution_repo.py",
@@ -14568,7 +14568,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 189,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/knowledge_usage_repo.py",
@@ -14849,7 +14849,7 @@
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/state.py",
       "owning_feature": "persistence"
@@ -18573,7 +18573,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 869,
+      "loc": 872,
       "loc_cap": 600,
       "module": "src/synthorg/workers/runtime_builder.py",
       "owning_feature": "runtime"

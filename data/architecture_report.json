@@ -1412,26 +1412,20 @@
     },
     "src/synthorg/tools/_git_base.py": {
       "cap": 500,
-      "loc": 544,
-      "ratio": 1.088,
+      "loc": 539,
+      "ratio": 1.078,
       "tier": "code"
     },
     "src/synthorg/tools/browser/browser_tool.py": {
       "cap": 1100,
-      "loc": 1004,
-      "ratio": 0.913,
+      "loc": 1053,
+      "ratio": 0.957,
       "tier": "complex_service"
     },
     "src/synthorg/tools/desktop/_executor.py": {
       "cap": 500,
-      "loc": 474,
-      "ratio": 0.948,
-      "tier": "code"
-    },
-    "src/synthorg/tools/desktop/desktop_tool.py": {
-      "cap": 500,
-      "loc": 515,
-      "ratio": 1.03,
+      "loc": 498,
+      "ratio": 0.996,
       "tier": "code"
     },
     "src/synthorg/tools/external_api/external_api_tool.py": {
@@ -1448,8 +1442,8 @@
     },
     "src/synthorg/tools/git_url_validator.py": {
       "cap": 500,
-      "loc": 476,
-      "ratio": 0.952,
+      "loc": 485,
+      "ratio": 0.97,
       "tier": "code"
     },
     "src/synthorg/tools/mcp/client.py": {
@@ -1478,8 +1472,8 @@
     },
     "src/synthorg/workers/runtime_builder.py": {
       "cap": 600,
-      "loc": 869,
-      "ratio": 1.448,
+      "loc": 872,
+      "ratio": 1.453,
       "tier": "orchestrator"
     },
     "src/synthorg/workers/worker.py": {
@@ -1601,7 +1595,7 @@
     "synthorg.providers.cost_recording": 34,
     "synthorg.providers.enums": 76,
     "synthorg.providers.errors": 34,
-    "synthorg.providers.models": 101,
+    "synthorg.providers.models": 102,
     "synthorg.providers.protocol": 59,
     "synthorg.providers.registry": 28,
     "synthorg.providers.state": 24,
@@ -1616,7 +1610,7 @@
     "synthorg.settings.resolver": 32,
     "synthorg.settings.service": 30,
     "synthorg.settings.state": 70,
-    "synthorg.tools.base": 73
+    "synthorg.tools.base": 74
   },
   "lcom": {
     "synthorg.budget.coordination_collector:CoordinationMetricsCollector": {
@@ -1737,11 +1731,11 @@
     },
     "synthorg.tools.browser.browser_tool:BrowserTool": {
       "lcom4": 1,
-      "loc": 830
+      "loc": 839
     },
     "synthorg.tools.invoker:ToolInvoker": {
       "lcom4": 1,
-      "loc": 735
+      "loc": 739
     },
     "synthorg.tools.sandbox.docker_sandbox:DockerSandbox": {
       "lcom4": 3,
