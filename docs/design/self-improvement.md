@@ -141,6 +141,11 @@ src/synthorg/meta/
     alerts.py          -- ProactiveAlertService + LoggingAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
     propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
+    routing.py         -- RoleRouter (LLM / keyword concern routing to role agents)
+    conversation_lock.py -- ConversationLockRegistry (per-conversation turn serialisation, self-evicting)
+    group_chat.py      -- GroupChatService (round-robin multi-agent group chat)
+    group_invite.py    -- GroupInviteCoordinator (agent-initiated invite, human-consented)
+    actor.py           -- ConversationalActor (direct MCP acting under trust)
     narrative/         -- Documentary mode (post-run run narrative)
       models.py        -- RunNarrativeInputs, ReducedRun, NarrativeProse, SourceRef
       constants.py     -- Scan / decision / agent / source bounds + section titles
@@ -257,7 +262,13 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 - **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
 
-- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; requires a registered LLM provider, a connected persistence backend, and a wired work pipeline (503 otherwise).
+- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; requires a registered LLM provider, a connected persistence backend, and a wired work pipeline (503 otherwise). When `routing_enabled` is on, a concern router (`routing.py`) classifies each turn to the best-fit role agent (CFO for budget, CEO for strategy, and so on, most senior holder of a tied role) so the turn answers in that agent's persona; an uncertain classification falls back to the generic Chief of Staff. A `routing_strategy` of `keyword` uses a static keyword map (operator-overridable via `routing_keyword_rules`) with no extra LLM call.
+
+- **`POST /meta/chat/group`** (multi-agent group chat): one human, several agents, in a single conversation. Each round drives the active roster once in a stable round-robin, sharing the transcript, with per-round token budgeting and a participant cap; a single agent's dispatch failure skips that agent (surfaced in `participants_skipped`) rather than aborting the round, and each agent call is bounded by `agent_call_timeout_seconds`. When `invite_enabled` is on, an agent may request to bring another agent in: the request parks a `CONVERSATIONAL_INVITE` approval and the invited agent joins only after a human approves, receiving a fenced inviter+reason handover on its first turn. A partial-unique index plus an accept-time roster re-check keep the participant cap honest against concurrent invites. Rate-limited (`meta.chat.group`, 5/60s/user). Opt-in via `meta.chief_of_staff.group_chat_enabled`; requires a provider, agent registry, and connected persistence (503 otherwise); invites additionally require a wired approval store.
+
+- **`POST /meta/chat/act`** (direct MCP acting under trust): the chat agent acts directly through SynthOrg's own MCP under its configured trust level rather than only proposing. The action runs through the engine's governed tool invoker and shared `ApprovalGate`, so a sensitive action escalates and parks exactly as a task action does (`source = PARKED_CONTEXT`) and resumes via the worker's taskless branch. Rate-limited (`meta.chat.act`, 5/60s/user). Opt-in via `meta.chief_of_staff.direct_mcp_enabled`; requires a boot `AgentEngine` with an MCP self-consumer AND an enabled `SecurityConfig`. The builder is **fail-closed**: with `direct_mcp_enabled` on but security governance inactive it refuses to build the actor (the endpoint 503s) rather than exposing ungated write/admin acting.
+
+- **`GET /agents/active`** (active-agent roster): the stable runtime UUIDs, names, and roles of the currently active agents. Backs the participant picker for group chat and the acting-agent picker for direct acting.
 
 ### YAML defaults
 
@@ -279,6 +290,30 @@ self_improvement:
     propose_max_proposals_per_turn: 5        # Approval-queue fan-out bound
     propose_max_clarification_turns: 5       # Cap before force-closing the conversation
     propose_default_risk_level: medium       # Risk stamp on each parked ApprovalItem
+    # Concern routing in front of clarify-and-propose. All opt-in.
+    routing_enabled: false                   # Master switch
+    routing_strategy: llm                    # "llm" (classifier) or "keyword" (static map)
+    routing_model: example-small-001         # Classifier model id (llm strategy)
+    routing_temperature: 0.0                 # Deterministic classification
+    routing_max_tokens: 200                  # Per-classification token budget
+    routing_confidence_floor: 0.6            # Below this, fall back to the generic persona
+    routing_default_role: CEO                # Role to try when the named role has no active agent
+    routing_keyword_rules: []                # Operator override for the keyword map (bespoke roles)
+    # Multi-agent group chat (POST /meta/chat/group). All opt-in.
+    group_chat_enabled: false                # Master switch
+    group_chat_max_participants: 5           # Per-conversation participant cap
+    group_chat_round_token_budget: 12000     # Total token budget for one round
+    group_chat_token_reserve_ratio: 0.2      # Reserve held back so the budget trips early
+    group_chat_per_agent_max_tokens: 1500    # Output cap for a single contribution
+    group_chat_max_total_turns: 60           # Lifetime turn cap for one conversation
+    agent_call_timeout_seconds: 120.0        # Wall-clock cap for one conversational agent call
+    # Agent-initiated invite (group chat, gated by human consent). All opt-in.
+    invite_enabled: false                    # Master switch (also requires a wired approval store)
+    invite_max_per_round: 2                  # Consent-queue storm bound per round
+    invite_default_risk_level: medium        # Risk stamp on the consent ApprovalItem
+    # Direct MCP acting under trust (POST /meta/chat/act). All opt-in.
+    direct_mcp_enabled: false                # Master switch (fail-closed without SecurityConfig)
+    direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
     narrative_model: example-small-001       # LLM model id (connective prose only)
@@ -320,13 +355,14 @@ self_improvement:
     recommendation_min_observations: 10  # Min events for threshold recommendations
 ```
 
-## Approval Decision Routing (Three Flows)
+## Approval Decision Routing (Flows)
 
-`signal_resume_intent` dispatches every decided approval through a deterministic three-flow chain keyed off the persisted `ApprovalItem.source` discriminator. The discriminator is fixed at creation so a decided approval routes correctly even if the relevant subsystem is briefly unavailable.
+`signal_resume_intent` dispatches every decided approval through a deterministic flow chain keyed off the persisted `ApprovalItem.source` discriminator. The discriminator is fixed at creation so a decided approval routes correctly even if the relevant subsystem is briefly unavailable.
 
 1. **Flow 0** (Conversational intake; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the dispatcher looks up the gating `ConversationalProposal`, rebuilds the parked `WorkItem` from `work_item_json`, and on approve drives it through `app_state.work_pipeline.run`. On reject the proposal moves to `REJECTED` and the pipeline is never touched. Hard misconfiguration (no work pipeline) raises 503 rather than silently stranding the work.
-2. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context.
-3. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / scaling / training / signals approvals; the decision drives the task's IN_REVIEW transition.
+2. **Flow 0.5** (Agent invite; `source = CONVERSATIONAL_INVITE`, `try_conversational_invite_resume`): the dispatcher seats the invited agent into the group conversation on approve (re-checking the participant cap against the live roster) or moves the invite to `DECLINED` on reject. Owned here; every other source falls through.
+3. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context. Direct MCP chat actions (`/meta/chat/act`) park here.
+4. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / scaling / training / signals approvals; the decision drives the task's IN_REVIEW transition.
 
 Each branch returns `True` once it owns the decision, suppressing fall-through. Source is the routing primary; the legacy parked-context probe is the fallback only when the just-decided approval cannot be re-read.
 

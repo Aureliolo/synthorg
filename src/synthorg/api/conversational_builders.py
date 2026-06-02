@@ -166,7 +166,12 @@ def build_conversational_actor(
     - ``chief_of_staff_config.direct_mcp_enabled`` is False (opt-in
       default), or
     - the boot ``AgentEngine`` has no MCP self-consumer wired (no MCP
-      tools for an agent to act with, so the feature is inert).
+      tools for an agent to act with, so the feature is inert), or
+    - the boot ``AgentEngine`` has no enabled ``SecurityConfig``
+      (``has_security_governance`` False): without governance the SecOps
+      escalate-and-park step is absent, so a permitted write/admin MCP
+      action would run with no approval gate. The builder fails closed
+      rather than exposing ungated sensitive acting.
 
     The actor reuses the SHARED boot engine so a sensitive action parks
     on the same ``ApprovalGate`` the ``/approvals`` controller resumes,
@@ -191,11 +196,14 @@ def build_conversational_actor(
     if not engine.has_security_governance:
         logger.warning(
             API_APP_STARTUP,
-            note="Direct MCP acting enabled with security governance "
-            "inactive: sensitive chat actions will NOT be escalated or "
-            "parked. Wire an enabled SecurityConfig before exposing "
-            "/meta/chat/act.",
+            note="Direct MCP acting enabled but security governance is "
+            "inactive: refusing to build the actor (POST /meta/chat/act "
+            "503s). Without an enabled SecurityConfig the SecOps "
+            "escalate-and-park step is absent, so a permitted write/admin "
+            "MCP action would run unsupervised. Wire an enabled "
+            "SecurityConfig to expose the endpoint.",
         )
+        return None
     logger.info(API_APP_STARTUP, note="Direct MCP acting configured")
     return ConversationalActor(
         engine=engine,

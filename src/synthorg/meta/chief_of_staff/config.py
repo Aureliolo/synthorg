@@ -119,6 +119,26 @@ _NARRATIVE_MAX_TOKENS_DEFAULT: int = 2000
 _NARRATIVE_MAX_TOKENS_MIN: int = 100
 
 
+class KeywordRoleRule(BaseModel):
+    """One keyword group mapped to a role for the keyword router.
+
+    Operators override the built-in C-Suite keyword map (which covers
+    only the standard roles) with rules naming their own bespoke roles.
+    Rules are scanned in order; the first whose any keyword appears in
+    the latest human message wins.
+
+    Attributes:
+        keywords: Lower-case keyword group; a substring match in the
+            human message routes to ``role``.
+        role: Role name resolved against the active roster.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    keywords: tuple[NotBlankStr, ...] = Field(min_length=1)
+    role: NotBlankStr
+
+
 class ChiefOfStaffConfig(BaseModel):
     """Configuration for Chief of Staff advanced capabilities.
 
@@ -173,6 +193,9 @@ class ChiefOfStaffConfig(BaseModel):
         routing_default_role: Role to try when the classifier is
             confident but names a role with no active agent; falls back
             to the generic persona when that role is also absent.
+        routing_keyword_rules: Operator override for the keyword
+            strategy's keyword-to-role map. Empty (default) uses the
+            built-in C-Suite map; supply rules to cover bespoke roles.
         group_chat_enabled: Enable the multi-agent group chat
             (``/meta/chat/group``). When off, the controller 503s.
         group_chat_max_participants: Maximum agents in one group
@@ -297,6 +320,7 @@ class ChiefOfStaffConfig(BaseModel):
         description="Role to try when a confident classification names "
         "a role with no active agent",
     )
+    routing_keyword_rules: tuple[KeywordRoleRule, ...] = ()
 
     # ── Multi-agent group chat ────────────────────────────
 

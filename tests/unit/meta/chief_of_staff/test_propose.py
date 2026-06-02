@@ -518,19 +518,24 @@ class TestConcurrentConverse:
         assert len(ids) == 4
 
     async def test_locks_isolated_per_conversation(self) -> None:
-        # Two different conversations get independent locks; their
-        # turn pipelines do not block one another. (Easier to verify
-        # structurally than via timing -- assert that distinct
-        # ``acquire_for`` calls return distinct lock instances.) The
-        # proposer delegates per-conversation serialisation to the
-        # shared ``ConversationLockRegistry``.
+        # Two different conversations get independent locks; their turn
+        # pipelines do not block one another. The proposer delegates
+        # per-conversation serialisation to the shared registry, so both
+        # holds can be entered at once. A shared lock would deadlock the
+        # barrier (and time the test out).
         provider = ScriptedProvider(responses=[])
         proposer, *_ = build_proposer(provider=provider)
-        lock_a = await proposer._locks.acquire_for("conv-A")
-        lock_b = await proposer._locks.acquire_for("conv-B")
-        lock_a_again = await proposer._locks.acquire_for("conv-A")
-        assert lock_a is not lock_b
-        assert lock_a is lock_a_again
+        both_held = asyncio.Barrier(2)
+
+        async def hold(conversation_id: str) -> None:
+            async with proposer._locks.hold(conversation_id):
+                await both_held.wait()
+
+        async with asyncio.TaskGroup() as tg:
+            _ = tg.create_task(hold("conv-A"))
+            _ = tg.create_task(hold("conv-B"))
+
+        assert both_held.broken is False
 
     async def test_record_proposals_unwinds_on_partial_park_failure(self) -> None:
         # Multi-proposal parking must be atomic: if the Nth park

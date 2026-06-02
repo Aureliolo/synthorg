@@ -67,6 +67,7 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
         default_role=NotBlankStr("CEO"),
         temperature=0.0,
         max_tokens=200,
+        timeout_seconds=120.0,
     )
     proposer, _, turn_repo, _, _ = build_proposer(
         provider=provider,

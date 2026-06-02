@@ -223,17 +223,12 @@ class ChiefOfStaffProposer:
         # Serialise the turn pipeline per conversation so concurrent
         # converse() calls cannot snapshot the same prior_turns and
         # then commit assistant turns the other side never saw.
-        # The lock is held across the LLM call -- this is intentional
-        # for v1's 1:1 conversational interface where turns must stay
-        # linear; the LLM round-trip is the natural pacing unit and
-        # the contention window is small (one user per conversation
-        # at v1 fan-out). Locks accumulate in ``_conversation_locks``
-        # over the process lifetime -- the dict cannot be safely
-        # cleaned up without a refcount of in-flight + queued waiters
-        # (a deletion otherwise lets a concurrent caller mint a fresh
-        # lock while a queued waiter on the old one is still pending),
-        # which v1 does not need at its expected scale.
-        async with await self._locks.acquire_for(conversation.id):
+        # The lock is held across the LLM call: turns must stay linear,
+        # the round-trip is the natural pacing unit, and the contention
+        # window is small (one user per conversation). The registry
+        # reference-counts and evicts idle locks, so it does not grow
+        # unbounded over the process lifetime.
+        async with self._locks.hold(conversation.id):
             return await self._run_turn(conversation, args, now)
 
     async def _run_turn(

@@ -183,6 +183,57 @@ describe('MetaGroup', () => {
     expect(link).toHaveAttribute('href', '/approvals')
   })
 
+  it('approves a pending invite in context', async () => {
+    _useRoster()
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(
+          apiSuccess(
+            _roundResult({
+              pending_invites: [
+                {
+                  approval_id: 'appr-inv-1',
+                  requested_by_agent_id: 'a-ceo',
+                  requested_by_name: 'Dana',
+                  target_agent_id: 'a-cfo',
+                  target_name: 'Casey',
+                  target_role: 'CFO',
+                  reason: 'budget sign-off needed',
+                },
+              ],
+            }),
+          ),
+        ),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <MetaGroup />
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Dana/ })).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: /Dana/ }))
+    await user.type(screen.getByLabelText('Message'), 'bring in finance')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/budget sign-off needed/)).toBeInTheDocument()
+    })
+
+    // In-context consent: approving resolves the invite without leaving
+    // the conversation (the default approvals handler grants it).
+    await user.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Casey joins on the next turn/),
+      ).toBeInTheDocument()
+    })
+  })
+
   it('surfaces a truncation notice when a round stops early', async () => {
     _useRoster()
     server.use(

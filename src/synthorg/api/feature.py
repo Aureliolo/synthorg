@@ -61,6 +61,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_chief_of_staff_proposer",
         "build_role_router",
         "build_group_chat_service",
+        "GroupInviteCoordinator",
         "build_conversational_actor",
         "build_chief_of_staff_narrator",
     ),

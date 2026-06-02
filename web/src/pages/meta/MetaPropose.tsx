@@ -1,11 +1,11 @@
 import { ClipboardList } from 'lucide-react'
 
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { LiveRegion } from '@/components/ui/live-region'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
-import { ChatInputArea } from './ChatInputArea'
 import { useMetaProposeState, type MetaProposeMessage } from './useMetaProposeState'
 
 const INPUT_LABEL = 'Work request'
@@ -70,6 +70,8 @@ export function MetaPropose() {
     <div className="flex flex-col gap-4">
       <div
         ref={ctrl.scrollRef}
+        role="log"
+        aria-label="Clarify and propose conversation"
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         <LiveRegion politeness="polite">

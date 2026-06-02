@@ -42,6 +42,7 @@
         "build_chief_of_staff_proposer",
         "build_role_router",
         "build_group_chat_service",
+        "GroupInviteCoordinator",
         "build_conversational_actor",
         "build_chief_of_staff_narrator"
       ],
@@ -1087,8 +1088,7 @@
         "SubmitRedTeamReportTool",
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
-        "build_red_team_agent_identity",
-        "build_vision_verifier_gate"
+        "build_red_team_agent_identity"
       ],
       "mcp_tool_names": [],
       "name": "security",
@@ -1102,8 +1102,7 @@
       "state_slice_fields": [
         "audit_log",
         "trust_service",
-        "autonomy_change_strategy",
-        "red_team_reports"
+        "autonomy_change_strategy"
       ]
     },
     {
@@ -1150,7 +1149,6 @@
         "BrowserTool",
         "SSIMDiffer",
         "WorkspaceBaselineStore",
-        "DesktopTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy"
@@ -1202,8 +1200,7 @@
         "build_git_backend",
         "EmbeddedGitBackend",
         "LocalPathGitBackend",
-        "ExternalRemoteGitBackend",
-        "EnvironmentService"
+        "ExternalRemoteGitBackend"
       ],
       "mcp_tool_names": [],
       "name": "workspace",
@@ -1220,6 +1217,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-03T06:43:14.515788Z",
+  "generated_at": "2026-06-02T22:14:45.764851Z",
   "schema_version": 1
 }

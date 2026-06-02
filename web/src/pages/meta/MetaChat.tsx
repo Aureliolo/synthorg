@@ -1,10 +1,10 @@
 import { MessageCircle } from 'lucide-react'
 
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
 import { LiveRegion } from '@/components/ui/live-region'
 import { cn } from '@/lib/utils'
 
-import { ChatInputArea } from './ChatInputArea'
 import { useMetaChatState, type MetaChatMessage } from './useMetaChatState'
 
 interface MessageBubbleProps {
@@ -56,6 +56,8 @@ export function MetaChat() {
     <div className="flex flex-col gap-4">
       <div
         ref={ctrl.scrollRef}
+        role="log"
+        aria-label="Chief of Staff conversation"
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
         <LiveRegion politeness="polite">

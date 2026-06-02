@@ -17,6 +17,7 @@ function resetStore() {
     chatLoading: false,
     proposeLoading: false,
     groupChatLoading: false,
+    actionLoading: false,
   })
   useToastStore.setState({ toasts: [] })
 }
@@ -281,5 +282,62 @@ describe('converseGroup', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Group chat request failed')
+  })
+})
+
+describe('runAction', () => {
+  it('returns the action result and forwards instruction + agent + id', async () => {
+    const requestBodies: unknown[] = []
+    server.use(
+      http.post('/api/v1/meta/chat/act', async ({ request }) => {
+        requestBodies.push(await request.json())
+        return HttpResponse.json(
+          apiSuccess({
+            agent_id: 'agent-cfo',
+            agent_name: 'Casey',
+            conversation_id: 'conv-act-1',
+            action: {
+              termination_reason: 'completed',
+              final_message: 'Done.',
+              tool_calls: [],
+              approval_id: null,
+              parked: false,
+            },
+          }),
+        )
+      }),
+    )
+
+    const result = await useMetaStore
+      .getState()
+      .runAction('check revenue', 'agent-cfo', 'conv-act-1')
+
+    expect(result?.agent_name).toBe('Casey')
+    expect(useMetaStore.getState().actionLoading).toBe(false)
+    expect(requestBodies[0]).toEqual({
+      instruction: 'check revenue',
+      agent: 'agent-cfo',
+      conversation_id: 'conv-act-1',
+    })
+  })
+
+  it('returns null, sets error, and emits an error toast on API failure', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/act', () =>
+        HttpResponse.json(apiError('nope')),
+      ),
+    )
+
+    const result = await useMetaStore
+      .getState()
+      .runAction('do a thing', 'agent-cfo')
+
+    expect(result).toBeNull()
+    const state = useMetaStore.getState()
+    expect(state.actionLoading).toBe(false)
+    expect(state.error).toBe('nope')
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Direct action request failed')
   })
 })

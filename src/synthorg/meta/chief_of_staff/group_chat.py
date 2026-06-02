@@ -172,7 +172,7 @@ class GroupChatService:
         # commit turns the other side never saw. Held across every
         # agent dispatch -- round-robin contributions must stay linear
         # because each one feeds the next.
-        async with await self._locks.acquire_for(conversation.id):
+        async with self._locks.hold(conversation.id):
             return await self._run_round(conversation, args, now)
 
     async def _resolve_conversation(

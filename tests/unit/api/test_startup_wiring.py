@@ -22,7 +22,7 @@ from synthorg.api.lifecycle_builder import (
     _wire_workflow_observer,
 )
 from synthorg.api.lifecycle_helpers import narrative_wiring
-from synthorg.api.lifecycle_helpers.feature_wiring import (
+from synthorg.api.lifecycle_helpers.conversational_wiring import (
     _guard_conversational_persistence,
 )
 from synthorg.api.lifecycle_helpers.finetune_wiring import (

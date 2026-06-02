@@ -286,6 +286,50 @@ class TestConversationInviteRepository:
         )
         assert await repo.count(ConversationInviteFilterSpec()) >= 2
 
+    async def test_duplicate_pending_invite_rejected(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The partial-unique index ``WHERE status = 'pending'`` admits
+        # only one PENDING invite per (conversation_id, target_agent_id);
+        # a second distinct invite for the same target must be rejected
+        # at the DB layer (the hard backstop behind the app-layer dedup).
+        await _seed_conversation(backend)
+        repo = _repo(backend)
+        await repo.save(
+            _make_invite(
+                invite_id="dup-1", approval_id="a-dup-1", target_agent_id="agent-cfo"
+            )
+        )
+        with pytest.raises(ConstraintViolationError):
+            await repo.save(
+                _make_invite(
+                    invite_id="dup-2",
+                    approval_id="a-dup-2",
+                    target_agent_id="agent-cfo",
+                )
+            )
+
+    async def test_distinct_target_pending_invites_allowed(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The partial-unique index keys on target_agent_id, so two
+        # PENDING invites for DIFFERENT targets in one conversation both
+        # persist (only the same-target collision is rejected).
+        await _seed_conversation(backend)
+        repo = _repo(backend)
+        await repo.save(
+            _make_invite(
+                invite_id="dt-1", approval_id="a-dt-1", target_agent_id="agent-cfo"
+            )
+        )
+        await repo.save(
+            _make_invite(
+                invite_id="dt-2", approval_id="a-dt-2", target_agent_id="agent-coo"
+            )
+        )
+        assert await repo.get("dt-1") is not None
+        assert await repo.get("dt-2") is not None
+
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend
     ) -> None:

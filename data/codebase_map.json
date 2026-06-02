@@ -1353,7 +1353,7 @@
     },
     {
       "kind": "code",
-      "loc": 179,
+      "loc": 187,
       "loc_cap": 500,
       "module": "src/synthorg/api/conversational_builders.py",
       "owning_feature": "api_core"
@@ -1458,7 +1458,7 @@
     },
     {
       "kind": "feature",
-      "loc": 64,
+      "loc": 65,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -1549,7 +1549,14 @@
     },
     {
       "kind": "code",
-      "loc": 107,
+      "loc": 78,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 243,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
       "owning_feature": "api_core"
@@ -1570,7 +1577,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 600,
+      "loc": 474,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -10124,14 +10131,14 @@
     },
     {
       "kind": "declarative",
-      "loc": 264,
+      "loc": 282,
       "loc_cap": null,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 38,
+      "loc": 66,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/conversation_lock.py",
       "owning_feature": "meta"
@@ -10320,7 +10327,7 @@
     },
     {
       "kind": "service",
-      "loc": 426,
+      "loc": 455,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/routing.py",
       "owning_feature": "meta"

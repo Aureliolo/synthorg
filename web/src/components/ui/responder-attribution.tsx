@@ -32,13 +32,18 @@ export function ResponderAttribution({
         className,
       )}
     >
-      <Avatar name={name} size="sm" />
+      <span aria-hidden="true">
+        <Avatar name={name} size="sm" />
+      </span>
       <span className="font-medium text-foreground">{name}</span>
-      <span className="text-muted-foreground">·</span>
+      <span aria-hidden="true" className="text-muted-foreground">
+        ·
+      </span>
       <span>{role}</span>
       {topic && (
         <span className="text-muted-foreground">
-          · routed by <span className="font-mono">{topic}</span>
+          <span aria-hidden="true">· </span>routed by{' '}
+          <span className="font-mono">{topic}</span>
         </span>
       )}
     </div>

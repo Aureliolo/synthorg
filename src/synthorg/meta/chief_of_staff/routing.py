@@ -22,6 +22,8 @@ fences the conversation history as untrusted content (via wrap_untrusted) and re
 its spend through the cost chokepoint.
 """
 
+import asyncio
+import functools
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -30,7 +32,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ConversationRole
+from synthorg.core.enums import ConversationRole, compare_seniority
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr
@@ -136,13 +138,27 @@ class RoleRouter(Protocol):
         ...
 
 
+def _by_seniority_then_name(a: AgentIdentity, b: AgentIdentity) -> int:
+    """Order two role-holders most-senior-first, then name ascending.
+
+    Returns:
+        Negative when *a* sorts before *b*, positive when after, zero
+        when identical on both keys.
+    """
+    by_seniority = compare_seniority(b.level, a.level)
+    if by_seniority != 0:
+        return by_seniority
+    return (a.name > b.name) - (a.name < b.name)
+
+
 def _resolve_agent_for_role(
     active: tuple[AgentIdentity, ...], role: NotBlankStr
 ) -> AgentIdentity | None:
     """Find the active agent holding *role* (case-insensitive).
 
-    When several active agents share a role, the alphabetically-first by
-    name is chosen so resolution is deterministic across backends.
+    When several active agents share a role, the most senior is chosen
+    (the natural primary for the role), with the alphabetically-first by
+    name as a deterministic tiebreak across equal-seniority holders.
 
     Returns:
         The matching identity, or ``None`` when no active agent holds it.
@@ -151,7 +167,7 @@ def _resolve_agent_for_role(
     matches = [a for a in active if a.role.strip().casefold() == target]
     if not matches:
         return None
-    return min(matches, key=lambda a: a.name)
+    return min(matches, key=functools.cmp_to_key(_by_seniority_then_name))
 
 
 def _render_candidate_roles(active: tuple[AgentIdentity, ...]) -> str:
@@ -214,6 +230,10 @@ class LlmConcernRouter:
             a role with no active agent.
         temperature: Classifier sampling temperature.
         max_tokens: Token budget for one classification reply.
+        timeout_seconds: Wall-clock cap for the classification call. The
+            call runs under the per-conversation lock before each turn, so
+            this bound stops a hung provider from stalling the conversation;
+            on timeout the router falls back to the generic responder.
         cost_tracker: Optional cost tracker for the classification call.
     """
 
@@ -227,6 +247,7 @@ class LlmConcernRouter:
         default_role: NotBlankStr,
         temperature: float,
         max_tokens: int,
+        timeout_seconds: float,
         cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
@@ -236,6 +257,7 @@ class LlmConcernRouter:
         self._default_role = default_role
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._timeout_seconds = timeout_seconds
         self._cost_tracker = cost_tracker
 
     async def route(
@@ -319,10 +341,13 @@ class LlmConcernRouter:
                 task_id=_ROUTING_TASK_ID,
                 call_category=LLMCallCategory.SYSTEM,
             ):
-                response = await self._provider.complete(
-                    messages,
-                    self._model,
-                    config=completion_config,
+                response = await asyncio.wait_for(
+                    self._provider.complete(
+                        messages,
+                        self._model,
+                        config=completion_config,
+                    ),
+                    timeout=self._timeout_seconds,
                 )
         except Exception as exc:
             reraise_critical(exc)
@@ -461,9 +486,15 @@ def build_role_router(
     if not config.routing_enabled:
         return None
     if config.routing_strategy == "keyword":
+        keyword_map = (
+            tuple((rule.keywords, rule.role) for rule in config.routing_keyword_rules)
+            if config.routing_keyword_rules
+            else _DEFAULT_KEYWORD_ROLE_MAP
+        )
         return KeywordRoleRouter(
             agent_registry=agent_registry,
             default_role=config.routing_default_role,
+            keyword_map=keyword_map,
         )
     provider = _first_provider(provider_registry)
     if provider is None:
@@ -477,6 +508,7 @@ def build_role_router(
         default_role=config.routing_default_role,
         temperature=config.routing_temperature,
         max_tokens=config.routing_max_tokens,
+        timeout_seconds=config.agent_call_timeout_seconds,
         cost_tracker=cost_tracker,
     )
 
