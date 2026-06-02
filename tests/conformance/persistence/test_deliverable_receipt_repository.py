@@ -123,6 +123,23 @@ class TestDeliverableReceiptRepository:
         )
         assert [r.receipt_id for r in page] == ["b"]
 
+    async def test_query_by_slug_is_project_scoped(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.deliverable_receipts.save(
+            _receipt(receipt_id="a", task_id="t-a", project_id="proj-a", slug="shared"),
+        )
+        await backend.deliverable_receipts.save(
+            _receipt(receipt_id="b", task_id="t-b", project_id="proj-b", slug="shared"),
+        )
+        page = await backend.deliverable_receipts.query(
+            DeliverableReceiptFilterSpec(
+                project_id=NotBlankStr("proj-a"),
+                deliverable_doc_slug=NotBlankStr("shared"),
+            ),
+        )
+        assert [r.receipt_id for r in page] == ["a"]
+
     async def test_count(self, backend: PersistenceBackend) -> None:
         await backend.deliverable_receipts.save(_receipt(receipt_id="a", task_id="t-a"))
         await backend.deliverable_receipts.save(_receipt(receipt_id="b", task_id="t-b"))

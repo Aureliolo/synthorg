@@ -18,7 +18,7 @@ CREATE TABLE deliverable_receipt (
     deliverable_doc_slug TEXT NOT NULL,
     issued_at TEXT NOT NULL,
     total_cost REAL NOT NULL DEFAULT 0.0 CHECK (total_cost >= 0),
-    currency TEXT NOT NULL,
+    currency TEXT NOT NULL CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
     payload_json TEXT NOT NULL
 );
 
@@ -61,7 +61,8 @@ CREATE TABLE code_execution_record (
     timed_out INTEGER NOT NULL CHECK (timed_out IN (0, 1)),
     stdout_tail TEXT,
     stderr_tail TEXT,
-    executed_at TEXT NOT NULL
+    executed_at TEXT NOT NULL,
+    CHECK (passed = (returncode = 0 AND timed_out = 0))
 );
 
 CREATE INDEX idx_code_execution_execution

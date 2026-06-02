@@ -63,6 +63,22 @@ class TestKnowledgeUsageRecordRepository:
         )
         assert [r.record_id for r in page] == ["b"]
 
+    async def test_query_by_task_and_project(self, backend: PersistenceBackend) -> None:
+        await backend.knowledge_usage_records.append(
+            _record(record_id="a", task_id="task-a", project_id="proj-a"),
+        )
+        await backend.knowledge_usage_records.append(
+            _record(record_id="b", task_id="task-b", project_id="proj-b"),
+        )
+        by_task = await backend.knowledge_usage_records.query(
+            KnowledgeUsageFilterSpec(task_id=NotBlankStr("task-a")),
+        )
+        assert [r.record_id for r in by_task] == ["a"]
+        by_project = await backend.knowledge_usage_records.query(
+            KnowledgeUsageFilterSpec(project_id=NotBlankStr("proj-b")),
+        )
+        assert [r.record_id for r in by_project] == ["b"]
+
     async def test_append_duplicate_id_raises(
         self, backend: PersistenceBackend
     ) -> None:

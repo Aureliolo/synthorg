@@ -32,8 +32,14 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecordRepository,
+)
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.deliverable_receipt_protocol import (
+    DeliverableReceiptRepository,
+)
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrameRepository
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
@@ -44,6 +50,9 @@ from synthorg.persistence.idempotency_protocol import (
 from synthorg.persistence.knowledge_protocol import (
     ChunkProvenanceRepository,
     KnowledgeSourceRepository,
+)
+from synthorg.persistence.knowledge_usage_protocol import (
+    KnowledgeUsageRecordRepository,
 )
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
@@ -1587,6 +1596,28 @@ class TestProtocolCompliance:
         # ``research_runs`` back to ``object()`` surfaces here.
         backend = _FakeBackend()
         assert isinstance(backend.research_runs, ResearchRunRepository)
+
+    def test_fake_deliverable_receipts_repo_is_deliverable_receipt_repository(
+        self,
+    ) -> None:
+        # Route through the backend property so a regression that drifts
+        # ``deliverable_receipts`` away from the protocol surfaces here.
+        backend = _FakeBackend()
+        assert isinstance(backend.deliverable_receipts, DeliverableReceiptRepository)
+
+    def test_fake_knowledge_usage_records_repo_is_knowledge_usage_repository(
+        self,
+    ) -> None:
+        backend = _FakeBackend()
+        assert isinstance(
+            backend.knowledge_usage_records, KnowledgeUsageRecordRepository
+        )
+
+    def test_fake_code_execution_records_repo_is_code_execution_repository(
+        self,
+    ) -> None:
+        backend = _FakeBackend()
+        assert isinstance(backend.code_execution_records, CodeExecutionRecordRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(
