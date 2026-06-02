@@ -8,10 +8,10 @@ a record with a caller-supplied ``version`` (most callers use
 
 import copy
 import sqlite3
+from datetime import datetime
 from types import MappingProxyType
 
 import aiosqlite
-from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
@@ -138,7 +138,7 @@ class _AuditMixin(_DecisionRepoBase):
             )
             raise QueryError(msg) from exc
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete decision records older than threshold (retention).
 
         Args:

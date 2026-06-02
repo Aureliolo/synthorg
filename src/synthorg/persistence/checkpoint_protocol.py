@@ -1,8 +1,9 @@
 """Checkpoint and heartbeat repository protocols."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
@@ -73,7 +74,7 @@ class CheckpointRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete checkpoints with ``saved_at < threshold``.
 
         ``threshold`` must be timezone-aware UTC; naive datetimes are
@@ -162,7 +163,7 @@ class HeartbeatRepository(Protocol):
 
     async def get_stale(
         self,
-        threshold: AwareDatetime,
+        threshold: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

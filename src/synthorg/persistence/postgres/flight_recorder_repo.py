@@ -5,12 +5,13 @@ Postgres sibling of ``persistence/sqlite/flight_recorder_repo.py``.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -219,7 +220,7 @@ class PostgresFlightRecorderFrameRepository:
             raise QueryError(msg) from exc
         if row is None:
             return FlightRecorderFrameAggregate()
-        latest_ts: AwareDatetime | None = row.get("latest_timestamp")
+        latest_ts: datetime | None = row.get("latest_timestamp")
         if latest_ts is not None:
             latest_ts = normalize_utc(latest_ts)
         latest_exec = row.get("latest_execution_id")
@@ -230,10 +231,10 @@ class PostgresFlightRecorderFrameRepository:
             latest_execution_id=NotBlankStr(latest_exec) if latest_exec else None,
         )
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete frames with ``timestamp < threshold``.
 
-        ``threshold`` is an ``AwareDatetime`` so naive values cannot
+        ``threshold`` is an ``datetime`` so naive values cannot
         slip through silently.
 
         Returns:

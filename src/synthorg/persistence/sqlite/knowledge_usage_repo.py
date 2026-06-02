@@ -4,9 +4,10 @@
 
 import contextlib
 import sqlite3
+from datetime import datetime
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability import get_logger, safe_error_description
@@ -130,7 +131,7 @@ class SQLiteKnowledgeUsageRecordRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(dict(r)) for r in rows)
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
 
         Returns:

@@ -13,7 +13,6 @@ import sqlite3
 from datetime import datetime
 
 import aiosqlite
-from pydantic import AwareDatetime
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
@@ -64,7 +63,7 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: AwareDatetime,
+        now: datetime,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
@@ -148,8 +147,8 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         row: aiosqlite.Row | None,
-        now: AwareDatetime,
-        expires_at: AwareDatetime,
+        now: datetime,
+        expires_at: datetime,
     ) -> IdempotencyClaim:
         """Pick the right claim outcome given the existing *row*.
 
@@ -197,7 +196,7 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         new_token: str,
-        expires_at: AwareDatetime,
+        expires_at: datetime,
     ) -> None:
         """Rotate an expired/failed row to a fresh in-flight lease.
 
@@ -227,8 +226,8 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         new_token: str,
-        now: AwareDatetime,
-        expires_at: AwareDatetime,
+        now: datetime,
+        expires_at: datetime,
     ) -> None:
         """Insert a fresh in-flight idempotency row."""
         await self._db.execute(
@@ -404,7 +403,7 @@ class SQLiteIdempotencyRepository:
             msg = "Failed to fetch idempotency key"
             raise QueryError(msg) from exc
 
-    async def cleanup_expired(self, now: AwareDatetime) -> int:
+    async def cleanup_expired(self, now: datetime) -> int:
         """Delete expired rows and return the count removed.
 
         Returns:

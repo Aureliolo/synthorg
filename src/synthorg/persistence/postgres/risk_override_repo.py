@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -296,7 +296,7 @@ class PostgresRiskOverrideRepository:
         override_id: NotBlankStr,
         *,
         revoked_by: NotBlankStr,
-        revoked_at: AwareDatetime,
+        revoked_at: datetime,
     ) -> bool:
         """Mark an override as revoked.
 

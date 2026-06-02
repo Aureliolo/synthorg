@@ -9,11 +9,9 @@ decisions.
 
 import json
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Final
-
-from pydantic import AwareDatetime
 
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr
@@ -57,7 +55,7 @@ def _build_insert_params(  # noqa: PLR0913
     decision: DecisionOutcome,
     reason: str | None,
     criteria_snapshot: tuple[NotBlankStr, ...],
-    recorded_at: AwareDatetime,
+    recorded_at: datetime,
     metadata: dict[str, object],
 ) -> dict[str, object]:
     """Shape the bound-parameter dict for the INSERT statement.

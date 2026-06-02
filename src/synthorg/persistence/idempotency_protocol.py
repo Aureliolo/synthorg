@@ -8,6 +8,7 @@ timestamp-window enforcement; this protocol provides the durable
 backstop for cross-restart and cross-replica deduplication.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol, Self, runtime_checkable
 
@@ -174,7 +175,7 @@ class IdempotencyRepository(Protocol):
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: AwareDatetime,
+        now: datetime,
     ) -> IdempotencyClaim:
         """Attempt to claim *(scope, key)* for the duration of *ttl_seconds*.
 
@@ -229,6 +230,6 @@ class IdempotencyRepository(Protocol):
         """Fetch the persisted record verbatim (None if absent)."""
         ...
 
-    async def cleanup_expired(self, now: AwareDatetime) -> int:
+    async def cleanup_expired(self, now: datetime) -> int:
         """Delete expired rows. Returns the number of rows removed."""
         ...

@@ -7,6 +7,7 @@ and native BOOLEAN for boolean flags. The protocol surface returns the same
 Pydantic models as the SQLite backend.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -43,7 +44,6 @@ from synthorg.persistence._shared.pagination import (
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 
@@ -127,7 +127,7 @@ class PostgresLifecycleEventRepository:
         *,
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
@@ -271,8 +271,8 @@ class PostgresTaskMetricRepository:
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query task metric records with optional filters.
@@ -410,7 +410,7 @@ class PostgresCollaborationMetricRepository:
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.

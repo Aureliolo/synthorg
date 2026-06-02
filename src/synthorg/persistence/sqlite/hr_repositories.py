@@ -5,7 +5,7 @@ LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -37,9 +37,6 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 
@@ -126,7 +123,7 @@ INSERT INTO lifecycle_events (
         *,
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
@@ -269,8 +266,8 @@ INSERT INTO task_metrics (
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query task metric records with optional filters.
@@ -410,7 +407,7 @@ INSERT INTO collaboration_metrics (
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.

@@ -1,5 +1,6 @@
 """Audit repository protocol."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -126,7 +127,7 @@ class AuditRepository(
         ...
 
     @override
-    async def purge_before(self, cutoff: AwareDatetime) -> int:
+    async def purge_before(self, cutoff: datetime) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 
         This is the one exception to the append-only rule: it powers

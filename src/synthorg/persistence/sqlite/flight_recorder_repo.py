@@ -4,9 +4,10 @@
 import contextlib
 import json
 import sqlite3
+from datetime import datetime
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -234,10 +235,10 @@ class SQLiteFlightRecorderFrameRepository:
             latest_execution_id=NotBlankStr(latest_exec) if latest_exec else None,
         )
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete frames with ``timestamp < threshold``.
 
-        ``threshold`` is an ``AwareDatetime`` so naive values cannot
+        ``threshold`` is an ``datetime`` so naive values cannot
         slip through silently.
 
         Returns:

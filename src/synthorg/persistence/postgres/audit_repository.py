@@ -1,6 +1,6 @@
 """Postgres repository implementation for security audit entries."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -24,7 +24,6 @@ from synthorg.security.models import AuditVerdictStr
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-    from pydantic import AwareDatetime
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
@@ -179,8 +178,8 @@ class PostgresAuditRepository:
     def _validate_query_args(
         self,
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
     ) -> None:
         """Validate query parameters before execution.
@@ -214,8 +213,8 @@ class PostgresAuditRepository:
         action_type: NotBlankStr | None,
         verdict: AuditVerdictStr | None,
         risk_level: ApprovalRiskLevel | None,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[str, list[object]]:
         """Build WHERE clause and parameters for audit query.
 
@@ -293,8 +292,8 @@ class PostgresAuditRepository:
 
     def _build_time_clause(
         self,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions.
 
@@ -318,8 +317,8 @@ class PostgresAuditRepository:
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -384,8 +383,8 @@ class PostgresAuditRepository:
         column: str,
         value: dict[str, object] | list[object],
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -413,8 +412,8 @@ class PostgresAuditRepository:
         column: str,
         key: str,
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -437,7 +436,7 @@ class PostgresAuditRepository:
             offset=offset,
         )
 
-    async def purge_before(self, cutoff: AwareDatetime) -> int:
+    async def purge_before(self, cutoff: datetime) -> int:
         """Delete audit entries strictly older than *cutoff* (CFG-1).
 
         Args:

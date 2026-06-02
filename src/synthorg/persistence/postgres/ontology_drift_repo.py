@@ -1,10 +1,10 @@
 """Postgres-backed drift report repository."""
 
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 from psycopg.rows import BaseRowFactory, DictRow
-from pydantic import AwareDatetime
 
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
@@ -139,7 +139,7 @@ class PostgresOntologyDriftReportRepository:
         msg = "OntologyDriftReportRepository.query is not implemented"
         raise NotImplementedError(msg)
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Retention purge of drift reports (not implemented).
 
         Raises rather than silently reporting zero deletions, which

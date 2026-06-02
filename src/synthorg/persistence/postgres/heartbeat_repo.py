@@ -4,12 +4,12 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/heartbeat_repo.p
 Postgres stores timestamps as native TIMESTAMPTZ columns (SQLite uses ISO strings).
 """
 
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -122,7 +122,7 @@ ON CONFLICT(execution_id) DO UPDATE SET
 
     async def get_stale(
         self,
-        threshold: AwareDatetime,
+        threshold: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

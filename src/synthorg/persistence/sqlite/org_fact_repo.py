@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -308,7 +308,7 @@ class SQLiteOrgFactRepository:
         # Marshal every Python value into its SQLite-bound shape BEFORE
         # the transaction opens.  ``format_iso_utc`` raises
         # ``ValueError`` on a naive ``created_at`` (defending against
-        # a regression that bypasses the ``AwareDatetime`` type
+        # a regression that bypasses the ``datetime`` type
         # guard); doing the marshal up here keeps that error path
         # outside the ``try`` block, so we never strand a
         # ``BEGIN IMMEDIATE`` transaction holding the write lock.
@@ -593,7 +593,7 @@ class SQLiteOrgFactRepository:
 
     async def snapshot_at(
         self,
-        timestamp: AwareDatetime,
+        timestamp: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

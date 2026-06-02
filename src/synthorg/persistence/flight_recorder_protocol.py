@@ -220,7 +220,7 @@ class FlightRecorderFrameRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete frames with ``timestamp < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware (an ``AwareDatetime``);

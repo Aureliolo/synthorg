@@ -8,11 +8,10 @@ duplicate. ``is_completed`` is the pre-execute existence check.
 """
 
 import contextlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 import psycopg
-from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -73,7 +72,7 @@ class PostgresSeenClaimsRepository:
         *,
         idempotency_key: NotBlankStr,
         claim_id: NotBlankStr,
-        now: AwareDatetime,
+        now: datetime,
         ttl_seconds: float,
     ) -> bool:
         """Insert the dedup row; return ``True`` only on first write.
@@ -117,7 +116,7 @@ class PostgresSeenClaimsRepository:
             raise QueryError(msg) from exc
         return inserted
 
-    async def prune_expired(self, now: AwareDatetime) -> int:
+    async def prune_expired(self, now: datetime) -> int:
         """Delete rows past their ``expires_at`` boundary.
 
         Returns:

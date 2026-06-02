@@ -932,7 +932,7 @@ addopts = [
     # whose InstrumentationWarning is filtered below). WARN routes the eager-eval
     # NameError class through tests/_typeguard_checker.py; resolved-type
     # mismatches still raise regardless of the policy.
-    "--typeguard-packages=synthorg.core",
+    "--typeguard-packages=synthorg.core,synthorg.persistence",
     "--typeguard-forward-ref-policy=WARN",
 ]
 filterwarnings = [
@@ -950,6 +950,18 @@ filterwarnings = [
     # ``error`` rule above promotes it and pytest exits 2 with zero tests
     # run despite typeguard being live.
     "ignore::typeguard.InstrumentationWarning",
+    # ``--typeguard-forward-ref-policy=WARN`` plus the policy-honouring checker
+    # (tests/_typeguard_checker.py) SKIP a check and emit a ``TypeHintWarning``
+    # when a signature or member type is only importable under
+    # ``if TYPE_CHECKING:`` AND cannot be hoisted to a runtime import without an
+    # import cycle. Non-cycle TYPE_CHECKING signature imports are HOISTED to
+    # module level instead (so the boundary is really checked); only genuine
+    # cycle-breakers reach this path. ``default`` (not ``error``, not ``ignore``)
+    # keeps the residual skips NON-FATAL but VISIBLE in the pytest warnings
+    # summary, so the remaining unchecked surface stays countable. A
+    # resolved-type mismatch is a ``TypeCheckError`` (an exception, not a
+    # warning), so it still fails regardless of this filter.
+    "default::typeguard.TypeHintWarning",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
     # nats-py 2.14.0 (latest) calls ``asyncio.iscoroutinefunction`` in

@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -23,8 +23,6 @@ from synthorg.persistence._shared.audit import (
 )
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
     from synthorg.persistence.audit_protocol import AuditFilterSpec
@@ -200,8 +198,8 @@ class SQLiteAuditRepository:
     def _validate_query_args(
         self,
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
         offset: int,
     ) -> None:
@@ -246,8 +244,8 @@ class SQLiteAuditRepository:
         action_type: NotBlankStr | None,
         verdict: AuditVerdictStr | None,
         risk_level: ApprovalRiskLevel | None,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[str, list[object]]:
         """Build WHERE clause and parameters for audit query.
 
@@ -281,7 +279,7 @@ class SQLiteAuditRepository:
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         return where, params
 
-    async def purge_before(self, cutoff: AwareDatetime) -> int:
+    async def purge_before(self, cutoff: datetime) -> int:
         """Delete audit entries strictly older than *cutoff* (CFG-1).
 
         Args:

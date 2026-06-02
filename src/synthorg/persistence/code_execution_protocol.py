@@ -148,6 +148,6 @@ class CodeExecutionRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``executed_at < threshold``. Returns rows removed."""
         ...

@@ -2,10 +2,10 @@
 
 import contextlib
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -123,7 +123,7 @@ INSERT OR REPLACE INTO heartbeats (
 
     async def get_stale(
         self,
-        threshold: AwareDatetime,
+        threshold: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
