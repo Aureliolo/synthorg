@@ -1577,7 +1577,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 108,
+      "loc": 115,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/narrative_wiring.py",
       "owning_feature": "api_core"

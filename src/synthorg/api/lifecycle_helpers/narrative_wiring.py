@@ -35,6 +35,12 @@ async def wire_run_narrator(
     already-built work pipeline. A disabled flag, an absent provider, or a
     missing collaborator leaves the pipeline narrator-less so completed
     briefs simply produce no narrative.
+
+    Raises:
+        MemoryError: Propagated from narrator construction; interpreter-level
+            criticals are never swallowed by the best-effort handler.
+        RecursionError: Propagated from narrator construction for the same
+            reason.
     """
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
@@ -69,6 +75,9 @@ async def wire_run_narrator(
             provider_registry=provider_registry,
             cost_tracker=cost_tracker,
         )
+    except MemoryError, RecursionError:
+        # Interpreter-level criticals are never best-effort; let them abort.
+        raise
     except Exception as exc:
         logger.warning(
             API_APP_STARTUP,

@@ -559,3 +559,34 @@ class TestWireRunNarrator:
         ]
         assert len(failed) == 1
         assert failed[0]["error_type"] == "RuntimeError"
+
+    async def test_reraises_interpreter_criticals(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # MemoryError / RecursionError are interpreter-level criticals: the
+        # best-effort handler must let them propagate, not swallow them.
+        enabled = SimpleNamespace(
+            chief_of_staff=ChiefOfStaffConfig(narrative_enabled=True)
+        )
+        monkeypatch.setattr(
+            "synthorg.meta.config.load_self_improvement_config",
+            AsyncMock(spec=load_self_improvement_config, return_value=enabled),
+        )
+
+        def _boom(*_: object, **__: object) -> None:
+            raise MemoryError
+
+        monkeypatch.setattr(narrative_wiring, "_attach_narrator", _boom)
+        state = _make_state(
+            slices={
+                PersistenceStateSlice: {"backend": FakePersistenceBackend()},
+                EngineStateSlice: {"work_pipeline": mock_of[WorkPipeline]()},
+            }
+        )
+
+        with pytest.raises(MemoryError):
+            await narrative_wiring.wire_run_narrator(
+                state,
+                provider_registry=mock_of[ProviderRegistry](),
+                cost_tracker=None,
+            )
