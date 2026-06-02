@@ -51,7 +51,13 @@ export function DocViewer({ doc, loading, error, projectId }: DocViewerProps) {
         )}
       </header>
       {doc.doc_type === 'deliverable' && (
-        <ReceiptPanel projectId={projectId} slug={doc.slug} />
+        // Key by target so switching deliverables remounts the panel and
+        // resets its fetch/validation state (no stale result carries over).
+        <ReceiptPanel
+          key={`${projectId}::${doc.slug}`}
+          projectId={projectId}
+          slug={doc.slug}
+        />
       )}
       <div className="flex flex-col gap-section-gap">
         {doc.body.map((block) => (
