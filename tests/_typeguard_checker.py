@@ -35,6 +35,7 @@ import typeguard
 from typeguard import (
     ForwardRefPolicy,
     TypeCheckerCallable,
+    TypeCheckError,
     TypeCheckMemo,
     TypeHintWarning,
 )
@@ -91,17 +92,56 @@ def _policy_honoring_lookup(
     return _wrap(inner)
 
 
+def _unbound_pydantic_generic_lookup(
+    origin_type: Any,
+    args: tuple[Any, ...],
+    extras: tuple[Any, ...],
+) -> TypeCheckerCallable | None:
+    """Relax a pydantic generic parameterized by a free TypeVar to its base.
+
+    pydantic v2 builds a distinct subclass for ``Model[X]``. When ``X`` is still
+    a free TypeVar (a generic repository annotating ``Model[T]`` with its own
+    unbound parameter, e.g. ``VersionSnapshot[T]``), the runtime value is a bare
+    ``Model`` instance, which is NOT an instance of the ``Model[T]`` subclass, so
+    typeguard's fallback ``isinstance`` check raises. An unbound TypeVar cannot
+    constrain the type argument at runtime, so the correct check is against the
+    origin base class. Fully-parameterized generics (``Model[Concrete]``,
+    ``parameters == ()``) are left to typeguard's strict check.
+    """
+    meta = getattr(origin_type, "__pydantic_generic_metadata__", None)
+    if not meta or not meta.get("parameters"):
+        return None
+    base = meta.get("origin")
+    if base is None:
+        return None
+
+    def _check(
+        value: Any,
+        _origin_type: Any,
+        _args: tuple[Any, ...],
+        _memo: TypeCheckMemo,
+    ) -> None:
+        if not isinstance(value, base):
+            msg = f"is not an instance of {base.__qualname__}"
+            raise TypeCheckError(msg)
+
+    return _check
+
+
 _registered = False
 
 
 def register_policy_honoring_checker() -> None:
-    """Install the policy-honouring lookup at the front of the checker chain.
+    """Install the WARN-activation checker extensions at the front of the chain.
 
-    Idempotent: a repeat call is a no-op, so re-importing this module (e.g. each
-    xdist worker re-running conftest) does not stack duplicate wrappers.
+    Registers the NameError-tolerant wrapper (eager-eval ``TYPE_CHECKING``-only
+    signatures) and the unbound-pydantic-generic relaxation. Idempotent: a repeat
+    call is a no-op, so re-importing this module (e.g. each xdist worker
+    re-running conftest) does not stack duplicate lookups.
     """
     global _registered  # noqa: PLW0603 -- module-level one-shot guard
     if _registered:
         return
+    typeguard.checker_lookup_functions.insert(0, _unbound_pydantic_generic_lookup)
     typeguard.checker_lookup_functions.insert(0, _policy_honoring_lookup)
     _registered = True

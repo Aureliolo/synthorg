@@ -9,7 +9,7 @@ test error, while genuine resolved-type mismatches still raise
 
 import warnings
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     # A name visible ONLY to static analysis, absent at runtime: exactly the
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from datetime import datetime as _runtime_unbound
 
 import pytest
+from pydantic import BaseModel
 from typeguard import (
     ForwardRefPolicy,
     TypeCheckConfiguration,
@@ -137,3 +138,33 @@ class TestIntegration:
                 _ProtoResolvable,
                 forward_ref_policy=ForwardRefPolicy.WARN,
             )
+
+
+class _Snapshot[U: BaseModel](BaseModel):
+    """Pydantic generic mirroring the VersionSnapshot[T] repository pattern."""
+
+    payload: U
+
+
+class _Payload(BaseModel):
+    value: int = 0
+
+
+class TestUnboundPydanticGeneric:
+    """A bare pydantic-generic instance satisfies the ``Model[T]`` annotation."""
+
+    def test_unbound_typevar_relaxes_to_base(self) -> None:
+        register_policy_honoring_checker()
+        # Parameterize by the class's own free TypeVar, as a generic repository
+        # annotates ``Model[T]`` with its unbound parameter. Built via
+        # ``__class_getitem__`` so the free TypeVar is not analysed as a type.
+        unbound = _Snapshot.__class_getitem__(cast("Any", _Snapshot.__type_params__[0]))
+        bare = _Snapshot(payload=_Payload())  # constructed as the base, not Snapshot[T]
+        # Without the relaxation typeguard raises (bare is not an instance of the
+        # pydantic-built Snapshot[U] subclass); with it the base check passes.
+        check_type(bare, unbound)
+
+    def test_concrete_parameterization_still_checked(self) -> None:
+        register_policy_honoring_checker()
+        with pytest.raises(TypeCheckError):
+            check_type("not a snapshot", _Snapshot[_Payload])
