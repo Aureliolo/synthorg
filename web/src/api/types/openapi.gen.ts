@@ -9487,17 +9487,15 @@ export type components = {
          * DocType
          * @description Living-document type taxonomy.
          *
-         *     ``STATUS_REPORT`` is a periodic or per-task summary agents write to
-         *     record progress and decisions. ``DELIVERABLE`` is an iteratively
-         *     edited artifact the org produces (PRD, design doc, research memo).
-         *     ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
-         *     work. ``CODEBASE_ANALYSIS`` is the architecture/health assessment a
-         *     brownfield-intake analysis pass produces over an imported codebase.
-         *     All share storage, chunking, and indexing; the type drives wiki
-         *     filtering and renderer affordances only.
+         *     ``STATUS_REPORT`` records progress/decisions; ``DELIVERABLE`` is an
+         *     iteratively edited artifact (PRD, design, research memo);
+         *     ``KNOWLEDGE_NOTE`` is freeform knowledge; ``CODEBASE_ANALYSIS`` is a
+         *     brownfield-intake architecture/health assessment; ``RUN_NARRATIVE``
+         *     is the Chief-of-Staff's account of a completed brief from the brain
+         *     and flight recorder. The type drives only wiki filtering/rendering.
          * @enum {string}
          */
-        readonly DocType: "status_report" | "deliverable" | "knowledge_note" | "codebase_analysis";
+        readonly DocType: "status_report" | "deliverable" | "knowledge_note" | "codebase_analysis" | "run_narrative";
         /** DocVersion */
         readonly DocVersion: {
             /** @description Agent that authored the write */
@@ -9703,7 +9701,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -23174,8 +23172,8 @@ export interface operations {
             readonly query?: {
                 /** @description Opaque pagination cursor returned by the previous page */
                 readonly cursor?: string | null;
-                /** @description Filter by doc_type (status_report / deliverable / knowledge_note) */
-                readonly doc_type?: string | null;
+                /** @description Filter by doc_type (closed DocType enum) */
+                readonly doc_type?: "status_report" | "deliverable" | "knowledge_note" | "codebase_analysis" | "run_narrative" | null;
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
                 /** @description Filter by tag (exact match) */

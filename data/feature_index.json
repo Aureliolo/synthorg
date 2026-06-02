@@ -42,7 +42,8 @@
         "build_chief_of_staff_proposer",
         "build_role_router",
         "build_group_chat_service",
-        "build_conversational_actor"
+        "build_conversational_actor",
+        "build_chief_of_staff_narrator"
       ],
       "mcp_tool_names": [],
       "name": "api_core",
@@ -1215,6 +1216,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-02T08:44:38.690467Z",
+  "generated_at": "2026-06-02T09:20:01.058849Z",
   "schema_version": 1
 }
