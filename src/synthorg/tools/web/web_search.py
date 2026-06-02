@@ -8,7 +8,7 @@ implementation).
 
 from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -117,7 +117,7 @@ class WebSearchTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute a web search.
 

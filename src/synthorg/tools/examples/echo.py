@@ -12,7 +12,7 @@ automatically.
 
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools._misc_args import EchoArgs
@@ -45,7 +45,7 @@ class EchoTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Return the ``message`` argument as content.
 

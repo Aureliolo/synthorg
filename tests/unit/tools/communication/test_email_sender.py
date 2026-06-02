@@ -133,6 +133,31 @@ class TestEmailSenderTool:
         mock_send.assert_called_once()
 
     @patch.object(EmailSenderTool, "_send_sync")
+    async def test_execute_accepts_tuple_recipients(
+        self,
+        mock_send: MagicMock,
+        comm_config: CommunicationToolsConfig,
+    ) -> None:
+        """Accept tuple ``to``/``cc``/``bcc`` recipient values.
+
+        ``ToolInvoker`` passes ``args_model.model_dump(mode="python")``,
+        whose recipient fields are tuples; the handler must accept them
+        rather than rejecting with "must be a list".
+        """
+        tool = EmailSenderTool(config=comm_config)
+        result = await tool.execute(
+            arguments={
+                "to": ("a@ex.com",),
+                "cc": ("b@ex.com",),
+                "subject": "Hi",
+                "body": "x",
+            },
+        )
+        assert not result.is_error
+        assert "2 recipient(s)" in result.content
+        mock_send.assert_called_once()
+
+    @patch.object(EmailSenderTool, "_send_sync")
     async def test_execute_rejects_newline_in_address(
         self,
         mock_send: MagicMock,

@@ -212,7 +212,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Query analytics data.
 
@@ -238,7 +238,11 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         metrics = arguments.get("metrics")
         period = arguments.get("period")
-        if not isinstance(metrics, list) or not metrics:
+        if (
+            not isinstance(metrics, (list, tuple))
+            or not metrics
+            or any(not isinstance(metric, str) for metric in metrics)
+        ):
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,
                 error="missing_or_invalid_metrics",
@@ -256,7 +260,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 content="'period' must be a non-empty string.",
                 is_error=True,
             )
-        metric_names = cast("list[str]", metrics)
+        metric_names = [metric for metric in metrics if isinstance(metric, str)]
         group_by = cast("str | None", arguments.get("group_by"))
         start_date = cast("str | None", arguments.get("start_date"))
         end_date = cast("str | None", arguments.get("end_date"))

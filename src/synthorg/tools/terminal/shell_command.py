@@ -8,7 +8,7 @@ truncated at ``max_output_bytes``.
 from pathlib import Path
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
@@ -116,7 +116,7 @@ class ShellCommandTool(BaseTerminalTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute a shell command.
 

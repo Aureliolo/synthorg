@@ -7,7 +7,7 @@ supervisor-facing async task operations as LLM-callable tools.
 import json
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService
@@ -58,7 +58,7 @@ class StartAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Start an async task and return the task ID.
 
@@ -110,7 +110,7 @@ class CheckAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Check task status.
 
@@ -155,7 +155,7 @@ class UpdateAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Update task with new instructions.
 
@@ -207,7 +207,7 @@ class CancelAsyncTaskTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Cancel a task.
 
@@ -259,7 +259,7 @@ class ListAsyncTasksTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """List async tasks.
 

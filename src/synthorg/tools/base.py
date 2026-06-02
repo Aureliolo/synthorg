@@ -243,7 +243,7 @@ class BaseTool(ABC):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute the tool with the given arguments.
 

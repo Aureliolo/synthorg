@@ -15486,7 +15486,7 @@
     },
     {
       "kind": "code",
-      "loc": 194,
+      "loc": 193,
       "loc_cap": 500,
       "module": "src/synthorg/research/tool.py",
       "owning_feature": "research"
@@ -17075,7 +17075,7 @@
     },
     {
       "kind": "code",
-      "loc": 300,
+      "loc": 304,
       "loc_cap": 500,
       "module": "src/synthorg/tools/analytics/data_aggregator.py",
       "owning_feature": "tools"
@@ -17208,7 +17208,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1043,
+      "loc": 1053,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/browser/browser_tool.py",
       "owning_feature": "tools"
@@ -17271,7 +17271,7 @@
     },
     {
       "kind": "code",
-      "loc": 211,
+      "loc": 220,
       "loc_cap": 500,
       "module": "src/synthorg/tools/communication/notification_sender.py",
       "owning_feature": "tools"
@@ -17334,7 +17334,7 @@
     },
     {
       "kind": "code",
-      "loc": 293,
+      "loc": 295,
       "loc_cap": 500,
       "module": "src/synthorg/tools/database/sql_query.py",
       "owning_feature": "tools"
@@ -17438,9 +17438,9 @@
       "owning_feature": "tools"
     },
     {
-      "kind": "code",
-      "loc": 515,
-      "loc_cap": 500,
+      "kind": "integration",
+      "loc": 525,
+      "loc_cap": 700,
       "module": "src/synthorg/tools/desktop/desktop_tool.py",
       "owning_feature": "tools"
     },
@@ -17509,7 +17509,7 @@
     },
     {
       "kind": "code",
-      "loc": 283,
+      "loc": 284,
       "loc_cap": 500,
       "module": "src/synthorg/tools/discovery.py",
       "owning_feature": "tools"
@@ -17761,7 +17761,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 789,
+      "loc": 790,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/invoker.py",
       "owning_feature": "tools"
@@ -17775,7 +17775,7 @@
     },
     {
       "kind": "code",
-      "loc": 273,
+      "loc": 271,
       "loc_cap": 500,
       "module": "src/synthorg/tools/invoker_validation.py",
       "owning_feature": "tools"
@@ -17817,21 +17817,21 @@
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/bridge_tool.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 168,
+      "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/cache.py",
       "owning_feature": "tools"
     },
     {
       "kind": "code",
-      "loc": 490,
+      "loc": 489,
       "loc_cap": 500,
       "module": "src/synthorg/tools/mcp/client.py",
       "owning_feature": "tools"
@@ -17887,7 +17887,7 @@
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 259,
       "loc_cap": 500,
       "module": "src/synthorg/tools/permissions.py",
       "owning_feature": "tools"

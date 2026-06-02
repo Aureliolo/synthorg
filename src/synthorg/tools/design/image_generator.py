@@ -9,7 +9,7 @@ import asyncio
 import base64
 from typing import ClassVar, Final, Protocol, cast, override, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -137,7 +137,7 @@ class ImageGeneratorTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Generate an image from a text prompt.
 

@@ -8,7 +8,7 @@ tool binds its project scope per task; ``None`` ingests a global source.
 import builtins
 from typing import TYPE_CHECKING, ClassVar, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory
@@ -59,7 +59,7 @@ class IngestKnowledgeTool(BaseTool):
         self._project_id = project_id
 
     @override
-    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Dispatch an ``ingest_knowledge`` invocation to the service.
 
         Returns:

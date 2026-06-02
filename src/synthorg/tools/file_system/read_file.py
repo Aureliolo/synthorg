@@ -7,7 +7,7 @@ file-size guard to prevent loading excessively large files into memory.
 import asyncio
 from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -214,7 +214,7 @@ class ReadFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Read a file and return its content.
 

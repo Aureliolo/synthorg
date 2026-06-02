@@ -84,6 +84,24 @@ class TestDataAggregatorTool:
         assert call["start_date"] == "2026-01-01"
         assert call["end_date"] == "2026-01-31"
 
+    async def test_execute_accepts_tuple_metrics(
+        self,
+        mock_provider: MockAnalyticsProvider,
+    ) -> None:
+        """Accept a tuple ``metrics`` value.
+
+        ``ToolInvoker`` passes ``args_model.model_dump(mode="python")``,
+        which preserves the ``tuple`` declared on the args model; the
+        handler must treat that tuple as a valid metric list rather than
+        rejecting it as "not a list".
+        """
+        tool = DataAggregatorTool(provider=mock_provider)
+        result = await tool.execute(
+            arguments={"metrics": ("total_cost", "task_count"), "period": "7d"},
+        )
+        assert not result.is_error
+        assert mock_provider.calls[0]["metrics"] == ["total_cost", "task_count"]
+
     async def test_execute_invalid_period(
         self,
         mock_provider: MockAnalyticsProvider,

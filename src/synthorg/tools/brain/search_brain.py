@@ -64,7 +64,7 @@ class SearchBrainTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch a ``search_brain`` invocation to :class:`ProjectBrainService`.
 

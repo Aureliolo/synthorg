@@ -48,7 +48,7 @@ def _str_tags(meta: dict[str, JsonValue]) -> set[str]:
         Set of string tags (empty if ``tags`` is missing or not a list).
     """
     raw = meta.get("tags")
-    if not isinstance(raw, list):
+    if not isinstance(raw, (list, tuple)):
         return set()
     return {tag for tag in raw if isinstance(tag, str)}
 
@@ -131,7 +131,7 @@ class AssetManagerTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute an asset management operation.
 
@@ -177,7 +177,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_list(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """List assets, optionally filtered by tags.
 
@@ -185,13 +185,13 @@ class AssetManagerTool(BaseDesignTool):
             Result of type ``ToolExecutionResult``.
         """
         raw_tags = arguments.get("tags")
-        if raw_tags is not None and not isinstance(raw_tags, list):
+        if raw_tags is not None and not isinstance(raw_tags, (list, tuple)):
             logger.debug(
                 DESIGN_ASSET_VALIDATION_FAILED,
                 action="list",
                 reason="invalid_tags_type",
             )
-        raw_list = raw_tags if isinstance(raw_tags, list) else []
+        raw_list = raw_tags if isinstance(raw_tags, (list, tuple)) else []
         tags = [t for t in raw_list if isinstance(t, str)]
         tag_set = set(tags)
 
@@ -226,7 +226,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_get(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Retrieve a specific asset by ID.
 
@@ -273,7 +273,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_delete(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Delete an asset by ID.
 
@@ -317,7 +317,7 @@ class AssetManagerTool(BaseDesignTool):
 
     def _handle_search(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Search assets by query string in metadata values.
 
@@ -338,7 +338,7 @@ class AssetManagerTool(BaseDesignTool):
 
         query = normalize_ascii_lowercase(raw_query)
         raw_tags = arguments.get("tags")
-        raw_list = raw_tags if isinstance(raw_tags, list) else []
+        raw_list = raw_tags if isinstance(raw_tags, (list, tuple)) else []
         tags = [t for t in raw_list if isinstance(t, str)]
         tag_set = set(tags)
 

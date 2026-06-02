@@ -8,7 +8,7 @@ forwards). Cross-project authority is checked by callers via the
 
 from typing import TYPE_CHECKING, ClassVar, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
@@ -80,7 +80,7 @@ class WriteLivingDocTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Translate args to a :class:`LivingDocument` body and persist.
 

@@ -109,7 +109,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Generate an analytics report.
 

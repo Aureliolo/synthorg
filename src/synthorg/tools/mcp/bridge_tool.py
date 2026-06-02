@@ -7,8 +7,6 @@ tool system.
 
 from typing import TYPE_CHECKING, override
 
-from pydantic import JsonValue
-
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -69,7 +67,7 @@ class MCPBridgeTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute the MCP tool via the client.
 
@@ -92,7 +90,7 @@ class MCPBridgeTool(BaseTool):
 
     def _check_cache(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult | None:
         """Look up the cache, returning the result on hit.
 
@@ -127,7 +125,7 @@ class MCPBridgeTool(BaseTool):
 
     async def _invoke(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Call the remote MCP tool and map the result.
 
@@ -163,7 +161,7 @@ class MCPBridgeTool(BaseTool):
 
     def _store_in_cache(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
         result: ToolExecutionResult,
     ) -> None:
         """Store a successful result in the cache.

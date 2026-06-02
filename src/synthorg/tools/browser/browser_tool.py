@@ -264,7 +264,7 @@ class BrowserTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch on ``mode`` and return a structured result.
 
@@ -882,6 +882,16 @@ class BrowserTool(BaseTool):
                 },
             ) from exc
 
+        if not isinstance(decoded, dict):
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                reason="non_object_output",
+            )
+            raise BrowserDomainError(
+                "Executor returned a non-object JSON payload",
+                context={"operation": operation},
+            )
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "BrowserDomainError")
             message = decoded.get("message", "executor returned an error")

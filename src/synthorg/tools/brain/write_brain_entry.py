@@ -9,7 +9,7 @@ checked by callers via the trust seam, not by the tool.
 
 from typing import TYPE_CHECKING, ClassVar, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
@@ -75,7 +75,7 @@ class WriteBrainEntryTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Persist a create or revise of a brain entry.
 

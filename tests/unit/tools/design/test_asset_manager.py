@@ -56,6 +56,26 @@ class TestAssetManagerTool:
         assert "1 asset(s)" in result.content
         assert "img-001" in result.content
 
+    async def test_list_filter_by_tuple_tags(self) -> None:
+        """Filter by a tuple ``tags`` value.
+
+        ``ToolInvoker`` passes ``args_model.model_dump(mode="python")``,
+        whose ``tags`` field is a tuple; tag filtering must apply rather
+        than silently returning every asset.
+        """
+        tool = AssetManagerTool(
+            assets={
+                "img-001": {"type": "image", "tags": ["logo", "brand"]},
+                "img-002": {"type": "image", "tags": ["banner"]},
+            }
+        )
+        result = await tool.execute(
+            arguments={"action": "list", "tags": ("logo",)},
+        )
+        assert not result.is_error
+        assert "1 asset(s)" in result.content
+        assert "img-001" in result.content
+
     async def test_get_existing_asset(self) -> None:
         tool = AssetManagerTool(
             assets={

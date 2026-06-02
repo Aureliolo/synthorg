@@ -14,7 +14,7 @@ Discovery tools signal load/unload state changes via
 import json
 from typing import ClassVar, Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
 from synthorg.core.tool_disclosure import (
@@ -34,6 +34,7 @@ from synthorg.tools._misc_args import (
 )
 
 from .base import BaseTool, ToolExecutionResult
+from .errors import ToolParameterError
 
 logger = get_logger(__name__)
 
@@ -92,7 +93,7 @@ METADATA_SHOULD_LOAD_RESOURCE: str = "should_load_resource"
 """Set by ``LoadToolResourceTool`` to signal ``DisclosureMiddleware``."""
 
 
-def _require_str(arguments: dict[str, JsonValue], key: str) -> str:
+def _require_str(arguments: dict[str, object], key: str) -> str:
     """Return ``arguments[key]`` narrowed to ``str``.
 
     Args:
@@ -103,12 +104,12 @@ def _require_str(arguments: dict[str, JsonValue], key: str) -> str:
         The argument value as a string.
 
     Raises:
-        TypeError: If the value is not a string.
+        ToolParameterError: If the value is not a string.
     """
     value = arguments[key]
     if not isinstance(value, str):
         msg = f"{key} must be a string"
-        raise TypeError(msg)
+        raise ToolParameterError(msg)
     return value
 
 
@@ -134,7 +135,7 @@ class ListToolsTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Return JSON array of L1 metadata.
 
@@ -181,7 +182,7 @@ class LoadToolTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Return L2 body JSON for the requested tool.
 
@@ -232,7 +233,7 @@ class LoadToolResourceTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Return L3 resource content.
 

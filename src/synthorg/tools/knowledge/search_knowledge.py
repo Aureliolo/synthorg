@@ -61,7 +61,7 @@ class SearchKnowledgeTool(BaseTool):
         self._project_id = project_id
 
     @override
-    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Dispatch a ``search_knowledge`` invocation to the service.
 
         Returns:

@@ -12,9 +12,7 @@ import asyncio
 import copy
 from contextlib import nullcontext
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
-
-from pydantic import JsonValue
+from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
 from synthorg.core.critical_errors import reraise_critical
@@ -188,7 +186,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             tool.name,
             tool.category,
             tool.action_type,
-            cast("dict[str, JsonValue]", safe_args),
+            safe_args,
         )
         if violation is None:
             return None
@@ -641,7 +639,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             safe_args = deepcopied
         try:
             return await tool.execute(
-                arguments=cast("dict[str, JsonValue]", safe_args),
+                arguments=safe_args,
             )
         except (MemoryError, RecursionError) as exc:
             logger.warning(
@@ -709,6 +707,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 ),
                 is_error=True,
             )
+        raw_risk = result.metadata.get("risk_level", "high")
+        risk_value = raw_risk if isinstance(raw_risk, str) else "high"
         try:
             self._pending_escalations.append(
                 EscalationInfo(
@@ -718,9 +718,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                     action_type=str(
                         result.metadata.get("action_type", tool.action_type),
                     ),
-                    risk_level=ApprovalRiskLevel(
-                        str(result.metadata.get("risk_level", "high")),
-                    ),
+                    risk_level=ApprovalRiskLevel(risk_value),
                     reason="Agent requested human approval",
                 ),
             )
@@ -810,16 +808,18 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         sanitized = self._html_guard.sanitize(result.content)
         if sanitized.cleaned == result.content:
             return result
-        metadata = dict(result.metadata)
-        metadata["html_guard"] = {
-            "gap_detected": sanitized.gap_detected,
-            "gap_ratio": sanitized.gap_ratio,
-            "stripped_element_count": sanitized.stripped_element_count,
-        }
-        return ToolExecutionResult(
-            content=sanitized.cleaned,
-            is_error=result.is_error,
-            metadata=metadata,
+        return result.model_copy(
+            update={
+                "content": sanitized.cleaned,
+                "metadata": {
+                    **result.metadata,
+                    "html_guard": {
+                        "gap_detected": sanitized.gap_detected,
+                        "gap_ratio": sanitized.gap_ratio,
+                        "stripped_element_count": sanitized.stripped_element_count,
+                    },
+                },
+            },
         )
 
     async def _run_guarded(

@@ -91,7 +91,7 @@ class EmailSenderTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Send an email.
 
@@ -118,7 +118,7 @@ class EmailSenderTool(BaseCommunicationTool):
             )
 
         to_raw = arguments.get("to")
-        if not isinstance(to_raw, list) or any(
+        if not isinstance(to_raw, (list, tuple)) or any(
             not isinstance(addr, str) for addr in to_raw
         ):
             logger.warning(
@@ -137,7 +137,7 @@ class EmailSenderTool(BaseCommunicationTool):
         # ``TypeError`` and bypass the structured envelope.
         cc_raw = arguments.get("cc")
         if cc_raw is not None and (
-            not isinstance(cc_raw, list)
+            not isinstance(cc_raw, (list, tuple))
             or any(not isinstance(addr, str) for addr in cc_raw)
         ):
             logger.warning(
@@ -150,7 +150,7 @@ class EmailSenderTool(BaseCommunicationTool):
             )
         bcc_raw = arguments.get("bcc")
         if bcc_raw is not None and (
-            not isinstance(bcc_raw, list)
+            not isinstance(bcc_raw, (list, tuple))
             or any(not isinstance(addr, str) for addr in bcc_raw)
         ):
             logger.warning(
@@ -161,9 +161,9 @@ class EmailSenderTool(BaseCommunicationTool):
                 content="'bcc' must be a list of email addresses.",
                 is_error=True,
             )
-        to_addrs = cast("list[str]", to_raw)
-        cc_addrs = cast("list[str]", cc_raw or [])
-        bcc_addrs = cast("list[str]", bcc_raw or [])
+        to_addrs = [addr for addr in to_raw if isinstance(addr, str)]
+        cc_addrs = [addr for addr in (cc_raw or []) if isinstance(addr, str)]
+        bcc_addrs = [addr for addr in (bcc_raw or []) if isinstance(addr, str)]
         subject = arguments.get("subject")
         if not isinstance(subject, str):
             logger.warning(

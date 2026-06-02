@@ -8,7 +8,7 @@ from typing import ClassVar, Final, override
 
 from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -85,7 +85,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Render a template with variables.
 

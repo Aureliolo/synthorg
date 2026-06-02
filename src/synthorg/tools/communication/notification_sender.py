@@ -8,7 +8,7 @@ sinks (console, email, Slack, ntfy, etc.).
 from datetime import UTC, datetime
 from typing import ClassVar, Final, Protocol, override, runtime_checkable
 
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -104,7 +104,7 @@ class NotificationSenderTool(BaseCommunicationTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Send a notification.
 
@@ -129,7 +129,16 @@ class NotificationSenderTool(BaseCommunicationTool):
             )
 
         raw_body = arguments.get("body", "")
-        body = raw_body if isinstance(raw_body, str) else ""
+        if not isinstance(raw_body, str):
+            logger.warning(
+                COMM_TOOL_NOTIFICATION_SEND_FAILED,
+                error="invalid_body",
+            )
+            return ToolExecutionResult(
+                content="'body' must be a string if provided.",
+                is_error=True,
+            )
+        body = raw_body
         required_fields = {
             "category": arguments.get("category"),
             "severity": arguments.get("severity"),

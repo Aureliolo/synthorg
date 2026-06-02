@@ -8,7 +8,7 @@ stdlib ``html.parser`` module.
 from html.parser import HTMLParser
 from typing import ClassVar, Final, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -208,7 +208,7 @@ class HtmlParserTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Parse HTML and extract content.
 

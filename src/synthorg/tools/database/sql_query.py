@@ -138,7 +138,7 @@ class SqlQueryTool(BaseDatabaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute a SQL query.
 
@@ -149,9 +149,11 @@ class SqlQueryTool(BaseDatabaseTool):
             A ``ToolExecutionResult`` with formatted query results.
         """
         query = cast("str", arguments["query"])
-        parameters: list[SqlBindValue] = cast(
-            "list[SqlBindValue]",
-            arguments.get("parameters") or [],
+        raw_parameters = arguments.get("parameters")
+        parameters: list[SqlBindValue] = (
+            [cast("SqlBindValue", param) for param in raw_parameters]
+            if isinstance(raw_parameters, (list, tuple))
+            else []
         )
 
         keyword = _classify_statement(query)

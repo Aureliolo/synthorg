@@ -10,7 +10,7 @@ validation shared by all tools.
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -89,7 +89,7 @@ class GitStatusTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Run ``git status``.
 
@@ -147,7 +147,7 @@ class GitLogTool(_BaseGitTool):
 
     def _build_filter_args(
         self,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> list[str] | ToolExecutionResult:
         """Validate and build ``--author``, ``--since``, ``--until`` args.
 
@@ -163,8 +163,8 @@ class GitLogTool(_BaseGitTool):
             ("since", "--since"),
             ("until", "--until"),
         ):
-            if value := arguments.get(param):
-                if err := self._check_git_arg(cast("str", value), param=param):
+            if (value := arguments.get(param)) and isinstance(value, str):
+                if err := self._check_git_arg(value, param=param):
                     return err
                 filter_args.append(f"{flag}={value}")
         return filter_args
@@ -173,7 +173,7 @@ class GitLogTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Run ``git log``.
 
@@ -257,7 +257,7 @@ class GitDiffTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Run ``git diff``.
 
@@ -356,7 +356,7 @@ class GitBranchTool(_BaseGitTool):
     async def _create_branch(
         self,
         name: str,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Create a branch, optionally from a start point.
 
@@ -374,7 +374,7 @@ class GitBranchTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Run a branch operation.
 
@@ -459,7 +459,7 @@ class GitCommitTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Stage and commit changes.
 
@@ -605,7 +605,7 @@ class GitCloneTool(_BaseGitTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Clone a repository.
 

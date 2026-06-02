@@ -105,7 +105,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Record a metric data point.
 

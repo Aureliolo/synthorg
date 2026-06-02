@@ -67,7 +67,7 @@ class SearchLivingDocsTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Dispatch a ``search_living_docs`` invocation to :class:`DocsService`.
 

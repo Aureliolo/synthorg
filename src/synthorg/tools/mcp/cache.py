@@ -10,8 +10,6 @@ from collections import OrderedDict
 from collections.abc import Hashable
 from typing import Final
 
-from pydantic import JsonValue
-
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import (
@@ -65,7 +63,7 @@ class MCPResultCache:
     def get(
         self,
         tool_name: str,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult | None:
         """Look up a cached result.
 
@@ -112,7 +110,7 @@ class MCPResultCache:
     def put(
         self,
         tool_name: str,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
         result: ToolExecutionResult,
     ) -> None:
         """Store a result in the cache.
@@ -168,7 +166,7 @@ class MCPResultCache:
     @staticmethod
     def _make_key(
         tool_name: str,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> tuple[str, Hashable]:
         """Build a hashable cache key.
 

@@ -9,7 +9,7 @@ compaction at the turn boundary.
 
 from typing import ClassVar, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.sanitization import sanitize_message
@@ -55,7 +55,7 @@ class CompactContextTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Signal compaction directive via metadata.
 

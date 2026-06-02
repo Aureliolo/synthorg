@@ -3,7 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING, ClassVar, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
@@ -80,7 +80,7 @@ class DeleteFileTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Delete a file from the workspace.
 

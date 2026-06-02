@@ -9,7 +9,7 @@ prevent memory exhaustion.
 from typing import ClassVar, Final, cast, override
 
 import httpx
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.core.normalization import compare_ci
@@ -96,7 +96,7 @@ class HttpRequestTool(BaseWebTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute an HTTP request.
 

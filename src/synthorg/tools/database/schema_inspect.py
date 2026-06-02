@@ -9,7 +9,7 @@ import re
 from typing import ClassVar, Final, cast, override
 
 import aiosqlite
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
@@ -66,7 +66,7 @@ class SchemaInspectTool(BaseDatabaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Inspect the database schema.
 

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, ClassVar, override
 from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
@@ -137,7 +137,7 @@ class ExternalApiTool(BaseTool):
         )
 
     @override
-    async def execute(self, *, arguments: dict[str, JsonValue]) -> ToolExecutionResult:
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
         """Run a governed external API call.
 
         Returns:

@@ -272,7 +272,7 @@ class ListDirectoryTool(BaseFileSystemTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """List directory contents.
 

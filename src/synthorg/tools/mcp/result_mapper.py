@@ -4,7 +4,7 @@ Pure function that maps MCP raw results to the internal
 ``ToolExecutionResult`` format used throughout the tool system.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from mcp.types import (
     AudioContent,
@@ -48,7 +48,7 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
         Mapped ``ToolExecutionResult``.
     """
     parts: list[str] = []
-    attachments: list[JsonValue] = []
+    attachments: list[dict[str, JsonValue]] = []
 
     for block in raw.content:
         if isinstance(block, TextContent):
@@ -86,7 +86,7 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
     metadata: dict[str, JsonValue] = {}
 
     if attachments:
-        metadata["attachments"] = attachments
+        metadata["attachments"] = cast("list[JsonValue]", attachments)
         logger.debug(
             MCP_RESULT_ATTACHMENT,
             attachment_count=len(attachments),

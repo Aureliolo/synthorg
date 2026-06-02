@@ -7,7 +7,7 @@ required -- the tool outputs DSL text directly.
 
 from typing import ClassVar, Final, cast, override
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
@@ -89,7 +89,7 @@ class DiagramGeneratorTool(BaseDesignTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, JsonValue],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Generate diagram markup from a description.
 
