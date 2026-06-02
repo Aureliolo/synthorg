@@ -245,6 +245,38 @@ class TestNullableUnionNormalization:
         assert "oneOf" in result
         assert "anyOf" not in result
 
+    def test_exclusive_structural_union_stays_oneof(self) -> None:
+        """An exclusive inline structural union (no scalar branch) stays
+        ``oneOf``.
+
+        ``{type: object, ...} | {type: object, ...} | None`` and an
+        object+array union without scalars are genuinely exclusive (a
+        value may satisfy at most one branch); they are NOT the
+        ``JsonValue`` shape (which carries both ``object`` and ``array``
+        plus scalars), so they must keep ``oneOf`` exclusivity.
+        """
+        object_only: dict[str, Any] = {
+            "oneOf": [
+                {"type": "object", "properties": {"a": {"type": "string"}}},
+                {"type": "object", "properties": {"b": {"type": "integer"}}},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(object_only)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
+        object_array_only: dict[str, Any] = {
+            "oneOf": [
+                {"type": "object", "additionalProperties": {}},
+                {"type": "array", "items": {}},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(object_array_only)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
     def test_nested_properties_normalized(self) -> None:
         """Nullable unions inside properties are flattened."""
         schema: dict[str, Any] = {

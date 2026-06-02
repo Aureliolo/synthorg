@@ -281,16 +281,19 @@ def _flatten_nullable(
         # of bare scalar primitives here -- those represent genuinely
         # exclusive primitive unions that would be weakened by becoming
         # ``anyOf``.  The one exception is a ``JsonValue``-shaped union:
-        # an object/array structural branch alongside scalar primitives
-        # and null (what Litestar emits for ``Mapping[str, JsonValue]``).
-        # A value matches at most one by-type branch, so ``anyOf`` loses
-        # no exclusivity, and unlike a primitive ``type`` array it keeps
-        # the structural ``items``/``additionalProperties`` branches.  A
-        # constrained-primitive union (``string`` with ``maxLength`` etc.)
-        # has no object/array branch, so it stays an exclusive ``oneOf``.
+        # ``Mapping[str, JsonValue]`` is the only thing Litestar emits as
+        # a oneOf carrying BOTH ``object`` and ``array`` branches plus the
+        # scalar primitives and null, so a proper superset of
+        # ``{object, array}`` uniquely identifies it.  Each value matches
+        # at most one by-type branch, so ``anyOf`` loses no exclusivity,
+        # and unlike a primitive ``type`` array it keeps the structural
+        # ``items``/``additionalProperties`` branches.  A genuinely
+        # exclusive structural union (``objectA | objectB | null``, or
+        # object+array with no scalars) is NOT a superset, so it stays
+        # an exclusive ``oneOf``; likewise a constrained-primitive union.
         branch_types = {b.get("type") for b in non_null if isinstance(b, dict)}
         all_ref = all(isinstance(b, dict) and "$ref" in b for b in non_null)
-        if keyword == "oneOf" and (all_ref or branch_types & {"object", "array"}):
+        if keyword == "oneOf" and (all_ref or branch_types > {"object", "array"}):
             result["anyOf"] = result.pop("oneOf")
         return
 
