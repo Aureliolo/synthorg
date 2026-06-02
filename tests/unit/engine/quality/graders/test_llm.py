@@ -4,8 +4,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from pydantic import JsonValue
 
-from synthorg.engine.quality.graders.llm import LLMRubricGrader
+from synthorg.engine.quality.graders.llm import (
+    LLMRubricGrader,
+    _parse_unit_interval,
+)
 from synthorg.engine.quality.verification import (
     AtomicProbe,
     GradeType,
@@ -444,7 +448,7 @@ class TestLLMRubricGraderInvalidGrades:
             ToolCall,
         )
 
-        args = {
+        args: dict[str, JsonValue] = {
             "per_criterion_grades": {"correctness": 0.9, "completeness": 0.9},
             "verdict": "pass",
             "confidence": 0.9,
@@ -584,31 +588,23 @@ class TestLLMRubricGraderInvalidGrades:
         [float("nan"), float("inf"), float("-inf")],
         ids=["nan", "+inf", "-inf"],
     )
-    async def test_non_finite_grade_returns_refer(
+    def test_non_finite_grade_rejected_as_not_finite(
         self,
         non_finite_grade: float,
     ) -> None:
-        response = _response(
-            {
-                "per_criterion_grades": {
-                    "correctness": non_finite_grade,
-                    "completeness": 0.9,
-                },
-                "verdict": "pass",
-                "confidence": 0.9,
-                "findings": [],
-            }
-        )
-        provider = ScriptedProvider(response=response)
-        grader = LLMRubricGrader(
-            provider=provider,
-            model_id="test-medium-001",
-        )
-        result = await grader.grade(
-            artifact=_artifact(),
-            rubric=_rubric(),
-            probes=_probes(),
-            generator_agent_id="agent-generator",
-            evaluator_agent_id="agent-evaluator",
-        )
-        assert result.verdict == VerificationVerdict.REFER
+        """The grader's defence-in-depth rejects a non-finite grade.
+
+        Non-finite values can no longer reach the grader through a
+        ``ToolCall`` (its ``arguments`` forbid them via
+        ``allow_inf_nan=False``, and ``mappers._parse_arguments`` drops
+        any that ``json.loads`` accepted), so the end-to-end REFER path is
+        unreachable for these inputs by construction. This exercises the
+        retained safety-net function directly: a non-finite grade must be
+        rejected (a reason string, which the grader maps to REFER) rather
+        than parsed into a trusted float.
+        """
+        result = _parse_unit_interval(non_finite_grade, label="correctness")
+        # Rejection returns a reason string (not the float); assert the
+        # behaviour and the cause without pinning the exact message.
+        assert isinstance(result, str)
+        assert "finite" in result

@@ -7,10 +7,10 @@ candidate URLs come from hardcoded preset definitions.
 """
 
 import json
-from typing import Any, Final
+from typing import Final
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
@@ -70,7 +70,7 @@ def _log_probe_miss(
         status_code: HTTP status code, if applicable.
         exc: The unexpected exception, when this miss is an error.
     """
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, str | int | None] = {
         "preset": preset_name,
         "reason": reason,
         "url": _redact_url(url),
@@ -88,7 +88,7 @@ def _log_probe_miss(
 async def _probe_and_fetch(
     url: str,
     preset_name: str,
-) -> dict[str, Any] | None:
+) -> dict[str, JsonValue] | None:
     """Probe a URL and return its JSON body in a single request.
 
     Uses a short timeout and does not validate SSRF -- the caller
@@ -152,7 +152,7 @@ def _build_probe_endpoint(base_url: str, preset_name: str) -> str:
 
 
 def _build_probe_hit(
-    data: dict[str, Any],
+    data: dict[str, JsonValue],
     url: str,
     idx: int,
     preset_name: str,
@@ -252,7 +252,7 @@ async def probe_preset_urls(
 
 
 def _parse_ollama_models(
-    data: dict[str, Any],
+    data: dict[str, JsonValue],
 ) -> tuple[ProviderModelConfig, ...] | None:
     """Parse Ollama model list response.
 
@@ -278,7 +278,7 @@ def _parse_ollama_models(
 
 
 def _parse_standard_models(
-    data: dict[str, Any],
+    data: dict[str, JsonValue],
 ) -> tuple[ProviderModelConfig, ...] | None:
     """Parse standard ``/models`` list response.
 

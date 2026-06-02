@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.providers.enums import FinishReason, MessageRole
@@ -381,7 +382,7 @@ async def test_parse_missing_tool_call_triggers_error_policy(
     ids=["invalid-verdict", "invalid-risk"],
 )
 async def test_parse_invalid_values_triggers_error_policy(
-    args: dict[str, str],
+    args: dict[str, JsonValue],
     desc: str,
 ) -> None:
     """Invalid LLM response values trigger error policy ({desc})."""

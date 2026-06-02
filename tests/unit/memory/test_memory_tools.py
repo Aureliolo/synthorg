@@ -2,7 +2,7 @@
 """Tests for memory BaseTool wrappers and ToolRegistry integration."""
 
 from datetime import UTC, datetime
-from typing import Any, override
+from typing import Any, cast, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -219,7 +219,9 @@ class TestSearchMemoryTool:
         defn = tool.to_definition()
         assert defn.name == "search_memory"
         assert defn.parameters_schema
-        assert "query" in defn.parameters_schema.get("properties", {})
+        assert "query" in cast(
+            "dict[str, Any]", defn.parameters_schema.get("properties", {})
+        )
 
 
 # -- RecallMemoryTool -------------------------------------------------------
@@ -359,7 +361,9 @@ class TestRecallMemoryTool:
         defn = tool.to_definition()
         assert defn.name == "recall_memory"
         assert defn.parameters_schema
-        assert "memory_id" in defn.parameters_schema.get("properties", {})
+        assert "memory_id" in cast(
+            "dict[str, Any]", defn.parameters_schema.get("properties", {})
+        )
 
 
 # -- create_memory_tools factory --------------------------------------------

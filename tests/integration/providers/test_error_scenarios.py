@@ -351,7 +351,9 @@ async def test_unknown_exception_maps_to_internal(
     assert exc_info.value.message == "Unexpected error from provider example-provider"
     assert exc_info.value.context["provider"] == "example-provider"
     assert exc_info.value.context["model"] == "medium"
-    assert "something broke" in exc_info.value.context["detail"]
+    detail = exc_info.value.context["detail"]
+    assert isinstance(detail, str)
+    assert "something broke" in detail
 
 
 # ── Model resolution errors ──────────────────────────────────────

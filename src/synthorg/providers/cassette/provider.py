@@ -23,7 +23,7 @@ from collections.abc import (
     Callable,
     Mapping,
 )
-from typing import Any, override
+from typing import override
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -121,7 +121,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         messages: tuple[ChatMessage, ...],
         tools: tuple[ToolDefinition, ...],
         config: CompletionConfig | None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Build the human-readable (later redacted) request copy.
 
         Returns:
@@ -330,7 +330,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         open_stream: Callable[[], Awaitable[AsyncIterator[StreamChunk]]],
         model: str,
         digest: str,
-        request_repr: dict[str, Any],
+        request_repr: dict[str, object],
     ) -> AsyncIterator[StreamChunk]:
         """Forward inner chunks incrementally while recording them.
 
@@ -465,11 +465,10 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             )
             raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 
-        request_repr = {"provider": self._provider_name, "model": model}
+        request_repr: dict[str, object] = {"provider": self._provider_name}
+        request_repr["model"] = model
         try:
-            capabilities = await self._require_inner().get_model_capabilities(
-                model,
-            )
+            capabilities = await self._require_inner().get_model_capabilities(model)
         except ProviderError as exc:
             await self._session.record_interaction(
                 method=CassetteMethod.CAPABILITIES,

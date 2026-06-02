@@ -1,9 +1,11 @@
 """Unit tests for the LLM-based semantic analyzer."""
 
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.models import Workspace
@@ -36,11 +38,15 @@ def _make_provider_response(
     conflicts: list[dict[str, str]] | None = None,
 ) -> CompletionResponse:
     """Build a response with a submit_semantic_review tool call."""
+    # ``ToolCall.arguments`` is ``dict[str, JsonValue]``; a precise
+    # ``list[dict[str, str]]`` is not assignable to ``list[JsonValue]``
+    # under dict invariance, so cast at this embed site rather than
+    # weakening the helper's parameter type.
     tc = ToolCall(
         id="tc-1",
         name="submit_semantic_review",
         arguments={
-            "conflicts": conflicts or [],
+            "conflicts": cast("list[JsonValue]", conflicts or []),
             "summary": f"Found {len(conflicts or [])} conflict(s)",
         },
     )

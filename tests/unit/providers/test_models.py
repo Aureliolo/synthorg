@@ -1,5 +1,7 @@
 """Tests for provider-layer domain models."""
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -117,7 +119,9 @@ class TestToolDefinition:
 
     def test_valid(self, sample_tool_definition: ToolDefinition) -> None:
         assert sample_tool_definition.name == "search_code"
-        assert "query" in sample_tool_definition.parameters_schema["properties"]
+        assert "query" in cast(
+            "dict[str, Any]", sample_tool_definition.parameters_schema["properties"]
+        )
 
     def test_empty_name_rejected(self) -> None:
         with pytest.raises(ValidationError):

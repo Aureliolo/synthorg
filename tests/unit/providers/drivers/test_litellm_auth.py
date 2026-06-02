@@ -14,6 +14,7 @@ from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
 )
+from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared.fake_clock import FakeClock
@@ -48,7 +49,7 @@ def _make_config(
     )
 
 
-def _build_kwargs(config: ProviderConfig) -> dict[str, Any]:
+def _build_kwargs(config: ProviderConfig) -> _AcompletionKwargs:
     """Extract _build_kwargs result from a driver."""
     driver = LiteLLMDriver("test-provider", config)
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]

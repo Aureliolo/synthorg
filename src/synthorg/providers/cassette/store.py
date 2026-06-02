@@ -24,9 +24,9 @@ import tempfile
 import weakref
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Final, Self
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -78,7 +78,7 @@ class CassetteRecordedError(BaseModel):
 
     error_class: NotBlankStr = Field(description="Recorded type(exc).__name__")
     message: str = Field(description="Scrubbed error description")
-    context: dict[str, Any] = Field(
+    context: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Redacted ProviderError.context for faithful replay",
     )
@@ -156,7 +156,7 @@ class CassetteOutcome(BaseModel):
         *,
         error_class: str,
         message: str,
-        context: dict[str, Any] | None = None,
+        context: dict[str, JsonValue] | None = None,
     ) -> Self:
         """Build an error outcome from a scrubbed description.
 
@@ -223,7 +223,9 @@ class CassetteInteraction(BaseModel):
     request_hash: NotBlankStr = Field(description="Canonical request hash")
     lane: int = Field(ge=0, description="Per-task FIFO lane ordinal")
     seq: int = Field(ge=0, description="FIFO index within (hash, lane)")
-    request_repr: dict[str, Any] = Field(
+    # ``object``, not ``JsonValue``: a never-replayed human copy holding the
+    # redactor's ``object`` output (unlike the replayed, JsonValue context).
+    request_repr: dict[str, object] = Field(
         default_factory=dict,
         description="Redacted human-readable request copy (never replayed)",
     )
@@ -268,7 +270,7 @@ class CassetteSession:
         self._mode = mode
         self._path = path
         self._redactor = redactor
-        self._lane_by_task: weakref.WeakKeyDictionary[asyncio.Task[Any], int] = (
+        self._lane_by_task: weakref.WeakKeyDictionary[asyncio.Task[object], int] = (
             weakref.WeakKeyDictionary()
         )
         self._next_lane = 0
@@ -319,7 +321,7 @@ class CassetteSession:
         *,
         method: CassetteMethod,
         request_hash: str,
-        request_repr: dict[str, Any],
+        request_repr: dict[str, object],
         outcome: CassetteOutcome,
     ) -> None:
         """Append one recorded interaction (record mode).
@@ -337,7 +339,7 @@ class CassetteSession:
         seq = self._seq_counter.get(seq_key, 0)
         self._seq_counter[seq_key] = seq + 1
         redacted = self._redactor.redact(request_repr)
-        repr_dict: dict[str, Any] = (
+        repr_dict: dict[str, object] = (
             redacted if isinstance(redacted, dict) else {"value": redacted}
         )
         outcome = self._redact_outcome_error(outcome)
@@ -425,10 +427,9 @@ class CassetteSession:
     def _redact_outcome_error(self, outcome: CassetteOutcome) -> CassetteOutcome:
         """Scrub a recorded error's context with the request redactor.
 
-        The outcome is otherwise the byte-identical replay artefact and
-        is stored verbatim; ``ProviderError.context`` is the single
-        outcome field that can carry a secret (e.g. a debug header
-        bag), so it is redacted exactly like the request copy.
+        The outcome is otherwise the byte-identical replay artefact and is
+        stored verbatim; ``ProviderError.context`` is the single outcome
+        field that can carry a secret, so it is redacted like the request copy.
 
         Returns:
             A new ``CassetteOutcome`` with the error context scrubbed, or
@@ -446,15 +447,19 @@ class CassetteSession:
         # for the shape-agnostic request copy).
         redacted = self._redactor.redact(dict(error.context))
         if isinstance(redacted, dict):
-            ctx: dict[str, Any] = redacted
+            ctx: dict[str, object] = redacted
         else:
             ctx = {
                 key: self._redactor.redact(value)
                 for key, value in error.context.items()
             }
-        return outcome.model_copy(
-            update={"error": error.model_copy(update={"context": ctx})},
+        # Rebuild via ``model_validate`` (``model_copy(update=...)`` skips
+        # validation) so the redactor's ``object`` output is enforced against
+        # ``context``'s ``dict[str, JsonValue]`` here, not at write time.
+        redacted_error = CassetteRecordedError.model_validate(
+            {"error_class": error.error_class, "message": error.message, "context": ctx}
         )
+        return outcome.model_copy(update={"error": redacted_error})
 
     def _serialise(
         self,

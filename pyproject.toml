@@ -687,7 +687,6 @@ disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.providers.*"
-disallow_any_explicit = false
 disable_error_code = ["unused-awaitable"]
 
 [[tool.mypy.overrides]]

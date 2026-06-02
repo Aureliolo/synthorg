@@ -10,6 +10,8 @@ break the "zero real LLM calls" guarantee.
 
 from typing import ClassVar
 
+from pydantic import JsonValue
+
 from synthorg.providers.errors import (
     AuthenticationError,
     ContentFilterError,
@@ -97,7 +99,7 @@ def provider_error_for(
     error_class: str,
     message: str,
     *,
-    context: dict[str, object] | None = None,
+    context: dict[str, JsonValue] | None = None,
 ) -> ProviderError:
     """Reconstruct a provider error to re-raise on replay.
 
@@ -110,9 +112,17 @@ def provider_error_for(
     Returns:
         An instance of the matching :class:`ProviderError` subclass, or
         a generic :class:`ProviderError` when the class is unknown.
+
+    Note:
+        A reconstructed :class:`RateLimitError` has ``retry_after=None``:
+        the cassette records only ``error_class`` / ``message`` /
+        ``context``, not the separate ``retry_after`` attribute. This is
+        harmless because cassette replay never retries (cassette errors
+        are non-retryable by design), so no caller consults the replayed
+        ``retry_after``.
     """
     cls = _PROVIDER_ERROR_BY_NAME.get(error_class, ProviderError)
-    merged: dict[str, object] = {
+    merged: dict[str, JsonValue] = {
         **(context or {}),
         "cassette_replayed_error_class": error_class,
     }

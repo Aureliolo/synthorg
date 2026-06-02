@@ -1,5 +1,7 @@
 """Unit tests for LLM semantic analysis prompt building and parsing."""
 
+from typing import Any, cast
+
 import pytest
 
 from synthorg.core.enums import ConflictType
@@ -25,12 +27,14 @@ class TestBuildSemanticReviewTool:
     def test_returns_tool_definition(self) -> None:
         tool = build_semantic_review_tool()
         assert tool.name == "submit_semantic_review"
-        assert "conflicts" in tool.parameters_schema["properties"]
-        assert "summary" in tool.parameters_schema["properties"]
+        schema = cast("dict[str, Any]", tool.parameters_schema)
+        assert "conflicts" in schema["properties"]
+        assert "summary" in schema["properties"]
 
     def test_conflict_schema_has_required_fields(self) -> None:
         tool = build_semantic_review_tool()
-        conflict_schema = tool.parameters_schema["properties"]["conflicts"]["items"]
+        schema = cast("dict[str, Any]", tool.parameters_schema)
+        conflict_schema = schema["properties"]["conflicts"]["items"]
         assert "file_path" in conflict_schema["properties"]
         assert "description" in conflict_schema["properties"]
         assert set(conflict_schema["required"]) == {"file_path", "description"}

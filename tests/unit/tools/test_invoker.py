@@ -1,6 +1,6 @@
 """Tests for ToolInvoker."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -336,9 +336,10 @@ class TestInvokeBoundaryIsolation:
             arguments={"nested": {"key": "original"}},
         )
         await extended_invoker.invoke(call)
-        assert call.arguments["nested"]["key"] == "original"
-        assert "mutated" not in call.arguments.get("nested", {})
-        assert "injected" not in call.arguments
+        args = cast("dict[str, Any]", call.arguments)
+        assert args["nested"]["key"] == "original"
+        assert "mutated" not in args.get("nested", {})
+        assert "injected" not in args
 
     async def test_nested_mutation_does_not_leak(
         self,
@@ -351,7 +352,8 @@ class TestInvokeBoundaryIsolation:
             arguments={"nested": {"value": 42}},
         )
         await extended_invoker.invoke(call)
-        assert "mutated" not in call.arguments.get("nested", {})
+        args = cast("dict[str, Any]", call.arguments)
+        assert "mutated" not in args.get("nested", {})
 
 
 @pytest.mark.unit

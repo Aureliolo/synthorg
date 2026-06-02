@@ -3,6 +3,7 @@
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from synthorg.engine.loop_helpers import compute_fingerprints
 from synthorg.engine.loop_protocol import TurnRecord
@@ -58,7 +59,7 @@ class TestFingerprintProperties:
     def test_determinism(
         self,
         name: str,
-        args: dict[str, object],
+        args: dict[str, JsonValue],
     ) -> None:
         """Same name + args always produces the same fingerprint."""
         tc = ToolCall(id="tc-1", name=name, arguments=args)
@@ -73,7 +74,7 @@ class TestFingerprintProperties:
     def test_format(
         self,
         name: str,
-        args: dict[str, object],
+        args: dict[str, JsonValue],
     ) -> None:
         """Each fingerprint ends with :16-char-hex."""
         tc = ToolCall(id="tc-1", name=name, arguments=args)

@@ -1,8 +1,15 @@
 """Provider-layer domain models for chat completion requests and responses."""
 
-from typing import Any, Self
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.tool_disclosure import (
     ToolL1Metadata,
@@ -98,7 +105,7 @@ class ToolDefinition(BaseModel):
 
     name: NotBlankStr = Field(description="Tool name")
     description: str = Field(default="", description="Tool description")
-    parameters_schema: dict[str, Any] = Field(
+    parameters_schema: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="JSON Schema for tool parameters",
     )
@@ -157,7 +164,7 @@ class ToolCall(BaseModel):
 
     id: NotBlankStr = Field(description="Tool call identifier")
     name: NotBlankStr = Field(description="Tool name")
-    arguments: dict[str, Any] = Field(
+    arguments: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Tool arguments",
     )

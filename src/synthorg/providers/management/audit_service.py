@@ -12,7 +12,9 @@ audit rows secret-free.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
+
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.providers.management.capability_dtos import (
@@ -45,7 +47,7 @@ class ProviderAuditService:
         provider_name: NotBlankStr,
         event_type: ProviderAuditEventType,
         actor: ProviderAuditActor,
-        payload: dict[str, Any] | None = None,
+        payload: dict[str, JsonValue] | None = None,
     ) -> ProviderAuditEvent:
         """Write one audit row.
 

@@ -8,7 +8,9 @@ exception types.
 import copy
 import math
 from types import MappingProxyType
-from typing import Any, ClassVar, Final, Literal, override
+from typing import ClassVar, Final, Literal, override
+
+from pydantic import JsonValue
 
 from synthorg.core.domain_errors import ConflictError, DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -92,7 +94,7 @@ class ProviderError(DomainError):
         self,
         message: str,
         *,
-        context: dict[str, Any] | None = None,
+        context: dict[str, JsonValue] | None = None,
     ) -> None:
         """Initialize a provider error.
 
@@ -105,7 +107,7 @@ class ProviderError(DomainError):
         # Deep-copy so nested lists/dicts in ``context`` cannot be
         # mutated by the caller after the exception is raised /
         # logged: ``MappingProxyType`` only freezes the outer mapping.
-        self.context: MappingProxyType[str, Any] = MappingProxyType(
+        self.context: MappingProxyType[str, JsonValue] = MappingProxyType(
             copy.deepcopy(dict(context)) if context else {},
         )
         super().__init__(message)
@@ -154,7 +156,7 @@ class RateLimitError(ProviderError):
         message: str,
         *,
         retry_after: float | None = None,
-        context: dict[str, Any] | None = None,
+        context: dict[str, JsonValue] | None = None,
     ) -> None:
         """Initialize a rate limit error.
 

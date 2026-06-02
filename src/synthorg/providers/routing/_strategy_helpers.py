@@ -6,6 +6,8 @@ selection logic.
 
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from synthorg.core.role_catalog import get_seniority_info
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
@@ -97,7 +99,8 @@ def _try_resolve_with_fallback(
 
     logger.warning(ROUTING_FALLBACK_EXHAUSTED, tried=tried)
     msg = f"All model candidates exhausted: {tried}"
-    raise NoAvailableModelError(msg, context={"tried": tried})
+    context: dict[str, JsonValue] = {"tried": [*tried]}
+    raise NoAvailableModelError(msg, context=context)
 
 
 def _try_resolve_with_fallback_safe(

@@ -26,6 +26,7 @@ from collections.abc import AsyncGenerator
 from typing import NamedTuple
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers._approval_review_gate import signal_resume_intent
@@ -58,7 +59,7 @@ pytestmark = pytest.mark.e2e
 
 _READ_TOOL = "synthorg_tasks_list"
 _ADMIN_TOOL = "synthorg_agents_delete"
-_APPROVAL_ARGS = {
+_APPROVAL_ARGS: dict[str, JsonValue] = {
     "action_type": "deploy:service",
     "title": "Deploy to prod",
     "description": "Ship the release to production.",

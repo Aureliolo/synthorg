@@ -1,6 +1,7 @@
 """Tests for ToolBasedInjectionStrategy."""
 
 from datetime import UTC, datetime
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -141,7 +142,7 @@ class TestToolDefinitions:
         )
         tools = strategy.get_tool_definitions()
         search = next(t for t in tools if t.name == "search_memory")
-        props = search.parameters_schema.get("properties", {})
+        props = cast("dict[str, Any]", search.parameters_schema.get("properties", {}))
         assert "query" in props
         assert "limit" in props
 
@@ -152,7 +153,7 @@ class TestToolDefinitions:
         )
         tools = strategy.get_tool_definitions()
         recall = next(t for t in tools if t.name == "recall_memory")
-        props = recall.parameters_schema.get("properties", {})
+        props = cast("dict[str, Any]", recall.parameters_schema.get("properties", {}))
         assert "memory_id" in props
 
 

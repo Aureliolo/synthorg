@@ -7,10 +7,11 @@ API.
 """
 
 from collections.abc import (
+    AsyncIterator,  # runtime: isinstance guard on the stream result
     Mapping,  # runtime annotation on driver method
 )
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, override
+from typing import TYPE_CHECKING, Final, override
 
 import litellm as _litellm
 from litellm.exceptions import (
@@ -43,18 +44,18 @@ from litellm.exceptions import (
 from litellm.exceptions import (
     Timeout as LiteLLMTimeout,
 )
+from pydantic import JsonValue
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
+from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_AUTH_ERROR,
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
-    PROVIDER_MODEL_INFO_UNAVAILABLE,
-    PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
     PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_RATE_LIMITED,
     PROVIDER_RETRY_AFTER_PARSE_FAILED,
@@ -64,6 +65,14 @@ from synthorg.observability.events.provider import (
 from synthorg.providers import errors
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
+from synthorg.providers.drivers.litellm_kwargs import (
+    _AcompletionKwargs,
+    _apply_completion_config,
+)
+from synthorg.providers.drivers.litellm_model_info import (
+    coerce_max_output_tokens,
+    get_litellm_model_info,
+)
 from synthorg.providers.drivers.litellm_tool_accumulator import (
     _ToolCallAccumulator,
     accumulate_tool_call_deltas,
@@ -85,7 +94,7 @@ from .mappers import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from synthorg.config.schema import ProviderConfig, ProviderModelConfig
     from synthorg.providers.models import (
@@ -95,6 +104,7 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
+
 
 _CREDENTIAL_CACHE_TTL: Final[float] = 300.0
 """Cached credentials from the connection catalog are refreshed at
@@ -141,7 +151,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         provider_name: str,
         config: ProviderConfig,
         *,
-        connection_catalog: Any | None = None,
+        connection_catalog: ConnectionCatalog | None = None,
         clock: Clock | None = None,
     ) -> None:
         retry_handler = (
@@ -270,6 +280,8 @@ class LiteLLMDriver(BaseCompletionProvider):
         Raises:
             ProviderError: A provider error raised at stream-open time
                 (re-raised directly, or mapped via ``_map_exception``).
+            ProviderInternalError: If the provider returns a non-streaming
+                response to a streaming request.
         """
         try:
             await self._ensure_credentials_resolved()
@@ -283,12 +295,26 @@ class LiteLLMDriver(BaseCompletionProvider):
                 stream=True,
             )
             raw_stream = await _litellm.acompletion(**kwargs)
-            return self._wrap_stream(raw_stream, model, model_config)
         except errors.ProviderError:
             raise
         except Exception as exc:
             reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
+        if not isinstance(raw_stream, AsyncIterator):
+            logger.warning(
+                PROVIDER_CALL_ERROR,
+                provider=self._provider_name,
+                model=model,
+                reason="non_streaming_response_to_streaming_request",
+            )
+            msg = (
+                f"Provider {self._provider_name} returned a "
+                "non-streaming response to a streaming request"
+            )
+            raise errors.ProviderInternalError(
+                msg, context={"provider": self._provider_name, "model": model}
+            )
+        return self._wrap_stream(raw_stream, model, model_config)
 
     @override
     async def _do_get_model_capabilities(
@@ -371,11 +397,16 @@ class LiteLLMDriver(BaseCompletionProvider):
             config and LiteLLM info.
         """
         litellm_model = f"{self._routing_key}/{model_config.id}"
-        info = self._get_litellm_model_info(litellm_model)
+        info = get_litellm_model_info(litellm_model)
 
         fallback = self._config.defaults.fallback_max_output_tokens
-        max_output = int(
-            info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback,
+        raw_max_output = (
+            info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or fallback
+        )
+        max_output = coerce_max_output_tokens(
+            raw_max_output,
+            fallback=fallback,
+            litellm_model=litellm_model,
         )
         streaming_raw = info.get("supports_native_streaming")
         supports_streaming = True if streaming_raw is None else bool(streaming_raw)
@@ -482,14 +513,14 @@ class LiteLLMDriver(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
         stream: bool = False,
-    ) -> dict[str, Any]:
+    ) -> _AcompletionKwargs:
         """Build keyword arguments for ``litellm.acompletion``.
 
         Returns:
             A kwargs dict for ``litellm.acompletion`` with credentials,
             base URL, and completion config merged in.
         """
-        kwargs: dict[str, Any] = {
+        kwargs: _AcompletionKwargs = {
             "model": litellm_model,
             "messages": messages_to_dicts(messages),
         }
@@ -557,7 +588,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     def _map_response(
         self,
-        response: Any,
+        response: object,
         model_config: ProviderModelConfig,
     ) -> CompletionResponse:
         """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``.
@@ -579,11 +610,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             )
             msg = f"Provider returned empty choices for model {model_config.id!r}"
             raise errors.ProviderInternalError(
-                msg,
-                context={
-                    "provider": self._provider_name,
-                    "model": model_config.id,
-                },
+                msg, context={"provider": self._provider_name, "model": model_config.id}
             )
 
         choice = choices[0]
@@ -619,7 +646,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     def _wrap_stream(
         self,
-        raw_stream: Any,
+        raw_stream: AsyncIterator[object],
         model: str,
         model_config: ProviderModelConfig,
     ) -> AsyncGenerator[StreamChunk]:
@@ -650,6 +677,8 @@ class LiteLLMDriver(BaseCompletionProvider):
                     PROVIDER_CALL_ERROR,
                     provider=provider,
                     model=model,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise handle_exc(exc, model) from exc
 
@@ -666,7 +695,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     def _process_chunk(
         self,
-        chunk: Any,
+        chunk: object,
         pending: dict[int, _ToolCallAccumulator],
         model_config: ProviderModelConfig,
     ) -> list[StreamChunk]:
@@ -702,7 +731,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             )
 
         raw_tc = getattr(delta, "tool_calls", None)
-        if raw_tc:
+        if raw_tc and isinstance(raw_tc, list):
             accumulate_tool_call_deltas(raw_tc, pending)
 
         usage_obj = getattr(chunk, "usage", None)
@@ -715,7 +744,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     def _make_usage_chunk(
         self,
-        usage_obj: Any,
+        usage_obj: object,
         model_config: ProviderModelConfig,
     ) -> StreamChunk:
         """Build a ``USAGE`` stream chunk.
@@ -749,7 +778,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             The matching ``ProviderError`` subclass for the exception, or
             a generic ``ProviderInternalError`` for unmapped types.
         """
-        ctx: dict[str, Any] = {
+        ctx: dict[str, JsonValue] = {
             "provider": self._provider_name,
             "model": model,
         }
@@ -763,7 +792,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                         model=model,
                     )
                     return errors.RateLimitError(
-                        str(exc),
+                        safe_error_description(exc),
                         retry_after=self._extract_retry_after(exc),
                         context=ctx,
                     )
@@ -781,7 +810,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                     )
                 return our_type(
                     f"Provider {self._provider_name} error",
-                    context={**ctx, "detail": str(exc)},
+                    context={**ctx, "detail": safe_error_description(exc)},
                 )
 
         if isinstance(exc, errors.ProviderError):
@@ -789,7 +818,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         return errors.ProviderInternalError(
             f"Unexpected error from provider {self._provider_name}",
-            context={**ctx, "detail": str(exc)},
+            context={**ctx, "detail": safe_error_description(exc)},
         )
 
     @staticmethod
@@ -820,59 +849,5 @@ class LiteLLMDriver(BaseCompletionProvider):
             )
             return None
 
-    # ── LiteLLM model info ───────────────────────────────────────
-
-    @staticmethod
-    def _get_litellm_model_info(
-        litellm_model: str,
-    ) -> dict[str, Any]:
-        """Query LiteLLM for static model metadata.
-
-        Returns empty dict if the model is unknown to LiteLLM.
-        Uses config defaults when metadata is unavailable.
-
-        Returns:
-            A dict of LiteLLM model metadata fields, or an empty dict
-            when the model is unknown or the lookup raises.
-        """
-        try:
-            raw = _litellm.get_model_info(model=litellm_model)
-            info: dict[str, Any] = dict(raw) if raw else {}
-        except KeyError, ValueError:
-            logger.info(
-                PROVIDER_MODEL_INFO_UNAVAILABLE,
-                model=litellm_model,
-            )
-            return {}
-        except Exception as exc:
-            reraise_critical(exc)
-            logger.warning(
-                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
-                model=litellm_model,
-            )
-            return {}
-        return info if isinstance(info, dict) else {}
-
 
 # ── Module-level helpers ─────────────────────────────────────────
-
-
-def _apply_completion_config(
-    kwargs: dict[str, Any],
-    config: CompletionConfig | None,
-) -> dict[str, Any]:
-    """Return a new kwargs dict with ``CompletionConfig`` fields merged in."""
-    if config is None:
-        return kwargs
-    extra: dict[str, Any] = {}
-    if config.temperature is not None:
-        extra["temperature"] = config.temperature
-    if config.max_tokens is not None:
-        extra["max_tokens"] = config.max_tokens
-    if config.stop_sequences:
-        extra["stop"] = list(config.stop_sequences)
-    if config.top_p is not None:
-        extra["top_p"] = config.top_p
-    if config.timeout is not None:
-        extra["timeout"] = config.timeout
-    return {**kwargs, **extra}

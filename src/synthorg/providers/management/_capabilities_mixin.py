@@ -10,6 +10,8 @@ the contract for mypy strict.
 import asyncio
 from typing import TYPE_CHECKING, Protocol
 
+from pydantic import JsonValue
+
 from synthorg.config.schema import (
     ProviderConfig,
     ProviderModelConfig,
@@ -145,7 +147,7 @@ class ProviderCapabilitiesMixin:
         provider_name: str,
         event_type: ProviderAuditEventType,
         actor: ProviderAuditActor | None = None,
-        payload: dict[str, object] | None = None,
+        payload: dict[str, JsonValue] | None = None,
     ) -> None:
         """Emit one provider audit event if the audit service is wired.
 

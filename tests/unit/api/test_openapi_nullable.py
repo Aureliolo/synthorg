@@ -193,6 +193,90 @@ class TestNullableUnionNormalization:
         assert "oneOf" in result
         assert "anyOf" not in result
 
+    def test_jsonvalue_structural_union_becomes_anyof(self) -> None:
+        """A ``JsonValue``-shaped union (object/array + primitives + null)
+        converts to ``anyOf`` so no ``oneOf``-with-null survives.
+
+        This is the shape Litestar emits for ``Mapping[str, JsonValue]``
+        fields: structural branches carrying ``items`` /
+        ``additionalProperties`` mixed with scalar primitives and null.
+        A primitive ``type`` array cannot represent the structural
+        branches, so ``anyOf`` is the only flattening that both drops the
+        null-bearing ``oneOf`` and keeps the structural information.
+        """
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"type": "array", "items": {}},
+                {"type": "object", "additionalProperties": {}},
+                {"type": "string"},
+                {"type": "boolean"},
+                {"type": "integer"},
+                {"type": "number"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert "anyOf" in result
+        assert "oneOf" not in result
+        # The structural branches survive intact.
+        assert {"type": "array", "items": {}} in result["anyOf"]
+        assert {"type": "object", "additionalProperties": {}} in result["anyOf"]
+
+    def test_constrained_primitive_union_without_structural_stays_oneof(
+        self,
+    ) -> None:
+        """A multi-key primitive union with no structural branch stays
+        ``oneOf``.
+
+        ``{type: string, maxLength: 5} | {type: integer} | None`` escapes
+        the all-single-key type-array collapse, but it carries no
+        ``items`` / ``additionalProperties`` branch, so it remains a
+        genuinely exclusive primitive union and must not be weakened to
+        ``anyOf``.
+        """
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"type": "string", "maxLength": 5},
+                {"type": "integer"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
+    def test_exclusive_structural_union_stays_oneof(self) -> None:
+        """An exclusive inline structural union (no scalar branch) stays
+        ``oneOf``.
+
+        ``{type: object, ...} | {type: object, ...} | None`` and an
+        object+array union without scalars are genuinely exclusive (a
+        value may satisfy at most one branch); they are NOT the
+        ``JsonValue`` shape (which carries both ``object`` and ``array``
+        plus scalars), so they must keep ``oneOf`` exclusivity.
+        """
+        object_only: dict[str, Any] = {
+            "oneOf": [
+                {"type": "object", "properties": {"a": {"type": "string"}}},
+                {"type": "object", "properties": {"b": {"type": "integer"}}},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(object_only)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
+        object_array_only: dict[str, Any] = {
+            "oneOf": [
+                {"type": "object", "additionalProperties": {}},
+                {"type": "array", "items": {}},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(object_array_only)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
     def test_nested_properties_normalized(self) -> None:
         """Nullable unions inside properties are flattened."""
         schema: dict[str, Any] = {

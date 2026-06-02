@@ -201,7 +201,7 @@ class TestExtractToolCalls:
         assert extract_tool_calls([]) == ()
 
     def test_single_tool_call_from_dict(self) -> None:
-        raw = [
+        raw: list[object] = [
             {
                 "id": "call_001",
                 "type": "function",
@@ -238,7 +238,7 @@ class TestExtractToolCalls:
         assert result[0].arguments == {"query": "test"}
 
     def test_multiple_tool_calls(self) -> None:
-        raw = [
+        raw: list[object] = [
             {
                 "id": "call_001",
                 "function": {"name": "a", "arguments": "{}"},
@@ -254,8 +254,13 @@ class TestExtractToolCalls:
         assert result[0].name == "a"
         assert result[1].name == "b"
 
-    def test_invalid_json_arguments_returns_empty_dict(self) -> None:
-        raw = [
+    def test_invalid_json_arguments_drops_tool_call(self) -> None:
+        """Unparseable JSON arguments drop the tool call (not emit empty args).
+
+        Matches the streaming accumulator: a tool never runs with
+        silently-emptied arguments in either path.
+        """
+        raw: list[object] = [
             {
                 "id": "call_001",
                 "function": {"name": "test", "arguments": "not-valid-json"},
@@ -263,10 +268,10 @@ class TestExtractToolCalls:
         ]
         result = extract_tool_calls(raw)
 
-        assert result[0].arguments == {}
+        assert result == ()
 
     def test_pre_parsed_dict_arguments(self) -> None:
-        raw = [
+        raw: list[object] = [
             {
                 "id": "call_001",
                 "function": {
@@ -279,14 +284,77 @@ class TestExtractToolCalls:
 
         assert result[0].arguments == {"key": "value"}
 
+    def test_non_finite_string_arguments_drops_tool_call(self) -> None:
+        """JSON args with an ``Infinity`` literal drop the tool call.
+
+        ``json.loads`` accepts ``Infinity`` by default, but ``ToolCall``
+        forbids non-finite floats (``allow_inf_nan=False``); the gate in
+        ``_parse_arguments`` drops the call so a tool never runs with
+        silently-emptied arguments, instead of raising at construction.
+        """
+        raw: list[object] = [
+            {
+                "id": "call_001",
+                "function": {"name": "test", "arguments": '{"score": Infinity}'},
+            },
+        ]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
+
+    def test_non_finite_nested_dict_arguments_drops_tool_call(self) -> None:
+        """Pre-parsed args carrying a nested non-finite float drop the call."""
+        raw: list[object] = [
+            {
+                "id": "call_001",
+                "function": {
+                    "name": "test",
+                    "arguments": {"grades": {"correctness": float("nan")}},
+                },
+            },
+        ]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
+
+    def test_non_dict_non_str_arguments_drops_tool_call(self) -> None:
+        """Arguments that are neither a JSON string nor a dict drop the call."""
+        raw: list[object] = [
+            {
+                "id": "call_001",
+                "function": {"name": "test", "arguments": [1, 2, 3]},
+            },
+        ]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
+
     def test_missing_function_skips_entry(self) -> None:
-        raw = [{"id": "call_001"}]
+        raw: list[object] = [{"id": "call_001"}]
         result = extract_tool_calls(raw)
 
         assert result == ()
 
     def test_missing_id_skips_entry(self) -> None:
-        raw = [{"function": {"name": "test", "arguments": "{}"}}]
+        raw: list[object] = [{"function": {"name": "test", "arguments": "{}"}}]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
+
+    def test_non_str_id_skips_entry(self) -> None:
+        """A non-string id (e.g. a malformed numeric id) is skipped."""
+        raw: list[object] = [
+            {"id": 123, "function": {"name": "test", "arguments": "{}"}},
+        ]
+        result = extract_tool_calls(raw)
+
+        assert result == ()
+
+    def test_non_str_name_skips_entry(self) -> None:
+        """A non-string function name is skipped rather than coerced."""
+        raw: list[object] = [
+            {"id": "call_001", "function": {"name": 7, "arguments": "{}"}},
+        ]
         result = extract_tool_calls(raw)
 
         assert result == ()
