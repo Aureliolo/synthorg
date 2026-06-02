@@ -7,7 +7,6 @@ LRU eviction guarantee.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 import pytest
 
@@ -27,7 +26,7 @@ class TestMCPResultCacheThreadSafety:
         # only the miss branch. Without this seed the reader and
         # writer payloads never collide, so the test only stresses
         # concurrent misses + writes.
-        shared_args: dict[str, Any] = {"i": -1}
+        shared_args: dict[str, object] = {"i": -1}
         cache.put("shared-tool", shared_args, ToolExecutionResult(content="seed"))
 
         def writer(i: int) -> None:

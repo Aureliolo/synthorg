@@ -260,7 +260,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 content="'period' must be a non-empty string.",
                 is_error=True,
             )
-        metric_names = [metric for metric in metrics if isinstance(metric, str)]
+        metric_names: list[str] = list(metrics)
         group_by = cast("str | None", arguments.get("group_by"))
         start_date = cast("str | None", arguments.get("start_date"))
         end_date = cast("str | None", arguments.get("end_date"))
