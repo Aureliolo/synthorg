@@ -385,6 +385,42 @@ class TestEventConstants:
 
         assert CORE_RESILIENCE_INVALID_CONFIG == "core.resilience.invalid_config"
 
+    def test_chief_of_staff_narrative_events_exist(self) -> None:
+        # Event names are part of the public observability contract;
+        # asserting the literal value protects against silent renames.
+        from synthorg.observability.events.chief_of_staff import (
+            COS_NARRATIVE_DECISION_UNAVAILABLE,
+            COS_NARRATIVE_FRAMES_TRUNCATED,
+            COS_NARRATIVE_GENERATED,
+            COS_NARRATIVE_GENERATION_FAILED,
+            COS_NARRATIVE_GENERATION_STARTED,
+            COS_NARRATIVE_PROSE_FALLBACK,
+            COS_NARRATIVE_SKIPPED,
+            COS_NARRATIVE_SOURCE_UNAVAILABLE,
+        )
+
+        assert (
+            COS_NARRATIVE_GENERATION_STARTED
+            == "chief_of_staff.narrative.generation_started"
+        )
+        assert COS_NARRATIVE_GENERATED == "chief_of_staff.narrative.generated"
+        assert (
+            COS_NARRATIVE_GENERATION_FAILED
+            == "chief_of_staff.narrative.generation_failed"
+        )
+        assert (
+            COS_NARRATIVE_SOURCE_UNAVAILABLE
+            == "chief_of_staff.narrative.source_unavailable"
+        )
+        assert COS_NARRATIVE_SKIPPED == "chief_of_staff.narrative.skipped"
+        assert COS_NARRATIVE_PROSE_FALLBACK == "chief_of_staff.narrative.prose_fallback"
+        assert COS_NARRATIVE_FRAMES_TRUNCATED == (
+            "chief_of_staff.narrative.frames_truncated"
+        )
+        assert COS_NARRATIVE_DECISION_UNAVAILABLE == (
+            "chief_of_staff.narrative.decision_unavailable"
+        )
+
     def test_config_events_exist(self) -> None:
         assert CONFIG_LOADED == "config.load.success"
         assert CONFIG_PARSE_FAILED == "config.parse.failed"

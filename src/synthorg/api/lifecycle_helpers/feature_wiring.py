@@ -9,10 +9,9 @@ best-effort + idempotent (a slice field already set short-circuits) so a
 re-entered lifespan does not double-wire and a missing collaborator
 leaves the feature's controllers to 503 rather than poisoning startup.
 
-``wire_features_on_startup`` runs them in dependency order (docs,
-project_brain, steering, knowledge, fine_tune, research, charter,
-chat, proposer): research reads the knowledge service, and the
-chief-of-staff proposer expects the chat backend's conventions.
+``wire_features_on_startup`` runs them in dependency order (docs and
+project_brain first; research reads the knowledge service; the narrator
+reads docs + brain; the proposer follows the chat backend).
 """
 
 from typing import TYPE_CHECKING
@@ -30,6 +29,7 @@ from synthorg.api.lifecycle_helpers.conversational_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.narrative_wiring import wire_run_narrator
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability import get_logger, safe_error_description
@@ -637,6 +637,11 @@ async def wire_features_on_startup(
         cost_tracker=cost_tracker,
     )
     await _wire_chief_of_staff_chat(
+        app_state,
+        provider_registry=provider_registry,
+        cost_tracker=cost_tracker,
+    )
+    await wire_run_narrator(
         app_state,
         provider_registry=provider_registry,
         cost_tracker=cost_tracker,

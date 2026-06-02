@@ -62,6 +62,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_role_router",
         "build_group_chat_service",
         "build_conversational_actor",
+        "build_chief_of_staff_narrator",
     ),
     depends_on=(),
 )

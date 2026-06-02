@@ -1,3 +1,4 @@
+# module-kind: service
 """Pre-flight cost forecast gate at the work-entry seam.
 
 The gate sits between an entry adapter (intake, task-board, objective,
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from synthorg.budget.forecaster import CostForecaster
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
+    from synthorg.engine.pipeline.narrator_port import RunNarrator
     from synthorg.engine.pipeline.protocol import WorkPipeline
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
 
@@ -128,7 +130,24 @@ class ForecastGate:
         """
         if not self._budget_config.forecast_required:
             return await self._work_pipeline.run(work_item)
+        return await self._gated_dispatch(work_item)
 
+    def attach_narrator(self, narrator: RunNarrator) -> None:
+        """Forward the narrator to the wrapped pipeline (decorator passthrough)."""
+        self._work_pipeline.attach_narrator(narrator)
+
+    async def _gated_dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
+        """Run the forecast-gated dispatch branches.
+
+        Returns:
+            The :class:`WorkPipelineResult` when the gate permits dispatch.
+
+        Raises:
+            CostForecastApprovalRequiredError: When operator approval is
+                required before dispatch.
+            CostForecastRejectedError: When the linked forecast was
+                explicitly rejected.
+        """
         existing = await self._lookup_forecast(work_item)
         if existing is not None and self._forecast_covers_brief(work_item, existing):
             if existing.decision is ForecastDecision.APPROVED:

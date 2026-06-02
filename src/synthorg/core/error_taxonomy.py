@@ -193,6 +193,8 @@ class ErrorCode(IntEnum):
     FEATURE_DEPENDENCY_ERROR = 8030
     BRAIN_INDEX_ERROR = 8031
     BRAIN_COMMIT_ERROR = 8032
+    NARRATIVE_GENERATION_ERROR = 8033
+    NARRATIVE_SOURCE_UNAVAILABLE = 8034
 
 
 # Error-code band for the NOT_FOUND category (3xxx).  Per-domain

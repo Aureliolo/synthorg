@@ -73,10 +73,39 @@ function MetricBlockView({ block }: { block: MetricBlock }) {
   )
 }
 
+const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
+// Two leading slash-or-backslash characters: a protocol-relative
+// authority. Browsers normalise backslashes to forward slashes, so
+// "//host", "\\host", "/\host", and "\/host" all resolve the same way.
+const AUTHORITY_PREFIX_RE = /^[/\\]{2}/
+
+// Defense-in-depth: the backend LinkBlock validator already rejects
+// dangerous schemes at write time, but guard the render path too so a
+// disallowed (javascript:, data:) or protocol-relative (//host) url can
+// never reach the href attribute. Relative paths and #fragments pass.
+// The url is trimmed first because browsers strip leading whitespace
+// from href, so " javascript:..." / " //host" would otherwise bypass
+// the prefix and URL-parse checks; an unparseable url carrying any
+// scheme is rejected rather than passed through.
+function sanitizeHref(url: string): string {
+  const trimmed = url.trim()
+  if (AUTHORITY_PREFIX_RE.test(trimmed)) {
+    return '#'
+  }
+  try {
+    return ALLOWED_LINK_SCHEMES.has(new URL(trimmed).protocol) ? url : '#'
+  } catch {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+      return '#'
+    }
+    return url
+  }
+}
+
 function LinkBlockView({ block }: { block: LinkBlock }) {
   return (
     <a
-      href={block.url}
+      href={sanitizeHref(block.url)}
       className="text-primary underline hover:no-underline"
       rel="noopener noreferrer"
       target="_blank"

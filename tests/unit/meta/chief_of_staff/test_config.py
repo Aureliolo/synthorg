@@ -83,6 +83,26 @@ class TestChiefOfStaffConfig:
         with pytest.raises(ValidationError):
             ChiefOfStaffConfig(propose_temperature=2.5)
 
+    def test_narrative_defaults(self) -> None:
+        cfg = ChiefOfStaffConfig()
+        assert cfg.narrative_enabled is False
+        assert cfg.narrative_model == "example-small-001"
+        assert cfg.narrative_temperature == pytest.approx(0.4)
+        assert cfg.narrative_max_tokens == 2000
+
+    def test_narrative_enabled_independent_of_chat(self) -> None:
+        cfg = ChiefOfStaffConfig(narrative_enabled=True)
+        assert cfg.narrative_enabled is True
+        assert cfg.chat_enabled is False
+
+    def test_narrative_temperature_bounds(self) -> None:
+        with pytest.raises(ValidationError):
+            ChiefOfStaffConfig(narrative_temperature=2.5)
+
+    def test_narrative_max_tokens_lower_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            ChiefOfStaffConfig(narrative_max_tokens=10)
+
     def test_frozen(self) -> None:
         cfg = ChiefOfStaffConfig()
         with pytest.raises(ValidationError):

@@ -6,6 +6,17 @@ const DOC_TYPE_LABEL: Record<DocType, string> = {
   deliverable: 'Deliverable',
   knowledge_note: 'Note',
   codebase_analysis: 'Codebase analysis',
+  run_narrative: 'Run narrative',
+}
+
+// The map is exhaustive over DocType at compile time, but the backend can
+// ship a new doc_type before the frontend regenerates: fall back to a
+// readable label rather than rendering an empty span.
+function docTypeLabel(value: string): string {
+  return (
+    (DOC_TYPE_LABEL as Record<string, string | undefined>)[value] ??
+    value.replace(/_/g, ' ')
+  )
 }
 
 const DOC_TYPES = DOC_TYPE_VALUES
@@ -33,7 +44,11 @@ export function DocList({
 
   return (
     <aside className="border-border flex flex-col gap-3 border-r pr-4">
-      <div className="flex flex-wrap gap-2">
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Filter documents by type"
+      >
         <FilterChip
           label="All"
           active={filter === null}
@@ -42,7 +57,7 @@ export function DocList({
         {DOC_TYPES.map((kind) => (
           <FilterChip
             key={kind}
-            label={DOC_TYPE_LABEL[kind]}
+            label={docTypeLabel(kind)}
             active={filter === kind}
             onClick={() => onFilterChange(kind)}
           />
@@ -66,7 +81,7 @@ export function DocList({
               >
                 <span className="block text-sm font-medium">{doc.title}</span>
                 <span className="text-muted-foreground block text-xs">
-                  {DOC_TYPE_LABEL[doc.doc_type]}
+                  {docTypeLabel(doc.doc_type)}
                   {doc.tags.length > 0
                     ? ` ${'·'} ${doc.tags.slice(0, 3).join(', ')}`
                     : ''}

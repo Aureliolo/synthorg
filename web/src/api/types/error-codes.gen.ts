@@ -133,6 +133,8 @@ export const ErrorCode = {
     FEATURE_DEPENDENCY_ERROR: 8030,
     BRAIN_INDEX_ERROR: 8031,
     BRAIN_COMMIT_ERROR: 8032,
+    NARRATIVE_GENERATION_ERROR: 8033,
+    NARRATIVE_SOURCE_UNAVAILABLE: 8034,
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

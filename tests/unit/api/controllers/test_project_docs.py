@@ -123,14 +123,28 @@ class TestProjectDocsController:
         body = resp.json()
         assert body["data"][0]["slug"] == "q2-status"
 
+    async def test_list_accepts_valid_doc_type(
+        self, async_test_client: LoopAsyncClient
+    ) -> None:
+        # The query param is the closed DocType enum, so a member value
+        # parses cleanly at the boundary.
+        with _with_docs_service(async_test_client, _FakeDocsService()):
+            resp = await async_test_client.get(
+                "/api/v1/projects/proj-1/docs",
+                params={"doc_type": DocType.RUN_NARRATIVE.value},
+            )
+        assert resp.status_code == 200
+
     async def test_list_rejects_invalid_doc_type(
         self, async_test_client: LoopAsyncClient
     ) -> None:
+        # An out-of-enum value fails Litestar's query-param validation for
+        # the closed DocType enum, surfacing a 400 before the handler runs.
         with _with_docs_service(async_test_client, _FakeDocsService()):
             resp = await async_test_client.get(
                 "/api/v1/projects/proj-1/docs", params={"doc_type": "not_a_type"}
             )
-        assert resp.status_code == 422
+        assert resp.status_code == 400
 
     async def test_get_doc(self, async_test_client: LoopAsyncClient) -> None:
         with _with_docs_service(async_test_client, _FakeDocsService()):

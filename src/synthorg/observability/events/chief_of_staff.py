@@ -114,3 +114,22 @@ COS_ACT_REQUESTED: Final[str] = "chief_of_staff.act.requested"
 COS_ACT_COMPLETED: Final[str] = "chief_of_staff.act.completed"
 COS_ACT_PARKED: Final[str] = "chief_of_staff.act.parked"
 COS_ACT_FAILED: Final[str] = "chief_of_staff.act.failed"
+
+# -- Run narrative (documentary mode) ----------------------------------
+
+COS_NARRATIVE_GENERATION_STARTED: Final[str] = (
+    "chief_of_staff.narrative.generation_started"
+)
+COS_NARRATIVE_GENERATED: Final[str] = "chief_of_staff.narrative.generated"
+COS_NARRATIVE_GENERATION_FAILED: Final[str] = (
+    "chief_of_staff.narrative.generation_failed"
+)
+COS_NARRATIVE_SOURCE_UNAVAILABLE: Final[str] = (
+    "chief_of_staff.narrative.source_unavailable"
+)
+COS_NARRATIVE_SKIPPED: Final[str] = "chief_of_staff.narrative.skipped"
+COS_NARRATIVE_PROSE_FALLBACK: Final[str] = "chief_of_staff.narrative.prose_fallback"
+COS_NARRATIVE_FRAMES_TRUNCATED: Final[str] = "chief_of_staff.narrative.frames_truncated"
+COS_NARRATIVE_DECISION_UNAVAILABLE: Final[str] = (
+    "chief_of_staff.narrative.decision_unavailable"
+)

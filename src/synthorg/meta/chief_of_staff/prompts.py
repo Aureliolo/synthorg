@@ -406,3 +406,40 @@ not already in the room, you MAY request to bring them in by setting
 A human must consent before any invited agent joins, so do not assume
 they are present. Most contributions need no invite -- leave it null.
 """
+
+
+# Run-narrative prose prompt (documentary mode). The structured record of
+# decisions, contributions, outcomes, and metrics is assembled
+# deterministically from the project brain and the flight recorder and
+# is supplied as fenced untrusted content; the model writes ONLY the
+# connective narration and must never invent a fact or a number.
+RUN_NARRATIVE_PROSE_PROMPT = """\
+You are the Chief of Staff writing the run narrative for a completed
+brief: "{brief_title}" (final status: {final_status}). An executive will
+read it and an auditor will check it, so every fact must come from the
+record below. You write ONLY the connective prose; the decisions, who
+did what, the outcomes, and the metrics are already recorded and will be
+rendered verbatim beside your narration.
+
+## The run record
+
+{record}
+
+## Instructions
+
+Reply with a single JSON object and nothing else:
+
+    {{"summary": "<2-4 sentence executive summary of the run>",
+      "decisions": "<1-2 sentences introducing the decisions, or null>",
+      "contributions": "<1-2 sentences introducing who did what, or null>",
+      "outcomes": "<1-2 sentences introducing the outcomes, or null>"}}
+
+Rules:
+- Do NOT invent decisions, agents, numbers, or outcomes. If the record
+  does not support a claim, do not make it.
+- Keep each field concise and plain-text (no markdown, no lists).
+- Set a section field to null if you have nothing useful to add beyond
+  what the record already states.
+- Write in British English, neutral and factual.
+
+""" + untrusted_content_directive((TAG_TASK_DATA,))

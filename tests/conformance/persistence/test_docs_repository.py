@@ -125,6 +125,54 @@ class TestDocsRepository:
         )
         assert {r.slug for r in deliverables} == {"del"}
 
+    async def test_run_narrative_round_trip(self, backend: PersistenceBackend) -> None:
+        """The widened doc_type CHECK admits run_narrative on both backends."""
+        await backend.projects.save(_project())
+        await backend.project_docs.save(
+            _meta(
+                slug="run-narrative-exec1",
+                doc_type=DocType.RUN_NARRATIVE,
+                title="Run narrative",
+            )
+        )
+        fetched = await backend.project_docs.get(
+            (NotBlankStr("proj-1"), NotBlankStr("run-narrative-exec1"))
+        )
+        assert fetched is not None
+        assert fetched.doc_type is DocType.RUN_NARRATIVE
+        narratives = await backend.project_docs.query(
+            DocsFilterSpec(
+                project_id=NotBlankStr("proj-1"),
+                doc_type=DocType.RUN_NARRATIVE,
+            )
+        )
+        assert {r.slug for r in narratives} == {"run-narrative-exec1"}
+
+    async def test_codebase_analysis_round_trip(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The widened CHECK also admits the previously-omitted codebase_analysis."""
+        await backend.projects.save(_project())
+        await backend.project_docs.save(
+            _meta(
+                slug="intake-analysis",
+                doc_type=DocType.CODEBASE_ANALYSIS,
+                title="Codebase analysis",
+            )
+        )
+        fetched = await backend.project_docs.get(
+            (NotBlankStr("proj-1"), NotBlankStr("intake-analysis"))
+        )
+        assert fetched is not None
+        assert fetched.doc_type is DocType.CODEBASE_ANALYSIS
+        analyses = await backend.project_docs.query(
+            DocsFilterSpec(
+                project_id=NotBlankStr("proj-1"),
+                doc_type=DocType.CODEBASE_ANALYSIS,
+            )
+        )
+        assert {r.slug for r in analyses} == {"intake-analysis"}
+
     async def test_query_by_tag(self, backend: PersistenceBackend) -> None:
         await backend.projects.save(_project())
         await backend.project_docs.save(_meta(slug="a", tags=("checkout",)))

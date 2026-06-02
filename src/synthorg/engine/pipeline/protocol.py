@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Work pipeline protocol.
 
 The single coherent path every entry adapter feeds: a typed
@@ -5,6 +6,8 @@ The single coherent path every entry adapter feeds: a typed
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from synthorg.engine.pipeline.narrator_port import RunNarrator
 
 if TYPE_CHECKING:
     from synthorg.engine.pipeline.models import WorkItem, WorkPipelineResult
@@ -30,5 +33,14 @@ class WorkPipeline(Protocol):
         Raises:
             WorkPipelineError: On any phase failure (subclasses carry
                 the precise RFC 9457 status).
+        """
+        ...
+
+    def attach_narrator(self, narrator: RunNarrator) -> None:
+        """Attach the post-run narrator (documentary mode).
+
+        Late-bind seam: the narrator depends on services that wire only
+        after persistence connects, so the startup hook attaches it to
+        the already-built pipeline rather than passing it at construction.
         """
         ...

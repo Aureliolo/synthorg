@@ -535,7 +535,15 @@ CREATE TABLE project_docs (
     project_id TEXT NOT NULL,
     slug TEXT NOT NULL,
     doc_type TEXT NOT NULL
-    CHECK (doc_type IN ('status_report', 'deliverable', 'knowledge_note')),
+    CHECK (
+        doc_type IN (
+            'status_report',
+            'deliverable',
+            'knowledge_note',
+            'codebase_analysis',
+            'run_narrative'
+        )
+    ),
     title TEXT NOT NULL,
     tags TEXT NOT NULL DEFAULT '[]',
     head_commit_sha TEXT NOT NULL,

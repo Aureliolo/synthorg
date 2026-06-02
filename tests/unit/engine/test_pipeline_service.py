@@ -1,6 +1,7 @@
 """Unit tests for the default work pipeline service."""
 
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,6 +23,7 @@ from synthorg.engine.pipeline.models import (
     WorkItem,
     WorkSource,
 )
+from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.routing.models import RoutingCandidate
@@ -256,3 +258,43 @@ class TestTeamPath:
         )
         with pytest.raises(WorkPipelineTeamPathUnavailableError):
             await pipeline.run(_work_item())
+
+
+class TestNarratorTrigger:
+    def _solo_pipeline(self) -> DefaultWorkPipeline:
+        pipeline, _ = _pipeline(
+            intake_result=IntakeResult.accepted_result(
+                request_id="corr-1", task_id="task-1"
+            ),
+            task=_task(),
+            project=mock_of[Project](),
+            verdict=RoutingVerdict.LEAF,
+            coordinator=None,
+            agents=(make_e2e_identity(),),
+            post_task=_post_task(TaskStatus.IN_REVIEW),
+        )
+        return pipeline
+
+    async def test_narrator_invoked_on_completion(self) -> None:
+        narrator = mock_of[RunNarrator](generate=AsyncMock(return_value=None))
+        pipeline = self._solo_pipeline()
+        pipeline.attach_narrator(narrator)
+        await pipeline.run(_work_item())
+        narrator.generate.assert_awaited_once_with(
+            task_id="task-1", project_id="proj-1"
+        )
+
+    async def test_narrator_failure_does_not_fail_run(self) -> None:
+        narrator = mock_of[RunNarrator](
+            generate=AsyncMock(side_effect=RuntimeError("narration broke"))
+        )
+        pipeline = self._solo_pipeline()
+        pipeline.attach_narrator(narrator)
+        result = await pipeline.run(_work_item())
+        assert result.is_success is True
+        assert result.final_task_status is TaskStatus.IN_REVIEW
+
+    async def test_no_narrator_is_noop(self) -> None:
+        pipeline = self._solo_pipeline()
+        result = await pipeline.run(_work_item())
+        assert result.is_success is True

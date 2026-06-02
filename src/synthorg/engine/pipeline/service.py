@@ -1,3 +1,4 @@
+# module-kind: service
 """Default work pipeline implementation.
 
 Composes the already-wired runtime services into the single spine:
@@ -32,8 +33,13 @@ from synthorg.engine.pipeline.models import (
     WorkPhaseResult,
     WorkPipelineResult,
 )
+from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.chief_of_staff import (
+    COS_NARRATIVE_GENERATION_FAILED,
+    COS_NARRATIVE_SKIPPED,
+)
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
     PIPELINE_PHASE_FAILED,
@@ -92,6 +98,7 @@ class DefaultWorkPipeline:
         "_clock",
         "_coordinator",
         "_intake_engine",
+        "_narrator",
         "_project_repository",
         "_routing_policy",
         "_scorer",
@@ -124,6 +131,16 @@ class DefaultWorkPipeline:
         self._agent_registry = agent_registry
         self._clock = clock if clock is not None else SystemClock()
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
+        self._narrator: RunNarrator | None = None
+
+    def attach_narrator(self, narrator: RunNarrator) -> None:
+        """Attach the post-run narrator (documentary mode).
+
+        Late-bind seam: the narrator depends on services that wire only
+        after persistence connects, so it is attached to the already-built
+        pipeline by the startup hook rather than passed at construction.
+        """
+        self._narrator = narrator
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Drive *work_item* through the full spine (see module docstring).
@@ -198,7 +215,38 @@ class DefaultWorkPipeline:
             final_task_status=final_status.value,
             total_duration_seconds=total,
         )
+        await self._try_generate_narrative(work_item, task)
         return result
+
+    async def _try_generate_narrative(self, work_item: WorkItem, task: Task) -> None:
+        """Generate the run narrative, best-effort.
+
+        Documentary mode is opt-in and never blocks or fails the run: a
+        missing narrator is a no-op, and any error degrades to a logged
+        warning. Critical interpreter errors still propagate.
+        """
+        # Snapshot once: the attach is a monotonic None -> narrator late-bind,
+        # so a single load keeps the null-check and the call on the same value.
+        narrator = self._narrator
+        if narrator is None:
+            logger.debug(
+                COS_NARRATIVE_SKIPPED,
+                correlation_id=work_item.correlation_id,
+                task_id=task.id,
+                reason="no_narrator_attached",
+            )
+            return
+        try:
+            await narrator.generate(task_id=task.id, project_id=work_item.project)
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                COS_NARRATIVE_GENERATION_FAILED,
+                correlation_id=work_item.correlation_id,
+                task_id=task.id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _phase(
         self,
