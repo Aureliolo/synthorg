@@ -13,6 +13,7 @@ genuine pipeline run, not just on a direct ``generate`` call.
 """
 
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -54,12 +55,15 @@ from synthorg.meta.chief_of_staff.narrative.factory import (
     build_chief_of_staff_narrator,
 )
 from synthorg.observability.events.chief_of_staff import COS_NARRATIVE_GENERATED
+from synthorg.persistence import migrations
+from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameAggregate,
     FlightRecorderFrameRepository,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.task_protocol import TaskRepository
 from synthorg.project_brain.models import (
     BrainEntry,
@@ -78,7 +82,6 @@ from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import FakeClock, mock_of
 from tests._shared.scripted_provider import make_e2e_identity
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
-from tests.unit.api.fakes import FakeDocsRepository
 
 pytestmark = pytest.mark.integration
 
@@ -87,7 +90,19 @@ _PROJECT = NotBlankStr("proj-1")
 _TASK = NotBlankStr("task-1")
 
 
-async def _docs_service(tmp_path: Path) -> DocsService:
+def _project() -> Project:
+    return Project(id=_PROJECT, name=NotBlankStr("Demo"))
+
+
+@pytest.fixture
+async def docs_service(tmp_path: Path) -> AsyncIterator[DocsService]:
+    """A real DocsService backed by a migrated SQLite ``project_docs`` repo.
+
+    The docs metadata is persisted through the actual
+    :class:`SQLitePersistenceBackend`, so a schema/repository regression in
+    the new ``run_narrative`` persistence path is caught here rather than
+    masked by an in-memory fake.
+    """
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
         config,
@@ -100,16 +115,31 @@ async def _docs_service(tmp_path: Path) -> DocsService:
         config=config,
         clock=FakeClock(),
     )
-    backend = InMemoryBackend()
-    await backend.connect()
+    memory_backend = InMemoryBackend()
+    await memory_backend.connect()
+    db_path = tmp_path / "narrative.db"
+    rev_path = migrations.copy_revisions(tmp_path / "revisions", backend="sqlite")
+    await migrations.migrate_apply(
+        migrations.to_sqlite_url(str(db_path)),
+        revisions_path=rev_path,
+    )
+    persistence = SQLitePersistenceBackend(SQLiteConfig(path=str(db_path)))
+    await persistence.connect()
+    # project_docs carries a FK to projects, so seed the owning project
+    # before any narrative doc is written.
+    await persistence.projects.save(_project())
     runtime = build_docs_service(
-        repo=FakeDocsRepository(),
+        repo=persistence.project_docs,
         workspace_service=workspace_service,
         git_backend=git_backend,
-        memory_backend=backend,
+        memory_backend=memory_backend,
         clock=FakeClock(start=_NOW),
     )
-    return runtime.docs_service
+    try:
+        yield runtime.docs_service
+    finally:
+        await persistence.disconnect()
+        await memory_backend.disconnect()
 
 
 def _task() -> Task:
@@ -201,8 +231,9 @@ def _prose_response() -> CompletionResponse:
 
 
 class TestNarrativeRoundTrip:
-    async def test_narrative_persists_and_reads_back(self, tmp_path: Path) -> None:
-        docs_service = await _docs_service(tmp_path)
+    async def test_narrative_persists_and_reads_back(
+        self, docs_service: DocsService
+    ) -> None:
         brain = mock_of[ProjectBrainService](
             list_current=AsyncMock(return_value=(_decision_summary(),)),
             get_current=AsyncMock(return_value=_decision_entry()),
@@ -241,8 +272,9 @@ class TestNarrativeRoundTrip:
         links = [b for b in doc.body if isinstance(b, LinkBlock)]
         assert any(b.url == "#brain-entry-dec-1" for b in links)
 
-    async def test_disabled_narrator_is_not_built(self, tmp_path: Path) -> None:
-        docs_service = await _docs_service(tmp_path)
+    async def test_disabled_narrator_is_not_built(
+        self, docs_service: DocsService
+    ) -> None:
         narrator = build_chief_of_staff_narrator(
             ChiefOfStaffConfig(),
             provider=mock_of[CompletionProvider](
@@ -256,14 +288,13 @@ class TestNarrativeRoundTrip:
         assert narrator is None
 
     async def test_narrative_generated_on_real_pipeline_run(
-        self, tmp_path: Path
+        self, docs_service: DocsService
     ) -> None:
         """A genuine DefaultWorkPipeline.run persists a narrative.
 
         Closes the acceptance gap: the post-run trigger seam is exercised
         through the full pipeline spine, not just a direct generate() call.
         """
-        docs_service = await _docs_service(tmp_path)
         narrator = _real_narrator(docs_service)
         pipeline = _runnable_pipeline(narrator)
 
