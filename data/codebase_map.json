@@ -3712,7 +3712,7 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/core/clock.py",
       "owning_feature": null

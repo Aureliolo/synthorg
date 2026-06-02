@@ -70,17 +70,30 @@ Cross-worker coordination rule (read before adding a new fixture):
 # pytest installs the ini-driven filters, so an ini-level ignore
 # arrives too late.
 #
-# The hook install is COMMENTED out alongside the pyproject activation
-# flags: activation surfaces ~1,500 resolved-type mismatches plus the
-# ~1,055-module TYPE_CHECKING-guarded-signature class -- a dedicated
-# multi-PR programme, not a one-line uncomment. ADR-0006 Section F
-# documents the scope and tracks the follow-up work.
+# Activation is rolled out one source package at a time (incremental scoped
+# activation): the full ``synthorg`` surface fails ~1,500 resolved-type checks
+# at once, so each PR widens the instrumented scope and fixes that package's
+# failures in the same change. The package list passed to
+# ``install_import_hook`` MUST stay identical to ``--typeguard-packages`` in
+# pyproject.toml addopts: the hook here does the real bytecode rewrite (before
+# any collection import pulls a synthorg module in), and the plugin's later
+# install is the redundant attempt whose InstrumentationWarning is suppressed.
+#
+# ``register_policy_honoring_checker`` makes the eager-eval NameError class (a
+# NamedTuple / TypedDict / Protocol / callable whose signature member is only
+# importable under ``if TYPE_CHECKING:``) honour the forward-ref policy instead
+# of escaping as a raw NameError. It imports only ``typeguard`` (no
+# ``synthorg``), so registering it here pulls no synthorg module into the
+# interpreter ahead of instrumentation.
 import warnings as _warnings
 
 import typeguard
 
+from tests._typeguard_checker import register_policy_honoring_checker
+
 _warnings.filterwarnings("ignore", category=typeguard.InstrumentationWarning)
-# typeguard.install_import_hook(["synthorg"])
+register_policy_honoring_checker()
+typeguard.install_import_hook(["synthorg.core"])
 
 import asyncio  # noqa: E402
 import contextlib  # noqa: E402

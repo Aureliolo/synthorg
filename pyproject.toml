@@ -922,19 +922,18 @@ addopts = [
     "no:randomly",
     "-p",
     "no:unraisableexception",
-    # Runtime type-check every call in ``synthorg.*`` against its annotations.
-    # Kept COMMENTED: activation is NOT a one-line uncomment. An authoritative
-    # full ``pytest -m unit`` with the hook live (WARN) surfaced 1,949 failures
-    # across 231 test files -- ~1,500 resolved-type ``TypeCheckError``s that
-    # ``forward_ref_policy`` does NOT skip (AwareDatetime-vs-datetime, test
-    # doubles failing Protocol/isinstance checks, DTO generics), plus the
-    # ~1,055-module ``TYPE_CHECKING``-guarded-signature class. Activation is a
-    # dedicated multi-PR programme (WARN pass, then ERROR hardening); ADR-0006
-    # Section F documents the scope and tracks the follow-up work. The wiring,
-    # dependency pin, conftest hook, and ruff TC001/2/3 disable all ship now so
-    # activation starts from a clean base.
-    # "--typeguard-packages=synthorg",
-    # "--typeguard-forward-ref-policy=WARN",
+    # Runtime type-check calls in the instrumented ``synthorg`` packages against
+    # their annotations. Activation is rolled out one source package at a time:
+    # a full ``synthorg`` surface fails ~1,500 resolved-type checks at once, so
+    # each PR widens the scope and fixes that package's failures in the same
+    # change. This package list MUST stay identical to the
+    # ``install_import_hook`` list in tests/conftest.py (the conftest hook does
+    # the real bytecode rewrite; this plugin install is the redundant attempt
+    # whose InstrumentationWarning is filtered below). WARN routes the eager-eval
+    # NameError class through tests/_typeguard_checker.py; resolved-type
+    # mismatches still raise regardless of the policy.
+    "--typeguard-packages=synthorg.core",
+    "--typeguard-forward-ref-policy=WARN",
 ]
 filterwarnings = [
     "error",

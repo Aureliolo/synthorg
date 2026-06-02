@@ -1,0 +1,139 @@
+"""Tests for the policy-honouring typeguard checker.
+
+Verifies that a check-time ``NameError`` (raised when a structural checker
+eagerly evaluates a ``TYPE_CHECKING``-only signature member under PEP 649) is
+routed through ``memo.config.forward_ref_policy`` rather than escaping as a raw
+test error, while genuine resolved-type mismatches still raise
+``TypeCheckError``. See ``tests/_typeguard_checker.py`` for the mechanism.
+"""
+
+import warnings
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    # A name visible ONLY to static analysis, absent at runtime: exactly the
+    # TYPE_CHECKING-guarded signature type the checker exists to tolerate. Used
+    # below as a NamedTuple field type so accessing ``__annotations__`` under
+    # PEP 649 raises the eager-eval NameError at check time.
+    from datetime import datetime as _runtime_unbound
+
+import pytest
+from typeguard import (
+    ForwardRefPolicy,
+    TypeCheckConfiguration,
+    TypeCheckError,
+    TypeCheckMemo,
+    TypeHintWarning,
+    check_type,
+)
+
+from tests._typeguard_checker import _wrap, register_policy_honoring_checker
+
+pytestmark = pytest.mark.unit
+
+
+def _memo(policy: ForwardRefPolicy) -> TypeCheckMemo:
+    """Build a real ``TypeCheckMemo`` carrying the given forward-ref policy."""
+    return TypeCheckMemo(
+        globals={},
+        locals={},
+        config=TypeCheckConfiguration(forward_ref_policy=policy),
+    )
+
+
+def _raise_name_error(
+    value: Any,
+    origin_type: Any,
+    args: tuple[Any, ...],
+    memo: TypeCheckMemo,
+) -> Any:
+    """Stand-in inner checker that fails exactly as the eager-eval path does."""
+    raise NameError(name="UnresolvableName")
+
+
+class TestWrap:
+    """Unit-level behaviour of ``_wrap`` against each forward-ref policy."""
+
+    def test_warn_emits_warning_and_skips(self) -> None:
+        wrapped = _wrap(_raise_name_error)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = wrapped(object(), object, (), _memo(ForwardRefPolicy.WARN))
+        assert result is None
+        assert any(issubclass(w.category, TypeHintWarning) for w in caught)
+        assert any("UnresolvableName" in str(w.message) for w in caught)
+
+    def test_ignore_skips_silently(self) -> None:
+        wrapped = _wrap(_raise_name_error)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = wrapped(object(), object, (), _memo(ForwardRefPolicy.IGNORE))
+        assert result is None
+        assert not caught
+
+    def test_error_reraises(self) -> None:
+        wrapped = _wrap(_raise_name_error)
+        with pytest.raises(NameError):
+            wrapped(object(), object, (), _memo(ForwardRefPolicy.ERROR))
+
+    def test_non_nameerror_propagates(self) -> None:
+        def _raise_type_check(
+            value: Any,
+            origin_type: Any,
+            args: tuple[Any, ...],
+            memo: TypeCheckMemo,
+        ) -> Any:
+            msg = "is not compatible"
+            raise TypeCheckError(msg)
+
+        wrapped = _wrap(_raise_type_check)
+        with pytest.raises(TypeCheckError):
+            wrapped(object(), object, (), _memo(ForwardRefPolicy.WARN))
+
+
+class _BadTuple(NamedTuple):
+    """NamedTuple whose field type has no runtime binding.
+
+    ``check_tuple`` reads ``origin_type.__annotations__`` before any structural
+    check; under PEP 649 that evaluation raises ``NameError`` on the unresolved
+    field type, exercising the eager-eval path the checker exists to police.
+    """
+
+    field: _runtime_unbound
+
+
+@runtime_checkable
+class _ProtoResolvable(Protocol):
+    """Fully-resolvable Protocol used to prove real mismatches still raise."""
+
+    def act(self) -> None: ...
+
+
+class TestIntegration:
+    """End-to-end behaviour through ``typeguard.check_type`` with the lookup live."""
+
+    def test_warn_passes_unresolved_member(self) -> None:
+        register_policy_honoring_checker()  # idempotent; conftest also registers
+        value = _BadTuple(field=datetime(2026, 1, 1, tzinfo=UTC))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            # Without the checker this raises a raw NameError; with it, WARN
+            # warns-and-skips so the check completes without error.
+            check_type(value, _BadTuple, forward_ref_policy=ForwardRefPolicy.WARN)
+        assert any(issubclass(w.category, TypeHintWarning) for w in caught)
+
+    def test_error_reraises_unresolved_member(self) -> None:
+        register_policy_honoring_checker()
+        value = _BadTuple(field=datetime(2026, 1, 1, tzinfo=UTC))
+        with pytest.raises(NameError):
+            check_type(value, _BadTuple, forward_ref_policy=ForwardRefPolicy.ERROR)
+
+    def test_real_mismatch_still_raises(self) -> None:
+        register_policy_honoring_checker()
+        with pytest.raises(TypeCheckError):
+            check_type(
+                object(),
+                _ProtoResolvable,
+                forward_ref_policy=ForwardRefPolicy.WARN,
+            )

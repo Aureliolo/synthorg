@@ -46,8 +46,6 @@ import time
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
-from pydantic import AwareDatetime
-
 
 @runtime_checkable
 class Clock(Protocol):
@@ -62,7 +60,7 @@ class Clock(Protocol):
       so a buggy caller cannot silently sleep zero.
     """
 
-    def now(self) -> AwareDatetime:
+    def now(self) -> datetime:
         """Return the current UTC-aware wall-clock time."""
         ...
 
@@ -88,7 +86,7 @@ class SystemClock:
     Stateless, safe to instantiate per-class as a default argument.
     """
 
-    def now(self) -> AwareDatetime:
+    def now(self) -> datetime:
         """Return ``datetime.now(UTC)``."""
         return datetime.now(UTC)
 
