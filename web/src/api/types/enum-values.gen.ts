@@ -338,6 +338,7 @@ export const DOC_TYPE_VALUES = [
     'deliverable',
     'knowledge_note',
     'codebase_analysis',
+    'run_narrative',
 ] as const
 export type DocType = (typeof DOC_TYPE_VALUES)[number]
 

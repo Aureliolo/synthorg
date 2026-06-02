@@ -57,6 +57,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from synthorg.engine.pipeline.narrator_port import RunNarrator
 
 pytestmark = pytest.mark.integration
 
@@ -133,6 +134,9 @@ class _StubWorkPipeline:
             ),
             total_duration_seconds=0.01,
         )
+
+    def attach_narrator(self, narrator: RunNarrator) -> None:
+        self.narrator = narrator
 
 
 class _EngineHost(AgentEngineErrorsMixin):

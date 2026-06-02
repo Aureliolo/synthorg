@@ -25,6 +25,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from synthorg.engine.pipeline.narrator_port import RunNarrator
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from tests._shared import FakeClock
 
@@ -79,6 +80,9 @@ class _StubWorkPipeline:
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         self.calls.append(work_item)
         return _result(work_item)
+
+    def attach_narrator(self, narrator: RunNarrator) -> None:
+        self.narrator = narrator
 
 
 class _FakeForecastRepo:

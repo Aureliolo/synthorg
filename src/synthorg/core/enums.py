@@ -144,20 +144,19 @@ class MemoryCategory(StrEnum):
 class DocType(StrEnum):
     """Living-document type taxonomy.
 
-    ``STATUS_REPORT`` is a periodic or per-task summary agents write to
-    record progress and decisions. ``DELIVERABLE`` is an iteratively
-    edited artifact the org produces (PRD, design doc, research memo).
-    ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
-    work. ``CODEBASE_ANALYSIS`` is the architecture/health assessment a
-    brownfield-intake analysis pass produces over an imported codebase.
-    All share storage, chunking, and indexing; the type drives wiki
-    filtering and renderer affordances only.
+    ``STATUS_REPORT`` records progress/decisions; ``DELIVERABLE`` is an
+    iteratively edited artifact (PRD, design, research memo);
+    ``KNOWLEDGE_NOTE`` is freeform knowledge; ``CODEBASE_ANALYSIS`` is a
+    brownfield-intake architecture/health assessment; ``RUN_NARRATIVE``
+    is the Chief-of-Staff's account of a completed brief from the brain
+    and flight recorder. The type drives only wiki filtering/rendering.
     """
 
     STATUS_REPORT = "status_report"
     DELIVERABLE = "deliverable"
     KNOWLEDGE_NOTE = "knowledge_note"
     CODEBASE_ANALYSIS = "codebase_analysis"
+    RUN_NARRATIVE = "run_narrative"
 
 
 class SourceType(StrEnum):

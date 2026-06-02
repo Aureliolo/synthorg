@@ -6,6 +6,7 @@ const DOC_TYPE_LABEL: Record<DocType, string> = {
   deliverable: 'Deliverable',
   knowledge_note: 'Note',
   codebase_analysis: 'Codebase analysis',
+  run_narrative: 'Run narrative',
 }
 
 const DOC_TYPES = DOC_TYPE_VALUES

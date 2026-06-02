@@ -106,6 +106,16 @@ _INVITE_MAX_PER_ROUND_MAX: int = 5
 _DIRECT_MCP_MAX_TURNS_DEFAULT: int = 6
 _DIRECT_MCP_MAX_TURNS_MIN: int = 1
 _DIRECT_MCP_MAX_TURNS_MAX: int = 20
+# Run narrative (documentary mode): the synthesiser writes only the
+# connective prose around the structured facts, so a mild temperature
+# (0.4) gives readable narration without drifting from the supplied
+# record; the 0.0/2.0 bounds mirror the provider-agnostic sampler range.
+_NARRATIVE_TEMPERATURE_DEFAULT: float = 0.4
+# The prose payload is a small JSON object (an executive summary plus up
+# to three section paragraphs); 2000 tokens fits it with headroom and
+# 100 is the floor below which even the summary risks truncation.
+_NARRATIVE_MAX_TOKENS_DEFAULT: int = 2000
+_NARRATIVE_MAX_TOKENS_MIN: int = 100
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -196,6 +206,14 @@ class ChiefOfStaffConfig(BaseModel):
         direct_mcp_max_turns: Hard turn cap for one chat-driven action
             loop (bounds the act/observe fan-out a single instruction
             can drive).
+        narrative_enabled: Enable documentary mode (the post-run
+            run-narrative generator). When off, completed briefs produce
+            no narrative.
+        narrative_model: LLM model identifier for the connective-prose
+            call. The decisions, metrics, and contributions are sourced
+            verbatim; only the narration uses this model.
+        narrative_temperature: Sampling temperature for the prose call.
+        narrative_max_tokens: Token budget for one prose payload.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -328,4 +346,21 @@ class ChiefOfStaffConfig(BaseModel):
         default=_DIRECT_MCP_MAX_TURNS_DEFAULT,
         ge=_DIRECT_MCP_MAX_TURNS_MIN,
         le=_DIRECT_MCP_MAX_TURNS_MAX,
+    )
+
+    # ── Run narrative (documentary mode) ──────────────────
+
+    narrative_enabled: bool = False
+    narrative_model: NotBlankStr = Field(
+        default=NotBlankStr("example-small-001"),
+        description="Model for the run-narrative prose LLM calls",
+    )
+    narrative_temperature: float = Field(
+        default=_NARRATIVE_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    narrative_max_tokens: int = Field(
+        default=_NARRATIVE_MAX_TOKENS_DEFAULT,
+        ge=_NARRATIVE_MAX_TOKENS_MIN,
     )

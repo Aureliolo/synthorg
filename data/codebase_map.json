@@ -1458,7 +1458,7 @@
     },
     {
       "kind": "feature",
-      "loc": 63,
+      "loc": 64,
       "loc_cap": 100,
       "module": "src/synthorg/api/feature.py",
       "owning_feature": "api_core"
@@ -1563,7 +1563,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 595,
+      "loc": 600,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/feature_wiring.py",
       "owning_feature": "api_core"
@@ -1573,6 +1573,13 @@
       "loc": 101,
       "loc_cap": 600,
       "module": "src/synthorg/api/lifecycle_helpers/finetune_wiring.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 74,
+      "loc_cap": 600,
+      "module": "src/synthorg/api/lifecycle_helpers/narrative_wiring.py",
       "owning_feature": "api_core"
     },
     {
@@ -3747,14 +3754,14 @@
     },
     {
       "kind": "declarative",
-      "loc": 764,
+      "loc": 763,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 268,
+      "loc": 270,
       "loc_cap": 500,
       "module": "src/synthorg/core/error_taxonomy.py",
       "owning_feature": null
@@ -5546,7 +5553,7 @@
     },
     {
       "kind": "code",
-      "loc": 275,
+      "loc": 290,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/forecast_gate.py",
       "owning_feature": "engine"
@@ -5556,6 +5563,13 @@
       "loc": 192,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/models.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "declarative",
+      "loc": 25,
+      "loc_cap": null,
+      "module": "src/synthorg/engine/pipeline/narrator_port.py",
       "owning_feature": "engine"
     },
     {
@@ -5595,14 +5609,14 @@
     },
     {
       "kind": "code",
-      "loc": 24,
+      "loc": 32,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/protocol.py",
       "owning_feature": "engine"
     },
     {
       "kind": "code",
-      "loc": 452,
+      "loc": 485,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/service.py",
       "owning_feature": "engine"
@@ -10012,7 +10026,7 @@
     },
     {
       "kind": "code",
-      "loc": 239,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
@@ -10095,6 +10109,76 @@
       "owning_feature": "meta"
     },
     {
+      "kind": "declarative",
+      "loc": 8,
+      "loc_cap": null,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/__init__.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "service",
+      "loc": 160,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/assembler.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 31,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/constants.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 31,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/errors.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "code",
+      "loc": 63,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/factory.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "declarative",
+      "loc": 164,
+      "loc_cap": null,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/models.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "adapter",
+      "loc": 177,
+      "loc_cap": 700,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/reader.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "service",
+      "loc": 189,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/reducer.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "orchestrator",
+      "loc": 128,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/service.py",
+      "owning_feature": "meta"
+    },
+    {
+      "kind": "service",
+      "loc": 163,
+      "loc_cap": 600,
+      "module": "src/synthorg/meta/chief_of_staff/narrative/synthesiser.py",
+      "owning_feature": "meta"
+    },
+    {
       "kind": "code",
       "loc": 199,
       "loc_cap": 500,
@@ -10103,7 +10187,7 @@
     },
     {
       "kind": "code",
-      "loc": 225,
+      "loc": 246,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/prompts.py",
       "owning_feature": "meta"
@@ -11839,7 +11923,7 @@
     },
     {
       "kind": "code",
-      "loc": 75,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/chief_of_staff.py",
       "owning_feature": "observability"
