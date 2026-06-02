@@ -11,10 +11,12 @@ mark_seen, RETRY never marks) that the dedup design depends on.
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.types import NotBlankStr
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
@@ -23,6 +25,21 @@ from synthorg.workers.worker import Worker
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_task_queue_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for the worker dedup / idempotency tests.
+
+    Each flow drives ``Worker._run_once`` through a stub ``JetStreamTaskQueue``
+    (``_NullTaskQueue`` / ``_ScriptedTaskQueue``) whose claim iteration is
+    scripted; they verify dedup ordering invariants, not task-queue type
+    conformance. ``JetStreamTaskQueue`` is a concrete class whose ``isinstance``
+    check a behavioural stub cannot satisfy without a live JetStream binding,
+    so the runtime check is suppressed for the module.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _StubSeenClaims:

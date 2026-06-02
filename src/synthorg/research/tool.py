@@ -7,10 +7,10 @@ deterministically from the request so an identical request reproduces the
 same run id (idempotent re-run, replay-friendly).
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, ClassVar, Final, override
 
 from pydantic import (
-    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -100,7 +100,7 @@ def build_research_brief(
     *,
     brief_id: NotBlankStr,
     project_id: NotBlankStr | None,
-    created_at: AwareDatetime,
+    created_at: datetime,
 ) -> ResearchBrief:
     """Build a :class:`ResearchBrief` from validated request args.
 

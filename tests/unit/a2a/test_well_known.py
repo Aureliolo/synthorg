@@ -3,10 +3,14 @@
 from collections.abc import Iterator
 from datetime import date
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import NAMESPACE_DNS, uuid5
 
 import pytest
+from litestar import Request
+from litestar.datastructures import State
+from litestar.testing import RequestFactory
 
 from synthorg.a2a import well_known
 from synthorg.a2a.agent_card import AgentCardBuilder
@@ -269,14 +273,14 @@ def _make_app_state(
     )
 
 
-def _make_request(base_url: str = "http://test.example/") -> SimpleNamespace:
-    """Minimal request stand-in exposing ``base_url``."""
-    return SimpleNamespace(base_url=base_url)
+def _make_request() -> Request[Any, Any, Any]:
+    """Real litestar ``Request`` whose ``base_url`` is ``http://test.example/``."""
+    return RequestFactory(server="test.example", port=80, scheme="http").get(path="/")
 
 
-def _state(app_state: AppState) -> dict[str, object]:
-    """Litestar ``State`` is a mapping; the handler only does ``state[...]``."""
-    return {"app_state": app_state}
+def _state(app_state: AppState) -> State:
+    """Carry ``app_state`` on a real litestar ``State`` (handler does ``state[..]``)."""
+    return State({"app_state": app_state})
 
 
 def _controller() -> WellKnownAgentCardController:

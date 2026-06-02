@@ -1,12 +1,14 @@
 # mypy: disable-error-code="explicit-any"
 """Tests for EvalLoopCoordinator."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
@@ -22,6 +24,21 @@ from synthorg.hr.evaluation.models import EvaluationReport
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.training.service import TrainingService
 from tests._shared import mock_of
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_report_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for the eval-loop coordinator tests.
+
+    The aggregation paths are driven with lightweight ``SimpleNamespace`` report
+    stand-ins (deliberately not ``MagicMock`` so a misspelled attribute fails)
+    that carry only the few fields the coordinator reads -- they do not
+    reconstruct the full ``EvaluationReport`` model (performance snapshot +
+    five-pillar scores). The tests verify aggregation behaviour, not report type
+    conformance, so the runtime check is suppressed for the module.
+    """
+    with suppress_type_checks():
+        yield
 
 
 def _make_coordinator(

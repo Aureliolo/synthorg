@@ -932,7 +932,7 @@ addopts = [
     # whose InstrumentationWarning is filtered below). WARN routes the eager-eval
     # NameError class through tests/_typeguard_checker.py; resolved-type
     # mismatches still raise regardless of the policy.
-    "--typeguard-packages=synthorg.core,synthorg.persistence,synthorg.engine,synthorg.api",
+    "--typeguard-packages=synthorg",
     "--typeguard-forward-ref-policy=WARN",
 ]
 filterwarnings = [

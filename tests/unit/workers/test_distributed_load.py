@@ -8,10 +8,11 @@ tests assert logic invariants the fake queue can model exactly.
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Final
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
@@ -21,6 +22,22 @@ from tests._shared.fake_task_queue import FakeJetStreamTaskQueue
 from tests._shared.persistence import make_sqlite_seen_claims
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_task_queue_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for the synthetic-load worker tests.
+
+    The no-loss / no-duplication invariants are asserted against a
+    ``FakeJetStreamTaskQueue`` that models the broker exactly without a real
+    NATS binding; the tests verify those invariants, not task-queue type
+    conformance. ``JetStreamTaskQueue`` is a concrete class whose ``isinstance``
+    check the fake cannot satisfy, so the runtime check is suppressed for the
+    module.
+    """
+    with suppress_type_checks():
+        yield
+
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
 """Wall-clock ceiling for every bounded wait in this module.

@@ -26,7 +26,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, Protocol, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory, TaskStatus
@@ -111,7 +111,7 @@ class TrainingDataSource(Protocol):
 
 
 def _passes_curation(
-    created_at: AwareDatetime | None,
+    created_at: datetime | None,
     points: tuple[LearningCurvePoint, ...],
 ) -> bool:
     """Decide whether a record from *created_at* belongs in the training set.

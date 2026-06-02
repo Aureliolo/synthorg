@@ -1,9 +1,11 @@
 """Tests for FullSnapshotStrategy."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory, SeniorityLevel
 from synthorg.core.types import NotBlankStr
@@ -12,6 +14,23 @@ from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_minimal_backends() -> Iterator[None]:
+    """Suppress typeguard module-wide for the snapshot-strategy archive tests.
+
+    ``FullSnapshotStrategy.archive`` takes ``memory_backend`` / ``archival_store``
+    / ``org_memory_backend`` typed against the full ``MemoryBackend`` /
+    ``ArchivalStore`` / org-backend protocols (10+ methods each, including
+    ``connect`` / ``disconnect`` / ``store`` / ``count``). The fakes here
+    deliberately implement only the ``retrieve`` / ``delete`` / ``archive``
+    surface the archival path touches; they verify archival behaviour, not
+    backend protocol conformance, so the runtime check is suppressed module-wide.
+    """
+    with suppress_type_checks():
+        yield
+
 
 # ── Fake Backends ──────────────────────────────────────────────
 

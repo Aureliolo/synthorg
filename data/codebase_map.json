@@ -11566,7 +11566,7 @@
     },
     {
       "kind": "code",
-      "loc": 305,
+      "loc": 304,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/dynamic_registry.py",
       "owning_feature": "toolsmith"

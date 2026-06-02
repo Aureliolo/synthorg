@@ -1,9 +1,8 @@
 """Tests for the A2A JSON-RPC 2.0 gateway controller helpers."""
 
-from typing import ClassVar
-
 import pytest
 from litestar import Request
+from litestar.testing import RequestFactory
 
 from synthorg.a2a.gateway import (
     _error_response,
@@ -84,34 +83,28 @@ class TestExtractPeerName:
     def test_from_header(self) -> None:
         """Extracts peer name from X-A2A-Peer-Name header."""
 
-        class FakeRequest:
-            headers: ClassVar[dict[str, str]] = {
-                "x-a2a-peer-name": "peer-alpha",
-            }
-
-        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        request = RequestFactory().get(
+            path="/", headers={"x-a2a-peer-name": "peer-alpha"}
+        )
+        result = _extract_peer_name(request)
         assert result == "peer-alpha"
 
     @pytest.mark.unit
     def test_strips_whitespace(self) -> None:
         """Strips whitespace from peer name."""
 
-        class FakeRequest:
-            headers: ClassVar[dict[str, str]] = {
-                "x-a2a-peer-name": "  peer-beta  ",
-            }
-
-        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        request = RequestFactory().get(
+            path="/", headers={"x-a2a-peer-name": "  peer-beta  "}
+        )
+        result = _extract_peer_name(request)
         assert result == "peer-beta"
 
     @pytest.mark.unit
     def test_missing_header(self) -> None:
         """Returns None when header is absent."""
 
-        class FakeRequest:
-            headers: ClassVar[dict[str, str]] = {}
-
-        result = _extract_peer_name(FakeRequest())  # type: ignore[arg-type]
+        request = RequestFactory().get(path="/")
+        result = _extract_peer_name(request)
         assert result is None
 
 
