@@ -278,11 +278,19 @@ def _flatten_nullable(
         # information: the underlying $ref schemas still carry their own
         # constraints, so validation against the union remains sound.
         # We intentionally do NOT touch non-``$ref`` multi-branch oneOfs
-        # here -- those would represent genuinely exclusive primitive
-        # unions that would be weakened by becoming ``anyOf``.
-        if keyword == "oneOf" and all(
-            isinstance(b, dict) and "$ref" in b for b in non_null
-        ):
+        # of bare scalar primitives here -- those represent genuinely
+        # exclusive primitive unions that would be weakened by becoming
+        # ``anyOf``.  The one exception is a ``JsonValue``-shaped union:
+        # an object/array structural branch alongside scalar primitives
+        # and null (what Litestar emits for ``Mapping[str, JsonValue]``).
+        # A value matches at most one by-type branch, so ``anyOf`` loses
+        # no exclusivity, and unlike a primitive ``type`` array it keeps
+        # the structural ``items``/``additionalProperties`` branches.  A
+        # constrained-primitive union (``string`` with ``maxLength`` etc.)
+        # has no object/array branch, so it stays an exclusive ``oneOf``.
+        branch_types = {b.get("type") for b in non_null if isinstance(b, dict)}
+        all_ref = all(isinstance(b, dict) and "$ref" in b for b in non_null)
+        if keyword == "oneOf" and (all_ref or branch_types & {"object", "array"}):
             result["anyOf"] = result.pop("oneOf")
         return
 

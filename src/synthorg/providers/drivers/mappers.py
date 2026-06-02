@@ -255,7 +255,7 @@ def _parse_arguments(
     elif isinstance(raw, str):
         try:
             parsed = json.loads(raw)
-        except json.JSONDecodeError, ValueError:
+        except ValueError:
             logger.warning(
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
                 tool_id=tool_id,

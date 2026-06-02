@@ -87,7 +87,7 @@ class _ToolCallAccumulator:
             return None
         try:
             parsed = json.loads(self.arguments) if self.arguments else {}
-        except json.JSONDecodeError, ValueError:
+        except ValueError:
             logger.warning(
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
                 tool_name=self.name,
