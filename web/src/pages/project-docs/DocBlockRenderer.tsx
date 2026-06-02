@@ -74,7 +74,10 @@ function MetricBlockView({ block }: { block: MetricBlock }) {
 }
 
 const ALLOWED_LINK_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
-const AUTHORITY_SLASHES = new Set(['/', '\\'])
+// Two leading slash-or-backslash characters: a protocol-relative
+// authority. Browsers normalise backslashes to forward slashes, so
+// "//host", "\\host", "/\host", and "\/host" all resolve the same way.
+const AUTHORITY_PREFIX_RE = /^[/\\]{2}/
 
 // Defense-in-depth: the backend LinkBlock validator already rejects
 // dangerous schemes at write time, but guard the render path too so a
@@ -83,17 +86,10 @@ const AUTHORITY_SLASHES = new Set(['/', '\\'])
 // The url is trimmed first because browsers strip leading whitespace
 // from href, so " javascript:..." / " //host" would otherwise bypass
 // the prefix and URL-parse checks; an unparseable url carrying any
-// scheme is rejected rather than passed through. Both leading characters
-// are checked against {'/', '\\'} because browsers normalise backslashes
-// to forward slashes, so "\\host", "/\host", and "\/host" resolve as
-// protocol-relative authorities just like "//host".
+// scheme is rejected rather than passed through.
 function sanitizeHref(url: string): string {
   const trimmed = url.trim()
-  if (
-    trimmed.length >= 2 &&
-    AUTHORITY_SLASHES.has(trimmed[0]) &&
-    AUTHORITY_SLASHES.has(trimmed[1])
-  ) {
+  if (AUTHORITY_PREFIX_RE.test(trimmed)) {
     return '#'
   }
   try {
