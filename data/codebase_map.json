@@ -14351,9 +14351,9 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "declarative",
       "loc": 98,
-      "loc_cap": 500,
+      "loc_cap": null,
       "module": "src/synthorg/persistence/red_team_report_protocol.py",
       "owning_feature": "persistence"
     },
@@ -14863,7 +14863,7 @@
     },
     {
       "kind": "repository",
-      "loc": 233,
+      "loc": 236,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/red_team_report_repo.py",
       "owning_feature": "persistence"

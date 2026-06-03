@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Repository protocol for the durable red-team report archive.
 
 A :class:`RedTeamReportRecord` row is the durable audit record of one
