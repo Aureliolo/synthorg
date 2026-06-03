@@ -24,6 +24,8 @@ logger = get_logger(__name__)
 
 
 class _HasId(Protocol):
+    """A persisted row addressable by its string ``id`` (proposal/invite)."""
+
     @property
     def id(self) -> str: ...
 
