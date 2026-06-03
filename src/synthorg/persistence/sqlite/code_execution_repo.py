@@ -148,6 +148,7 @@ class SQLiteCodeExecutionRecordRepository:
         if threshold.tzinfo is None:
             msg = "threshold must be timezone-aware; a naive datetime is rejected"
             raise QueryError(msg)
+        threshold = normalize_utc(threshold)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
