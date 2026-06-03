@@ -1,16 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import type { FlightRecorderFrame } from '@/api/types'
+import type { FlightRecorderFrame, RedTeamFinding, RedTeamSeverity } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { InputField } from '@/components/ui/input-field'
+import { RedTeamVerdictBadge } from '@/components/ui/red-team-verdict-badge'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Timeline, type TimelineFrame } from '@/components/ui/timeline'
+import { cn } from '@/lib/utils'
 import { useMissionControlStore } from '@/stores/mission-control'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { formatCurrency } from '@/utils/format'
-import { Film } from 'lucide-react'
+import { Film, ShieldAlert } from 'lucide-react'
+
+/** Severity -> text colour token (table-driven for the complexity cap). */
+const SEVERITY_COLOR: Record<RedTeamSeverity, string> = {
+  info: 'text-text-secondary',
+  low: 'text-text-secondary',
+  medium: 'text-accent',
+  high: 'text-warning',
+  critical: 'text-danger',
+}
 
 /** Base ms between frames at 1x; scaled by the selected playback speed. */
 const BASE_PLAYBACK_INTERVAL_MS = 1_200
@@ -113,6 +124,15 @@ function useFlightReplay(initialExecutionId?: string | null) {
     void fetchFrames(executionId.trim())
   }
 
+  // Auto-load when an execution id was supplied (a deep-link from a live
+  // agent row). MissionControlPage keys this component by the execution id,
+  // so a new run remounts the hook with a fresh index/playing state and this
+  // fires once for it -- no in-effect setState needed.
+  useEffect(() => {
+    const seeded = (initialExecutionId ?? '').trim()
+    if (seeded !== '') void fetchFrames(seeded)
+  }, [initialExecutionId, fetchFrames])
+
   return {
     executionId,
     setExecutionId,
@@ -169,6 +189,8 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
         </Button>
       </div>
 
+      <RedTeamVerdictPanel />
+
       {ordered.length === 0 ? (
         <EmptyState
           icon={Film}
@@ -206,6 +228,45 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
 
           {current != null && <FrameDetail frame={current} />}
         </>
+      )}
+    </div>
+  )
+}
+
+function RedTeamFindingRow({ finding }: { finding: RedTeamFinding }) {
+  return (
+    <li className="space-y-1 rounded border border-border bg-surface p-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className={cn('font-medium uppercase', SEVERITY_COLOR[finding.severity])}>
+          {finding.severity}
+        </span>
+        <span className="text-text-secondary">{finding.attack_surface}</span>
+      </div>
+      <p className="text-xs text-foreground">{finding.description}</p>
+      {finding.suggested_fix != null && (
+        <p className="text-xs text-text-secondary">Fix: {finding.suggested_fix}</p>
+      )}
+    </li>
+  )
+}
+
+function RedTeamVerdictPanel() {
+  const report = useMissionControlStore((s) => s.redTeamReport)
+  if (report == null) return null
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-card p-card">
+      <div className="flex flex-wrap items-center gap-2">
+        <ShieldAlert className="size-4 text-text-secondary" aria-hidden="true" />
+        <span className="text-sm font-medium text-foreground">Red-team review</span>
+        <RedTeamVerdictBadge verdict={report.verdict} />
+      </div>
+      <p className="text-xs text-text-secondary">{report.report.summary}</p>
+      {report.report.findings.length > 0 && (
+        <ul className="space-y-2">
+          {report.report.findings.map((finding, i) => (
+            <RedTeamFindingRow key={`${finding.attack_surface}-${String(i)}`} finding={finding} />
+          ))}
+        </ul>
       )}
     </div>
   )

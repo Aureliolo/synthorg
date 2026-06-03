@@ -68,10 +68,44 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
             postgres_pool(persistence_of(app_state)),
             currency_getter=lambda: budget_config.currency,
         )
-    forecaster = CostForecaster(budget_config=budget_config)
+    from synthorg.budget.forecast_history import (  # noqa: PLC0415
+        CostTrackerHistoryLookup,
+    )
+    from synthorg.budget.pareto_assignments import (  # noqa: PLC0415
+        AgentRegistryAssignmentLookup,
+    )
+    from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+
+    # Source the Pareto frontier AND the forecaster's history from the live
+    # roster + observed spend so they render real downgrade candidates / warm
+    # forecasts instead of the empty defaults. Defensive None-guard: a
+    # registry/tracker absent at wiring time leaves both on their empty
+    # defaults (cold-start forecaster, empty-frontier analyzer) rather than
+    # poisoning startup.
+    registry = app_state.slice(HrStateSlice).agent_registry
+    cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    assignment_lookup = None
+    history_lookup = None
+    if registry is not None and cost_tracker is not None:
+        assignment_lookup = AgentRegistryAssignmentLookup(
+            registry=registry,
+            cost_tracker=cost_tracker,
+            clock=app_state.clock.now,
+        )
+        history_lookup = CostTrackerHistoryLookup(
+            registry=registry,
+            cost_tracker=cost_tracker,
+            clock=app_state.clock.now,
+        )
+    forecaster = CostForecaster(
+        budget_config=budget_config,
+        history_lookup=history_lookup,
+        clock=app_state.clock.now,
+    )
     analyzer = ParetoAnalyzer(
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
+        assignment_lookup=assignment_lookup,
     )
     app_state.wire(
         BudgetStateSlice,
@@ -120,6 +154,7 @@ def _wire_cockpit_services(app_state: AppState) -> None:
     from synthorg.persistence.state import (  # noqa: PLC0415
         PersistenceStateSlice,
         persistence_of,
+        red_team_reports_of,
     )
 
     if (
@@ -144,7 +179,10 @@ def _wire_cockpit_services(app_state: AppState) -> None:
             frames,
             clock=app_state.clock,
         ),
-        flight_recorder_service=FlightRecorderService(frames),
+        flight_recorder_service=FlightRecorderService(
+            frames,
+            red_team_reports=red_team_reports_of(app_state),
+        ),
     )
 
 

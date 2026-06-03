@@ -14,9 +14,11 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.providers.cassette.errors import (
     CassetteFormatError,
+    CassetteIntegrityError,
     CassetteReplayExhaustedError,
     CassetteReplayMissError,
 )
@@ -25,6 +27,7 @@ from synthorg.providers.cassette.mode import CassetteMode
 from synthorg.providers.cassette.redaction import NullRedactor, PatternRedactor
 from synthorg.providers.cassette.store import (
     CASSETTE_FORMAT_VERSION,
+    CassetteDocument,
     CassetteOutcome,
     CassetteOutcomeKind,
     CassetteSession,
@@ -223,6 +226,71 @@ class TestMalformedCassette:
             )
 
 
+class TestCassetteIntegrity:
+    """The body sha256 header detects post-record tampering on replay."""
+
+    async def test_recorded_cassette_replays_intact(self, tmp_path: Path) -> None:
+        """A freshly recorded cassette carries a matching digest and replays."""
+        path = tmp_path / "c.json"
+        rec = CassetteSession(
+            mode=CassetteMode.RECORD, path=path, redactor=NullRedactor()
+        )
+        h = _hash("q")
+        await rec.record_interaction(
+            method=CassetteMethod.COMPLETE,
+            request_hash=h,
+            request_repr={"prompt": "q"},
+            outcome=CassetteOutcome.from_response(_response("ok")),
+        )
+        await rec.flush()
+
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        assert on_disk["body_sha256"]  # header present
+
+        rep = CassetteSession(
+            mode=CassetteMode.REPLAY, path=path, redactor=NullRedactor()
+        )
+        assert rep.take(request_hash=h).response is not None
+
+    async def test_tampered_body_is_rejected(self, tmp_path: Path) -> None:
+        """Editing an interaction without updating the digest fails the load."""
+        path = tmp_path / "c.json"
+        rec = CassetteSession(
+            mode=CassetteMode.RECORD, path=path, redactor=NullRedactor()
+        )
+        await rec.record_interaction(
+            method=CassetteMethod.COMPLETE,
+            request_hash=_hash("q"),
+            request_repr={"prompt": "q"},
+            outcome=CassetteOutcome.from_response(_response("original")),
+        )
+        await rec.flush()
+
+        document = json.loads(path.read_text(encoding="utf-8"))
+        # Mutate the recorded response but leave the body_sha256 header stale.
+        document["interactions"][0]["outcome"]["response"]["content"] = "tampered"
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        with pytest.raises(CassetteIntegrityError, match="integrity digest"):
+            CassetteSession(
+                mode=CassetteMode.REPLAY, path=path, redactor=NullRedactor()
+            )
+
+    def test_missing_integrity_header_is_rejected(self, tmp_path: Path) -> None:
+        """A schema-valid cassette without a body_sha256 header is refused."""
+        path = tmp_path / "headerless.json"
+        path.write_text(
+            json.dumps(
+                {"cassette_format_version": CASSETTE_FORMAT_VERSION, "interactions": []}
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(CassetteIntegrityError):
+            CassetteSession(
+                mode=CassetteMode.REPLAY, path=path, redactor=NullRedactor()
+            )
+
+
 class TestAtomicFlush:
     """Flush leaves exactly the cassette file, no temp residue."""
 
@@ -346,3 +414,16 @@ class TestConcurrentFanoutDeterminism:
         # ``take`` failure there would have aborted the TaskGroup).
         assert replayed == recorded
         assert len(replayed) == n * 2
+
+
+@pytest.mark.parametrize("version", [0, -1])
+def test_cassette_document_rejects_non_positive_version(version: int) -> None:
+    """A zero or negative format version is refused at construction."""
+    with pytest.raises(ValidationError):
+        CassetteDocument(cassette_format_version=version)
+
+
+def test_cassette_document_accepts_current_version() -> None:
+    """The current format version constructs cleanly."""
+    doc = CassetteDocument(cassette_format_version=CASSETTE_FORMAT_VERSION)
+    assert doc.cassette_format_version == CASSETTE_FORMAT_VERSION

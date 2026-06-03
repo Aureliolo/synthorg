@@ -5,7 +5,14 @@ import { vi } from 'vitest'
 // Must be hoisted before client.ts imports @/utils/dev at module level.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
-import { ApiRequestError, unwrap, unwrapPaginated, unwrapVoid, apiClient } from '@/api/client'
+import {
+  ApiRequestError,
+  unwrap,
+  unwrapNullable,
+  unwrapPaginated,
+  unwrapVoid,
+  apiClient,
+} from '@/api/client'
 import { ErrorCategory, ErrorCode, type ErrorDetail } from '@/api/types/errors'
 import type { ApiResponse, PaginatedResponse } from '@/api/types/http'
 
@@ -140,6 +147,52 @@ describe('unwrap', () => {
       success: false,
     })
     expect(() => unwrap(response)).toThrow('Unknown API error')
+  })
+})
+
+describe('unwrapNullable', () => {
+  it('extracts data from a success response', () => {
+    const response = mockResponse<ApiResponse<{ id: string } | null>>({
+      data: { id: 'test-1' },
+      error: null,
+      error_detail: null,
+      success: true,
+    })
+    expect(unwrapNullable(response)).toEqual({ id: 'test-1' })
+  })
+
+  it('returns null for success:true with data:null (no resource)', () => {
+    const response = mockResponse<ApiResponse<{ id: string } | null>>({
+      data: null,
+      error: null,
+      error_detail: null,
+      success: true,
+    })
+    expect(unwrapNullable(response)).toBeNull()
+  })
+
+  it('throws ApiRequestError for an error response', () => {
+    const response = mockResponse<ApiResponse<{ id: string } | null>>({
+      data: null,
+      error: 'Something went wrong',
+      error_detail: testErrorDetail,
+      success: false,
+    })
+    expect(() => unwrapNullable(response)).toThrow(ApiRequestError)
+  })
+
+  it('throws for a null body', () => {
+    const response = mockResponse<ApiResponse<unknown>>(null)
+    expect(() => unwrapNullable(response)).toThrow('Unknown API error')
+  })
+
+  it('throws for success:true with the data key absent (malformed)', () => {
+    const response = mockResponse<ApiResponse<{ id: string } | null>>({
+      error: null,
+      error_detail: null,
+      success: true,
+    } as ApiResponse<{ id: string } | null>)
+    expect(() => unwrapNullable(response)).toThrow('success envelope missing data')
   })
 })
 

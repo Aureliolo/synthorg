@@ -40,6 +40,7 @@ from synthorg.observability.events.cockpit import (
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
 )
+from synthorg.security.redteam.models import RedTeamReportRecord
 from synthorg.settings.state import config_resolver_of
 
 logger = get_logger(__name__)
@@ -170,6 +171,29 @@ class CockpitController(Controller):
         )
         view = await recorder.seek(execution_id, turn_index)
         return ApiResponse(data=view)
+
+    @get("/flight-recorder/{execution_id:str}/red-team")
+    async def get_red_team_report(
+        self,
+        state: State,
+        execution_id: PathId,
+    ) -> ApiResponse[RedTeamReportRecord | None]:
+        """Return the durable red-team verdict recorded for a run, if any.
+
+        ``data`` is ``null`` when no red-team gate ran for the execution
+        (or the archive is unwired); the dashboard renders that as "no
+        red-team review recorded" rather than an error.
+
+        Returns:
+            ``ApiResponse[RedTeamReportRecord | None]`` instance.
+        """
+        app_state: AppState = state.app_state
+        recorder = require_service(
+            app_state.slice(CockpitStateSlice).flight_recorder_service,
+            "Flight Recorder Service",
+        )
+        record = await recorder.get_red_team_report(execution_id)
+        return ApiResponse(data=record)
 
     @post("/interventions/pause", guards=[require_write_access])
     async def pause(

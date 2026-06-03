@@ -17,29 +17,37 @@ when learning is disabled. See ``tests/unit/evals/`` for the curve experiment.
 
 import asyncio
 import hashlib
+import shutil
+import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from evals.errors import CompanyConfigInvalidError
+from evals.errors import (
+    BriefExecutionError,
+    CassettePlaybackUnavailableError,
+    CompanyConfigInvalidError,
+)
 from evals.history import ScorecardHistory
 from evals.loader.anchors import AnchorSet, load_anchor_set
 from evals.loader.briefs import load_brief_suite
-from evals.models.brief import Brief, BriefKind
+from evals.models.brief import Brief, BriefKind, ExecutableChecks, HiddenCheckSpec
 from evals.models.scorecard import (
     AggregatedProcessFacts,
     BriefResult,
     JudgeCalibrationReport,
     Scorecard,
 )
+from evals.runner.deliverables import BENCHMARK_DELIVERABLES, DEFAULT_DELIVERABLE
 from evals.runner.execution import BriefRunOutcome, run_brief
 from evals.runner.grading import grade_brief
 from evals.runner.penalties import (
     BENCHMARK_PENALTY_TABLE,
     PENALTY_CLASS_BRIEF_BUDGET_OVER,
 )
-from evals.runner.strategies import CleanCompletionStrategy
+from evals.runner.profiles import BenchmarkStrategyProfile
+from evals.runner.strategies import QualityVaryingStrategy
 from evals.scoring.aggregate import aggregate_brief_score
 from evals.scoring.judged import JudgeProtocol, ScriptedJudge
 from synthorg.config.loader import load_config
@@ -57,6 +65,7 @@ from synthorg.observability.events.evals import (
     EVALS_SUITE_RUN_COMPLETE,
     EVALS_SUITE_RUN_START,
 )
+from synthorg.providers.cassette.provider import CassetteCompletionProvider
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.protocol import CompletionProvider
 
@@ -73,6 +82,10 @@ _DEFAULT_DELIVERABLE_SCORE: Final[float] = 0.5
 # Hex characters of the suite-version digest retained in the scorecard; long
 # enough to be collision-free for a brief suite, short enough to read.
 _SUITE_VERSION_DIGEST_LEN: Final[int] = 16
+# Placeholder token in an executable brief's check commands, substituted for the
+# running interpreter at grade time so the checks are portable across platforms
+# and virtual environments (a hardcoded ``python`` may be absent or mismatched).
+_INTERPRETER_PLACEHOLDER: Final[str] = "{python}"
 
 
 def _default_identity(provider_name: str) -> AgentIdentity:
@@ -123,6 +136,31 @@ def _provider_descriptor(
     if cassette is not None:
         return f"cassette:{cassette.name}"
     return f"scripted:{_resolve_provider_name(provider)}"
+
+
+def _reject_unplayable_cassette(
+    cassette: Path | None, provider: CompletionProvider | None
+) -> None:
+    """Refuse a cassette label unless the provider actually replays it.
+
+    A cassette is a determinism-source label only; nothing in the runner
+    loads it. ``_provider_descriptor`` stamps ``cassette:<name>`` for any
+    non-null cassette, so unless the injected provider is a
+    :class:`CassetteCompletionProvider` the scorecard would claim a cassette
+    provenance the run never honoured (a default ``ScriptedDriver``, or any
+    other provider, would run instead). Fail closed rather than mislabel.
+
+    Raises:
+        CassettePlaybackUnavailableError: ``cassette`` is set but the injected
+            ``provider`` is not a cassette-backed provider that replays it.
+    """
+    if cassette is not None and not isinstance(provider, CassetteCompletionProvider):
+        msg = (
+            f"cassette {cassette.name!r} was supplied without a cassette-backed "
+            "provider that replays it; inject a CassetteCompletionProvider via "
+            "`provider=` so the scorecard's determinism source is honest"
+        )
+        raise CassettePlaybackUnavailableError(msg)
 
 
 def _build_default_judge(anchor_sets: tuple[AnchorSet, ...]) -> ScriptedJudge:
@@ -223,6 +261,113 @@ def _tracked_with_synthetic(
     return tracked
 
 
+def _resolve_cmd(cmd: tuple[str, ...]) -> tuple[str, ...]:
+    """Substitute the interpreter token in a check command for ``sys.executable``.
+
+    Returns:
+        The command with ``{python}`` resolved to the running interpreter.
+    """
+    return tuple(
+        sys.executable if token == _INTERPRETER_PLACEHOLDER else token for token in cmd
+    )
+
+
+def _resolve_checks(checks: ExecutableChecks) -> ExecutableChecks:
+    """Resolve every check command's interpreter token in a copy of *checks*.
+
+    Returns:
+        The checks with ``{python}`` resolved in every hidden / build / lint cmd.
+    """
+
+    def _resolve(specs: tuple[HiddenCheckSpec, ...]) -> tuple[HiddenCheckSpec, ...]:
+        return tuple(
+            spec.model_copy(update={"cmd": _resolve_cmd(spec.cmd)}) for spec in specs
+        )
+
+    return checks.model_copy(
+        update={
+            "hidden_tests": _resolve(checks.hidden_tests),
+            "build": _resolve(checks.build),
+            "lint": _resolve(checks.lint),
+        }
+    )
+
+
+def _materialise_executable_brief(
+    brief: Brief, *, deliverable_text: str | None, base_dir: Path
+) -> tuple[Brief, Path]:
+    """Write the deliverable into an isolated work dir and resolve the checks.
+
+    The company's deliverable is written to each declared file artifact in a
+    per-brief work directory (under ``base_dir/work/<brief_id>``, kept apart
+    from ``base_dir`` itself so the scorecard files the runner later emits there
+    cannot collide with graded artifacts). The returned brief has its check
+    commands' interpreter tokens resolved.
+
+    Returns:
+        ``(resolved_brief, work_dir)`` for grading the executable brief.
+
+    Raises:
+        BriefExecutionError: The brief lacks a checks block, or an artifact path
+            escapes the work directory.
+    """
+    checks = brief.checks
+    if checks is None:
+        msg = f"executable brief {brief.brief_id!r} is missing its checks block"
+        raise BriefExecutionError(msg)
+    work_root = (base_dir / "work").resolve()
+    work_dir = (work_root / brief.brief_id).resolve()
+    if not work_dir.is_relative_to(work_root):
+        msg = f"brief {brief.brief_id!r} work directory escapes the benchmark work root"
+        raise BriefExecutionError(msg)
+    # Recreate from scratch so a prior run's artifacts for the same brief id
+    # cannot bleed into this grading pass.
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+    work_dir.mkdir(parents=True)
+    content = deliverable_text or ""
+    for artifact in brief.expected_artifacts:
+        if artifact.kind != "file":
+            continue
+        artifact_path = (work_dir / artifact.path).resolve()
+        if not artifact_path.is_relative_to(work_dir.resolve()):
+            msg = (
+                f"brief {brief.brief_id!r} artifact path {artifact.path!r} "
+                "escapes its work directory"
+            )
+            raise BriefExecutionError(msg)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(content, encoding="utf-8")
+    return brief.model_copy(update={"checks": _resolve_checks(checks)}), work_dir
+
+
+def _select_provider(
+    provider: CompletionProvider | None,
+    strategy_profile: BenchmarkStrategyProfile,
+) -> tuple[CompletionProvider, QualityVaryingStrategy | None]:
+    """Pick the active provider and (for the default path) its scripted strategy.
+
+    An injected provider (cassette / custom driver) drives the suite directly and
+    the profile-specific deliverables do not apply. Otherwise the default path
+    builds a per-brief :class:`QualityVaryingStrategy` the runner stamps the
+    active brief onto, rendered at *strategy_profile*.
+
+    Returns:
+        ``(active_provider, quality_strategy)`` where ``quality_strategy`` is the
+        stampable strategy on the default path, else ``None``.
+    """
+    if provider is not None:
+        return provider, None
+    quality_strategy = QualityVaryingStrategy(
+        profile=strategy_profile,
+        deliverables=BENCHMARK_DELIVERABLES,
+        default_content=DEFAULT_DELIVERABLE,
+    )
+    return ScriptedDriver(_DEFAULT_PROVIDER_NAME, strategy=quality_strategy), (
+        quality_strategy
+    )
+
+
 async def _score_briefs(  # noqa: PLR0913
     engine: AgentEngine,
     briefs: tuple[Brief, ...],
@@ -232,8 +377,12 @@ async def _score_briefs(  # noqa: PLR0913
     anchors_dir: Path,
     work_dir: Path,
     run_hard_ceiling: float,
+    strategy: QualityVaryingStrategy | None = None,
 ) -> tuple[tuple[BriefResult, ...], dict[str, JudgeCalibrationReport]]:
     """Run + grade every brief, returning the rows and judge calibrations.
+
+    When *strategy* is the default per-brief scripted strategy, the active brief
+    is stamped onto it before each run so it returns that brief's deliverable.
 
     Returns:
         ``(brief_results, calibrations_by_rubric_id)``.
@@ -241,11 +390,19 @@ async def _score_briefs(  # noqa: PLR0913
     results: list[BriefResult] = []
     calibrations: dict[str, JudgeCalibrationReport] = {}
     for brief in briefs:
+        if strategy is not None:
+            strategy.activate(brief.brief_id)
         outcome = await run_brief(engine, brief, identity=identity)
+        if brief.kind is BriefKind.EXECUTABLE:
+            graded_brief, brief_work_dir = _materialise_executable_brief(
+                brief, deliverable_text=outcome.deliverable_text, base_dir=work_dir
+            )
+        else:
+            graded_brief, brief_work_dir = brief, work_dir
         grade, calibration = grade_brief(
-            brief,
+            graded_brief,
             deliverable_text=outcome.deliverable_text,
-            work_dir=work_dir,
+            work_dir=brief_work_dir,
             judge=judge,
             anchors_dir=anchors_dir,
         )
@@ -295,6 +452,7 @@ async def run_benchmark_async(  # noqa: PLR0913
     memory_backend: MemoryBackend | None = None,
     procedural_config: ProceduralMemoryConfig | None = None,
     history_dir: Path | None = None,
+    strategy_profile: BenchmarkStrategyProfile = BenchmarkStrategyProfile.COMPETENT,
 ) -> Scorecard:
     """Run the brief suite against the company config and return the scorecard.
 
@@ -306,6 +464,10 @@ async def run_benchmark_async(  # noqa: PLR0913
         cassette: Optional recorded cassette (records the determinism source).
         provider: Deterministic completion provider (defaults to a
             ``ScriptedDriver``).
+        strategy_profile: Quality profile the default scripted strategy renders
+            profile-specific deliverables at (ignored when *provider* is
+            injected). ``DEGRADED`` makes the executable brief's hidden tests
+            fail; ``COMPETENT`` makes them pass.
         judge: Calibrated judge for judged briefs (defaults to an anchor-echo
             ``ScriptedJudge``).
         memory_backend: Procedural-memory backend; enables the live
@@ -321,7 +483,11 @@ async def run_benchmark_async(  # noqa: PLR0913
 
     Raises:
         CompanyConfigInvalidError: The company YAML failed validation.
+        CassettePlaybackUnavailableError: A cassette was supplied without an
+            injected provider to replay it.
     """
+    _reject_unplayable_cassette(cassette, provider)
+
     try:
         root_config = load_config(company_config)
     except Exception as exc:
@@ -333,9 +499,7 @@ async def run_benchmark_async(  # noqa: PLR0913
 
     briefs = load_brief_suite(brief_suite)
     resolved_anchors = _resolve_anchors_dir(brief_suite, anchors_dir)
-    active_provider: CompletionProvider = provider or ScriptedDriver(
-        _DEFAULT_PROVIDER_NAME, strategy=CleanCompletionStrategy()
-    )
+    active_provider, quality_strategy = _select_provider(provider, strategy_profile)
     identity = _default_identity(_resolve_provider_name(active_provider))
 
     active_judge: JudgeProtocol
@@ -396,6 +560,7 @@ async def run_benchmark_async(  # noqa: PLR0913
         anchors_dir=resolved_anchors,
         work_dir=out_dir,
         run_hard_ceiling=root_config.budget.run_hard_ceiling,
+        strategy=quality_strategy,
     )
     scorecard = Scorecard(
         generated_at=datetime.now(UTC),
@@ -443,6 +608,7 @@ def run_benchmark(  # noqa: PLR0913
     anchors_dir: Path | None = None,
     provider: CompletionProvider | None = None,
     judge: JudgeProtocol | None = None,
+    strategy_profile: BenchmarkStrategyProfile = BenchmarkStrategyProfile.COMPETENT,
 ) -> Scorecard:
     """Synchronous wrapper around :func:`run_benchmark_async`.
 
@@ -462,6 +628,7 @@ def run_benchmark(  # noqa: PLR0913
             cassette=cassette,
             provider=provider,
             judge=judge,
+            strategy_profile=strategy_profile,
         )
     )
 

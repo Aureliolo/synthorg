@@ -99,6 +99,18 @@ async def _run_shutdown(  # noqa: PLR0913
             API_APP_SHUTDOWN,
             "Failed to drain in-flight parked-context resumes",
         )
+    # Drain in-flight gated-completion background tasks (the red-team
+    # evaluation dispatched off the /approvals path) so an approved
+    # completion is not cancelled mid-evaluation and stranded in IN_REVIEW.
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+
+    _review_gate = app_state.slice(ApprovalStateSlice).review_gate
+    if _review_gate is not None:
+        await _try_stop(
+            _review_gate.drain_background_tasks(),
+            API_APP_SHUTDOWN,
+            "Failed to drain in-flight gated-completion background tasks",
+        )
     # Disconnect training memory backend if auto-wired.
     if tasks.training_memory_backend is not None:
         # If this backend was published to the memory slice at startup, clear

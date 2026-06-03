@@ -18,21 +18,52 @@ function CockpitTabPanel({
   tab,
   initialExecutionId,
   initialProjectId,
+  onReplay,
 }: {
   tab: CockpitTab
   initialExecutionId: string | null
   initialProjectId: string | null
+  onReplay: (executionId: string) => void
 }) {
-  if (tab === 'live') return <LiveCockpit />
+  if (tab === 'live') return <LiveCockpit onReplay={onReplay} />
   if (tab === 'steering') return <Steering initialProjectId={initialProjectId} />
-  return <FlightRecorder initialExecutionId={initialExecutionId} />
+  // Key by the execution id so a deep-link from a live agent row remounts
+  // the recorder against the new run (and its mount effect auto-loads it)
+  // rather than leaving the previously-typed run on screen.
+  return (
+    <FlightRecorder
+      key={initialExecutionId ?? 'manual'}
+      initialExecutionId={initialExecutionId}
+    />
+  )
 }
 
 export default function MissionControlPage() {
-  const [tab, setTab] = useState<CockpitTab>('live')
   const [searchParams] = useSearchParams()
-  const initialExecutionId = searchParams.get('executionId') ?? searchParams.get('taskId')
+  const urlExecutionId = searchParams.get('executionId') ?? searchParams.get('taskId')
   const initialProjectId = searchParams.get('project')
+  // A deep link carrying an execution id lands on the recorder tab (the same
+  // surface handleReplay switches to), not the default live tab.
+  const [tab, setTab] = useState<CockpitTab>(urlExecutionId ? 'recorder' : 'live')
+  const [replayExecutionId, setReplayExecutionId] = useState<string | null>(
+    urlExecutionId,
+  )
+  // useState seeds tab/replay only on first render. When the URL execution id
+  // changes while the page stays mounted (e.g. a fresh deep link), adjust state
+  // during render -- React's sanctioned alternative to a sync-in-effect: it
+  // re-renders before committing, with no extra paint, and the recorder follows
+  // the URL instead of freezing on the first value.
+  const [syncedExecutionId, setSyncedExecutionId] = useState(urlExecutionId)
+  if (urlExecutionId !== syncedExecutionId) {
+    setSyncedExecutionId(urlExecutionId)
+    setReplayExecutionId(urlExecutionId)
+    setTab(urlExecutionId ? 'recorder' : 'live')
+  }
+
+  function handleReplay(executionId: string): void {
+    setReplayExecutionId(executionId)
+    setTab('recorder')
+  }
 
   return (
     <div className="space-y-section-gap">
@@ -54,8 +85,9 @@ export default function MissionControlPage() {
 
       <CockpitTabPanel
         tab={tab}
-        initialExecutionId={initialExecutionId}
+        initialExecutionId={replayExecutionId}
         initialProjectId={initialProjectId}
+        onReplay={handleReplay}
       />
     </div>
   )

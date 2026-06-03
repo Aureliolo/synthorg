@@ -1,6 +1,7 @@
 import type {
   FlightRecorderFrame,
   LiveActivitySnapshot,
+  RedTeamReportRecord,
   ReplaySeekView,
   Task,
 } from '@/api/types'
@@ -8,6 +9,7 @@ import type {
 import {
   apiClient,
   unwrap,
+  unwrapNullable,
   unwrapPaginated,
   type PaginatedResult,
 } from '../client'
@@ -48,6 +50,22 @@ export async function seekFlightRecorder(
     `/cockpit/flight-recorder/${encodeURIComponent(executionId)}/seek/${turnIndex}`,
   )
   return unwrap(response)
+}
+
+/**
+ * Fetch the durable red-team verdict recorded for a run, if any.
+ *
+ * Returns `null` when no red-team gate ran for the execution (or the
+ * archive is unwired); callers render that as "no red-team review
+ * recorded" rather than an error.
+ */
+export async function getRedTeamReport(
+  executionId: string,
+): Promise<RedTeamReportRecord | null> {
+  const response = await apiClient.get<ApiResponse<RedTeamReportRecord | null>>(
+    `/cockpit/flight-recorder/${encodeURIComponent(executionId)}/red-team`,
+  )
+  return unwrapNullable(response)
 }
 
 /** Pause a running task (transition to INTERRUPTED). */

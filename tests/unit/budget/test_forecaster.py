@@ -178,6 +178,49 @@ class TestCostForecaster:
         assert large_forecast.estimated_cost == pytest.approx(1.00)
         assert small_forecast.estimated_cost == pytest.approx(0.05)
 
+    async def test_tier_resolves_through_normalised_assignment_key(self) -> None:
+        """A case-divergent assignment key still resolves to its tier.
+
+        ``compute_brief_hash`` normalises ``model_assignments`` keys, so the
+        tier lookup must normalise too. A raw lookup would miss the differently
+        cased key and silently fall back to the medium prior, producing a
+        forecast that disagrees with the brief hash.
+        """
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
+        signal = _signal(
+            role_skeleton=("Engineer",),
+            assignments={"engineer": "example-large-001"},
+            turns=10.0,
+        )
+
+        forecast = await forecaster.forecast(signal)
+
+        # Large prior (0.10 * 10 = 1.00), not the medium fallback (0.30).
+        assert forecast.estimated_cost == pytest.approx(1.00)
+
+    async def test_tier_resolves_through_stripped_model_id(self) -> None:
+        """A whitespace-padded model id resolves to its tier, matching the hash.
+
+        ``compute_brief_hash`` strips ``model_assignments`` values, so the tier
+        lookup must strip too; otherwise a padded id misses ``tier_from_model_id``
+        and falls back to medium, making the forecast disagree with the hash.
+        """
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
+        signal = _signal(
+            role_skeleton=("Engineer",),
+            assignments={"Engineer": "  example-large-001  "},
+            turns=10.0,
+        )
+
+        forecast = await forecaster.forecast(signal)
+
+        # Large prior (0.10 * 10 = 1.00), not the medium fallback (0.30).
+        assert forecast.estimated_cost == pytest.approx(1.00)
+
     async def test_empty_role_skeleton_raises(self) -> None:
         forecaster = CostForecaster(
             budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now

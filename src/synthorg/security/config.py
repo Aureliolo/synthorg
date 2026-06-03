@@ -326,21 +326,19 @@ class McpSelfConsumerMode(StrEnum):
 class RedTeamConfig(BaseModel):
     """Adversarial red-team gate configuration (opt-in subsystem).
 
-    The red-team gate is OFF by default. When ``enabled``, the gate
-    fires as the LAST adversarial check after ``ReviewPipeline`` PASS,
-    before the deliverable transitions IN_REVIEW -> COMPLETED.
+    OFF by default. When ``enabled`` the gate fires as the last
+    adversarial check before IN_REVIEW -> COMPLETED.
 
     Attributes:
-        enabled: Master switch. When ``False`` (default), no red-team
-            gate is constructed at boot and the ReviewGateService
-            short-circuits as if the gate were absent.
-        grounding_checker_kind: Discriminator for the grounding
-            sub-system implementation. Today only ``"heuristic"`` is
-            supported; a substrate-backed checker will add
-            ``"knowledge_substrate"`` once a knowledge / provenance
-            substrate is available.
-        timeout_seconds: Per-evaluation cap on the inline AgentEngine
-            invocation. Bounds inline latency at the completion edge.
+        enabled: Master switch (``False`` builds no gate at boot).
+        grounding_checker_kind: Grounding discriminator; only
+            ``"heuristic"`` today (``"knowledge_substrate"`` lands with
+            the EPIC E substrate).
+        timeout_seconds: Per-evaluation cap on the inline AgentEngine.
+        on_missing_deliverable: Posture when the gate is enabled but no
+            deliverable is retrievable. ``"block"`` (default) fails
+            closed (rework) so the gate never silently depends on flight
+            recording being on; ``"skip"`` allows completion.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -352,6 +350,7 @@ class RedTeamConfig(BaseModel):
         gt=0.0,
         le=RED_TEAM_TIMEOUT_MAX_SECONDS,
     )
+    on_missing_deliverable: Literal["block", "skip"] = "block"
 
 
 VISION_TIMEOUT_DEFAULT_SECONDS: Final[float] = 60.0

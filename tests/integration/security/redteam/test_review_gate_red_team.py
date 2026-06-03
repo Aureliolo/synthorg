@@ -1,14 +1,15 @@
-"""Integration test for ReviewGateService.run_pipeline with the red-team gate.
+"""Integration tests for the red-team completion gate on both paths.
 
-Validates the FULL acceptance criterion: a deliverable with a planted
-defect, after the normal ReviewPipeline returns PASS, is BLOCKed by
-the red-team gate and the task transitions IN_REVIEW -> IN_PROGRESS
-(rework) instead of COMPLETED.
+Validates the FULL acceptance criterion against the *production*
+completion path: a deliverable with a planted defect, after a human
+approves it, is BLOCKed by the red-team gate and the task transitions
+IN_REVIEW -> IN_PROGRESS (rework) instead of COMPLETED. The same routing
+is exercised through the pipeline-driven ``run_pipeline`` path, plus the
+``on_missing_deliverable`` posture and the background dispatch.
 
-Unit coverage in tests/unit/security/redteam/test_gate.py validates
-the gate's verdict in isolation; this integration file verifies the
-service-level routing contract: the ReviewGateService consumes that
-verdict and applies the expected IN_REVIEW -> IN_PROGRESS transition.
+Unit coverage in tests/unit/security/redteam/test_gate.py validates the
+gate's verdict in isolation; this file verifies the service-level
+routing contract end to end.
 """
 
 from typing import Any
@@ -24,8 +25,10 @@ from synthorg.engine.review import (
     ReviewVerdict,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding.heuristic import HeuristicGroundingChecker
@@ -127,7 +130,7 @@ def _planted_review_input() -> RedTeamReviewInput:
     return RedTeamReviewInput(
         task_id="task-rt-1",
         execution_id="exec-rt-1",
-        deliverable_content=("Backend service complete. Login endpoint is live."),
+        deliverable_content="Backend service complete. Login endpoint is live.",
         acceptance_criteria=(
             "Login endpoint exposed.",
             "Password reset endpoint exposed.",
@@ -137,7 +140,20 @@ def _planted_review_input() -> RedTeamReviewInput:
     )
 
 
-def _build_review_gate(*, runner: AgentRunner) -> tuple[ReviewGateService, Any]:
+def _stub_builder(review_input: RedTeamReviewInput | None) -> Any:
+    """Builder double whose ``build`` returns a fixed review input."""
+    return mock_of[DeliverableReviewInputBuilder](
+        build=AsyncMock(return_value=review_input),
+    )
+
+
+def _build_review_gate(
+    *,
+    runner: AgentRunner,
+    builder: Any,
+    on_missing_deliverable: str = "block",
+    background_tasks: BackgroundTaskRegistry | None = None,
+) -> tuple[ReviewGateService, Any]:
     """Wire a ReviewGateService with a real RedTeamGateService."""
     task = _task()
     task_engine = _mock_task_engine(task)
@@ -154,15 +170,43 @@ def _build_review_gate(*, runner: AgentRunner) -> tuple[ReviewGateService, Any]:
     service = ReviewGateService(
         task_engine=task_engine,
         red_team_gate=red_team_gate,
+        red_team_input_builder=builder,
+        red_team_on_missing_deliverable=on_missing_deliverable,  # type: ignore[arg-type]
+        background_tasks=background_tasks,
     )
     return service, task_engine
 
 
-async def test_planted_defect_blocks_review_gate_and_routes_to_in_progress() -> None:
-    """End-to-end acceptance: planted HIGH finding routes the task to IN_PROGRESS."""
+async def test_planted_defect_blocks_via_complete_review() -> None:
+    """Production path: a human approve with a planted HIGH finding reworks."""
     repo = InMemoryRedTeamReportRepository()
     runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
-    service, task_engine = _build_review_gate(runner=runner)
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(_planted_review_input()),
+    )
+
+    await service.complete_review(
+        task_id="task-rt-1",
+        requested_by="bob",
+        approved=True,
+        decided_by="bob",
+    )
+
+    task_engine.submit.assert_called_once()
+    call = task_engine.submit.call_args[0][0]
+    assert call.target_status is TaskStatus.IN_PROGRESS
+    assert "Red-team review blocked" in call.reason
+
+
+async def test_planted_defect_blocks_via_run_pipeline() -> None:
+    """Pipeline path: a PASS pipeline + planted HIGH finding reworks."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(_planted_review_input()),
+    )
 
     pipeline = ReviewPipeline(stages=(_PassingStage(),))
     result = await service.run_pipeline(
@@ -170,49 +214,68 @@ async def test_planted_defect_blocks_review_gate_and_routes_to_in_progress() -> 
         pipeline=pipeline,
         decided_by="bob",
         requested_by="bob",
-        red_team_input=_planted_review_input(),
     )
 
-    assert result.final_verdict is ReviewVerdict.PASS  # the structural pipeline passed
-    task_engine.submit.assert_called_once()
+    assert result.final_verdict is ReviewVerdict.PASS
     call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.IN_PROGRESS  # red-team rerouted to rework
+    assert call.target_status is TaskStatus.IN_PROGRESS
     assert "Red-team review blocked" in call.reason
 
 
-async def test_red_team_gate_blocks_when_review_input_missing() -> None:
-    """A configured gate with no ``red_team_input`` fails closed (no COMPLETED)."""
+async def test_no_deliverable_blocks_when_policy_block() -> None:
+    """A configured gate with no retrievable deliverable fails closed."""
     repo = InMemoryRedTeamReportRepository()
     runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
-    service, task_engine = _build_review_gate(runner=runner)
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(None),
+        on_missing_deliverable="block",
+    )
 
-    pipeline = ReviewPipeline(stages=(_PassingStage(),))
-    await service.run_pipeline(
+    await service.complete_review(
         task_id="task-rt-1",
-        pipeline=pipeline,
-        decided_by="bob",
         requested_by="bob",
-        # no red_team_input provided
+        approved=True,
+        decided_by="bob",
     )
 
     call = task_engine.submit.call_args[0][0]
     assert call.target_status is TaskStatus.IN_PROGRESS
-    assert call.reason == "red_team_input_required"
+    assert "could not retrieve a deliverable" in call.reason
+
+
+async def test_no_deliverable_skips_when_policy_skip() -> None:
+    """``skip`` posture allows completion when no deliverable is retrievable."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(None),
+        on_missing_deliverable="skip",
+    )
+
+    await service.complete_review(
+        task_id="task-rt-1",
+        requested_by="bob",
+        approved=True,
+        decided_by="bob",
+    )
+
+    call = task_engine.submit.call_args[0][0]
+    assert call.target_status is TaskStatus.COMPLETED
 
 
 async def test_red_team_gate_absent_no_change() -> None:
-    """Without a configured ``red_team_gate``, behaviour is unchanged."""
+    """Without a configured gate, an approve completes unchanged."""
     task = _task()
     task_engine = _mock_task_engine(task)
     service = ReviewGateService(task_engine=task_engine)  # no gate
 
-    pipeline = ReviewPipeline(stages=(_PassingStage(),))
-    await service.run_pipeline(
+    await service.complete_review(
         task_id="task-rt-1",
-        pipeline=pipeline,
-        decided_by="bob",
         requested_by="bob",
-        red_team_input=_planted_review_input(),
+        approved=True,
+        decided_by="bob",
     )
 
     call = task_engine.submit.call_args[0][0]
@@ -235,17 +298,68 @@ class _DispatchFailingRunner:
 async def test_red_team_dispatch_failure_does_not_block_completion() -> None:
     """Agent dispatch failure must fail-OPEN; deliverable proceeds to COMPLETED."""
     runner: AgentRunner = _DispatchFailingRunner()
-    service, task_engine = _build_review_gate(runner=runner)
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(_planted_review_input()),
+    )
 
-    pipeline = ReviewPipeline(stages=(_PassingStage(),))
-    await service.run_pipeline(
+    await service.complete_review(
         task_id="task-rt-1",
-        pipeline=pipeline,
-        decided_by="bob",
         requested_by="bob",
-        red_team_input=_planted_review_input(),
+        approved=True,
+        decided_by="bob",
     )
 
     call = task_engine.submit.call_args[0][0]
-    # Fail-OPEN synthetic INFO finding does NOT block; task completes.
     assert call.target_status is TaskStatus.COMPLETED
+
+
+async def test_dispatch_completion_backgrounds_gated_approval() -> None:
+    """A gated approve is dispatched to the background and still reworks."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
+    registry = BackgroundTaskRegistry(owner="test.review_gate")
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(_planted_review_input()),
+        background_tasks=registry,
+    )
+
+    dispatched = await service.dispatch_completion(
+        task_id="task-rt-1",
+        requested_by="bob",
+        approved=True,
+        decided_by="bob",
+    )
+    assert dispatched is True
+    # The blocking gate runs in the background task, not inline: no rework
+    # transition is submitted until the registry drains.
+    assert task_engine.submit.call_count == 0
+    await registry.drain()
+
+    call = task_engine.submit.call_args[0][0]
+    assert call.target_status is TaskStatus.IN_PROGRESS
+    assert "Red-team review blocked" in call.reason
+
+
+async def test_dispatch_completion_runs_reject_inline() -> None:
+    """A reject runs inline (no gate latency) and reworks immediately."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
+    registry = BackgroundTaskRegistry(owner="test.review_gate")
+    service, task_engine = _build_review_gate(
+        runner=runner,
+        builder=_stub_builder(_planted_review_input()),
+        background_tasks=registry,
+    )
+
+    dispatched = await service.dispatch_completion(
+        task_id="task-rt-1",
+        requested_by="bob",
+        approved=False,
+        decided_by="bob",
+        reason="needs more tests",
+    )
+    assert dispatched is False
+    call = task_engine.submit.call_args[0][0]
+    assert call.target_status is TaskStatus.IN_PROGRESS

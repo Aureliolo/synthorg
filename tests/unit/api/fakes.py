@@ -51,11 +51,13 @@ from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
 from synthorg.persistence.project_protocol import ProjectFilterSpec
+from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.persistence.user_protocol import ApiKeyFilterSpec
 from synthorg.project_brain.errors import BrainEntryRevisionConflictError
 from synthorg.project_brain.models import BrainEntry
 from synthorg.security.models import AuditEntry
+from synthorg.security.redteam.models import RedTeamReportRecord
 from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
@@ -669,6 +671,58 @@ class FakeFlightRecorderFrameRepository:
             candidates = [
                 f for f in candidates if f.turn_index <= filter_spec.turn_index_max
             ]
+        return candidates
+
+
+class FakeRedTeamReportArchiveRepository:
+    """In-memory red-team report archive for tests.
+
+    Mirrors the backend single-shot-per-execution invariant (the primary
+    key on ``execution_id``) so the api fixture exercises the same
+    duplicate-append behaviour the SQL backends enforce.
+    """
+
+    def __init__(self) -> None:
+        self._records: dict[str, RedTeamReportRecord] = {}
+
+    async def append(self, record: RedTeamReportRecord) -> None:
+        if record.execution_id in self._records:
+            msg = (
+                f"Red-team report for execution {record.execution_id!r} already exists"
+            )
+            raise DuplicateRecordError(msg)
+        self._records[record.execution_id] = record
+
+    async def query(
+        self,
+        filter_spec: RedTeamReportFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[RedTeamReportRecord, ...]:
+        candidates = self._filtered(filter_spec)
+        candidates.sort(key=lambda r: (r.recorded_at, r.execution_id), reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        before = len(self._records)
+        self._records = {
+            k: v for k, v in self._records.items() if v.recorded_at >= threshold
+        }
+        return before - len(self._records)
+
+    def _filtered(
+        self, filter_spec: RedTeamReportFilterSpec
+    ) -> list[RedTeamReportRecord]:
+        candidates = list(self._records.values())
+        if filter_spec.execution_id is not None:
+            candidates = [
+                r for r in candidates if r.execution_id == filter_spec.execution_id
+            ]
+        if filter_spec.task_id is not None:
+            candidates = [r for r in candidates if r.task_id == filter_spec.task_id]
+        if filter_spec.verdict is not None:
+            candidates = [r for r in candidates if r.verdict == filter_spec.verdict]
         return candidates
 
 

@@ -274,6 +274,19 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: runtime-reachability
+        name: runtime reachability (pinned request/loop-path call edges stay intact)
+        entry: uv run python scripts/check_runtime_reachability.py
+        language: system
+        # Trigger on any src/synthorg Python file (a refactor could sever a
+        # pinned edge), the manifest, the gate script itself (cannot weaken
+        # the gate silently), or this config. Complements no-ghost-wiring:
+        # that gate proves construction, this one proves the edge that makes
+        # a constructed component actually fire from a request/loop entry.
+        files: ^(src/synthorg/.*\.py|scripts/_runtime_reachability_manifest\.txt|scripts/check_runtime_reachability\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-raw-playwright-imports
         name: Playwright stays bound to synthorg.tools.browser
         entry: uv run python scripts/check_no_raw_playwright_imports.py

@@ -64,6 +64,20 @@ class CassetteFormatError(CassetteError):
     )
 
 
+class CassetteIntegrityError(CassetteError):
+    """The cassette body does not match its recorded integrity digest.
+
+    The document carries a sha256 over its canonical interactions payload;
+    a load that recomputes a different digest (or finds the header absent)
+    means the file was edited or corrupted after recording, so replaying it
+    would silently serve tampered responses. Refused loudly instead.
+    """
+
+    default_message: ClassVar[str] = (
+        "Cassette body does not match its recorded integrity digest"
+    )
+
+
 class CassetteInternalError(CassetteError):
     """A cassette wrapper invariant was violated.
 
@@ -132,6 +146,7 @@ def provider_error_for(
 __all__ = [
     "CassetteError",
     "CassetteFormatError",
+    "CassetteIntegrityError",
     "CassetteInternalError",
     "CassetteReplayExhaustedError",
     "CassetteReplayMissError",

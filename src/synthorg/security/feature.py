@@ -35,6 +35,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "HeuristicGroundingChecker",
         "build_red_team_agent_identity",
         "build_vision_verifier_gate",
+        "DeliverableReviewInputBuilder",
     ),
     depends_on=(),
 )

@@ -63,9 +63,16 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
   )
 }
 
-function AgentRow({ activity }: { activity: AgentActivity }) {
+function AgentRow({
+  activity,
+  onReplay,
+}: {
+  activity: AgentActivity
+  onReplay: (executionId: string) => void
+}) {
   const pause = useMissionControlStore((s) => s.pauseTaskAction)
   const kill = useMissionControlStore((s) => s.killTaskAction)
+  const executionId = activity.execution_id
 
   return (
     <div className="rounded-lg border border-border bg-card p-card">
@@ -86,6 +93,11 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
         >
           Kill
         </Button>
+        {executionId != null && (
+          <Button variant="ghost" size="sm" onClick={() => onReplay(executionId)}>
+            Replay
+          </Button>
+        )}
       </div>
     </div>
   )
@@ -131,9 +143,11 @@ function CockpitMetricCards({ metrics }: { metrics: CockpitMetrics }) {
 function CockpitAgentList({
   agents,
   loading,
+  onReplay,
 }: {
   agents: readonly AgentActivity[]
   loading: boolean
+  onReplay: (executionId: string) => void
 }) {
   if (agents.length === 0) {
     return (
@@ -151,13 +165,18 @@ function CockpitAgentList({
   return (
     <div className="space-y-grid-gap">
       {agents.map((activity) => (
-        <AgentRow key={activity.task_id} activity={activity} />
+        <AgentRow key={activity.task_id} activity={activity} onReplay={onReplay} />
       ))}
     </div>
   )
 }
 
-export function LiveCockpit() {
+export interface LiveCockpitProps {
+  /** Switch to the flight recorder for an execution (deep-link from a row). */
+  onReplay: (executionId: string) => void
+}
+
+export function LiveCockpit({ onReplay }: LiveCockpitProps) {
   const { snapshot, loading, error } = useMissionControlData()
   const metrics = deriveCockpitMetrics(snapshot)
 
@@ -165,7 +184,7 @@ export function LiveCockpit() {
     <div className="space-y-section-gap">
       {error != null && <ErrorBanner title="Failed to load activity" description={error} />}
       <CockpitMetricCards metrics={metrics} />
-      <CockpitAgentList agents={metrics.agents} loading={loading} />
+      <CockpitAgentList agents={metrics.agents} loading={loading} onReplay={onReplay} />
     </div>
   )
 }

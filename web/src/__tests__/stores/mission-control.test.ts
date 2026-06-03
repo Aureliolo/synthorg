@@ -16,7 +16,11 @@ afterEach(() => {
     framesExecutionId: null,
     framesLoading: false,
     framesError: null,
+    framesNextCursor: null,
+    framesHasMore: false,
     seekView: null,
+    redTeamReport: null,
+    redTeamReportError: null,
   })
 })
 

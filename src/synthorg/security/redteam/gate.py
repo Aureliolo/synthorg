@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -33,10 +34,14 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CHECK_COMPLETED,
     RED_TEAM_GROUNDING_CHECK_FAILED,
     RED_TEAM_GROUNDING_CHECK_STARTED,
+    RED_TEAM_REPORT_ALREADY_ARCHIVED,
+    RED_TEAM_REPORT_ARCHIVE_FAILED,
+    RED_TEAM_REPORT_ARCHIVED,
     RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
 )
+from synthorg.security.redteam._grounding_findings import claim_to_finding
 from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.models import (
@@ -44,6 +49,7 @@ from synthorg.security.redteam.models import (
     RedTeamFinding,
     RedTeamGateResult,
     RedTeamReport,
+    RedTeamReportRecord,
     RedTeamReviewInput,
     RedTeamSeverity,
     RedTeamVerdict,
@@ -52,16 +58,16 @@ from synthorg.security.redteam.protocol import (
     AgentRunner,
     RedTeamReportRepository,
 )
-from synthorg.security.redteam.routing import (
-    HEURISTIC_GROUNDING_MAX_SEVERITY,
-    compute_red_team_verdict,
-)
+from synthorg.security.redteam.routing import compute_red_team_verdict
 from synthorg.security.redteam.runtime_context import (
     RedTeamRuntimeContext,
     red_team_runtime_context,
 )
 
 if TYPE_CHECKING:
+    from synthorg.persistence.red_team_report_protocol import (
+        RedTeamReportArchiveRepository,
+    )
     from synthorg.security.redteam.grounding.models import UngroundedClaim
 
 logger = get_logger(__name__)
@@ -78,59 +84,6 @@ _AGENT_FAILED_FINDING_DESCRIPTION: Final[str] = (
 )
 
 
-_MAX_EVIDENCE_EXCERPT_CHARS: Final[int] = 240
-"""Cap on the length of a heuristic-derived evidence excerpt.
-
-Long excerpts pollute the rework brief; the cap keeps a finding
-self-contained while leaving room for one full sentence.
-"""
-
-_ELLIPSIS: Final[str] = "..."
-_ELLIPSIS_OVERHEAD: Final[int] = len(_ELLIPSIS)
-"""Characters the truncation ellipsis consumes, reserved from the cap."""
-
-
-def _evidence_excerpt(
-    claim: UngroundedClaim,
-    *,
-    max_chars: int = _MAX_EVIDENCE_EXCERPT_CHARS,
-) -> str:
-    """Truncate a claim's excerpt to a bounded length for finding evidence.
-
-    Returns:
-        The excerpt, truncated with an ellipsis when it exceeds
-        ``max_chars``.
-    """
-    if len(claim.excerpt) <= max_chars:
-        return claim.excerpt
-    return f"{claim.excerpt[: max_chars - _ELLIPSIS_OVERHEAD]}{_ELLIPSIS}"
-
-
-def _claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:
-    """Convert a heuristic :class:`UngroundedClaim` into a :class:`RedTeamFinding`.
-
-    Always at or below :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW)
-    so the stub cannot block on its own; only the LLM agent or a
-    substrate-backed checker may file blocking grounding findings.
-
-    Returns:
-        A ``RedTeamFinding`` for the grounding surface, capped at the
-        heuristic max severity.
-    """
-    return RedTeamFinding(
-        attack_surface=RedTeamAttackSurface.GROUNDING,
-        severity=HEURISTIC_GROUNDING_MAX_SEVERITY,
-        description=f"Ungrounded claim: {claim.reason}",
-        evidence=(_evidence_excerpt(claim),),
-        suggested_fix=(
-            "Cite the originating source for this claim or remove the "
-            "assertion. Hedging language is also acceptable for soft claims."
-        ),
-        source=claim.source,
-        citations=(),
-    )
-
-
 class RedTeamGateService:
     """Inline gate orchestrator.
 
@@ -143,6 +96,13 @@ class RedTeamGateService:
             substrate-backed). Capped at
             :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` when source is
             ``"heuristic"``.
+        report_archive: Optional durable cross-process archive. When
+            wired (persistence is connected), every evaluation's merged
+            report + verdict is persisted as a
+            :class:`RedTeamReportRecord` so the flight-recorder read
+            surface can surface the verdict long after the run. ``None``
+            in a persistence-less boot; archival is then skipped. The
+            write is fail-OPEN: an archive error never alters the verdict.
         clock: Clock seam. Production passes :class:`SystemClock`;
             tests pass :class:`FakeClock`. Defaults to
             :class:`SystemClock` so wiring stays terse for operators.
@@ -154,11 +114,13 @@ class RedTeamGateService:
         agent_runner: AgentRunner,
         report_repo: RedTeamReportRepository,
         grounding_checker: GroundingChecker,
+        report_archive: RedTeamReportArchiveRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_runner = agent_runner
         self._report_repo = report_repo
         self._grounding_checker = grounding_checker
+        self._report_archive = report_archive
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def evaluate(
@@ -188,7 +150,7 @@ class RedTeamGateService:
         report = await self._invoke_agent(review_input)
         grounding_claims = await self._run_grounding(review_input)
 
-        heuristic_findings = tuple(_claim_to_finding(c) for c in grounding_claims)
+        heuristic_findings = tuple(claim_to_finding(c) for c in grounding_claims)
         all_findings = report.findings + heuristic_findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)
@@ -214,11 +176,75 @@ class RedTeamGateService:
             )
 
         merged_report = report.model_copy(update={"findings": all_findings})
+        await self._archive_report(review_input, merged_report, verdict)
         return RedTeamGateResult(
             verdict=verdict,
             report=merged_report,
             grounding_claims=grounding_claims,
             elapsed_seconds=elapsed,
+        )
+
+    async def _archive_report(
+        self,
+        review_input: RedTeamReviewInput,
+        merged_report: RedTeamReport,
+        verdict: RedTeamVerdict,
+    ) -> None:
+        """Persist the merged report + verdict to the durable archive.
+
+        Fail-OPEN audit side-effect: the gate verdict is authoritative and
+        already drives the block decision, so an archive write failure is
+        logged but never propagated and never alters the result. A
+        duplicate execution (a re-run for the same ``execution_id``) is a
+        benign no-op logged at DEBUG. ``asyncio.CancelledError`` and true
+        programming errors still propagate.
+
+        Args:
+            review_input: The evaluated input (supplies the keys).
+            merged_report: The merged report (agent + heuristic findings).
+            verdict: The aggregate verdict the gate computed.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the archive write is
+                cancelled, so the awaiting parent observes the cancel.
+        """
+        if self._report_archive is None:
+            return
+        record = RedTeamReportRecord(
+            execution_id=review_input.execution_id,
+            task_id=review_input.task_id,
+            verdict=verdict,
+            report=merged_report,
+            recorded_at=self._clock.now(),
+        )
+        try:
+            await self._report_archive.append(record)
+        except DuplicateRecordError:
+            logger.debug(
+                RED_TEAM_REPORT_ALREADY_ARCHIVED,
+                execution_id=review_input.execution_id,
+                note="already archived for this execution",
+            )
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                RED_TEAM_REPORT_ARCHIVE_FAILED,
+                execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                policy="fail_open",
+            )
+            return
+        logger.info(
+            RED_TEAM_REPORT_ARCHIVED,
+            execution_id=review_input.execution_id,
+            task_id=review_input.task_id,
+            verdict=verdict.value,
+            findings=len(merged_report.findings),
         )
 
     async def _invoke_agent(
@@ -263,6 +289,7 @@ class RedTeamGateService:
                 task_id=review_input.task_id,
                 error_type=type(original).__name__,
                 error=safe_error_description(original),
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
 
@@ -280,6 +307,7 @@ class RedTeamGateService:
                 task_id=review_input.task_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
 
@@ -293,6 +321,7 @@ class RedTeamGateService:
                 expected_execution_id=review_input.execution_id,
                 stored_task_id=report.task_id,
                 expected_task_id=review_input.task_id,
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
         logger.info(

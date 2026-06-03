@@ -246,6 +246,13 @@ async def try_review_gate_transition(  # noqa: PLR0913
     meaningful status code instead of a silent 200 OK with no state
     change.
 
+    Delegates to :meth:`ReviewGateService.dispatch_completion`, which
+    backgrounds a gated approval (a configured adversarial gate runs an
+    inline AgentEngine) so the HTTP response is not blocked by the gate
+    evaluation; the task holds in IN_REVIEW until the background gate
+    transitions it. The inline (non-gated) path still surfaces the
+    engine-layer failures below.
+
     Raises:
         ConflictError: When the task disappears or its version
             conflicts between the preflight and the transition -- both
@@ -259,7 +266,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
     """
     decided_by = resolve_decided_by(decided_by)
     try:
-        await review_gate.complete_review(
+        await review_gate.dispatch_completion(
             task_id=task_id,
             requested_by=decided_by,
             approved=approved,

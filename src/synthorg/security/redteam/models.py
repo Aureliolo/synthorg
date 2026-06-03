@@ -7,10 +7,12 @@ via the ``_SEVERITY_RANK`` lookup table so the enum stays a plain
 :mod:`synthorg.security.redteam.routing`.
 """
 
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
@@ -57,13 +59,15 @@ SEVERITY_RANK_MEDIUM: Final[int] = 2
 SEVERITY_RANK_HIGH: Final[int] = 3
 SEVERITY_RANK_CRITICAL: Final[int] = 4
 
-_SEVERITY_RANK: Final[dict[RedTeamSeverity, int]] = {
-    RedTeamSeverity.INFO: SEVERITY_RANK_INFO,
-    RedTeamSeverity.LOW: SEVERITY_RANK_LOW,
-    RedTeamSeverity.MEDIUM: SEVERITY_RANK_MEDIUM,
-    RedTeamSeverity.HIGH: SEVERITY_RANK_HIGH,
-    RedTeamSeverity.CRITICAL: SEVERITY_RANK_CRITICAL,
-}
+_SEVERITY_RANK: Final[Mapping[RedTeamSeverity, int]] = MappingProxyType(
+    {
+        RedTeamSeverity.INFO: SEVERITY_RANK_INFO,
+        RedTeamSeverity.LOW: SEVERITY_RANK_LOW,
+        RedTeamSeverity.MEDIUM: SEVERITY_RANK_MEDIUM,
+        RedTeamSeverity.HIGH: SEVERITY_RANK_HIGH,
+        RedTeamSeverity.CRITICAL: SEVERITY_RANK_CRITICAL,
+    }
+)
 
 
 def severity_rank(severity: RedTeamSeverity) -> int:
@@ -155,6 +159,11 @@ class RedTeamFinding(BaseModel):
 MAX_FINDINGS_PER_REPORT: Final[int] = 25
 """Upper bound on findings per report to keep critiques actionable."""
 
+MAX_REPORT_SUMMARY_LENGTH: Final[int] = 4096
+"""Upper bound on the report summary; the agent (an LLM) controls its
+length, so the bound caps archive-row size and the operator-facing
+rework reason derived from it."""
+
 
 class RedTeamReport(BaseModel):
     """The structured report a red-team agent files for one deliverable.
@@ -175,7 +184,7 @@ class RedTeamReport(BaseModel):
     execution_id: NotBlankStr
     task_id: NotBlankStr
     findings: tuple[RedTeamFinding, ...] = ()
-    summary: NotBlankStr
+    summary: NotBlankStr = Field(max_length=MAX_REPORT_SUMMARY_LENGTH)
 
     @model_validator(mode="after")
     def _check_findings_bounded(self) -> Self:
@@ -249,3 +258,63 @@ class RedTeamGateResult(BaseModel):
     report: RedTeamReport
     grounding_claims: tuple[UngroundedClaim, ...] = ()
     elapsed_seconds: float = Field(ge=0.0)
+
+
+class RedTeamReportRecord(BaseModel):
+    """Durable audit record of one red-team gate evaluation.
+
+    The persistent archive row for a single execution: the merged report
+    the gate produced (agent findings plus heuristic grounding findings),
+    the aggregate verdict, and the time the gate recorded it. It lets an
+    operator answer "why was this deliverable sent back?" from the
+    flight-recorder surface long after the run completed -- the durability
+    the in-process per-execution :class:`RedTeamReportRepository` cannot
+    provide across processes or restarts.
+
+    Single-shot per ``execution_id``: the archive enforces one record per
+    execution at the storage layer. ``report.execution_id`` and
+    ``report.task_id`` MUST match the record-level keys so the queryable
+    columns never disagree with the embedded report.
+
+    Attributes:
+        execution_id: The execution the gate evaluated (archive key).
+        task_id: The deliverable's owning task.
+        verdict: Aggregate verdict the gate computed for the deliverable.
+        report: The merged report (agent plus heuristic findings).
+        recorded_at: When the gate recorded the verdict (clock-driven so
+            it is deterministic under ``FakeClock``).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    execution_id: NotBlankStr
+    task_id: NotBlankStr
+    verdict: RedTeamVerdict
+    report: RedTeamReport
+    recorded_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def _keys_match_report(self) -> Self:
+        """Reject a record whose keys disagree with the embedded report.
+
+        Returns:
+            The validated record.
+
+        Raises:
+            ValueError: If ``report.execution_id`` / ``report.task_id`` do
+                not match the record-level ``execution_id`` / ``task_id``.
+        """
+        if self.report.execution_id != self.execution_id:
+            msg = (
+                "RedTeamReportRecord.execution_id "
+                f"{self.execution_id!r} does not match "
+                f"report.execution_id {self.report.execution_id!r}."
+            )
+            raise ValueError(msg)
+        if self.report.task_id != self.task_id:
+            msg = (
+                f"RedTeamReportRecord.task_id {self.task_id!r} does not "
+                f"match report.task_id {self.report.task_id!r}."
+            )
+            raise ValueError(msg)
+        return self

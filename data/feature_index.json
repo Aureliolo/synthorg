@@ -118,9 +118,12 @@
       "depends_on": [],
       "directory": "src/synthorg/budget",
       "ghost_wired_symbols": [
+        "AgentRegistryAssignmentLookup",
         "BaselineStore",
+        "CompanyRoleSkeletonProvider",
         "CoordinationMetricsCollector",
         "CostForecaster",
+        "CostTrackerHistoryLookup",
         "ParetoAnalyzer",
         "StubBenchmarkScoreProvider"
       ],
@@ -1089,7 +1092,8 @@
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
         "build_red_team_agent_identity",
-        "build_vision_verifier_gate"
+        "build_vision_verifier_gate",
+        "DeliverableReviewInputBuilder"
       ],
       "mcp_tool_names": [],
       "name": "security",
@@ -1221,6 +1225,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-03T14:34:29.973061Z",
+  "generated_at": "2026-06-03T17:17:02.337035Z",
   "schema_version": 1
 }

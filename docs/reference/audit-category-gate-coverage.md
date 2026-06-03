@@ -17,6 +17,7 @@ The four resolution paths are:
 | Mock without `spec=` | Standing gate | `scripts/check_mock_spec.py` |
 | Settings consumed by services not started at boot ("ghost-wired") | Standing gate + mini-pass | `scripts/check_setting_to_startup_trace.py` + `mini-pass-unwired-settings` |
 | Runtime components (engine / workers / api / budget / security / meta / client / settings) defined and tested but never constructed at boot (ghost-wiring) | Standing gate + mini-pass | `scripts/check_no_ghost_wiring.py` (manifest-driven) + `mini-pass-ghost-wiring` (audit agent 14) |
+| Runtime component constructed at boot but the load-bearing call edge that makes it fire from a request/loop entry is severed (reachability, not construction) | Standing gate | `scripts/check_runtime_reachability.py` (manifest-driven pinned call edges) |
 | Secret-log redaction (`error=str(exc)`) | Standing gate | `scripts/check_logger_exception_str_exc.py` |
 | Typed boundary (`parse_typed` at every external dict ingestion) | Standing gate | `scripts/check_boundary_typed.py` |
 | Vendor-name leakage (Anthropic / OpenAI / Claude / GPT) | Standing gate | `scripts/check_forbidden_literals.py` |

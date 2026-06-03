@@ -19,6 +19,11 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
     FlightRecorderFrameRepository,
 )
+from synthorg.persistence.red_team_report_protocol import (
+    RedTeamReportArchiveRepository,
+    RedTeamReportFilterSpec,
+)
+from synthorg.security.redteam.models import RedTeamReportRecord
 
 logger = get_logger(__name__)
 
@@ -84,10 +89,22 @@ class ReplaySeekView(BaseModel):
 
 
 class FlightRecorderService:
-    """Query and seek over persisted flight-recorder frames."""
+    """Query and seek over persisted flight-recorder frames.
 
-    def __init__(self, repository: FlightRecorderFrameRepository) -> None:
+    Also surfaces the durable red-team verdict for a run when the
+    optional archive is wired, so an operator inspecting a run in the
+    cockpit can answer "why was this deliverable sent back?" from the
+    same ``execution_id`` they already replay against.
+    """
+
+    def __init__(
+        self,
+        repository: FlightRecorderFrameRepository,
+        *,
+        red_team_reports: RedTeamReportArchiveRepository | None = None,
+    ) -> None:
         self._repository = repository
+        self._red_team_reports = red_team_reports
 
     async def get_frames(
         self,
@@ -102,6 +119,29 @@ class FlightRecorderService:
             limit=limit,
             offset=offset,
         )
+
+    async def get_red_team_report(
+        self,
+        execution_id: str,
+    ) -> RedTeamReportRecord | None:
+        """Return the durable red-team verdict for ``execution_id``, if any.
+
+        Reads the single archived record for the execution (the archive
+        is single-shot per execution). Returns ``None`` when the archive
+        is unwired (persistence-less boot) or no red-team gate ran for
+        the execution -- both are non-error states the cockpit renders as
+        "no red-team review recorded".
+
+        Returns:
+            The archived :class:`RedTeamReportRecord`, or ``None``.
+        """
+        if self._red_team_reports is None:
+            return None
+        records = await self._red_team_reports.query(
+            RedTeamReportFilterSpec(execution_id=NotBlankStr(execution_id)),
+            limit=1,
+        )
+        return records[0] if records else None
 
     async def seek(self, execution_id: str, turn_index: int) -> ReplaySeekView:
         """Reconstruct scrubber state at ``turn_index``.

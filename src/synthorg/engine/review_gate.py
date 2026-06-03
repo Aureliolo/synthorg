@@ -16,14 +16,18 @@ or a broadcast WebSocket event behind.
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.enums import DecisionOutcome, TaskStatus
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.engine._review_completion_gates import (
+    map_pipeline_verdict,
+    run_completion_gates,
+)
 from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_receipt
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
-from synthorg.engine.review.models import PipelineResult, ReviewVerdict
+from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
@@ -34,29 +38,20 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
-from synthorg.observability.events.red_team import (
-    RED_TEAM_GATE_SKIPPED,
-    RED_TEAM_REWORK_ROUTED,
-)
-from synthorg.observability.events.review_pipeline import (
-    APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
-)
+from synthorg.observability.events.red_team import RED_TEAM_GATE_DISPATCHED
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_DECISION_RECORDED,
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
-from synthorg.observability.events.vision_verify import (
-    VISION_GATE_SKIPPED,
-    VISION_REWORK_ROUTED,
-)
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.engine.review.pipeline import ReviewPipeline
+    from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.observability.background_tasks import BackgroundTaskRegistry
     from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.security.redteam.models import RedTeamReviewInput
     from synthorg.security.redteam.protocol import RedTeamGate
     from synthorg.security.visionverify.models import VisionReviewInput
     from synthorg.security.visionverify.protocol import VisionVerifierGate
@@ -85,20 +80,28 @@ class ReviewGateService:
             have a persistence layer wired up.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- boot-wired collaborators, all optional
         self,
         *,
         task_engine: TaskEngine,
         persistence: PersistenceBackend | None = None,
         red_team_gate: RedTeamGate | None = None,
+        red_team_input_builder: DeliverableReviewInputBuilder | None = None,
+        red_team_on_missing_deliverable: Literal["block", "skip"] = "block",
         vision_gate: VisionVerifierGate | None = None,
         receipt_service: DeliverableReceiptSeam | None = None,
+        background_tasks: BackgroundTaskRegistry | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._persistence = persistence
         self._red_team_gate = red_team_gate
+        self._red_team_input_builder = red_team_input_builder
+        self._red_team_on_missing_deliverable: Literal["block", "skip"] = (
+            red_team_on_missing_deliverable
+        )
         self._vision_gate = vision_gate
         self._receipt_service = receipt_service
+        self._background_tasks = background_tasks
 
     def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
         """Attach the receipt service after construction (boot wiring seam)."""
@@ -117,12 +120,72 @@ class ReviewGateService:
     def set_red_team_gate(self, red_team_gate: RedTeamGate | None) -> None:
         """Attach (or clear) the red-team gate after construction (boot wiring seam).
 
-        Mirrors :meth:`set_vision_gate`: built in on-startup wiring once the
-        boot ``AgentEngine`` exists, after construction. Passing ``None``
-        clears a previously-attached gate so an enabled -> disabled reinit
-        does not leave a stale gate firing.
+        Mirrors :meth:`set_vision_gate`: the red-team runtime is built in
+        on-startup wiring once the boot ``AgentEngine`` exists, after this
+        service is constructed during app construction. Once attached the
+        gate fires on every path to COMPLETED (both :meth:`complete_review`
+        and :meth:`run_pipeline`); the review input is built from the
+        completing task's recorded deliverable by the
+        :class:`DeliverableReviewInputBuilder` attached via
+        :meth:`set_red_team_input_builder`.
         """
         self._red_team_gate = red_team_gate
+
+    def set_red_team_input_builder(
+        self, builder: DeliverableReviewInputBuilder
+    ) -> None:
+        """Attach the red-team review-input builder (boot wiring seam).
+
+        Wired alongside :meth:`set_red_team_gate` once the flight-recorder
+        frame store is connected. The builder sources the deliverable text
+        and execution id the gate evaluates; without it a configured gate
+        falls under the ``on_missing_deliverable`` posture for every task.
+        """
+        self._red_team_input_builder = builder
+
+    def set_background_tasks(self, registry: BackgroundTaskRegistry) -> None:
+        """Attach the background-task registry for gated completions.
+
+        When present, :meth:`dispatch_completion` runs a gated approve in
+        a tracked background task so the inline red-team AgentEngine
+        latency does not block the operator's approve/reject response.
+        """
+        self._background_tasks = registry
+
+    async def drain_background_tasks(self) -> None:
+        """Drain in-flight gated-completion background tasks (shutdown seam).
+
+        A gated approve runs the red-team evaluation in a tracked
+        background task (see :meth:`dispatch_completion`); without this
+        drain a graceful shutdown would cancel an in-flight evaluation and
+        leave the task stranded in IN_REVIEW. No-op when no registry is
+        attached.
+        """
+        if self._background_tasks is not None:
+            await self._background_tasks.drain()
+
+    def set_red_team_on_missing_deliverable(
+        self, policy: Literal["block", "skip"]
+    ) -> None:
+        """Set the red-team posture when no deliverable can be retrieved.
+
+        Mirrors ``RedTeamConfig.on_missing_deliverable``: ``"block"``
+        fails closed (a configured gate never silently passes an
+        un-inspectable deliverable), ``"skip"`` allows completion.
+        """
+        self._red_team_on_missing_deliverable = policy
+
+    def has_completion_gates(self) -> bool:
+        """Return whether any adversarial completion gate is configured.
+
+        Returns:
+            ``True`` when at least one completion gate (red-team or
+            vision) is attached, so a completion must pass every
+            configured gate before reaching COMPLETED. A ``True`` result
+            does not imply both gates run: the chain evaluates only those
+            that are attached.
+        """
+        return self._red_team_gate is not None or self._vision_gate is not None
 
     async def check_can_decide(
         self,
@@ -205,6 +268,35 @@ class ReviewGateService:
             target = TaskStatus.COMPLETED
             transition_reason = f"Review approved by {decided_by}"
             event = APPROVAL_GATE_REVIEW_COMPLETED
+            # The configured adversarial gate(s) get the last word before
+            # COMPLETED: a BLOCK reroutes the human-approved task back to
+            # IN_PROGRESS as rework. This is what makes the red-team gate
+            # fire on the real approval path, not only run_pipeline.
+            (
+                target,
+                transition_reason,
+                event,
+                approved,
+            ) = await run_completion_gates(
+                red_team_gate=self._red_team_gate,
+                vision_gate=self._vision_gate,
+                red_team_input_builder=self._red_team_input_builder,
+                on_missing_deliverable=self._red_team_on_missing_deliverable,
+                task=task,
+                target=target,
+                transition_reason=transition_reason,
+                event=event,
+                approved=approved,
+                vision_input=None,
+            )
+            # A gate that reroutes the human-approved task back to rework
+            # rewrites ``transition_reason`` with its block summary; align
+            # the recorded decision reason so the audit row matches the
+            # transition instead of carrying the stale human note (which
+            # the pipeline path already does via normalized_reason=
+            # transition_reason).
+            if not approved:
+                normalized_reason = transition_reason
         else:
             target = TaskStatus.IN_PROGRESS
             transition_reason = f"Review rejected by {decided_by}"
@@ -224,6 +316,68 @@ class ReviewGateService:
             normalized_reason=normalized_reason,
         )
 
+    async def dispatch_completion(  # noqa: PLR0913 -- mirrors complete_review
+        self,
+        *,
+        task_id: str,
+        requested_by: str,
+        approved: bool,
+        decided_by: str | None = None,
+        reason: str | None = None,
+        approval_id: str | None = None,
+    ) -> bool:
+        """Run :meth:`complete_review`, backgrounding a gated approval.
+
+        When the approval would run the inline red-team gate (an approve
+        with a configured gate and a background registry) the completion
+        is spawned as a tracked background task so the approve/reject HTTP
+        response is not blocked by the inline AgentEngine evaluation,
+        mirroring the mid-execution resume dispatch. The task holds in
+        IN_REVIEW until the background gate transitions it. Every other
+        case (reject, no gate, or no registry) runs inline.
+
+        Returns:
+            ``True`` when the completion was dispatched to the background
+            (the caller must not expect a synchronous transition or its
+            engine-layer errors); ``False`` when it ran inline.
+        """
+        decided_by = resolve_decided_by(decided_by)
+        if (
+            approved
+            and self._red_team_gate is not None
+            and self._background_tasks is not None
+        ):
+            logger.info(
+                RED_TEAM_GATE_DISPATCHED,
+                task_id=task_id,
+                decided_by=decided_by,
+                approval_id=approval_id,
+            )
+            self._background_tasks.spawn(
+                self.complete_review(
+                    task_id=task_id,
+                    requested_by=requested_by,
+                    approved=approved,
+                    decided_by=decided_by,
+                    reason=reason,
+                    approval_id=approval_id,
+                ),
+                event=APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+                task_id=task_id,
+                decided_by=decided_by,
+                approval_id=approval_id,
+            )
+            return True
+        await self.complete_review(
+            task_id=task_id,
+            requested_by=requested_by,
+            approved=approved,
+            decided_by=decided_by,
+            reason=reason,
+            approval_id=approval_id,
+        )
+        return False
+
     async def run_pipeline(  # noqa: PLR0913
         self,
         *,
@@ -232,18 +386,17 @@ class ReviewGateService:
         decided_by: str,
         requested_by: str,
         approval_id: str | None = None,
-        red_team_input: RedTeamReviewInput | None = None,
         vision_input: VisionReviewInput | None = None,
     ) -> PipelineResult:
         """Drive a review pipeline and apply its final verdict.
 
         This is the pipeline-driven entry point. It runs the
-        self-review preflight, executes every stage in
-        ``pipeline``, maps the aggregated :class:`ReviewVerdict` to
-        the same task-engine transition and decision-record flow
-        used by :meth:`complete_review`, and returns the
-        :class:`PipelineResult` so callers can surface stage
-        details to the UI.
+        self-review preflight, executes every stage in ``pipeline``,
+        maps the aggregated verdict to the same task-engine transition
+        and decision-record flow used by :meth:`complete_review`, runs
+        the shared adversarial completion-gate chain, and returns the
+        :class:`PipelineResult` so callers can surface stage details to
+        the UI.
 
         Args:
             task_id: The task under review.
@@ -252,18 +405,14 @@ class ReviewGateService:
                 pipeline's operator or the invoking agent).
             requested_by: Agent that requested the review.
             approval_id: Optional foreign key to an approval item.
-            red_team_input: Optional adversarial-review payload. When
-                this and ``red_team_gate`` are both wired, a pipeline
-                PASS verdict is offered to the red-team gate before
-                the task-engine transition; a BLOCK verdict overrides
-                the pipeline's COMPLETED target and routes the task
-                back to IN_PROGRESS as rework.
             vision_input: Optional GUI-deliverable review payload
                 (screenshots + brief). When this and ``vision_gate`` are
                 both wired, a still-approved verdict is offered to the
                 vision gate after the red-team gate; a BLOCK verdict
                 routes the task back to IN_PROGRESS as rework. Absent
-                input SKIPS the gate (non-GUI deliverable).
+                input SKIPS the vision gate (non-GUI deliverable). The
+                red-team review input is built from the task's recorded
+                deliverable inside the shared gate chain, not passed in.
 
         Returns:
             The :class:`PipelineResult` produced by the pipeline
@@ -278,37 +427,26 @@ class ReviewGateService:
             decided_by=decided_by,
         )
         result = await pipeline.run(task)
-        target, transition_reason, event, approved = self._map_pipeline_verdict(
+        target, transition_reason, event, approved = map_pipeline_verdict(
             result, decided_by
         )
-        if approved:
-            (
-                target,
-                transition_reason,
-                event,
-                approved,
-            ) = await self._apply_red_team_gate(
-                task_id=task_id,
-                target=target,
-                transition_reason=transition_reason,
-                event=event,
-                approved=approved,
-                red_team_input=red_team_input,
-            )
-        if approved:
-            (
-                target,
-                transition_reason,
-                event,
-                approved,
-            ) = await self._apply_vision_gate(
-                task_id=task_id,
-                target=target,
-                transition_reason=transition_reason,
-                event=event,
-                approved=approved,
-                vision_input=vision_input,
-            )
+        (
+            target,
+            transition_reason,
+            event,
+            approved,
+        ) = await run_completion_gates(
+            red_team_gate=self._red_team_gate,
+            vision_gate=self._vision_gate,
+            red_team_input_builder=self._red_team_input_builder,
+            on_missing_deliverable=self._red_team_on_missing_deliverable,
+            task=task,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            approved=approved,
+            vision_input=vision_input,
+        )
         await self._apply_decision(
             task=task,
             target=target,
@@ -321,200 +459,6 @@ class ReviewGateService:
             normalized_reason=transition_reason,
         )
         return result
-
-    async def _apply_red_team_gate(  # noqa: PLR0913
-        self,
-        *,
-        task_id: str,
-        target: TaskStatus,
-        transition_reason: str,
-        event: str,
-        approved: bool,
-        red_team_input: RedTeamReviewInput | None,
-    ) -> tuple[TaskStatus, str, str, bool]:
-        """Invoke the red-team gate; override target on BLOCK verdict.
-
-        Called after the review pipeline returns its target verdict but
-        before the task-engine transition lands. When the gate is
-        configured AND ``red_team_input`` is provided, the gate evaluates
-        the deliverable; a BLOCK verdict reroutes the task to
-        ``IN_PROGRESS`` (rework) with the red-team summary as the
-        transition reason. PASS / PASS_WITH_FINDINGS leaves the existing
-        target unchanged so the original review-pipeline verdict stands.
-
-        When the gate is configured but ``red_team_input`` is absent the
-        transition is blocked (fail-closed): a configured security gate
-        must not be silently bypassed by a caller that omits the
-        adversarial-review payload. The task is held out of COMPLETED and
-        routed back to ``IN_PROGRESS`` until the input is wired.
-
-        Returns:
-            ``(target, reason, event, approved)`` rerouted to
-            ``IN_PROGRESS`` rework when the gate blocks or the input
-            is missing; the original tuple otherwise.
-        """
-        gate = self._red_team_gate
-        if gate is None:
-            return target, transition_reason, event, approved
-        if red_team_input is None:
-            logger.warning(
-                RED_TEAM_GATE_SKIPPED,
-                task_id=task_id,
-                reason="red_team_input_required",
-                note=(
-                    "Red-team gate is configured but the caller did not "
-                    "supply red_team_input; blocking completion (fail-closed) "
-                    "until the adversarial-review payload is wired."
-                ),
-            )
-            return (
-                TaskStatus.IN_PROGRESS,
-                "red_team_input_required",
-                RED_TEAM_GATE_SKIPPED,
-                False,
-            )
-
-        from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
-
-        result = await gate.evaluate(red_team_input)
-        if result.verdict is not RedTeamVerdict.BLOCK:
-            return target, transition_reason, event, approved
-        logger.warning(
-            RED_TEAM_REWORK_ROUTED,
-            task_id=task_id,
-            execution_id=red_team_input.execution_id,
-            findings=len(result.report.findings),
-            verdict=result.verdict.value,
-        )
-        rework_reason = f"Red-team review blocked completion: {result.report.summary}"
-        return (
-            TaskStatus.IN_PROGRESS,
-            rework_reason,
-            APPROVAL_GATE_REVIEW_REWORK,
-            False,
-        )
-
-    async def _apply_vision_gate(  # noqa: PLR0913
-        self,
-        *,
-        task_id: str,
-        target: TaskStatus,
-        transition_reason: str,
-        event: str,
-        approved: bool,
-        vision_input: VisionReviewInput | None,
-    ) -> tuple[TaskStatus, str, str, bool]:
-        """Invoke the vision gate; override target on a BLOCK verdict.
-
-        Chained after the red-team gate. The vision gate applies only to
-        GUI deliverables, signalled by the caller supplying
-        ``vision_input`` (with screenshots). When the gate is configured
-        but no ``vision_input`` is provided the gate SKIPS (leaves the
-        target unchanged): unlike the red-team gate it must not fail
-        closed, since most deliverables are not GUI apps and would
-        otherwise be blocked wholesale. A BLOCK verdict reroutes the task
-        to ``IN_PROGRESS`` (rework) with the vision summary as the reason.
-
-        Returns:
-            ``(target, reason, event, approved)`` rerouted to
-            ``IN_PROGRESS`` rework on a BLOCK verdict; the original
-            tuple otherwise (gate disabled, no vision input, or
-            non-BLOCK verdict).
-        """
-        gate = self._vision_gate
-        if gate is None:
-            return target, transition_reason, event, approved
-        if vision_input is None:
-            logger.debug(
-                VISION_GATE_SKIPPED,
-                task_id=task_id,
-                reason="no_vision_input",
-                note=(
-                    "Vision gate is configured but the deliverable carried "
-                    "no screenshots; skipping (non-GUI deliverable)."
-                ),
-            )
-            return target, transition_reason, event, approved
-
-        from synthorg.security.visionverify.models import (  # noqa: PLC0415
-            VisionVerdict,
-        )
-
-        result = await gate.evaluate(vision_input)
-        if result.verdict is not VisionVerdict.BLOCK:
-            return target, transition_reason, event, approved
-        logger.warning(
-            VISION_REWORK_ROUTED,
-            task_id=task_id,
-            execution_id=vision_input.execution_id,
-            findings=len(result.report.findings),
-            verdict=result.verdict.value,
-        )
-        rework_reason = f"Vision review blocked completion: {result.report.summary}"
-        return (
-            TaskStatus.IN_PROGRESS,
-            rework_reason,
-            APPROVAL_GATE_REVIEW_REWORK,
-            False,
-        )
-
-    @staticmethod
-    def _map_pipeline_verdict(
-        result: PipelineResult,
-        decided_by: str,
-    ) -> tuple[TaskStatus, str, str, bool]:
-        """Translate a pipeline result into the transition inputs.
-
-        Returns:
-            ``(target_status, reason, event, approved)`` -- rework
-            tuple on FAIL, completed tuple on PASS / SKIP.
-        """
-        if result.final_verdict is ReviewVerdict.FAIL:
-            failing = next(
-                (
-                    stage
-                    for stage in result.stage_results
-                    if stage.verdict is ReviewVerdict.FAIL
-                ),
-                None,
-            )
-            detail = (
-                failing.reason
-                if failing and failing.reason
-                else "pipeline reported failure"
-            )
-            return (
-                TaskStatus.IN_PROGRESS,
-                f"Pipeline rejected review by {decided_by}: {detail}",
-                APPROVAL_GATE_REVIEW_REWORK,
-                False,
-            )
-        if result.final_verdict is ReviewVerdict.SKIP:
-            logger.warning(
-                APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
-                task_id=result.task_id,
-                decided_by=decided_by,
-            )
-            stages = ", ".join(stage.stage_name for stage in result.stage_results)
-            reason = f"Pipeline all-skipped ({stages or 'no stages'})"
-            return (
-                TaskStatus.COMPLETED,
-                reason,
-                APPROVAL_GATE_REVIEW_COMPLETED,
-                True,
-            )
-        stages = ", ".join(stage.stage_name for stage in result.stage_results)
-        reason = (
-            f"Pipeline passed ({stages})"
-            if stages
-            else "Pipeline passed (no stages configured)"
-        )
-        return (
-            TaskStatus.COMPLETED,
-            reason,
-            APPROVAL_GATE_REVIEW_COMPLETED,
-            True,
-        )
 
     async def _apply_decision(  # noqa: PLR0913
         self,

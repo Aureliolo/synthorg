@@ -69,8 +69,6 @@ from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.security.redteam.builder import (
     RedTeamRuntime,
-    RedTeamToolSeed,
-    build_red_team_runtime,
     build_red_team_tool_seed,
 )
 from synthorg.security.state import SecurityStateSlice
@@ -90,6 +88,7 @@ from synthorg.workers._agent_engine_collaborators import (
     boot_steering_inbox,
     build_boot_flight_recorder_sink,
 )
+from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
@@ -843,7 +842,7 @@ async def build_runtime_services(
         provider=provider,
         decomposition_model=decomposition_model,
     )
-    red_team_runtime = _build_red_team_runtime_or_none(
+    red_team_runtime = build_red_team_runtime_or_none(
         app_state=app_state,
         engine=engine,
         provider_name=names[0],
@@ -871,43 +870,6 @@ async def build_runtime_services(
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
         vision_gate=vision_gate,
-    )
-
-
-def _build_red_team_runtime_or_none(
-    *,
-    app_state: AppState,
-    engine: AgentEngine,
-    provider_name: str,
-    seed: RedTeamToolSeed,
-) -> RedTeamRuntime | None:
-    """Construct the red-team runtime when the gate is enabled.
-
-    Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``
-    and pins the red-team agent's :class:`ModelConfig` to the company's
-    active provider with the vendor-agnostic ``example-medium-001``
-    model id; operators override via the post-init swap path. The
-    ``seed`` parameter carries the per-boot
-    :class:`InMemoryRedTeamReportRepository` and
-    :class:`SubmitRedTeamReportTool` already registered on the engine's
-    tool registry, so the runtime shares those instances rather than
-    constructing fresh ones.
-
-    Returns:
-        The ``RedTeamRuntime`` when the gate is enabled, otherwise
-        ``None``.
-    """
-    from synthorg.core.agent import ModelConfig  # noqa: PLC0415
-
-    return build_red_team_runtime(
-        config=app_state.config.security.red_team,
-        engine=engine,
-        model=ModelConfig(
-            provider=provider_name,
-            model_id="example-medium-001",
-        ),
-        seed=seed,
-        clock=app_state.clock,
     )
 
 
