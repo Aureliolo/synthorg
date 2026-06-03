@@ -23,8 +23,11 @@ from synthorg.deliverable_receipts.state_slice import DeliverableReceiptStateSli
 from synthorg.docs_engine.service import DocsService
 from synthorg.docs_engine.state import DocsStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.audit import AuditLog
+from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.state import SecurityStateSlice
+from synthorg.security.trust.service import TrustService
 from tests._shared import FakeClock, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
@@ -91,3 +94,29 @@ async def test_wiring_passes_none_when_no_red_team_store(
     await _wire_deliverable_receipts(app_state)
 
     assert captured["redteam_reports"] is None
+
+
+def test_publishing_red_team_reports_preserves_other_security_fields() -> None:
+    """The publish step's partial wire must not clobber the slice's other fields.
+
+    ``install_runtime_services`` publishes ``red_team_reports`` onto an
+    already-populated ``SecurityStateSlice`` via ``app_state.wire`` (a
+    field-level ``model_copy(update=...)``). A regression to a wholesale
+    ``swap_slice`` would silently drop the audit log / trust service /
+    autonomy strategy wired at construction, breaking security-gated
+    endpoints at startup.
+    """
+    app_state = make_app_state(
+        audit_log=mock_of[AuditLog](),
+        trust_service=mock_of[TrustService](),
+        autonomy_change_strategy=mock_of[AutonomyChangeStrategy](),
+    )
+    repo = InMemoryRedTeamReportRepository()
+
+    app_state.wire(SecurityStateSlice, red_team_reports=repo)
+
+    security = app_state.slice(SecurityStateSlice)
+    assert security.red_team_reports is repo
+    assert security.audit_log is not None
+    assert security.trust_service is not None
+    assert security.autonomy_change_strategy is not None

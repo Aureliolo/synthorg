@@ -96,7 +96,11 @@ from synthorg.tools.browser.errors import (
     BrowserScreenshotError,
     BrowserStartCommandError,
 )
-from synthorg.tools.network_validator import is_allowed_http_scheme
+from synthorg.tools.network_validator import (
+    extract_hostname,
+    is_allowed_http_scheme,
+    is_cloud_metadata_host,
+)
 
 if TYPE_CHECKING:
     from synthorg.tools.browser._protocols import ScreenshotDiffer
@@ -1077,6 +1081,18 @@ class BrowserTool(BaseTool):
                 raise BrowserArgumentError(
                     "url must use http:// or https:// (use the 'path' "
                     "field for workspace-relative local files)",
+                    context={"url": args.url},
+                )
+            # Block link-local / cloud-metadata endpoints
+            # (169.254.169.254, metadata.google.internal, fe80::) which
+            # are never a legitimate app-under-test target but are
+            # reachable inside a sandbox with host-network access.
+            # Loopback and private ranges stay allowed: the app under
+            # test runs on localhost or a docker-network address.
+            host = extract_hostname(args.url)
+            if host is not None and is_cloud_metadata_host(host):
+                raise BrowserArgumentError(
+                    "url must not target a link-local or cloud-metadata endpoint",
                     context={"url": args.url},
                 )
             return args.url

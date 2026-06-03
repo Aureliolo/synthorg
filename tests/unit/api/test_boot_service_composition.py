@@ -1,10 +1,10 @@
 """Regression tests for boot-time service composition.
 
-Two production outages this substrate must never reintroduce:
+Two invariants the boot path must hold:
 
-* The slice migration briefly dropped the ``_init_derived_services``
-  call, so ``ConfigResolver`` and the provider-management services were
-  never composed and every resolver-dependent endpoint 503'd at boot.
+* ``_init_derived_services`` must compose ``ConfigResolver`` and the
+  provider-management services into their slices; without that call
+  every resolver-dependent endpoint 503s at boot.
   ``TestComposeSettingsDependentServices`` guards that they are wired
   into their slices.
 * ``idempotency_service_of`` lazily composes the service from the

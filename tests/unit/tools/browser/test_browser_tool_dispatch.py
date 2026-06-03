@@ -426,3 +426,54 @@ class TestPathTraversalRejection:
         )
         assert result.is_error is True
         assert result.metadata["error_type"] == "BrowserArgumentError"
+
+
+class TestUrlSchemeRestriction:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "file:///etc/passwd",
+            "data:text/html,<script>1</script>",
+            "javascript:alert(1)",
+            "-http://flag-injection",
+            "ftp://example.test/resource",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://metadata.google.internal/",
+        ],
+        ids=[
+            "file",
+            "data",
+            "javascript",
+            "flag_injection",
+            "ftp",
+            "metadata_ip",
+            "metadata_host",
+        ],
+    )
+    async def test_disallowed_url_rejected(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+        url: str,
+    ) -> None:
+        """Non-http(s) schemes and metadata endpoints are rejected at the gate."""
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(arguments={"mode": "navigate", "url": url})
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"
+
+    async def test_loopback_http_url_passes_the_gate(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+    ) -> None:
+        """A loopback http url (the app-under-test) is not rejected at the gate.
+
+        Any error here originates from the stubbed sandbox, never from the
+        scheme / metadata validation, so the app-under-test stays reachable.
+        """
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "navigate", "url": "http://localhost:5173/"},
+        )
+        assert result.metadata.get("error_type") != "BrowserArgumentError"

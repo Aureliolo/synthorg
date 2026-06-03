@@ -3,7 +3,7 @@
 Source-of-truth lives in
 :mod:`synthorg.providers.management.capability_dtos` so the
 providers / management subsystem can validate the same shapes
-without crossing into the API layer (audit-144).
+without crossing into the API layer.
 
 The underscore-prefixed variants
 (``_ApiKeyRotation`` / ``_CustomHeaderRotation`` / ``_OAuthRotation``

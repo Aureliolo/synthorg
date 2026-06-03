@@ -2,7 +2,7 @@
 
 Source-of-truth lives in :mod:`synthorg.config.rate_limits` so the
 ``synthorg.settings`` subsystem can consume it without crossing into
-the API layer (audit-144).
+the API layer.
 """
 
 from synthorg.config.rate_limits import PerOpConcurrencyConfig

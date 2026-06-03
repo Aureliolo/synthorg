@@ -614,7 +614,7 @@ class TestSubscriptionRotationToSGuard:
 
 @pytest.mark.unit
 class TestAuditFailureIsolation:
-    """The mutation succeeds even if the audit write fails (T2 from triage)."""
+    """The mutation succeeds even if the audit write fails."""
 
     async def test_audit_repo_raises_does_not_break_mutation(
         self,

@@ -222,7 +222,7 @@ async def test_build_ontology_versioning_returns_service(
 
     Mirrors the SQLite-side unit test
     (``tests/unit/persistence/test_backend_capability_methods.py``)
-    so the ARC-1 capability pattern is exercised on both backends.
+    so the capability-method pattern is exercised on both backends.
     """
     from synthorg.versioning.service import VersioningService
 

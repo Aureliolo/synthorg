@@ -137,8 +137,9 @@ async def test_desktop_launches_app_and_captures_real_screenshots(
         )
         _assert_real_capture(tmp_path, first, "ready")
 
-        # Inject keyboard input through xdotool to prove the input path,
-        # then capture again: the second shot must also be a real PNG.
+        # Exercise the key-injection code path (xdotool) end to end; this
+        # asserts the call succeeds, not a specific visual change, then
+        # captures again to confirm the second shot is also a real PNG.
         keyed = await tool.execute(arguments={"mode": "key", "keys": "Tab"})
         assert keyed.is_error is False, f"key injection failed: {keyed.content!r}"
 

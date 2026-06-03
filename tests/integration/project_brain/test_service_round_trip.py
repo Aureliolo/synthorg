@@ -323,20 +323,26 @@ class TestProjectBrainRoundTrip:
     async def test_multi_session_gap_resume_answers_from_brain(
         self, tmp_path: Path
     ) -> None:
-        """After a restart over durable storage, a new agent answers what is
-        decided / open / blocked from the brain rather than re-deriving."""
-        first = await _build(tmp_path)
-        await _seed_resume_state(first)
+        """A reconstructed service answers decided/open/blocked over durable stores.
 
-        # Model a multi-session gap: the durable stores (memory backend,
-        # SQL brain repo, git workspace) survive while the service and
-        # facade objects are reconstructed, as on a process restart.
-        resumed = await _build(
-            tmp_path,
-            memory_backend=first.backend,
-            repo=first.repo,
-        )
+        Models a multi-session resume: the durable stores (a persistent
+        memory backend -- here a reused InMemoryBackend instance -- plus the
+        SQL brain repo and the git workspace) survive while the service and
+        facade objects are rebuilt, as on a process restart. The structured
+        ``list_current`` reads go through the SQL repo, so they prove a fresh
+        service reads persisted state, not a shared in-process cache.
+        Volatile-index recovery (boot replay of a persisted-but-unindexed
+        entry) is covered separately by ``test_boot_replay_heals_unindexed_gap``.
+        """
+        first = await _build(tmp_path)
         try:
+            await _seed_resume_state(first)
+
+            resumed = await _build(
+                tmp_path,
+                memory_backend=first.backend,
+                repo=first.repo,
+            )
             entries = await resumed.facade.retrieve(
                 agent_id=_BOB,
                 project_id=_PROJECT,
@@ -350,7 +356,7 @@ class TestProjectBrainRoundTrip:
             assert "staging" in corpus  # the blocker subject
 
             # The structured durable path answers the same question through
-            # the freshly-built service, proving it reads persisted state.
+            # the freshly-built service, proving it reads persisted SQL state.
             service = resumed.runtime.brain_service  # type: ignore[attr-defined]
             decided = await service.list_current(
                 project_id=_PROJECT, status=BrainEntryStatus.ACCEPTED
@@ -361,6 +367,9 @@ class TestProjectBrainRoundTrip:
             blocked = await service.list_current(
                 project_id=_PROJECT, status=BrainEntryStatus.BLOCKED
             )
+            assert len(decided) == 1
+            assert len(open_qs) == 1
+            assert len(blocked) == 1
             assert {d.entry_kind for d in decided} == {BrainEntryKind.DECISION}
             assert {q.entry_kind for q in open_qs} == {BrainEntryKind.OPEN_QUESTION}
             assert {b.entry_kind for b in blocked} == {BrainEntryKind.BLOCKER}
