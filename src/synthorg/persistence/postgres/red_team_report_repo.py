@@ -8,11 +8,12 @@ backend, where the dual-backend drift gate maps TEXT to TEXT).
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability import get_logger, safe_error_description
@@ -135,11 +136,13 @@ class PostgresRedTeamReportArchiveRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(r) for r in rows)
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
 
-        ``threshold`` is an ``AwareDatetime`` so naive values cannot slip
-        through silently.
+        ``threshold`` must be timezone-aware; ``normalize_utc`` rejects naive
+        values so they cannot slip through silently. The annotation is a plain
+        ``datetime`` (matching the sibling repositories) so runtime
+        type-checking does not reject an aware ``datetime`` instance.
 
         Returns:
             Number of rows deleted.

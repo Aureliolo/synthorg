@@ -21,9 +21,10 @@ Concrete implementations live in the backend packages
 All protocols are ``@runtime_checkable``; all methods are ``async``.
 """
 
+from datetime import datetime
 from typing import Protocol, override, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyRepository
@@ -103,13 +104,15 @@ class RedTeamReportArchiveRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``. Returns rows removed.
 
-        ``threshold`` must be timezone-aware (an ``AwareDatetime``);
-        passing a naive value is a contract violation rejected at the
-        persistence boundary so the cut-off cannot drift with the session
-        timezone.
+        ``threshold`` must be timezone-aware; passing a naive value is a
+        contract violation rejected at the persistence boundary (via
+        ``normalize_utc``) so the cut-off cannot drift with the session
+        timezone. The annotation is a plain ``datetime`` (matching the other
+        repository protocols) rather than ``AwareDatetime`` so runtime
+        type-checking does not reject an aware ``datetime`` instance.
 
         Raises:
             QueryError: If the database query fails.
