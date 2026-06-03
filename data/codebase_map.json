@@ -5693,7 +5693,7 @@
     },
     {
       "kind": "service",
-      "loc": 325,
+      "loc": 327,
       "loc_cap": 600,
       "module": "src/synthorg/engine/pipeline/forecast_gate.py",
       "owning_feature": "engine"
@@ -16095,7 +16095,7 @@
     },
     {
       "kind": "code",
-      "loc": 59,
+      "loc": 63,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/_grounding_findings.py",
       "owning_feature": "security"

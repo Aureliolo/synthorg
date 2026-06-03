@@ -293,18 +293,19 @@ class CostForecaster:
             if signal.estimated_turns_per_role is not None
             else _DEFAULT_TURNS_PER_ROLE
         )
-        roles = tuple(signal.role_skeleton)
-        # Match compute_brief_hash: assignment keys are normalised, so resolve
-        # each role's tier against a normalised map. A raw lookup would miss a
-        # case- or whitespace-divergent assignment key and silently fall back
-        # to the medium tier, producing a forecast that disagrees with the hash.
+        # Canonicalise exactly as compute_brief_hash does so two briefs that
+        # hash equal also estimate equal: roles are normalised and assignment
+        # keys normalised / values stripped. A raw role or un-stripped model id
+        # would miss the assignment, skew the tier, and pass a divergent key to
+        # history_lookup, making same-hash forecasts disagree.
+        roles = tuple(normalize_identifier(role) for role in signal.role_skeleton)
         normalized_assignments = {
-            normalize_identifier(role): model_id
+            normalize_identifier(role): model_id.strip()
             for role, model_id in signal.model_assignments.items()
         }
         tiers: list[str] = []
         for role_id in roles:
-            model_id = normalized_assignments.get(normalize_identifier(role_id), "")
+            model_id = normalized_assignments.get(role_id, "")
             tier = tier_from_model_id(model_id) if model_id else "medium"
             tiers.append(tier if tier is not None else "medium")
 

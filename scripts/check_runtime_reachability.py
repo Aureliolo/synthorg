@@ -102,13 +102,42 @@ def _callee_name(call: ast.Call) -> str | None:
     return None
 
 
+def _qualified_functions(tree: ast.AST) -> list[tuple[str, _FuncDef]]:
+    """Return ``(qualified_name, node)`` for every function in *tree*.
+
+    The qualified name is the dotted scope path: ``ClassName.method`` for a
+    method, ``outer.inner`` for a nested function, the bare name for a
+    module-level function. Class scopes contribute their name to the prefix;
+    function scopes contribute theirs so nested helpers are distinguishable.
+    """
+    found: list[tuple[str, _FuncDef]] = []
+
+    def _walk(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                qualified = f"{prefix}{child.name}"
+                found.append((qualified, child))
+                _walk(child, f"{qualified}.")
+            elif isinstance(child, ast.ClassDef):
+                _walk(child, f"{prefix}{child.name}.")
+            else:
+                _walk(child, prefix)
+
+    _walk(tree, "")
+    return found
+
+
 def _functions_named(tree: ast.AST, name: str) -> list[_FuncDef]:
-    """Return every (possibly nested / method) function named *name*."""
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, _FuncDef) and node.name == name
-    ]
+    """Return functions matching *name* (qualified ``A.b`` or bare leaf).
+
+    A dotted *name* matches only the function at that exact scope path; a bare
+    *name* matches every function whose own (leaf) name equals it, so the
+    caller can detect and reject an ambiguous bare match.
+    """
+    qualified = _qualified_functions(tree)
+    if "." in name:
+        return [node for qname, node in qualified if qname == name]
+    return [node for qname, node in qualified if qname.rsplit(".", 1)[-1] == name]
 
 
 def _direct_calls(func: _FuncDef) -> list[ast.Call]:
@@ -119,21 +148,28 @@ def _direct_calls(func: _FuncDef) -> list[ast.Call]:
     inner closure or a sibling method is not an edge of *func* itself.
     Argument-nested calls -- ``spawn(self.complete_review(...))`` -- are still
     collected because the argument expression belongs to *func*'s own scope.
+    Only the function body is scanned: decorators, default-argument values, and
+    return annotations are definition-time expressions that never run when the
+    function is called, so they must not satisfy a runtime edge.
     """
     calls: list[ast.Call] = []
+    _scopes = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda
 
     def _visit(node: ast.AST) -> None:
         for child in ast.iter_child_nodes(node):
-            if isinstance(
-                child,
-                ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda,
-            ):
+            if isinstance(child, _scopes):
                 continue
             if isinstance(child, ast.Call):
                 calls.append(child)
             _visit(child)
 
-    _visit(func)
+    for stmt in func.body:
+        # A body statement that is itself a nested def / class introduces a new
+        # scope; skip it so its calls are not attributed to *func*. _visit only
+        # filters child nodes, so this top-level guard is required too.
+        if isinstance(stmt, _scopes):
+            continue
+        _visit(stmt)
     return calls
 
 
@@ -165,6 +201,13 @@ def _check_edge(repo_root: Path, edge: RequiredEdge) -> str | None:
         return (
             f"  {edge.module}: no function named {edge.enclosing_fn!r} "
             f"(required edge -> {edge.required_callee})"
+        )
+    if "." not in edge.enclosing_fn and len(funcs) > 1:
+        return (
+            f"  {edge.module}: {edge.enclosing_fn!r} is ambiguous "
+            f"({len(funcs)} functions share the name); qualify it in the "
+            f"manifest (e.g. ClassName.{edge.enclosing_fn}) so the edge "
+            f"resolves to exactly one function"
         )
     if not any(_body_calls(func, edge.required_callee) for func in funcs):
         return (

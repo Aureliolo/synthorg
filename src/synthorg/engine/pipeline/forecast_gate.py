@@ -29,6 +29,7 @@ from synthorg.budget.forecast_roles import (
     RoleSkeletonProvider,
 )
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
@@ -205,6 +206,7 @@ class ForecastGate:
         try:
             skeleton = await self._role_skeleton_provider()
         except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 BUDGET_PREFLIGHT_ERROR,
                 reason="role_skeleton_provider_failed",

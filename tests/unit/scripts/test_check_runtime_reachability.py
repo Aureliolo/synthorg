@@ -123,6 +123,68 @@ def test_call_in_nested_def_does_not_count_as_edge(
     assert "outer no longer calls inner" in capsys.readouterr().out
 
 
+def test_definition_time_call_does_not_count_as_edge(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A call in a default-argument expression is not a runtime edge.
+
+    Decorators, default-argument values, and return annotations run at
+    definition time, not when the function is called, so they must not
+    satisfy a required runtime edge.
+    """
+    _seed(
+        tmp_path,
+        manifest="src/synthorg/m.py outer inner #1 -- must be a runtime call\n",
+        files={
+            "src/synthorg/m.py": "def outer(x=inner()):\n    other()\n",
+        },
+    )
+    assert _MODULE._run(tmp_path) == 1
+    assert "outer no longer calls inner" in capsys.readouterr().out
+
+
+def test_ambiguous_bare_name_fails_closed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A bare enclosing-fn name matching >1 function fails loudly.
+
+    Two methods sharing the name means the edge could be satisfied by the
+    wrong one; the gate refuses to guess and demands a qualified name.
+    """
+    _seed(
+        tmp_path,
+        manifest="src/synthorg/m.py outer inner #1 -- ambiguous bare name\n",
+        files={
+            "src/synthorg/m.py": (
+                "class A:\n    def outer(self):\n        inner()\n"
+                "class B:\n    def outer(self):\n        other()\n"
+            ),
+        },
+    )
+    assert _MODULE._run(tmp_path) == 1
+    assert "ambiguous" in capsys.readouterr().out
+
+
+def test_qualified_name_resolves_exact_method(tmp_path: Path) -> None:
+    """A qualified ``Class.method`` edge resolves to exactly that method.
+
+    ``A.outer`` calls ``inner`` and ``B.outer`` does not; qualifying the
+    manifest entry pins the edge to ``A.outer`` even though the bare name is
+    shared.
+    """
+    _seed(
+        tmp_path,
+        manifest="src/synthorg/m.py A.outer inner #1 -- qualified edge\n",
+        files={
+            "src/synthorg/m.py": (
+                "class A:\n    def outer(self):\n        inner()\n"
+                "class B:\n    def outer(self):\n        other()\n"
+            ),
+        },
+    )
+    assert _MODULE._run(tmp_path) == 0
+
+
 def test_severed_edge_fails_loudly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

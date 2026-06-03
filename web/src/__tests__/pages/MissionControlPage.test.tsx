@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { getCockpitSnapshot, getRedTeamReport } from '@/api/endpoints/cockpit'
@@ -110,6 +110,30 @@ describe('MissionControlPage', () => {
     // No Replay click: a URL execution id makes the recorder the initial tab
     // (not the live tab), so the recorder auto-loads the run and the playback
     // control appears straight away.
+    expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  it('resyncs to the recorder when the URL execution id changes while mounted', async () => {
+    function Nav() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/?executionId=exec-1')}>
+          go-replay
+        </button>
+      )
+    }
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Nav />
+        <MissionControlPage />
+      </MemoryRouter>,
+    )
+    // Starts on the live tab (no execution id): no playback control yet.
+    await screen.findByText('Active agents')
+    expect(screen.queryByRole('button', { name: 'Play' })).not.toBeInTheDocument()
+    // Navigate to a deep link while the page stays mounted; the recorder must
+    // follow the URL rather than freeze on the initial (empty) value.
+    fireEvent.click(screen.getByRole('button', { name: 'go-replay' }))
     expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 

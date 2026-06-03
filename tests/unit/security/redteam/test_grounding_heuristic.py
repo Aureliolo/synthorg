@@ -8,12 +8,40 @@ confidence bounds.
 
 import pytest
 
+from synthorg.security.redteam._grounding_findings import evidence_excerpt
 from synthorg.security.redteam.grounding.heuristic import HeuristicGroundingChecker
 from synthorg.security.redteam.grounding.models import (
     HEURISTIC_CONFIDENCE_CEILING,
     HEURISTIC_CONFIDENCE_FLOOR,
     UngroundedClaim,
 )
+
+
+def _claim(excerpt: str) -> UngroundedClaim:
+    return UngroundedClaim(
+        excerpt=excerpt, reason="numeric claim", confidence=0.5, source="heuristic"
+    )
+
+
+@pytest.mark.unit
+class TestEvidenceExcerpt:
+    """``evidence_excerpt`` never exceeds its cap, including tiny caps."""
+
+    def test_short_excerpt_returned_verbatim(self) -> None:
+        assert evidence_excerpt(_claim("brief"), max_chars=240) == "brief"
+
+    def test_long_excerpt_truncated_with_ellipsis(self) -> None:
+        result = evidence_excerpt(_claim("x" * 50), max_chars=10)
+        assert len(result) == 10
+        assert result == f"{'x' * 7}..."
+
+    @pytest.mark.parametrize(
+        ("max_chars", "expected"),
+        [(0, ""), (1, "."), (2, ".."), (3, "...")],
+    )
+    def test_tiny_cap_is_honoured(self, max_chars: int, expected: str) -> None:
+        # A cap at or below the ellipsis width must never overflow to "...".
+        assert evidence_excerpt(_claim("y" * 20), max_chars=max_chars) == expected
 
 
 @pytest.fixture

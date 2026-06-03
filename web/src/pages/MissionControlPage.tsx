@@ -48,6 +48,17 @@ export default function MissionControlPage() {
   const [replayExecutionId, setReplayExecutionId] = useState<string | null>(
     urlExecutionId,
   )
+  // useState seeds tab/replay only on first render. When the URL execution id
+  // changes while the page stays mounted (e.g. a fresh deep link), adjust state
+  // during render -- React's sanctioned alternative to a sync-in-effect: it
+  // re-renders before committing, with no extra paint, and the recorder follows
+  // the URL instead of freezing on the first value.
+  const [syncedExecutionId, setSyncedExecutionId] = useState(urlExecutionId)
+  if (urlExecutionId !== syncedExecutionId) {
+    setSyncedExecutionId(urlExecutionId)
+    setReplayExecutionId(urlExecutionId)
+    setTab(urlExecutionId ? 'recorder' : 'live')
+  }
 
   function handleReplay(executionId: string): void {
     setReplayExecutionId(executionId)

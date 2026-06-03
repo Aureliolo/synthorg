@@ -65,6 +65,7 @@ from synthorg.observability.events.evals import (
     EVALS_SUITE_RUN_COMPLETE,
     EVALS_SUITE_RUN_START,
 )
+from synthorg.providers.cassette.provider import CassetteCompletionProvider
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.protocol import CompletionProvider
 
@@ -140,22 +141,24 @@ def _provider_descriptor(
 def _reject_unplayable_cassette(
     cassette: Path | None, provider: CompletionProvider | None
 ) -> None:
-    """Refuse a cassette label without a provider that actually replays it.
+    """Refuse a cassette label unless the provider actually replays it.
 
     A cassette is a determinism-source label only; nothing in the runner
-    loads it. Without an injected provider that replays it, the default
-    ``ScriptedDriver`` would run while the scorecard stamps a
-    ``cassette:<name>`` provenance it never honoured.
+    loads it. ``_provider_descriptor`` stamps ``cassette:<name>`` for any
+    non-null cassette, so unless the injected provider is a
+    :class:`CassetteCompletionProvider` the scorecard would claim a cassette
+    provenance the run never honoured (a default ``ScriptedDriver``, or any
+    other provider, would run instead). Fail closed rather than mislabel.
 
     Raises:
-        CassettePlaybackUnavailableError: ``cassette`` is set but no
-            ``provider`` was injected to replay it.
+        CassettePlaybackUnavailableError: ``cassette`` is set but the injected
+            ``provider`` is not a cassette-backed provider that replays it.
     """
-    if cassette is not None and provider is None:
+    if cassette is not None and not isinstance(provider, CassetteCompletionProvider):
         msg = (
-            f"cassette {cassette.name!r} was supplied without a provider that "
-            "replays it; inject the cassette-backed provider via `provider=` "
-            "so the scorecard's determinism source is honest"
+            f"cassette {cassette.name!r} was supplied without a cassette-backed "
+            "provider that replays it; inject a CassetteCompletionProvider via "
+            "`provider=` so the scorecard's determinism source is honest"
         )
         raise CassettePlaybackUnavailableError(msg)
 

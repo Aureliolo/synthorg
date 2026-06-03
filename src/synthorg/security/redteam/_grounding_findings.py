@@ -42,12 +42,16 @@ def evidence_excerpt(
         The excerpt, truncated with an ellipsis when it exceeds
         ``max_chars``.
     """
+    if max_chars <= 0:
+        return ""
+    # A cap at or below the ellipsis width cannot fit "..." plus any prefix;
+    # return as much of the ellipsis as the cap allows so the result never
+    # exceeds max_chars.
+    if max_chars <= _ELLIPSIS_OVERHEAD:
+        return _ELLIPSIS[:max_chars]
     if len(claim.excerpt) <= max_chars:
         return claim.excerpt
-    # Clamp the kept-prefix length: a max_chars at or below the ellipsis
-    # overhead would otherwise produce a negative slice index that grabs the
-    # tail of the excerpt instead of truncating it.
-    keep = max(0, max_chars - _ELLIPSIS_OVERHEAD)
+    keep = max_chars - _ELLIPSIS_OVERHEAD
     return f"{claim.excerpt[:keep]}{_ELLIPSIS}"
 
 
