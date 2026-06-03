@@ -1,11 +1,10 @@
 import { ClipboardList } from 'lucide-react'
 
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
-import { LiveRegion } from '@/components/ui/live-region'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
-import { ChatInputArea } from './ChatInputArea'
 import { useMetaProposeState, type MetaProposeMessage } from './useMetaProposeState'
 
 const INPUT_LABEL = 'Work request'
@@ -67,21 +66,21 @@ export function MetaPropose() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-section-gap">
       <div
         ref={ctrl.scrollRef}
+        role="log"
+        aria-label="Clarify and propose conversation"
         className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
       >
-        <LiveRegion politeness="polite">
-          {ctrl.messages.map((msg) => (
-            <ProposeBubble key={msg.id} msg={msg} />
-          ))}
-          {ctrl.proposeLoading && (
-            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-              Working on it...
-            </div>
-          )}
-        </LiveRegion>
+        {ctrl.messages.map((msg) => (
+          <ProposeBubble key={msg.id} msg={msg} />
+        ))}
+        {ctrl.proposeLoading && (
+          <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
+            Working on it...
+          </div>
+        )}
       </div>
 
       <ChatInputArea

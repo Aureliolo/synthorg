@@ -1,14 +1,16 @@
 # module-kind: tests
 """Unit tests for concern routing."""
 
+import asyncio
 from datetime import UTC, datetime
+from typing import override
 
 import pytest
 
-from synthorg.core.enums import ConversationRole
+from synthorg.core.enums import ConversationRole, SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
-from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig, KeywordRoleRule
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.responder import (
     GENERIC_RESPONDER_PERSONA,
@@ -21,6 +23,12 @@ from synthorg.meta.chief_of_staff.routing import (
     build_role_router,
 )
 from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    ToolDefinition,
+)
 from synthorg.providers.registry import ProviderRegistry
 from tests._shared import mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_text_response
@@ -53,12 +61,33 @@ def _classification(*, topic: str, role: str, confidence: float) -> str:
     return f'{{"topic": "{topic}", "role": "{role}", "confidence": {confidence}}}'
 
 
+class _HangingProvider(ScriptedProvider):
+    """Provider whose ``complete`` never returns, to exercise the timeout."""
+
+    def __init__(self) -> None:
+        super().__init__(responses=[])
+
+    @override
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        del messages, model, tools, config
+        await asyncio.Event().wait()
+        raise AssertionError  # unreachable -- the wait never completes
+
+
 def _llm_router(
     *,
     provider: ScriptedProvider,
     registry: AgentRegistryService,
     confidence_floor: float = 0.6,
     default_role: str = "CEO",
+    timeout_seconds: float = 120.0,
 ) -> LlmConcernRouter:
     return LlmConcernRouter(
         provider=provider,
@@ -68,6 +97,7 @@ def _llm_router(
         default_role=NotBlankStr(default_role),
         temperature=0.0,
         max_tokens=200,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -177,6 +207,18 @@ class TestLlmConcernRouter:
 
         assert await router.route(_user_turn("How much runway?")) is None
 
+    async def test_classifier_timeout_falls_back_to_generic(self) -> None:
+        # A hung provider must not stall the turn: the wall-clock timeout
+        # trips and routing degrades to the generic responder.
+        registry = await _registry(_identity(name="Casey", role="CFO"))
+        router = _llm_router(
+            provider=_HangingProvider(),
+            registry=registry,
+            timeout_seconds=0.01,
+        )
+
+        assert await router.route(_user_turn("How much runway?")) is None
+
     async def test_history_is_fenced_in_classifier_prompt(self) -> None:
         registry = await _registry(_identity(name="Casey", role="CFO"))
         provider = ScriptedProvider(
@@ -232,6 +274,37 @@ class TestKeywordRoleRouter:
         assert decision is not None
         assert decision.responder.role == "CEO"
 
+    async def test_role_tie_resolves_to_most_senior(self) -> None:
+        # Two CFOs: the most senior wins over the alphabetically-first.
+        alpha_senior = _identity(name="Aaron", role="CFO", level=SeniorityLevel.SENIOR)
+        omega_csuite = _identity(name="Zoe", role="CFO", level=SeniorityLevel.C_SUITE)
+        registry = await _registry(alpha_senior, omega_csuite)
+        router = KeywordRoleRouter(
+            agent_registry=registry, default_role=NotBlankStr("CEO")
+        )
+
+        decision = await router.route(_user_turn("What is our budget?"))
+
+        assert decision is not None
+        assert decision.responder.agent_id == str(omega_csuite.id)
+
+    async def test_equal_seniority_resolves_alphabetically(self) -> None:
+        # Two equally-senior CFOs registered out of alphabetical order:
+        # the name tiebreak (not registration order) must pick the
+        # alphabetically-first, the documented cross-backend determinism
+        # guarantee.
+        zoe = _identity(name="Zoe", role="CFO", level=SeniorityLevel.SENIOR)
+        aaron = _identity(name="Aaron", role="CFO", level=SeniorityLevel.SENIOR)
+        registry = await _registry(zoe, aaron)
+        router = KeywordRoleRouter(
+            agent_registry=registry, default_role=NotBlankStr("CEO")
+        )
+
+        decision = await router.route(_user_turn("What is our budget?"))
+
+        assert decision is not None
+        assert decision.responder.agent_id == str(aaron.id)
+
 
 class TestBuildRoleRouter:
     async def test_disabled_returns_none(self) -> None:
@@ -253,6 +326,33 @@ class TestBuildRoleRouter:
             agent_registry=registry,
         )
         assert isinstance(router, KeywordRoleRouter)
+
+    async def test_keyword_strategy_uses_config_rules(self) -> None:
+        # A bespoke role the built-in C-Suite map does not cover routes
+        # only because the operator supplied a custom keyword rule.
+        head = _identity(name="Devi", role="Head of Data")
+        registry = await _registry(head)
+        router = build_role_router(
+            config=ChiefOfStaffConfig(
+                routing_enabled=True,
+                routing_strategy="keyword",
+                routing_keyword_rules=(
+                    KeywordRoleRule(
+                        keywords=(NotBlankStr("data"),),
+                        role=NotBlankStr("Head of Data"),
+                    ),
+                ),
+            ),
+            provider_registry=ProviderRegistry({}),
+            agent_registry=registry,
+        )
+        assert isinstance(router, KeywordRoleRouter)
+
+        decision = await router.route(_user_turn("What is our data strategy?"))
+
+        assert decision is not None
+        assert decision.responder.role == "Head of Data"
+        assert decision.topic == "data"
 
     async def test_llm_strategy_builds_llm_router(self) -> None:
         registry = await _registry(_identity(name="Casey", role="CFO"))

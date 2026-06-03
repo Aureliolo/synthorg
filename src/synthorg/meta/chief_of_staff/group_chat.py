@@ -172,7 +172,7 @@ class GroupChatService:
         # commit turns the other side never saw. Held across every
         # agent dispatch -- round-robin contributions must stay linear
         # because each one feeds the next.
-        async with await self._locks.acquire_for(conversation.id):
+        async with self._locks.hold(conversation.id):
             return await self._run_round(conversation, args, now)
 
     async def _resolve_conversation(
@@ -319,7 +319,9 @@ class GroupChatService:
         # earlier turns. Keeping ``history`` static is load-bearing for the
         # invited-agent ``already_spoke`` check there: it must detect a
         # PRIOR-round appearance to gate the one-time invited preamble, so
-        # folding the current round into ``history`` would mis-fire it.
+        # folding the current round into ``history`` would match it
+        # incorrectly (suppressing the preamble on the invited agent's
+        # very first turn).
         for index, participant in enumerate(participants):
             truncated = self._round_bound(tracker, reserve, total_turns)
             if truncated is not None:

@@ -8,7 +8,7 @@ opt-in with safe defaults (disabled).
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
@@ -87,8 +87,12 @@ _GROUP_MAX_TOTAL_TURNS_MAX: int = 500
 # so a hung provider connection (TCP alive, no bytes) would stall every
 # queued turn on that conversation indefinitely. This wall-clock bound is
 # the backstop the provider's own (optional) timeout may not supply: 120s
-# covers a slow large-model reply plus the provider retry budget; 5s is
-# the floor below which a legitimate slow reply would be cut off.
+# comfortably covers a slow large-model reply. Under sustained rate
+# limiting the provider's full retry budget can exceed this, in which
+# case the bound preempts the final retry; that degrades to the routing
+# generic-responder fallback or a skipped group turn (best-effort paths),
+# which is preferable to stalling every queued turn. 5s is the floor
+# below which a legitimate slow reply would be cut off.
 _AGENT_CALL_TIMEOUT_SECONDS_DEFAULT: float = 120.0
 _AGENT_CALL_TIMEOUT_SECONDS_MIN: float = 5.0
 _AGENT_CALL_TIMEOUT_SECONDS_MAX: float = 600.0
@@ -117,6 +121,44 @@ _NARRATIVE_TEMPERATURE_DEFAULT: float = 0.4
 # 100 is the floor below which even the summary risks truncation.
 _NARRATIVE_MAX_TOKENS_DEFAULT: int = 2000
 _NARRATIVE_MAX_TOKENS_MIN: int = 100
+
+
+class KeywordRoleRule(BaseModel):
+    """One keyword group mapped to a role for the keyword router.
+
+    Operators override the built-in C-Suite keyword map (which covers
+    only the standard roles) with rules naming their own bespoke roles.
+    Rules are scanned in order; the first whose any keyword appears in
+    the latest human message wins.
+
+    Attributes:
+        keywords: Keyword group; a substring match in the latest human
+            message routes to ``role``. Normalised to case-folded form
+            on construction so an operator-supplied ``"Budget"`` matches
+            the case-folded message text the router compares against.
+        role: Role name resolved against the active roster.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    keywords: tuple[NotBlankStr, ...] = Field(min_length=1)
+    role: NotBlankStr
+
+    @field_validator("keywords", mode="after")
+    @classmethod
+    def _casefold_keywords(
+        cls, keywords: tuple[NotBlankStr, ...]
+    ) -> tuple[NotBlankStr, ...]:
+        """Case-fold every keyword so matching is case-insensitive.
+
+        The router case-folds the human message and tests each keyword as
+        a substring, so a non-folded keyword would silently never match.
+        Normalising here makes that invariant enforced, not documented.
+
+        Returns:
+            The keyword tuple with every entry case-folded.
+        """
+        return tuple(NotBlankStr(keyword.casefold()) for keyword in keywords)
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -173,6 +215,9 @@ class ChiefOfStaffConfig(BaseModel):
         routing_default_role: Role to try when the classifier is
             confident but names a role with no active agent; falls back
             to the generic persona when that role is also absent.
+        routing_keyword_rules: Operator override for the keyword
+            strategy's keyword-to-role map. Empty (default) uses the
+            built-in C-Suite map; supply rules to cover bespoke roles.
         group_chat_enabled: Enable the multi-agent group chat
             (``/meta/chat/group``). When off, the controller 503s.
         group_chat_max_participants: Maximum agents in one group
@@ -297,6 +342,7 @@ class ChiefOfStaffConfig(BaseModel):
         description="Role to try when a confident classification names "
         "a role with no active agent",
     )
+    routing_keyword_rules: tuple[KeywordRoleRule, ...] = ()
 
     # ── Multi-agent group chat ────────────────────────────
 

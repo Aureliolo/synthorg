@@ -321,6 +321,29 @@ class TestConversationTurnRepository:
         ids = {t.id for t in rows}
         assert ids == {"d0", "d0-again"}
 
+    async def test_append_resequences_repeated_collisions(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Beyond a single collision: four callers all passing the same
+        # stale sequence=0 each land at the next free slot, so the turns
+        # occupy 0..3 with no loss. Deterministic on both backends
+        # (SQLite serialises via write_context; Postgres resequences via
+        # the bounded retry, one collision per append). The application
+        # layer additionally serialises same-conversation appends through
+        # ConversationLockRegistry, so this exercises the DB backstop.
+        conv_repo = _conversation_repo(backend)
+        await conv_repo.save(_make_conversation(conversation_id="conv-multi"))
+        repo = _turn_repo(backend)
+        for i in range(4):
+            await repo.append(
+                _make_turn(turn_id=f"m{i}", conversation_id="conv-multi", sequence=0)
+            )
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-multi"))
+        )
+        assert sorted(t.sequence for t in rows) == [0, 1, 2, 3]
+        assert {t.id for t in rows} == {"m0", "m1", "m2", "m3"}
+
     async def test_query_scopes_to_conversation(
         self, backend: PersistenceBackend
     ) -> None:

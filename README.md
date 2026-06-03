@@ -36,12 +36,12 @@ A tested platform you can run, inspect, and build on:
 - **Sandbox lifecycle dispatch**: `DockerSandbox.execute()` honours `owner_id` and dispatches to the configured per-call / per-agent / per-task lifecycle strategy, with grace-period teardown.
 - **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Chainguard distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
 - **Distributed dispatch**: NATS JetStream queue, worker pool, dead-letter consumer, dedup pruner, and heartbeat subscriber, validated under multi-worker synthetic load (no loss, no duplication).
+- **Conversational org interface**: talk to the company in natural language. Clarify-and-propose against the Chief of Staff (clarifies an underspecified request, then parks concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline), per-turn concern-routing to the best-fit role agent, multi-agent group chat, human-consented agent-initiated invites, and direct MCP acting under trust (sensitive actions approval-gated; fail-closed when security governance is inactive). All modes opt-in, default off; exercised by deterministic e2e harnesses with a scripted provider.
 
 ## In active development
 
 The runtime, coordinator, intake, work pipeline, sandbox dispatch, and distributed-path consumers are wired and exercised by deterministic harnesses. What remains in flight is the operator-facing maturity that turns the wired runtime into a polished autonomous studio:
 
-- **Conversational org interface**: talking to the company in natural language. v1 lands clarify-and-propose against the Chief of Staff (asks clarifying questions when the request is underspecified, then parks one or more concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline). Direct MCP acting under governance is the follow-up child.
 - **Autonomous product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
 - **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast / kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
 - **Agent capability layer**: knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing.

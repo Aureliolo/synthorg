@@ -53,8 +53,13 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
     provider: str = "test-provider",
     model_id: str = "test-model-001",
     status: AgentStatus = AgentStatus.ACTIVE,
+    level: SeniorityLevel = SeniorityLevel.C_SUITE,
 ) -> AgentIdentity:
-    """Build a C-suite ``AgentIdentity`` for the proposer test suites.
+    """Build an ``AgentIdentity`` for the proposer test suites.
+
+    The ``level`` parameter sets the seniority (defaulting to
+    ``SeniorityLevel.C_SUITE``) so callers can build non-C-suite
+    identities for the concern-routing tests.
 
     Returns:
         A registered-shaped identity with the given role and provider.
@@ -64,7 +69,7 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(department),
-        level=SeniorityLevel.C_SUITE,
+        level=level,
         personality=PersonalityConfig(
             traits=(NotBlankStr("analytical"),),
             communication_style=NotBlankStr("concise"),
@@ -223,6 +228,7 @@ class FakeProposalRepo:
                 filter_spec.conversation_id is None
                 or p.conversation_id == filter_spec.conversation_id
             )
+            and (filter_spec.status is None or p.status is filter_spec.status)
         ]
         return tuple(rows[offset : offset + limit])
 

@@ -2,9 +2,9 @@
 """Conversational write-path controller: multi-agent group chat.
 
 Kept separate from :class:`MetaController` so the conversational
-write-path endpoints (the direct-MCP ``/act`` endpoint joins here for
-#1972) grow cohesively without pushing the meta controller past its
-size tier. Mounted under ``/meta/chat`` alongside the explain-only and
+write-path endpoints (the direct-MCP ``/act`` endpoint joins here)
+grow cohesively without pushing the meta controller past its size
+tier. Mounted under ``/meta/chat`` alongside the explain-only and
 clarify-and-propose endpoints that live on ``MetaController``.
 """
 

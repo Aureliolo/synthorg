@@ -46,11 +46,12 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
         role: Role the classifier picks (and the active agent to reach).
         message: The human turn text.
     """
-    registry = await build_registry(
-        make_identity(name="Casey", role="CFO"),
-        make_identity(name="Dana", role="CEO"),
-        make_identity(name="Tomas", role="CTO"),
-    )
+    identities = {
+        "CFO": make_identity(name="Casey", role="CFO"),
+        "CEO": make_identity(name="Dana", role="CEO"),
+        "CTO": make_identity(name="Tomas", role="CTO"),
+    }
+    registry = await build_registry(*identities.values())
     provider = ScriptedProvider(
         responses=[
             make_text_response(
@@ -67,6 +68,7 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
         default_role=NotBlankStr("CEO"),
         temperature=0.0,
         max_tokens=200,
+        timeout_seconds=120.0,
     )
     proposer, _, turn_repo, _, _ = build_proposer(
         provider=provider,
@@ -86,28 +88,23 @@ async def _drive_routed_turn(*, topic: str, role: str, message: str) -> None:
     # decision prompt is voiced in that role (not the generic CoS).
     assistant = next(t for t in turn_repo.turns if t.role.value == "assistant")
     assert assistant.routed_topic == topic
-    assert assistant.author_agent_id is not None
+    assert assistant.author_agent_id == str(identities[role].id)
     decision_prompt = provider.received_messages[1][0].content or ""
     assert f"a {role} in" in decision_prompt
     assert "You are the Chief of Staff." not in decision_prompt
 
 
 class TestConcernRoutingE2E:
-    async def test_budget_routes_to_cfo(self) -> None:
-        await _drive_routed_turn(
-            topic="budget", role="CFO", message="What is our Q3 budget burn?"
-        )
-
-    async def test_strategy_routes_to_ceo(self) -> None:
-        await _drive_routed_turn(
-            topic="strategy",
-            role="CEO",
-            message="What should our market strategy be next year?",
-        )
-
-    async def test_technical_routes_to_cto(self) -> None:
-        await _drive_routed_turn(
-            topic="technical",
-            role="CTO",
-            message="Is our architecture ready to scale?",
-        )
+    @pytest.mark.parametrize(
+        ("topic", "role", "message"),
+        [
+            ("budget", "CFO", "What is our Q3 budget burn?"),
+            ("strategy", "CEO", "What should our market strategy be next year?"),
+            ("technical", "CTO", "Is our architecture ready to scale?"),
+        ],
+        ids=["budget->CFO", "strategy->CEO", "technical->CTO"],
+    )
+    async def test_topic_routes_to_role(
+        self, topic: str, role: str, message: str
+    ) -> None:
+        await _drive_routed_turn(topic=topic, role=role, message=message)

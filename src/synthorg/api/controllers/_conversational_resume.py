@@ -52,6 +52,7 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_ACCEPTED,
     COS_GROUP_INVITE_DECLINED,
     COS_GROUP_INVITE_FAILED,
+    COS_GROUP_PARTICIPANTS_ADDED,
 )
 
 if TYPE_CHECKING:
@@ -590,6 +591,14 @@ async def _add_invited_participant(
             added_by=NotBlankStr(decided_by),
             added_at=app_state.clock.now(),
         )
+    )
+    logger.info(
+        COS_GROUP_PARTICIPANTS_ADDED,
+        invite_id=invite.id,
+        conversation_id=invite.conversation_id,
+        agent_id=invite.target_agent_id,
+        added_by=decided_by,
+        note="invited agent enrolled in group conversation after consent",
     )
 
 

@@ -22,14 +22,42 @@ import type {
   ConversationalActResult,
   GroupConverseResult,
 } from '@/api/types'
+import { ErrorCode } from '@/api/types/errors'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getErrorDetail, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('meta')
 
 type MetaSet = StoreApi<MetaState>['setState']
+
+const FEATURE_UNAVAILABLE_TITLE = 'Conversational mode unavailable'
+
+/**
+ * Build the toast title + description for a conversational action failure.
+ *
+ * A SERVICE_UNAVAILABLE (503) from these endpoints is the deliberate
+ * fail-closed state (the mode is disabled, or direct-MCP acting lacks
+ * security governance), not a transient outage, so it gets a distinct
+ * title and surfaces the backend's specific reason rather than the
+ * generic "try again" copy.
+ */
+function describeConversationalError(
+  err: unknown,
+  fallbackTitle: string,
+): { title: string; description: string } {
+  const detail = getErrorDetail(err)
+  if (detail?.error_code === ErrorCode.SERVICE_UNAVAILABLE) {
+    return {
+      title: FEATURE_UNAVAILABLE_TITLE,
+      description:
+        detail.detail ||
+        'This conversational mode is not enabled. Ask your administrator to enable it.',
+    }
+  }
+  return { title: fallbackTitle, description: getErrorMessage(err) }
+}
 
 async function runProposeConversation(
   set: MetaSet,
@@ -40,14 +68,13 @@ async function runProposeConversation(
   try {
     return await postChatPropose(message, conversationId)
   } catch (err) {
-    const msg = getErrorMessage(err)
+    const { title, description } = describeConversationalError(
+      err,
+      'Propose request failed',
+    )
     log.error('Propose request failed', sanitizeForLog(err))
-    set({ error: msg })
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Propose request failed',
-      description: msg,
-    })
+    set({ error: description })
+    useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
     set({ proposeLoading: false })
@@ -64,14 +91,13 @@ async function runConverseGroup(
   try {
     return await postChatGroup(message, agentIds, conversationId)
   } catch (err) {
-    const msg = getErrorMessage(err)
+    const { title, description } = describeConversationalError(
+      err,
+      'Group chat request failed',
+    )
     log.error('Group chat request failed', sanitizeForLog(err))
-    set({ error: msg })
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Group chat request failed',
-      description: msg,
-    })
+    set({ error: description })
+    useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
     set({ groupChatLoading: false })
@@ -88,14 +114,13 @@ async function runAct(
   try {
     return await postChatAct(instruction, agent, conversationId)
   } catch (err) {
-    const msg = getErrorMessage(err)
+    const { title, description } = describeConversationalError(
+      err,
+      'Direct action request failed',
+    )
     log.error('Direct action request failed', sanitizeForLog(err))
-    set({ error: msg })
-    useToastStore.getState().add({
-      variant: 'error',
-      title: 'Direct action request failed',
-      description: msg,
-    })
+    set({ error: description })
+    useToastStore.getState().add({ variant: 'error', title, description })
     return null
   } finally {
     set({ actionLoading: false })

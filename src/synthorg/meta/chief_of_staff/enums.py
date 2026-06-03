@@ -1,10 +1,9 @@
-"""Conversational-interface enums (EPIC #1967).
+"""Conversational-interface enums.
 
 Feature-local enums for the concern-routing, group-chat, and
 agent-invite surfaces. Kept out of ``core/enums.py`` so the central
 junk-drawer does not grow (it must net-shrink); the conversational
-turn / status / approval-source enums that predate this work remain in
-``core.enums``.
+turn / status / approval-source enums live in ``core.enums``.
 """
 
 from enum import StrEnum

@@ -5,6 +5,7 @@ import type {
   ConversationParticipant,
   GroupConverseResult,
 } from '@/api/types'
+import { useApprovalsStore } from '@/stores/approvals'
 import { useMetaStore } from '@/stores/meta'
 
 export interface GroupMessage {
@@ -26,6 +27,12 @@ export interface GroupMessage {
   /** Invite target's role, on ``invite`` bubbles (``undefined`` when the
    *  target was named directly rather than by role). */
   targetRole?: string
+  /** Backing approval id, on ``invite`` bubbles: the in-context
+   *  Approve/Reject buttons resolve this approval. */
+  approvalId?: string
+  /** Set once the operator resolves an ``invite`` in context. The
+   *  invited agent joins on the next round after ``approved``. */
+  resolved?: 'approved' | 'declined'
 }
 
 export interface MetaGroupState {
@@ -36,10 +43,14 @@ export interface MetaGroupState {
   messages: readonly GroupMessage[]
   input: string
   loading: boolean
+  /** Approval ids whose in-context Approve/Reject is in flight. */
+  resolvingInvites: ReadonlySet<string>
   scrollRef: React.RefObject<HTMLDivElement | null>
   toggleParticipant: (id: string) => void
   setInput: (value: string) => void
   triggerSend: () => void
+  /** Resolve an agent-initiated invite in context (approve or decline). */
+  resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
 
 const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
@@ -47,6 +58,54 @@ const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
     'Round stopped early: the per-round token budget was exhausted before every agent could respond.',
   max_total_turns_reached:
     'Round stopped early: the conversation reached its total-turn limit.',
+}
+
+function useInviteResolution(
+  setMessages: React.Dispatch<React.SetStateAction<readonly GroupMessage[]>>,
+): {
+  resolvingInvites: ReadonlySet<string>
+  resolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
+} {
+  const [resolvingInvites, setResolvingInvites] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
+
+  const handleResolveInvite = useCallback(
+    async (msgId: number, approvalId: string, accept: boolean) => {
+      // approveOne / rejectOne own their error + success toast UX and
+      // never throw (they return null on failure), so no try/catch here.
+      setResolvingInvites((prev) => new Set(prev).add(approvalId))
+      const store = useApprovalsStore.getState()
+      const result = accept
+        ? await store.approveOne(approvalId)
+        : await store.rejectOne(approvalId, {
+            reason: 'Declined from group chat',
+          })
+      setResolvingInvites((prev) => {
+        const next = new Set(prev)
+        next.delete(approvalId)
+        return next
+      })
+      if (result) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? { ...m, resolved: accept ? 'approved' : 'declined' }
+              : m,
+          ),
+        )
+      }
+    },
+    [setMessages],
+  )
+
+  const resolveInvite = useCallback(
+    (msgId: number, approvalId: string, accept: boolean) =>
+      void handleResolveInvite(msgId, approvalId, accept),
+    [handleResolveInvite],
+  )
+
+  return { resolvingInvites, resolveInvite }
 }
 
 export function useMetaGroupState(): MetaGroupState {
@@ -69,6 +128,20 @@ export function useMetaGroupState(): MetaGroupState {
   useEffect(() => {
     void fetchRef.current()
   }, [])
+
+  // Keep the transcript pinned to the latest turn. Driving the scroll
+  // from an effect (rather than a fire-and-forget call in the send
+  // handler) lets the cleanup cancel a pending frame on unmount, so no
+  // animation-frame handle survives the component.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [messages])
 
   const nextMsgId = useCallback(() => ++msgIdRef.current, [])
 
@@ -94,10 +167,11 @@ export function useMetaGroupState(): MetaGroupState {
       setRoster(result.participants)
       setStarted(true)
     }
-    scrollToBottom(scrollRef)
   }, [input, loading, selectedIds, converse, nextMsgId])
 
   const triggerSend = useCallback(() => void handleSend(), [handleSend])
+
+  const { resolvingInvites, resolveInvite } = useInviteResolution(setMessages)
 
   return {
     activeAgents,
@@ -107,10 +181,12 @@ export function useMetaGroupState(): MetaGroupState {
     messages,
     input,
     loading,
+    resolvingInvites,
     scrollRef,
     toggleParticipant,
     setInput,
     triggerSend,
+    resolveInvite,
   }
 }
 
@@ -153,16 +229,8 @@ function buildRoundMessages(
       requestedByName: invite.requested_by_name,
       targetName: invite.target_name,
       targetRole: invite.target_role ?? undefined,
+      approvalId: invite.approval_id,
     })
   }
   return bubbles
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

@@ -1,40 +1,80 @@
 import { Users } from 'lucide-react'
+import { useCallback } from 'react'
 import { Link } from 'react-router'
 
 import type { ActiveAgentSummary, ConversationParticipant } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
-import { LiveRegion } from '@/components/ui/live-region'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
-import { ChatInputArea } from './ChatInputArea'
 import { useMetaGroupState, type GroupMessage } from './useMetaGroupState'
 
 const INPUT_LABEL = 'Message'
 
 interface GroupBubbleProps {
   msg: GroupMessage
+  resolvingInvites: ReadonlySet<string>
+  onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
 
-function InviteBubble({ msg }: GroupBubbleProps) {
+function InviteBubble({
+  msg,
+  resolvingInvites,
+  onResolveInvite,
+}: GroupBubbleProps) {
   const target = msg.targetRole
     ? `${msg.targetName} (${msg.targetRole})`
     : msg.targetName
+  const resolving = msg.approvalId ? resolvingInvites.has(msg.approvalId) : false
+  const onResolve = useCallback(
+    (accept: boolean) => {
+      if (msg.approvalId) onResolveInvite(msg.id, msg.approvalId, accept)
+    },
+    [msg.approvalId, msg.id, onResolveInvite],
+  )
   return (
-    <div className="mx-4 space-y-1 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
+    <div className="mx-4 space-y-2 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
       <p>
         <span className="text-foreground">{msg.requestedByName}</span> asked to
         bring in <span className="text-foreground">{target}</span>: {msg.content}
       </p>
-      <Button asChild variant="link" size="sm" className="h-auto p-0">
-        <Link to="/approvals">Review in Approvals</Link>
-      </Button>
+      {msg.resolved ? (
+        <p className="text-foreground">
+          {msg.resolved === 'approved'
+            ? `Approved: ${msg.targetName} joins on the next turn.`
+            : 'Declined.'}
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            disabled={resolving || !msg.approvalId}
+            aria-busy={resolving}
+            onClick={() => onResolve(true)}
+          >
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={resolving || !msg.approvalId}
+            aria-busy={resolving}
+            onClick={() => onResolve(false)}
+          >
+            Decline
+          </Button>
+          <Button asChild variant="link" size="sm" className="h-auto p-0">
+            <Link to="/approvals">Review in Approvals</Link>
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
 
-function GroupBubble({ msg }: GroupBubbleProps) {
+function GroupBubble({ msg, resolvingInvites, onResolveInvite }: GroupBubbleProps) {
   if (msg.kind === 'notice') {
     return (
       <div className="mx-4 rounded-md bg-muted/50 p-card text-xs text-muted-foreground">
@@ -43,7 +83,13 @@ function GroupBubble({ msg }: GroupBubbleProps) {
     )
   }
   if (msg.kind === 'invite') {
-    return <InviteBubble msg={msg} />
+    return (
+      <InviteBubble
+        msg={msg}
+        resolvingInvites={resolvingInvites}
+        onResolveInvite={onResolveInvite}
+      />
+    )
   }
   const isHuman = msg.kind === 'human'
   const isAttributed = Boolean(msg.agentName && msg.role)
@@ -167,18 +213,23 @@ export function MetaGroup() {
       {ctrl.messages.length > 0 && (
         <div
           ref={ctrl.scrollRef}
+          role="log"
+          aria-label="Group conversation transcript"
           className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
         >
-          <LiveRegion politeness="polite">
-            {ctrl.messages.map((msg) => (
-              <GroupBubble key={msg.id} msg={msg} />
-            ))}
-            {ctrl.loading && (
-              <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-                Agents are responding...
-              </div>
-            )}
-          </LiveRegion>
+          {ctrl.messages.map((msg) => (
+            <GroupBubble
+              key={msg.id}
+              msg={msg}
+              resolvingInvites={ctrl.resolvingInvites}
+              onResolveInvite={ctrl.resolveInvite}
+            />
+          ))}
+          {ctrl.loading && (
+            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
+              Agents are responding...
+            </div>
+          )}
         </div>
       )}
 

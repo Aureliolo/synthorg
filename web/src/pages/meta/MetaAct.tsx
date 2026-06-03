@@ -3,11 +3,10 @@ import { Link } from 'react-router'
 
 import type { ActiveAgentSummary, ExecutedToolCall } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
-import { LiveRegion } from '@/components/ui/live-region'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 
-import { ChatInputArea } from './ChatInputArea'
 import { useMetaActState, type ActMessage } from './useMetaActState'
 
 const INPUT_LABEL = 'Instruction'
@@ -156,18 +155,18 @@ export function MetaAct() {
       {ctrl.messages.length > 0 && (
         <div
           ref={ctrl.scrollRef}
+          role="log"
+          aria-label="Direct action transcript"
           className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
         >
-          <LiveRegion politeness="polite">
-            {ctrl.messages.map((msg) => (
-              <ActBubble key={msg.id} msg={msg} />
-            ))}
-            {ctrl.loading && (
-              <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-                The agent is acting...
-              </div>
-            )}
-          </LiveRegion>
+          {ctrl.messages.map((msg) => (
+            <ActBubble key={msg.id} msg={msg} />
+          ))}
+          {ctrl.loading && (
+            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
+              The agent is acting...
+            </div>
+          )}
         </div>
       )}
 

@@ -11,14 +11,24 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import ConversationalProposalStatus, ConversationStatus
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import (
+    ApprovalRiskLevel,
+    ApprovalSource,
+    ApprovalStatus,
+    ConversationalProposalStatus,
+    ConversationStatus,
+)
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationalProposal
+from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
     ConversationalProposalRepository,
 )
+from synthorg.persistence.postgres.approval_repo import PostgresApprovalRepository
 from synthorg.persistence.postgres.conversation_repo import (
     PostgresConversationRepository,
 )
@@ -26,6 +36,7 @@ from synthorg.persistence.postgres.conversational_proposal_repo import (
     PostgresConversationalProposalRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.sqlite.approval_repo import SQLiteApprovalRepository
 from synthorg.persistence.sqlite.conversation_repo import (
     SQLiteConversationRepository,
 )
@@ -78,6 +89,23 @@ def _conversation_repo(backend: PersistenceBackend) -> ConversationRepository:
         from psycopg_pool import AsyncConnectionPool
 
         return PostgresConversationRepository(cast("AsyncConnectionPool", handle))
+    msg = f"Unknown backend: {name}"
+    raise ValueError(msg)
+
+
+def _approval_repo(backend: PersistenceBackend) -> ApprovalRepository:
+    """Return a concrete ``ApprovalRepository`` bound to *backend*."""
+    name = backend.backend_name
+    handle = backend.get_db()
+    if name == "sqlite":
+        return SQLiteApprovalRepository(
+            cast("aiosqlite.Connection", handle),
+            write_context=backend.write_context,
+        )
+    if name == "postgres":
+        from psycopg_pool import AsyncConnectionPool
+
+        return PostgresApprovalRepository(cast("AsyncConnectionPool", handle))
     msg = f"Unknown backend: {name}"
     raise ValueError(msg)
 
@@ -273,6 +301,73 @@ class TestConversationalProposalRepository:
         assert await repo.delete(proposal.id) is True
         assert await repo.get(proposal.id) is None
         assert await repo.delete(proposal.id) is False
+
+    async def test_executing_cas_single_winner_and_revert(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The anti-double-execution guard: PENDING -> EXECUTING acquires
+        # for exactly one winner (a second acquirer loses the CAS), and
+        # EXECUTING -> PENDING reverts on pipeline failure so a retry can
+        # re-acquire. Exercised against the real DB on both backends.
+        await _seed_conversation(backend)
+        repo = _repo(backend)
+        proposal = _make_proposal(proposal_id="cas", approval_id="a-cas")
+        await repo.save(proposal)
+
+        acquired = await repo.transition_if(
+            proposal.id,
+            from_state=ConversationalProposalStatus.PENDING,
+            to_state=ConversationalProposalStatus.EXECUTING,
+        )
+        assert acquired is True
+
+        # A concurrent second acquirer loses: status is no longer PENDING.
+        lost = await repo.transition_if(
+            proposal.id,
+            from_state=ConversationalProposalStatus.PENDING,
+            to_state=ConversationalProposalStatus.EXECUTING,
+        )
+        assert lost is False
+
+        # Revert on failure returns the proposal to PENDING (retryable).
+        reverted = await repo.transition_if(
+            proposal.id,
+            from_state=ConversationalProposalStatus.EXECUTING,
+            to_state=ConversationalProposalStatus.PENDING,
+        )
+        assert reverted is True
+        fetched = await repo.get(proposal.id)
+        assert fetched is not None
+        assert fetched.status is ConversationalProposalStatus.PENDING
+
+    async def test_conversational_intake_source_check_per_backend(
+        self, backend: PersistenceBackend
+    ) -> None:  # lint-allow: dual-backend-parity -- source CHECK is asymmetric by design (Postgres admits, SQLite rejects)  # noqa: E501
+        # The intake approval is stamped ``source=CONVERSATIONAL_INTAKE``.
+        # Postgres widened ``approvals.source`` to admit it, so it
+        # persists; SQLite keeps the narrow source domain on purpose
+        # (conversational approvals stay in-memory there), so the table
+        # must REJECT the row. Mirrors the invite-source asymmetry test.
+        repo = _approval_repo(backend)
+        item = ApprovalItem(
+            id=NotBlankStr("appr-intake"),
+            action_type=NotBlankStr("conversational:create_work"),
+            title=NotBlankStr("Build the landing page"),
+            description=NotBlankStr("from a conversational request"),
+            requested_by=NotBlankStr("user-001"),
+            risk_level=ApprovalRiskLevel.MEDIUM,
+            source=ApprovalSource.CONVERSATIONAL_INTAKE,
+            status=ApprovalStatus.PENDING,
+            created_at=_NOW,
+        )
+        if backend.backend_name == "postgres":
+            await repo.save(item)
+            fetched = await repo.get(item.id)
+            assert fetched is not None
+            assert fetched.source is ApprovalSource.CONVERSATIONAL_INTAKE
+        else:
+            with pytest.raises(ConstraintViolationError):
+                await repo.save(item)
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
