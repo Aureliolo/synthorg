@@ -6,6 +6,7 @@
 
 vulnerabilities:
   - id: CVE-2026-22184
+    expired_at: "2027-06-03T00:00:00Z"
     statement: >-
       Disputed zlib vulnerability affecting only the untgz demo utility in
       contrib/, not core zlib compression. Debian excludes contrib/untgz
@@ -13,6 +14,8 @@ vulnerabilities:
       fixed across all releases, so our Debian-based images never ship or
       build untgz. Upstream also disputes CVE validity:
       https://github.com/madler/zlib/issues/1148
+      No fix version is expected (disputed), so the expiry is a yearly
+      re-review backstop rather than a patch-tracking date.
       Removal owner: issue #2202.
 
   - id: CVE-2026-25210

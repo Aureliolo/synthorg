@@ -260,8 +260,7 @@ func redactNatsURL(raw string) string {
 // of the argv prevents them from leaking through `docker ps` / the
 // host process list.
 var execDocker = func(ctx context.Context, args []string, env []string) error {
-	//nolint:gosec // args are constructed from validated flags above.
-	dockerCmd := exec.CommandContext(ctx, "docker", args...)
+	dockerCmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: "docker" is a constant; args are built from validated flags (container name, stream prefix, NATS URL, worker count)
 	dockerCmd.Stdout = os.Stdout
 	dockerCmd.Stderr = os.Stderr
 	dockerCmd.Stdin = os.Stdin

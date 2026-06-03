@@ -114,7 +114,7 @@ func ComposeExecOutput(ctx context.Context, info Info, dir string, args ...strin
 
 // RunCmd executes a command and returns stdout. Exported for testing.
 func RunCmd(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is a caller-resolved binary, args internally assembled, never attacker-controlled
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: all current callers pass an internally-resolved binary (info.DockerPath / "docker") and internally-assembled args
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

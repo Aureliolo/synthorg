@@ -147,7 +147,16 @@ func collectConfig(r *Report, state config.State) {
 	if redacted.SettingsKey != "" {
 		redacted.SettingsKey = "[REDACTED]"
 	}
-	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil { //nolint:gosec // G117: JWTSecret and SettingsKey are replaced with [REDACTED] above before marshalling
+	if redacted.MasterKey != "" {
+		redacted.MasterKey = "[REDACTED]"
+	}
+	if redacted.PostgresPassword != "" {
+		redacted.PostgresPassword = "[REDACTED]"
+	}
+	if redacted.CursorSecret != "" {
+		redacted.CursorSecret = "[REDACTED]"
+	}
+	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil { //nolint:gosec // G117: every secret-bearing State field (JWTSecret, SettingsKey, MasterKey, PostgresPassword, CursorSecret) is replaced with [REDACTED] above before marshalling
 		r.ConfigRedacted = string(b)
 	}
 }

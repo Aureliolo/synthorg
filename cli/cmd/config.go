@@ -808,7 +808,7 @@ func runConfigEdit(cmd *cobra.Command, _ []string) error {
 		editorBin = resolved
 	}
 	editorArgs = append(editorArgs, configPath)
-	c := exec.CommandContext(cmd.Context(), editorBin, editorArgs...) //nolint:gosec // editor comes from user's env
+	c := exec.CommandContext(cmd.Context(), editorBin, editorArgs...) //nolint:gosec // G204: editorBin is the user's own $VISUAL/$EDITOR; only the validated config-file path is appended
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()

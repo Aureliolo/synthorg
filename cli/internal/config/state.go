@@ -325,7 +325,7 @@ func loadWith(dataDir string, validate func(State) error) (State, error) {
 		return State{}, err
 	}
 	path := StatePath(safeDir)
-	data, err := os.ReadFile(path) //nolint:gosec // path validated by SecurePath
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
@@ -734,5 +734,5 @@ func Save(s State) error {
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	return os.WriteFile(StatePath(safeDir), data, 0o600) //nolint:gosec // path validated by SecurePath
+	return os.WriteFile(StatePath(safeDir), data, 0o600)
 }
