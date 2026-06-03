@@ -1549,14 +1549,14 @@
     },
     {
       "kind": "code",
-      "loc": 84,
+      "loc": 99,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 254,
+      "loc": 318,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
       "owning_feature": "api_core"
