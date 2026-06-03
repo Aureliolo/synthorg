@@ -48,13 +48,12 @@ export function useOntologyData(): UseOntologyDataReturn {
   }, [])
   const polling = usePolling(pollFn, POLL_INTERVAL)
 
-  // Initial fetch + start polling
+  // Start polling; start() performs the initial fetch
   const { start, stop } = polling
   useEffect(() => {
-    void pollFn()
     start()
     return () => stop()
-  }, [pollFn, start, stop])
+  }, [start, stop])
 
   // Client-side filtering
   const filteredEntities = useMemo(() => {
