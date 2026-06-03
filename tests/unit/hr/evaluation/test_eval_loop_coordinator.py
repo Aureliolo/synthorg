@@ -83,7 +83,6 @@ def _make_task_record(agent_id: str = "agent-1") -> MagicMock:
     return record
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorInit:
     """EvalLoopCoordinator construction."""
 
@@ -97,7 +96,6 @@ class TestEvalLoopCoordinatorInit:
         assert coordinator.config.enabled is False
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorRunCycle:
     """EvalLoopCoordinator.run_cycle()."""
 
@@ -163,7 +161,6 @@ class TestEvalLoopCoordinatorRunCycle:
         assert report.training_triggered is False
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorTrainingDecision:
     """EvalLoopCoordinator._should_trigger_training() gating."""
 
@@ -188,7 +185,6 @@ class TestEvalLoopCoordinatorTrainingDecision:
         assert coordinator._should_trigger_training(()) is False
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorEvaluateOne:
     """EvalLoopCoordinator._evaluate_one() isolation."""
 
@@ -207,7 +203,6 @@ class TestEvalLoopCoordinatorEvaluateOne:
         assert result is None
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorCollectAgentIds:
     """EvalLoopCoordinator._collect_agent_ids()."""
 
@@ -266,7 +261,6 @@ def _make_report(
     return cast(EvaluationReport, stub)
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorIdentifyPatterns:
     """_identify_patterns() clustering behaviour."""
 
@@ -353,7 +347,6 @@ class TestEvalLoopCoordinatorIdentifyPatterns:
         )
 
 
-@pytest.mark.unit
 class TestEvalLoopCoordinatorProposeActions:
     """_propose_actions() mapping behaviour."""
 

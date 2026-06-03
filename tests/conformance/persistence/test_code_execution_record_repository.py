@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
@@ -120,3 +120,14 @@ class TestCodeExecutionRecordRepository:
         assert removed == 1
         page = await backend.code_execution_records.query(CodeExecutionFilterSpec())
         assert [r.record_id for r in page] == ["new"]
+
+    async def test_purge_before_rejects_naive_threshold(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A naive threshold is rejected rather than silently coerced to
+        # UTC, which could delete the wrong retention window. Mirrors the
+        # naive-rejection contract the audit retention sweeper enforces.
+        with pytest.raises(QueryError):
+            await backend.code_execution_records.purge_before(
+                datetime(2026, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )

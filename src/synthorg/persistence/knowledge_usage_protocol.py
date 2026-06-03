@@ -115,7 +115,8 @@ class KnowledgeUsageRecordRepository(
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``. Returns rows removed.
 
-        ``threshold`` should be timezone-aware; a naive value is normalised to
-        UTC via the shared persistence rule ("store UTC everywhere").
+        ``threshold`` must be timezone-aware; a naive datetime is rejected
+        (``QueryError``) rather than silently coerced, so a wrong-timezone
+        threshold cannot delete the wrong retention window.
         """
         ...

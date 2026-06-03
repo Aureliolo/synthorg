@@ -21,7 +21,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_PERSISTENCE_ERROR,
 )
-from synthorg.persistence._shared import format_iso_utc, parse_iso_utc
+from synthorg.persistence._shared import format_iso_utc, normalize_utc, parse_iso_utc
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,
@@ -87,6 +87,7 @@ class SQLiteIdempotencyRepository:
         """
         from datetime import timedelta  # noqa: PLC0415
 
+        now = normalize_utc(now)
         expires_at = now + timedelta(seconds=ttl_seconds)
         async with self._write_context():
             try:
@@ -412,6 +413,7 @@ class SQLiteIdempotencyRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        now = normalize_utc(now)
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

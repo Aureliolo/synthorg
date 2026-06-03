@@ -132,12 +132,20 @@ class PostgresCodeExecutionRecordRepository:
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``executed_at < threshold``.
 
+        Args:
+            threshold: Timezone-aware UTC timestamp. A naive datetime is
+                rejected to prevent silent local-time misinterpretation
+                deleting the wrong retention window.
+
         Returns:
             Number of rows deleted.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If *threshold* is naive or the database query fails.
         """
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

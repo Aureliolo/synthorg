@@ -7,7 +7,7 @@ guards (sequential) -> execute.
 import asyncio
 from collections import deque
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     )
 
 
+@runtime_checkable
 class AgentLookup(Protocol):
     """Protocol for agent registry lookups."""
 

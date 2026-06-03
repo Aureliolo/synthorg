@@ -7597,7 +7597,7 @@
     },
     {
       "kind": "code",
-      "loc": 333,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/llm_calibration_sampler.py",
       "owning_feature": "hr"
@@ -7926,7 +7926,7 @@
     },
     {
       "kind": "code",
-      "loc": 521,
+      "loc": 522,
       "loc_cap": 500,
       "module": "src/synthorg/hr/scaling/service.py",
       "owning_feature": "hr"
@@ -13400,7 +13400,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 128,
+      "loc": 129,
       "loc_cap": null,
       "module": "src/synthorg/persistence/code_execution_protocol.py",
       "owning_feature": "persistence"
@@ -13596,7 +13596,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 98,
+      "loc": 99,
       "loc_cap": null,
       "module": "src/synthorg/persistence/knowledge_usage_protocol.py",
       "owning_feature": "persistence"
@@ -13771,7 +13771,7 @@
     },
     {
       "kind": "repository",
-      "loc": 188,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -13939,7 +13939,7 @@
     },
     {
       "kind": "code",
-      "loc": 392,
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -13960,7 +13960,7 @@
     },
     {
       "kind": "repository",
-      "loc": 184,
+      "loc": 191,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -14478,7 +14478,7 @@
     },
     {
       "kind": "repository",
-      "loc": 198,
+      "loc": 205,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -14646,7 +14646,7 @@
     },
     {
       "kind": "code",
-      "loc": 372,
+      "loc": 374,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -14667,7 +14667,7 @@
     },
     {
       "kind": "repository",
-      "loc": 190,
+      "loc": 197,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/knowledge_usage_repo.py",
       "owning_feature": "persistence"

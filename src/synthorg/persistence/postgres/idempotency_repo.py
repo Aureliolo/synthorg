@@ -23,6 +23,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,
@@ -94,6 +95,7 @@ class PostgresIdempotencyRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        now = normalize_utc(now)
         expires_at = now + timedelta(seconds=ttl_seconds)
         last_status: str | None = None
         try:
@@ -453,6 +455,7 @@ class PostgresIdempotencyRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        now = normalize_utc(now)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

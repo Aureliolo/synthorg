@@ -186,11 +186,21 @@ class LlmCalibrationSampler:
 
         Args:
             agent_id: Filter by agent (``None`` = all agents).
-            since: Include records after this time.
+            since: Include records at or after this time. Must be
+                timezone-aware; a naive datetime is rejected rather than
+                compared against the timezone-aware ``sampled_at`` (which
+                would raise an opaque ``TypeError``).
 
         Returns:
             Matching calibration records.
+
+        Raises:
+            ValueError: If *since* is naive (timezone-unaware).
         """
+        if since is not None and since.tzinfo is None:
+            msg = "since must be timezone-aware; a naive datetime is rejected"
+            raise ValueError(msg)
+
         self._prune_expired()
 
         if agent_id is not None:
