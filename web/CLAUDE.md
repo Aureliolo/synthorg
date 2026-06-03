@@ -90,8 +90,8 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 
 ### Anti-patterns (lint-enforced)
 
-- **Icon helpers**: NEVER write `getXIcon(value): LucideIcon` factories called inside JSX bodies (`react-x/static-components` flags them). Export a `<XIcon value={...} />` wrapper that does the lookup via `createElement` inside the wrapper body. Wrapper components live in their own file, not alongside utility exports, so `react-refresh/only-export-components` stays clean. Canonical shape: `web/src/utils/activity-event-icon.tsx`.
-- **Viewport-size reads**: use `useViewportSize()` from `@/hooks/useViewportSize`. NEVER read `window.innerWidth` / `window.innerHeight` directly in a render body or `useMemo`; `react-x/globals` flags it and it would be stale across resizes anyway.
+- **Icon helpers**: NEVER write `getXIcon(value): LucideIcon` factories called inside JSX bodies (`@eslint-react/static-components` flags them). Export a `<XIcon value={...} />` wrapper that does the lookup via `createElement` inside the wrapper body. Wrapper components live in their own file, not alongside utility exports, so `react-refresh/only-export-components` stays clean. Canonical shape: `web/src/utils/activity-event-icon.tsx`.
+- **Viewport-size reads**: use `useViewportSize()` from `@/hooks/useViewportSize`. NEVER read `window.innerWidth` / `window.innerHeight` directly in a render body or `useMemo`; `@eslint-react/globals` flags it and it would be stale across resizes anyway.
 
 ## ESLint (MANDATORY)
 
