@@ -339,6 +339,28 @@ class RunHardCeilingTooLowError(DomainError):
         self.currency = currency
 
 
+class UnknownBenchmarkProviderError(DomainError):
+    """Raised when the configured ``budget.benchmark_provider`` is unknown.
+
+    A wiring-time misconfiguration: the cost-dial selects the benchmark
+    provider from a config discriminator, and an unrecognised value
+    fails loudly rather than silently degrading to the stub (which would
+    mask a typo'd operator setting).
+
+    Class Attributes:
+        status_code: HTTP 500 (server misconfiguration, not a client fault).
+        error_code: ``INTERNAL_ERROR``.
+        error_category: ``INTERNAL``.
+        retryable: ``False`` -- the config must be corrected.
+    """
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Unknown benchmark-score provider configured"
+
+
 class QuotaExhaustedError(BudgetExhaustedError):
     """Raised when provider quota is exhausted and unresolvable.
 

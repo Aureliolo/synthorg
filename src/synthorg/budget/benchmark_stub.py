@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
+from synthorg.budget.model_tier import heuristic_tier
 from synthorg.core.types import NotBlankStr
 
 # Per-tier calibrated stub scores. The values mirror the rough public
@@ -52,23 +53,6 @@ _TIER_SCORES: Final[Mapping[str, BenchmarkScore]] = {
 }
 
 
-def _tier_from_model_id(model_id: str) -> str | None:
-    """Map ``example-<tier>-<rev>`` to its tier label.
-
-    Returns:
-        The resulting ``str``, or ``None`` when unavailable.
-    """
-    parts = model_id.split("-")
-    if len(parts) < 2:  # noqa: PLR2004
-        return None
-    if "local" in parts and "small" in parts:
-        return "local-small"
-    candidate = parts[-2].lower()
-    if candidate in {"large", "medium", "small"}:
-        return candidate
-    return None
-
-
 class StubBenchmarkScoreProvider:
     """Calibrated-constant :class:`BenchmarkScoreProvider`.
 
@@ -86,7 +70,7 @@ class StubBenchmarkScoreProvider:
         Returns:
             The matching ``BenchmarkScore``, or ``None`` when no match is found.
         """
-        tier = _tier_from_model_id(model_id)
+        tier = heuristic_tier(model_id)
         if tier is None:
             return None
         return _TIER_SCORES[tier]

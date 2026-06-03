@@ -1,0 +1,45 @@
+# Recording manifest for measured per-model benchmark scores (#2204).
+#
+# Each entry is one measured model scored against the shared brief suite via a
+# single-agent company config (the model is pinned at run time, so one config
+# serves every model). `scripts/record_benchmark_scores.py` reads this file.
+#
+# Multiple models per tier give true per-MODEL granularity rather than a single
+# representative per tier. To populate measured scores:
+#   1. Edit `single_agent.yaml` to alias each `provider_name` to a real model.
+#   2. Run `make record-benchmark-scores ARGS=--record` with real credentials to
+#      record the cassettes (real spend), then commit `evals/cassettes/benchmark/`.
+#   3. Run `make record-benchmark-scores` (replay) to regenerate the committed
+#      seed artifact `src/synthorg/budget/benchmark_seed.json`, then commit it.
+#
+# Scores are MEASURED from these recorded runs, never fitted.
+brief_suite: evals/briefs
+models:
+  - model_id: example-large-001
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-large-001.json
+    provider_name: example-provider
+  - model_id: example-large-002
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-large-002.json
+    provider_name: example-provider
+  - model_id: example-medium-001
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-medium-001.json
+    provider_name: example-provider
+  - model_id: example-medium-002
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-medium-002.json
+    provider_name: example-provider
+  - model_id: example-small-001
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-small-001.json
+    provider_name: example-provider
+  - model_id: example-small-002
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-small-002.json
+    provider_name: example-provider
+  - model_id: example-local-small-001
+    company_config: evals/benchmark_scores/single_agent.yaml
+    cassette: evals/cassettes/benchmark/example-local-small-001.json
+    provider_name: example-provider

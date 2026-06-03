@@ -82,3 +82,8 @@ BUDGET_PROJECT_BASELINE_SOURCE: Final[str] = "budget.project_baseline.source"
 BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED: Final[str] = (
     "budget.pending_record.drain_unexpected"
 )
+
+# Measured per-model benchmark-score repository events
+BUDGET_BENCHMARK_SCORE_FETCHED: Final[str] = "budget.benchmark_score.fetched"
+BUDGET_BENCHMARK_SCORE_LISTED: Final[str] = "budget.benchmark_score.listed"
+BUDGET_BENCHMARK_SCORE_FAILED: Final[str] = "budget.benchmark_score.failed"

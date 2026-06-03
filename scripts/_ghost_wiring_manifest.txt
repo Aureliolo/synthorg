@@ -78,7 +78,10 @@ ENFORCED CompanyRoleSkeletonProvider #1979 -- constructed in engine/pipeline/ent
 ENFORCED ParetoAnalyzer #1982 -- constructed in api/app.py::_wire_cost_dial_services; consumed by ForecastBudgetController.get_pareto
 ENFORCED AgentRegistryAssignmentLookup #1979 -- constructed in api/app.py::_wire_cost_dial_services and injected into ParetoAnalyzer; sources per-role current model from the live AgentRegistry + observed per-model cost from the CostTracker so the frontier is non-empty in production (replaces the empty-assignments default)
 ENFORCED CostTrackerHistoryLookup #1979 -- constructed in api/app.py::_wire_cost_dial_services and injected into CostForecaster as its history_lookup; groups windowed productive CostTracker spend by the recording agent's live role + model tier so the forecaster blends real per-turn observations instead of always cold-starting on the static prior
-ENFORCED StubBenchmarkScoreProvider #1982 -- constructed in api/app.py::_wire_cost_dial_services; powers ParetoAnalyzer's quality axis; swap to real benchmark provider when #1980 lands
+ENFORCED StubBenchmarkScoreProvider #1982 -- constructed in api/_app_wiring.py::_select_benchmark_provider; the safe-default quality axis (calibrated per-tier constants) and the cold-start fallback inside MeasuredBenchmarkScoreProvider when budget.benchmark_provider=measured
+ENFORCED MeasuredBenchmarkScoreProvider #2204 -- constructed in api/_app_wiring.py::_select_benchmark_provider when budget.benchmark_provider=measured; reads measured per-model scores from the BenchmarkScoreRepository (seeded at boot from the committed artifact) and falls back to the stub for unmeasured models
+ENFORCED SQLiteBenchmarkScoreRepository #2204 -- constructed in api/_app_wiring.py::_wire_cost_dial_services for the sqlite backend; backs MeasuredBenchmarkScoreProvider and is boot-seeded by _seed_benchmark_scores
+ENFORCED PostgresBenchmarkScoreRepository #2204 -- constructed in api/_app_wiring.py::_wire_cost_dial_services for the postgres backend; backs MeasuredBenchmarkScoreProvider and is boot-seeded by _seed_benchmark_scores
 ENFORCED build_docs_service #1976 -- called in api/app.py::_wire_docs_engine; assembles chunker + indexer + writer + service + facade
 ENFORCED DocsService #1976 -- constructed by docs_engine/factory.py::build_docs_service; attached to AppState by _wire_docs_engine
 ENFORCED DocChunker #1976 -- constructed inside docs_engine/factory.py::build_docs_service; produces block-aware chunks for the indexer
@@ -128,6 +131,7 @@ ENFORCED ToolsmithService #1995 -- constructed by meta/toolsmith/factory.py::bui
 ENFORCED RingBufferCapabilityGapStore #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; ring-buffered capability-gap sink + recurrence detector
 ENFORCED LLMToolBlueprintGenerator #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; authors a sandbox-tool blueprint from a recurring gap
 ENFORCED BenchmarkToolValidationGate #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; per-tool acceptance brief + golden scorecard delta gate
+ENFORCED EvalGoldenScorecardProvider #2205 -- constructed in api/lifecycle_helpers/toolsmith_wiring.py::_build_golden_scorecard_provider when toolsmith.validation.golden_scorecard_provider=eval; adapts the golden-company eval spine into the gate's GoldenScorecardProvider seam so the no-regression check runs end-to-end instead of failing closed
 ENFORCED SandboxBriefRunner #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; runs the authored tool in its resolved sandbox for the acceptance brief
 ENFORCED ToolCreationApplier #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; validates then live-registers an approved blueprint, retires on rollback
 ENFORCED DynamicToolRegistry #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; mutable live authored-tool registry read behind the static surface

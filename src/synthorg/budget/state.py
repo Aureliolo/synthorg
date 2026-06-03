@@ -21,6 +21,9 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.pareto import ParetoAnalyzer
 from synthorg.budget.tracker import CostTracker
+from synthorg.persistence.benchmark_score_protocol import (
+    BenchmarkScoreRepository,
+)
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastRepository,
 )
@@ -37,6 +40,7 @@ class BudgetStateSlice(BaseFeatureStateSlice):
     cost_tracker: CostTracker | None = None
     cost_forecaster: CostForecaster | None = None
     cost_forecast_repo: CostForecastRepository | None = None
+    benchmark_score_repo: BenchmarkScoreRepository | None = None
     pareto_analyzer: ParetoAnalyzer | None = None
     benchmark_provider: BenchmarkScoreProvider | None = None
     budget_config: BudgetConfig | None = None

@@ -27,6 +27,7 @@ from synthorg.budget.benchmark_protocol import (
 from synthorg.budget.config import (
     BudgetConfig,
 )
+from synthorg.budget.model_tier import ModelTierMap, resolve_tier
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
@@ -127,23 +128,6 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _tier_from_model_id(model_id: str) -> str | None:
-    """Map ``example-<tier>-<rev>`` to its tier label.
-
-    Returns:
-        The resulting ``str``, or ``None`` when unavailable.
-    """
-    parts = model_id.split("-")
-    if len(parts) < 2:  # noqa: PLR2004
-        return None
-    if "local" in parts and "small" in parts:
-        return "local-small"
-    candidate = parts[-2].lower()
-    if candidate in {"large", "medium", "small"}:
-        return candidate
-    return None
-
-
 def _candidate_model_id(downgrade_map: Mapping[str, str], tier: str) -> str | None:
     """Return the downgrade target's tier-aligned canonical model id.
 
@@ -167,6 +151,10 @@ class ParetoAnalyzer:
             model assignments + observed costs. Defaults to "no
             assignments" for tests and cold-start; production wiring
             uses an ``AgentRegistry`` + ``BaselineStore`` adapter.
+        model_tier_map: Optional operator-configured ``model_id`` to
+            tier overrides so arbitrary real ids resolve a tier for the
+            downgrade traversal. Defaults to an empty map (heuristic
+            resolution only), so a normal boot is unchanged.
         clock: Optional clock seam returning UTC ``datetime`` for
             ``generated_at``.
     """
@@ -176,6 +164,7 @@ class ParetoAnalyzer:
         "_benchmark_provider",
         "_budget_config",
         "_clock",
+        "_model_tier_map",
     )
 
     def __init__(
@@ -184,6 +173,7 @@ class ParetoAnalyzer:
         benchmark_provider: BenchmarkScoreProvider,
         budget_config: BudgetConfig,
         assignment_lookup: RoleAssignmentLookup | None = None,
+        model_tier_map: ModelTierMap | None = None,
         clock: ClockFn | None = None,
     ) -> None:
         self._benchmark_provider = benchmark_provider
@@ -191,6 +181,7 @@ class ParetoAnalyzer:
         self._assignment_lookup = (
             assignment_lookup if assignment_lookup is not None else _empty_assignments
         )
+        self._model_tier_map = model_tier_map
         self._clock = clock if clock is not None else _utc_now
 
     async def analyse(self) -> ParetoFrontier:
@@ -243,7 +234,7 @@ class ParetoAnalyzer:
         Returns:
             The resulting ``ParetoPoint``, or ``None`` when unavailable.
         """
-        current_tier = _tier_from_model_id(assignment.current_model)
+        current_tier = resolve_tier(assignment.current_model, self._model_tier_map)
         if current_tier is None:
             return None
         candidate_model = _candidate_model_id(downgrade_map, current_tier)

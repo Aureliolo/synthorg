@@ -124,7 +124,10 @@
         "CoordinationMetricsCollector",
         "CostForecaster",
         "CostTrackerHistoryLookup",
+        "MeasuredBenchmarkScoreProvider",
         "ParetoAnalyzer",
+        "PostgresBenchmarkScoreRepository",
+        "SQLiteBenchmarkScoreRepository",
         "StubBenchmarkScoreProvider"
       ],
       "mcp_tool_names": [
@@ -145,6 +148,7 @@
         "cost_tracker",
         "cost_forecaster",
         "cost_forecast_repo",
+        "benchmark_score_repo",
         "pareto_analyzer",
         "benchmark_provider",
         "budget_config",
@@ -1182,6 +1186,7 @@
         "RingBufferCapabilityGapStore",
         "LLMToolBlueprintGenerator",
         "BenchmarkToolValidationGate",
+        "EvalGoldenScorecardProvider",
         "SandboxBriefRunner",
         "ToolCreationApplier",
         "DynamicToolRegistry",
@@ -1225,6 +1230,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-03T17:17:02.337035Z",
+  "generated_at": "2026-06-03T21:31:24.725197Z",
   "schema_version": 1
 }

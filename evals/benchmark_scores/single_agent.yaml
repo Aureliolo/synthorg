@@ -1,0 +1,12 @@
+# Single-agent company config for per-model benchmark scoring (#2204).
+#
+# The benchmark runner pins the agent's model per measured model id (see
+# `run_benchmark_async(model_id=...)`), so this one config serves every model
+# in the recording manifest. Replay mode needs nothing more than a valid
+# company; the defaults supply a single-agent setup.
+#
+# RECORD MODE ONLY: add a `providers:` section aliasing `example-provider` to a
+# real provider/model so `scripts/record_benchmark_scores.py --record` can build
+# a real driver. Supply credentials via the provider's usual environment
+# variables. Replay mode ignores this section.
+company_name: "Per-Model Benchmark Co"

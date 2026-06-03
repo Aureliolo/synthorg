@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.toolsmith.factory import ToolsmithRuntime
     from synthorg.meta.toolsmith.models import ToolBlueprint
+    from synthorg.meta.toolsmith.protocol import GoldenScorecardProvider
     from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
@@ -73,11 +74,13 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
     under subprocess. The sandbox workspace pins to the app's resolved
     workspace root (the same root the project-workspace service uses) so
     authored tools and the rest of the runtime share one writable mount
-    instead of diverging on the process CWD. The golden-scorecard
-    provider is intentionally absent here: until a runnable
-    score-with-candidate benchmark API is available, the validation gate
-    fails closed (a missing provider rejects the apply) rather than
-    trusting an unvalidated tool.
+    instead of diverging on the process CWD. The golden-scorecard provider
+    is selected by ``toolsmith.validation.golden_scorecard_provider``:
+    ``none`` (the default) wires no provider, so a ``require_golden_delta``
+    gate fails closed (a missing provider rejects the apply) rather than
+    trusting an unvalidated tool; ``eval`` wires the eval-backed
+    :class:`EvalGoldenScorecardProvider` so the gate runs the golden suite
+    end-to-end.
 
     Returns:
         The built toolsmith runtime, or ``None`` when no provider is registered.
@@ -104,14 +107,114 @@ def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith r
             blueprint.sandbox_backend.value, backends[sandboxing.default_backend]
         )
 
+    scorecard_provider = _build_golden_scorecard_provider(
+        si_config.toolsmith.validation.golden_scorecard_provider
+    )
+
     return build_toolsmith(
         si_config=si_config,
         provider=provider,
         repo=repo,
         sandbox_resolver=_resolve_sandbox,
+        scorecard_provider=scorecard_provider,
         approval_store=approval_store,
         cost_tracker=cost_tracker,
     )
+
+
+def _locate_evals_root() -> Path:
+    """Locate the in-repo golden-company eval harness directory.
+
+    Walks up from the installed ``synthorg`` package looking for an
+    ``evals`` directory carrying the reference baseline. The eval harness
+    is out-of-package (repo-only), so this resolves only in a source
+    checkout.
+
+    Returns:
+        The ``evals`` directory containing ``baselines/reference.yaml``.
+
+    Raises:
+        GoldenScorecardUnavailableError: No eval harness is on disk.
+    """
+    import synthorg  # noqa: PLC0415
+    from synthorg.meta.toolsmith.errors import (  # noqa: PLC0415
+        GoldenScorecardUnavailableError,
+    )
+
+    package_root = Path(synthorg.__file__).resolve()
+    for base in package_root.parents:
+        candidate = base / "evals"
+        if (candidate / "baselines" / "reference.yaml").is_file():
+            return candidate
+    msg = "golden_scorecard_provider='eval' requires the evals/ harness on disk"
+    raise GoldenScorecardUnavailableError(msg)
+
+
+def _build_golden_scorecard_provider(
+    strategy: str,
+) -> GoldenScorecardProvider | None:
+    """Select the golden-scorecard provider for the validation gate.
+
+    ``none`` wires no provider (the gate fails closed when it requires a
+    golden delta); ``eval`` wires the eval-backed provider over the
+    golden-company benchmark so the gate runs end-to-end. An unknown
+    strategy fails loudly.
+
+    Args:
+        strategy: The configured ``golden_scorecard_provider`` discriminator.
+
+    Returns:
+        The selected provider, or ``None`` for the ``none`` arm.
+
+    Raises:
+        UnknownGoldenScorecardProviderError: ``strategy`` is not a known arm.
+        GoldenScorecardUnavailableError: ``eval`` is selected but the
+            golden-company eval harness is not present on disk.
+    """
+    from synthorg.meta.toolsmith.errors import (  # noqa: PLC0415
+        UnknownGoldenScorecardProviderError,
+    )
+
+    if strategy == "none":
+        return None
+    if strategy != "eval":
+        msg = f"unknown golden_scorecard_provider {strategy!r}; expected none|eval"
+        raise UnknownGoldenScorecardProviderError(msg)
+
+    from synthorg.meta.toolsmith.golden_scorecard import (  # noqa: PLC0415
+        EvalGoldenScorecardProvider,
+    )
+
+    evals_root = _locate_evals_root()
+    company_config = evals_root / "baselines" / "reference.yaml"
+    brief_suite = evals_root / "briefs"
+    anchors_dir = evals_root / "anchors"
+
+    async def _run_golden_suite(blueprint: ToolBlueprint | None) -> int:
+        """Run the reference golden suite once and return its total.
+
+        The deterministic eval ignores authored tools, so the candidate
+        arm is identical to the baseline; the provider is built
+        candidate-insensitive and only ever calls this with ``None``.
+
+        Returns:
+            The golden suite total (``Scorecard.total``).
+        """
+        del blueprint
+        from tempfile import TemporaryDirectory  # noqa: PLC0415
+
+        from evals.run import run_benchmark_async  # noqa: PLC0415
+
+        with TemporaryDirectory(prefix="synthorg-golden-") as out_dir:
+            scorecard = await run_benchmark_async(
+                company_config=company_config,
+                brief_suite=brief_suite,
+                out_dir=Path(out_dir),
+                anchors_dir=anchors_dir,
+            )
+        return scorecard.total
+
+    return EvalGoldenScorecardProvider(run_scorecard=_run_golden_suite)
 
 
 async def wire_toolsmith(

@@ -330,6 +330,11 @@ class BudgetConfig(BaseModel):
             key="forecast_shrinkage_prior_weight",
             parse=parse_float,
         ),
+        MirrorField(
+            field="benchmark_provider",
+            namespace=SettingNamespace.BUDGET,
+            key="benchmark_provider",
+        ),
     )
 
     total_monthly: float = Field(
@@ -429,6 +434,15 @@ class BudgetConfig(BaseModel):
         default=5.0,
         ge=0.0,
         description="Prior pseudo-count for the Bayesian shrinkage blend",
+    )
+    benchmark_provider: Literal["stub", "measured"] = Field(
+        default="stub",
+        description=(
+            "Source of per-model benchmark scores for the Pareto frontier"
+            " and stakes-routing floors: `stub` (calibrated per-tier"
+            " constants, the safe default) or `measured` (repository-backed"
+            " measured scores with stub fallback)"
+        ),
     )
 
     @model_validator(mode="before")

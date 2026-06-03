@@ -7961,6 +7961,12 @@ export type components = {
             readonly alerts: components["schemas"]["BudgetAlertConfig"];
             readonly auto_downgrade: components["schemas"]["AutoDowngradeConfig"];
             /**
+             * @description Source of per-model benchmark scores for the Pareto frontier and stakes-routing floors: `stub` (calibrated per-tier constants, the safe default) or `measured` (repository-backed measured scores with stub fallback)
+             * @default stub
+             * @enum {string}
+             */
+            readonly benchmark_provider: "stub" | "measured";
+            /**
              * @description ISO 4217 currency code stamped onto every new cost record and used for display formatting. SynthOrg does not convert provider costs -- provider token prices are reported in the provider-native currency (see ``DEFAULT_CURRENCY``) and changing this setting relabels the code stamped onto subsequent records without translating any numeric values. Historical rows retain the code that was active when they were written.
              * @default USD
              */

@@ -19,6 +19,8 @@ from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
+    from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
     from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
     from synthorg.providers.registry import ProviderRegistry
 
@@ -28,15 +30,14 @@ logger = get_logger(__name__)
 def _wire_cost_dial_services(app_state: AppState) -> None:
     """Wire the cost-dial services onto AppState behind a persistence guard.
 
-    Builds the BudgetConfig, StubBenchmarkScoreProvider, the per-backend
-    CostForecastRepository, the CostForecaster, and the ParetoAnalyzer
-    then hot-swaps them onto AppState through the lock-protected
-    ``swap_*`` methods so an in-flight controller read cannot race the
-    boot wiring.
+    Builds the BudgetConfig, the per-backend CostForecastRepository +
+    BenchmarkScoreRepository, the benchmark-score provider selected by the
+    ``budget.benchmark_provider`` discriminator (stub by default, measured
+    behind the repo with a stub fallback), the CostForecaster, and the
+    ParetoAnalyzer then hot-swaps them onto AppState through the
+    lock-protected ``swap_*`` methods so an in-flight controller read
+    cannot race the boot wiring.
     """
-    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
-        StubBenchmarkScoreProvider,
-    )
     from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
@@ -45,21 +46,31 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         postgres_pool,
         sqlite_connection,
     )
+    from synthorg.persistence.sqlite.benchmark_score_repo import (  # noqa: PLC0415
+        SQLiteBenchmarkScoreRepository,
+    )
     from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
         SQLiteCostForecastRepository,
     )
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     budget_config = BudgetConfig()
-    benchmark_provider = StubBenchmarkScoreProvider()
     backend_name = persistence_of(app_state).backend_name
+    benchmark_score_repo: BenchmarkScoreRepository
     if backend_name == "sqlite":
         forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
             sqlite_connection(persistence_of(app_state)),
             write_context=persistence_of(app_state).write_context,
             currency_getter=lambda: budget_config.currency,
         )
+        benchmark_score_repo = SQLiteBenchmarkScoreRepository(
+            sqlite_connection(persistence_of(app_state)),
+            write_context=persistence_of(app_state).write_context,
+        )
     else:
+        from synthorg.persistence.postgres.benchmark_score_repo import (  # noqa: PLC0415
+            PostgresBenchmarkScoreRepository,
+        )
         from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
             PostgresCostForecastRepository,
         )
@@ -68,6 +79,14 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
             postgres_pool(persistence_of(app_state)),
             currency_getter=lambda: budget_config.currency,
         )
+        benchmark_score_repo = PostgresBenchmarkScoreRepository(
+            postgres_pool(persistence_of(app_state)),
+        )
+
+    benchmark_provider = _select_benchmark_provider(
+        budget_config.benchmark_provider,
+        repo=benchmark_score_repo,
+    )
     from synthorg.budget.forecast_history import (  # noqa: PLC0415
         CostTrackerHistoryLookup,
     )
@@ -111,10 +130,97 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         BudgetStateSlice,
         budget_config=budget_config,
         benchmark_provider=benchmark_provider,
+        benchmark_score_repo=benchmark_score_repo,
         cost_forecast_repo=forecast_repo,
         cost_forecaster=forecaster,
         pareto_analyzer=analyzer,
     )
+
+
+def _select_benchmark_provider(
+    strategy: str,
+    *,
+    repo: BenchmarkScoreRepository,
+) -> BenchmarkScoreProvider:
+    """Select the benchmark-score provider from the config discriminator.
+
+    ``stub`` (the safe default) returns calibrated per-tier constants;
+    ``measured`` reads measured per-model scores from ``repo`` and falls
+    back to the stub for any unmeasured model. An unknown discriminator
+    fails loudly rather than silently degrading to the stub.
+
+    Returns:
+        The selected :class:`BenchmarkScoreProvider`.
+
+    Raises:
+        UnknownBenchmarkProviderError: If ``strategy`` is not a known
+            discriminator value.
+    """
+    from synthorg.budget.benchmark_measured import (  # noqa: PLC0415
+        MeasuredBenchmarkScoreProvider,
+    )
+    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
+        StubBenchmarkScoreProvider,
+    )
+
+    if strategy == "stub":
+        return StubBenchmarkScoreProvider()
+    if strategy == "measured":
+        return MeasuredBenchmarkScoreProvider(
+            repo,
+            fallback=StubBenchmarkScoreProvider(),
+        )
+    from synthorg.budget.errors import (  # noqa: PLC0415
+        UnknownBenchmarkProviderError,
+    )
+
+    msg = (
+        f"Unknown budget.benchmark_provider {strategy!r}; expected 'stub' or 'measured'"
+    )
+    raise UnknownBenchmarkProviderError(msg)
+
+
+async def _seed_benchmark_scores(app_state: AppState) -> None:
+    """Seed the benchmark-score repo from the committed artifact when empty.
+
+    Populates the measured per-model scores recorded offline so a fresh
+    operator database carries them without a recording run. Idempotent:
+    a non-empty table is left untouched so operator-recorded scores are
+    never clobbered. Only runs in the ``measured`` arm; the stub arm has
+    no repo to seed. Best-effort: a seeding failure logs and is swallowed
+    so it cannot poison startup.
+    """
+    from synthorg.budget.benchmark_seed import load_seed_records  # noqa: PLC0415
+    from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+
+    budget_slice = app_state.slice(BudgetStateSlice)
+    repo = budget_slice.benchmark_score_repo
+    config = budget_slice.budget_config
+    if repo is None or config is None or config.benchmark_provider != "measured":
+        return
+    try:
+        if await repo.list_items(limit=1):
+            return
+        records = load_seed_records()
+        for record in records:
+            await repo.save(record)
+    except Exception as exc:
+        reraise_critical(exc)
+        logger.warning(
+            API_APP_STARTUP,
+            service="benchmark_scores",
+            note="benchmark-score seeding failed; measured scores fall back to stub",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    if records:
+        logger.info(
+            API_APP_STARTUP,
+            service="benchmark_scores",
+            note="seeded measured scores from committed artifact",
+            count=len(records),
+        )
 
 
 def _try_wire_cost_dial(app_state: AppState) -> None:
@@ -347,6 +453,7 @@ def _wire_environment_service(app_state: AppState) -> None:
 
 
 __all__ = [
+    "_seed_benchmark_scores",
     "_try_wire_cockpit",
     "_try_wire_cost_dial",
     "_wire_cockpit_services",
