@@ -80,6 +80,16 @@ def _verdict_response(verdict: str, confidence: float) -> CompletionResponse:
     )
 
 
+def _no_tool_response() -> CompletionResponse:
+    return CompletionResponse(
+        content="I could not return a structured verdict.",
+        tool_calls=(),
+        finish_reason=FinishReason.STOP,
+        usage=TokenUsage(input_tokens=1, output_tokens=1, cost=0.0),
+        model=_MODEL,
+    )
+
+
 def _provider(responses: list[CompletionResponse]) -> Any:
     return mock_of[CompletionProvider](
         complete=AsyncMock(spec=CompletionProvider.complete, side_effect=responses),
@@ -183,6 +193,8 @@ class TestPrecision:
         # Only the extraction call ran; no entailment on an empty corpus.
         assert provider.complete.await_count == 1  # type: ignore[attr-defined]
         knowledge.search.assert_awaited_once()  # type: ignore[attr-defined]
+        _, kwargs = knowledge.search.call_args  # type: ignore[attr-defined]
+        assert kwargs["project_id"] == _PROJECT
 
 
 class TestEscalation:
@@ -311,3 +323,111 @@ class TestDegradation:
 
         assert claims == ()
         knowledge.search.assert_not_awaited()  # type: ignore[attr-defined]
+
+
+class TestPerClaimResilience:
+    async def test_entailment_failure_skips_only_that_claim(self) -> None:
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(
+                spec=CompletionProvider.complete,
+                side_effect=[
+                    _extract_response(["First claim 10%.", "Second claim 47%."]),
+                    ValueError("entailment exploded"),
+                    _verdict_response("unsupported", 0.9),
+                ],
+            ),
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        claims = await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        assert len(claims) == 1
+        assert "47%" in claims[0].excerpt
+
+    async def test_unparseable_verdict_skips_claim(self) -> None:
+        provider = _provider(
+            [_extract_response(["Revenue grew 47%."]), _no_tool_response()]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        claims = await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        assert claims == ()
+
+    async def test_multiple_unsupported_claims_all_flagged(self) -> None:
+        provider = _provider(
+            [
+                _extract_response(["First claim 10%.", "Second claim 47%."]),
+                _verdict_response("unsupported", 0.9),
+                _verdict_response("unsupported", 0.88),
+            ]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        claims = await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        assert len(claims) == 2
+
+
+class TestDropFloorBoundary:
+    async def test_confidence_exactly_at_drop_floor_is_flagged(self) -> None:
+        provider = _provider(
+            [
+                _extract_response(["Revenue grew 47%."]),
+                _verdict_response("unsupported", 0.45),
+            ]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        claims = await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        assert len(claims) == 1
+
+    async def test_confidence_just_below_drop_floor_is_not_flagged(self) -> None:
+        provider = _provider(
+            [
+                _extract_response(["Revenue grew 47%."]),
+                _verdict_response("unsupported", 0.44),
+            ]
+        )
+        checker = _checker(
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+        )
+
+        claims = await checker.check(
+            deliverable_content=_NUMERIC_DELIVERABLE,
+            execution_id=_EXEC,
+            project_id=_PROJECT,
+        )
+
+        assert claims == ()
+
+
+class TestSearchLimitGuard:
+    def test_non_positive_search_limit_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="search_limit"):
+            KnowledgeSubstrateGroundingChecker(resolver=lambda: None, search_limit=0)

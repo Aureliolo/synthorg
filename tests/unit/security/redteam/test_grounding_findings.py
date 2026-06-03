@@ -61,6 +61,15 @@ class TestClaimToFinding:
         assert len(finding.evidence) >= 1
         assert finding.evidence[0]
 
+    def test_substrate_claim_below_drop_floor_falls_back_to_low(self) -> None:
+        # substrate_severity_for_confidence returns None below the drop
+        # floor; the source-aware mapping must defensively floor to LOW
+        # rather than emit None or raise (the checker never emits such a
+        # claim, but the conversion guards it anyway).
+        finding = claim_to_finding(_substrate_claim(0.2))
+        assert finding.severity is RedTeamSeverity.LOW
+        assert finding.source == "knowledge_substrate"
+
     def test_expected_source_kind_appears_in_suggested_fix(self) -> None:
         finding = claim_to_finding(
             _substrate_claim(0.9, expected_source_kind="finance_report")

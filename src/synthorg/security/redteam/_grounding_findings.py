@@ -5,8 +5,8 @@ Pure, side-effect-free helpers split out of :mod:`gate` so the gate
 module stays focused on orchestration. An :class:`UngroundedClaim`
 becomes a :class:`RedTeamFinding` on the GROUNDING surface; the severity
 is source-aware. ``source="heuristic"`` claims are capped at
-:data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW) so the deterministic stub
-can never block on its own. ``source="knowledge_substrate"`` claims map
+:data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW) so the deterministic
+heuristic can never block on its own. ``source="knowledge_substrate"`` claims map
 their ungrounded-confidence through
 :func:`substrate_severity_for_confidence` (up to the HIGH cap), which is
 how the substrate-backed checker escalates to a blocking grounding
@@ -27,7 +27,7 @@ from synthorg.security.redteam.routing import (
 )
 
 _MAX_EVIDENCE_EXCERPT_CHARS: Final[int] = 240
-"""Cap on the length of a heuristic-derived evidence excerpt.
+"""Cap on the length of a claim's evidence excerpt in a finding.
 
 Long excerpts pollute the rework brief; the cap keeps a finding
 self-contained while leaving room for one full sentence.

@@ -24,6 +24,10 @@ from synthorg.budget.state import BudgetStateSlice
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.knowledge.state import KnowledgeStateSlice
+from synthorg.observability import get_logger
+from synthorg.observability.events.red_team import (
+    RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
+)
 from synthorg.persistence.state import red_team_reports_of
 from synthorg.providers.state import ProvidersStateSlice
 from synthorg.security.redteam.builder import (
@@ -35,6 +39,8 @@ from synthorg.security.redteam.grounding.resolver import GroundingSubstrateConte
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 _GROUNDING_MODEL_ID: Final[str] = "example-medium-001"
 """Vendor-agnostic model id for the grounding checker's LLM calls.
@@ -65,7 +71,16 @@ def _build_grounding_substrate_resolver(
         if registry is None or len(registry) == 0:
             return None
         available = registry.list_providers()
-        name = provider_name if provider_name in available else available[0]
+        if provider_name in available:
+            name = provider_name
+        else:
+            name = available[0]
+            logger.warning(
+                RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
+                reason="configured_provider_absent",
+                configured_provider=provider_name,
+                fallback_provider=name,
+            )
         return GroundingSubstrateContext(
             knowledge_service=app_state.slice(KnowledgeStateSlice).service,
             provider=registry.get(name),

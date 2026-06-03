@@ -1,10 +1,9 @@
 """Grounding-checker protocol.
 
 The protocol is the seam between the gate and any grounding
-implementation. The current heuristic implementation runs without
-an LLM; a future substrate-backed implementation will resolve each
-claim to a source chunk in the knowledge store. The gate does not
-change between the two.
+implementation. The heuristic implementation runs without an LLM; the
+substrate-backed implementation resolves each claim against source
+chunks in the knowledge store. The gate does not change between the two.
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable

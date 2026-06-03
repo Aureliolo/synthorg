@@ -1,6 +1,6 @@
 """Factory for the configured :class:`GroundingChecker`.
 
-The factory is the swap point between the deterministic heuristic stub
+The factory is the swap point between the deterministic heuristic checker
 and the substrate-backed checker. The discriminator lives on
 :class:`synthorg.security.config.RedTeamConfig`; the gate's call sites
 (:mod:`synthorg.security.redteam.gate`) do not change between the two.
@@ -62,7 +62,7 @@ def build_grounding_checker(
         return HeuristicGroundingChecker()
     if kind == "knowledge_substrate":
         if substrate_resolver is None:
-            logger.info(
+            logger.warning(
                 RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
                 reason="no_resolver_at_build",
                 note="grounding_checker_kind=knowledge_substrate but no "

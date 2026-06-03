@@ -19,7 +19,7 @@ finding pipeline.
 """
 
 import re
-from typing import Final, Literal
+from typing import Final, Literal, get_args
 
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -38,9 +38,8 @@ from synthorg.providers.models import (
 GroundingVerdictLabel = Literal["supported", "uncertain", "unsupported"]
 """Entailment outcomes; only ``unsupported`` produces an ungrounded claim."""
 
-_VERDICT_LABELS: Final[frozenset[str]] = frozenset(
-    {"supported", "uncertain", "unsupported"},
-)
+_VERDICT_LABELS: Final[frozenset[str]] = frozenset(get_args(GroundingVerdictLabel))
+"""Derived from the Literal so the membership test cannot drift from the type."""
 
 EXTRACT_CLAIMS_TOOL_NAME: Final[str] = "extract_claims"
 GROUNDING_VERDICT_TOOL_NAME: Final[str] = "grounding_verdict"

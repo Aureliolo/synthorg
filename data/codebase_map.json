@@ -12546,7 +12546,7 @@
     },
     {
       "kind": "code",
-      "loc": 77,
+      "loc": 91,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/red_team.py",
       "owning_feature": "observability"
@@ -16130,7 +16130,7 @@
     },
     {
       "kind": "code",
-      "loc": 372,
+      "loc": 374,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/gate.py",
       "owning_feature": "security"
@@ -16144,7 +16144,7 @@
     },
     {
       "kind": "code",
-      "loc": 238,
+      "loc": 237,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/grounding/_llm.py",
       "owning_feature": "security"
@@ -16165,14 +16165,14 @@
     },
     {
       "kind": "code",
-      "loc": 75,
+      "loc": 77,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/grounding/models.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 43,
+      "loc": 42,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/grounding/protocol.py",
       "owning_feature": "security"
@@ -16186,14 +16186,14 @@
     },
     {
       "kind": "service",
-      "loc": 287,
+      "loc": 340,
       "loc_cap": 600,
       "module": "src/synthorg/security/redteam/grounding/substrate.py",
       "owning_feature": "security"
     },
     {
       "kind": "code",
-      "loc": 260,
+      "loc": 262,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/models.py",
       "owning_feature": "security"
@@ -16221,7 +16221,7 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 128,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/routing.py",
       "owning_feature": "security"
@@ -18664,7 +18664,7 @@
     },
     {
       "kind": "code",
-      "loc": 106,
+      "loc": 120,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_red_team_runtime.py",
       "owning_feature": "runtime"

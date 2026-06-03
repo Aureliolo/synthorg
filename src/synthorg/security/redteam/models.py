@@ -112,8 +112,8 @@ class RedTeamFinding(BaseModel):
             assignee as part of the rework critique.
         source: Where the finding originated. ``"agent"`` for findings
             filed by the red-team agent via the tool; ``"heuristic"``
-            for findings produced by the grounding stub;
-            ``"knowledge_substrate"`` reserved for the
+            for findings produced by the heuristic grounding checker;
+            ``"knowledge_substrate"`` for findings produced by the
             substrate-backed checker.
         citations: Source references the finding cites
             (URLs, document IDs, etc.). Default empty.
@@ -218,8 +218,8 @@ class RedTeamReviewInput(BaseModel):
         execution_id: The execution that produced the deliverable.
         deliverable_content: The artifact text the red-team attacks.
         acceptance_criteria: The brief's acceptance criteria, used by
-            the agent prompt and by a future substrate-backed checker
-            to verify requirements coverage.
+            the agent prompt; a dedicated requirements-coverage checker
+            (not yet built) would also consume it.
         assigned_agent_id: The agent that produced the deliverable
             (forbidden as red-team reviewer; enforced one layer up by
             the review-gate's self-review guard).
@@ -246,12 +246,14 @@ class RedTeamGateResult(BaseModel):
 
     Attributes:
         verdict: Aggregate verdict (PASS / PASS_WITH_FINDINGS / BLOCK).
-        report: The agent-filed report, merged with heuristic
-            grounding findings (added as ``source="heuristic"`` finding
-            entries so callers see a single unified findings tuple).
-        grounding_claims: Raw heuristic grounding claims, exposed for
-            callers that want to surface them separately from the
-            merged findings (e.g. for diagnostic UI).
+        report: The agent-filed report, merged with grounding findings
+            from the configured checker (added as ``source="heuristic"``
+            or ``source="knowledge_substrate"`` finding entries so callers
+            see a single unified findings tuple).
+        grounding_claims: Raw grounding claims from the configured checker
+            (heuristic or substrate-backed), exposed for callers that want
+            to surface them separately from the merged findings (e.g. for
+            diagnostic UI).
         elapsed_seconds: Wall-clock gate duration (clock-driven, deterministic
             under ``FakeClock``).
     """
@@ -268,8 +270,8 @@ class RedTeamReportRecord(BaseModel):
     """Durable audit record of one red-team gate evaluation.
 
     The persistent archive row for a single execution: the merged report
-    the gate produced (agent findings plus heuristic grounding findings),
-    the aggregate verdict, and the time the gate recorded it. It lets an
+    the gate produced (agent findings plus grounding findings), the
+    aggregate verdict, and the time the gate recorded it. It lets an
     operator answer "why was this deliverable sent back?" from the
     flight-recorder surface long after the run completed -- the durability
     the in-process per-execution :class:`RedTeamReportRepository` cannot
@@ -284,7 +286,7 @@ class RedTeamReportRecord(BaseModel):
         execution_id: The execution the gate evaluated (archive key).
         task_id: The deliverable's owning task.
         verdict: Aggregate verdict the gate computed for the deliverable.
-        report: The merged report (agent plus heuristic findings).
+        report: The merged report (agent plus grounding findings).
         recorded_at: When the gate recorded the verdict (clock-driven so
             it is deterministic under ``FakeClock``).
     """

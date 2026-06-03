@@ -139,14 +139,16 @@ def _substrate_checker(
     return KnowledgeSubstrateGroundingChecker(resolver=lambda: context)
 
 
-def _review_input() -> RedTeamReviewInput:
+def _review_input(
+    autonomy: AutonomyLevel = AutonomyLevel.SUPERVISED,
+) -> RedTeamReviewInput:
     return RedTeamReviewInput(
         task_id=_TASK,
         execution_id=_EXEC,
         deliverable_content=_DELIVERABLE,
         acceptance_criteria=_CRITERIA,
         assigned_agent_id="agent-analyst-3",
-        autonomy=AutonomyLevel.SUPERVISED,
+        autonomy=autonomy,
         project_id="proj-substrate",
     )
 
@@ -206,3 +208,54 @@ async def test_grounded_claim_is_not_blocked() -> None:
 
     assert result.verdict is RedTeamVerdict.PASS
     assert result.grounding_claims == ()
+
+
+async def test_medium_band_claim_blocks_under_supervised_autonomy() -> None:
+    """A MEDIUM-confidence ungrounded claim BLOCKs under SUPERVISED autonomy."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _CleanReportRunner(repo=repo)
+    checker = _substrate_checker(
+        responses=[
+            _extract_response("Revenue grew 47% last quarter."),
+            _verdict_response("unsupported", 0.70),
+        ]
+    )
+    gate = RedTeamGateService(
+        agent_runner=runner,
+        report_repo=repo,
+        grounding_checker=checker,
+        clock=FakeClock(),
+    )
+
+    result = await gate.evaluate(_review_input(AutonomyLevel.SUPERVISED))
+
+    assert result.verdict is RedTeamVerdict.BLOCK
+    grounding = [
+        f
+        for f in result.report.findings
+        if f.attack_surface is RedTeamAttackSurface.GROUNDING
+    ]
+    assert any(f.severity is RedTeamSeverity.MEDIUM for f in grounding)
+
+
+async def test_medium_band_claim_does_not_block_under_full_autonomy() -> None:
+    """The same MEDIUM claim surfaces without blocking under FULL autonomy."""
+    repo = InMemoryRedTeamReportRepository()
+    runner: AgentRunner = _CleanReportRunner(repo=repo)
+    checker = _substrate_checker(
+        responses=[
+            _extract_response("Revenue grew 47% last quarter."),
+            _verdict_response("unsupported", 0.70),
+        ]
+    )
+    gate = RedTeamGateService(
+        agent_runner=runner,
+        report_repo=repo,
+        grounding_checker=checker,
+        clock=FakeClock(),
+    )
+
+    result = await gate.evaluate(_review_input(AutonomyLevel.FULL))
+
+    assert result.verdict is RedTeamVerdict.PASS_WITH_FINDINGS
+    assert len(result.grounding_claims) == 1

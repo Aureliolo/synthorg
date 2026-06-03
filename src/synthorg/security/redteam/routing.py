@@ -52,10 +52,10 @@ HEURISTIC_GROUNDING_MAX_SEVERITY: Final[RedTeamSeverity] = RedTeamSeverity.LOW
 """Maximum severity a heuristic-source grounding finding may carry.
 
 Heuristic grounding flags are deterministic but not authoritative;
-capping their severity at LOW means a noisy stub can never block on
-its own. Only the LLM agent's own findings (or, once it ships, a
-substrate-backed checker) may escalate to MEDIUM/HIGH/CRITICAL on
-the GROUNDING attack surface.
+capping their severity at LOW means a noisy heuristic can never block on
+its own. Only the LLM agent's own findings or the substrate-backed
+checker may escalate to MEDIUM/HIGH/CRITICAL on the GROUNDING attack
+surface.
 """
 
 SUBSTRATE_GROUNDING_MAX_SEVERITY: Final[RedTeamSeverity] = RedTeamSeverity.HIGH
@@ -94,7 +94,9 @@ SUBSTRATE_DROP_FLOOR: Final[float] = SUBSTRATE_LOW_CONFIDENCE_FLOOR
 """Confidence below which a substrate claim must not be emitted at all.
 
 Enforced by the checker so a claim that would map to no severity never
-becomes a finding; aliases the LOW floor so the band edges stay aligned.
+becomes a finding. Set to match the LOW floor (a value copy bound at
+import time, not a live reference); keep the two in sync so the checker's
+drop boundary and the routing band edge cannot diverge.
 """
 
 
@@ -142,9 +144,9 @@ def compute_red_team_verdict(
 ) -> RedTeamVerdict:
     """Aggregate verdict for a flat sequence of findings under ``autonomy``.
 
-    Takes the merged tuple of agent + heuristic-derived findings so the
-    gate's verdict reflects EVERY signal feeding the rework decision,
-    not just the agent's report.
+    Takes the merged tuple of agent + grounding findings so the gate's
+    verdict reflects EVERY signal feeding the rework decision, not just
+    the agent's report.
 
     * Empty: :data:`RedTeamVerdict.PASS`.
     * Any finding triggers :func:`should_block`: :data:`RedTeamVerdict.BLOCK`.

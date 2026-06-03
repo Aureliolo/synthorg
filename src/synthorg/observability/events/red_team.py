@@ -27,7 +27,8 @@ RED_TEAM_REPORT_RECEIVED: Final[str] = "red_team.report.received"
 RED_TEAM_REPORT_EXECUTION_ID_MISMATCH: Final[str] = (
     "red_team.report.execution_id_mismatch"
 )
-"""Stored report's execution_id differs from the gate's input; corrected on the fly."""
+"""Stored report's execution_id differs from the gate's input; the gate discards it
+and falls back to a synthetic fail-OPEN report."""
 
 RED_TEAM_REPORT_MISSING: Final[str] = "red_team.report.missing"
 """Agent did not file a report; gate synthesises an INFO-severity finding."""
@@ -39,13 +40,13 @@ RED_TEAM_FINDING_FILED: Final[str] = "red_team.finding.filed"
 """One finding from a report (emitted per finding for fan-out logs)."""
 
 RED_TEAM_GROUNDING_CHECK_STARTED: Final[str] = "red_team.grounding.started"
-"""Grounding stub started scanning a deliverable."""
+"""Grounding checker started scanning a deliverable."""
 
 RED_TEAM_GROUNDING_CHECK_COMPLETED: Final[str] = "red_team.grounding.completed"
-"""Grounding stub returned (with the count of ungrounded claims)."""
+"""Grounding checker returned (with the count of ungrounded claims)."""
 
 RED_TEAM_GROUNDING_CHECK_FAILED: Final[str] = "red_team.grounding.failed"
-"""Grounding stub raised; the gate proceeds without grounding findings."""
+"""Grounding checker raised; the gate proceeds without grounding findings."""
 
 RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED: Final[str] = (
     "red_team.grounding.substrate_degraded"
@@ -56,6 +57,22 @@ RED_TEAM_GROUNDING_EXTRACTION_FAILED: Final[str] = (
     "red_team.grounding.extraction_failed"
 )
 """Claim-extraction LLM call failed; substrate checker degraded to heuristic."""
+
+RED_TEAM_GROUNDING_EXTRACTION_EMPTY: Final[str] = "red_team.grounding.extraction_empty"
+"""Claim-extraction returned no claims (model tool-refusal or genuinely none);
+nothing to ground."""
+
+RED_TEAM_GROUNDING_DELIVERABLE_TRUNCATED: Final[str] = (
+    "red_team.grounding.deliverable_truncated"
+)
+"""Deliverable exceeded the extraction char cap and was truncated; grounding
+coverage of the tail is partial."""
+
+RED_TEAM_GROUNDING_VERDICT_UNPARSEABLE: Final[str] = (
+    "red_team.grounding.verdict_unparseable"
+)
+"""Entailment returned no parseable verdict (tool-refusal or malformed); the claim
+is skipped rather than flagged."""
 
 RED_TEAM_GROUNDING_SEARCH_FAILED: Final[str] = "red_team.grounding.search_failed"
 """Corpus search for one claim failed; the claim is skipped (fail-soft)."""

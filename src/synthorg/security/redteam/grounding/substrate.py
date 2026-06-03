@@ -5,10 +5,10 @@ Resolves every assertive factual claim in a deliverable against the
 project-scoped knowledge corpus using LLM claim-extraction plus semantic
 entailment, and flags the unsupported ones as
 ``source="knowledge_substrate"`` :class:`UngroundedClaim` entries across
-the full ``[0,1]`` confidence range. Unlike the heuristic stub, these
-claims escalate (via :func:`substrate_severity_for_confidence`) up to the
-HIGH cap, so a substrate finding can BLOCK a deliverable and reroute it to
-rework.
+the ``[SUBSTRATE_DROP_FLOOR, 1.0]`` confidence band (claims below the drop
+floor are not emitted). Unlike the heuristic checker, these claims escalate
+(via :func:`substrate_severity_for_confidence`) up to the HIGH cap, so a
+substrate finding can BLOCK a deliverable and reroute it to rework.
 
 Precision is the contract. Three guards keep grounded work from being
 wrongly blocked:
@@ -33,10 +33,13 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CLAIM_UNSUPPORTED,
     RED_TEAM_GROUNDING_CORPUS_EMPTY,
+    RED_TEAM_GROUNDING_DELIVERABLE_TRUNCATED,
     RED_TEAM_GROUNDING_ENTAILMENT_FAILED,
+    RED_TEAM_GROUNDING_EXTRACTION_EMPTY,
     RED_TEAM_GROUNDING_EXTRACTION_FAILED,
     RED_TEAM_GROUNDING_SEARCH_FAILED,
     RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
+    RED_TEAM_GROUNDING_VERDICT_UNPARSEABLE,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import (
@@ -51,6 +54,7 @@ from synthorg.security.redteam.grounding._llm import (
     EXTRACTION_MAX_TOKENS,
     GROUNDING_VERDICT_TOOL,
     LLM_TEMPERATURE,
+    MAX_DELIVERABLE_CHARS,
     build_entailment_messages,
     build_extraction_messages,
     parse_extracted_claims,
@@ -91,6 +95,11 @@ class KnowledgeSubstrateGroundingChecker:
             extraction fails; defaults to a fresh
             :class:`HeuristicGroundingChecker`.
         search_limit: Top-k corpus chunks retrieved per claim.
+
+    Raises:
+        ValueError: If ``search_limit`` is not positive (a non-positive
+            limit silently neutralises the checker, since every claim's
+            corpus search returns no hits and is skipped).
     """
 
     def __init__(
@@ -100,6 +109,9 @@ class KnowledgeSubstrateGroundingChecker:
         fallback: GroundingChecker | None = None,
         search_limit: int = _DEFAULT_SEARCH_LIMIT,
     ) -> None:
+        if search_limit <= 0:
+            msg = f"search_limit must be positive; got {search_limit}"
+            raise ValueError(msg)
         self._resolver = resolver
         self._fallback: GroundingChecker = fallback or HeuristicGroundingChecker()
         self._search_limit = search_limit
@@ -123,15 +135,18 @@ class KnowledgeSubstrateGroundingChecker:
             when there is nothing to check.
 
         Raises:
-            asyncio.CancelledError: Propagated when claim extraction is
-                cancelled, so the awaiting parent observes it.
+            asyncio.CancelledError: Propagated when claim extraction, corpus
+                search, or entailment is cancelled, so the awaiting parent
+                observes it.
         """
-        context = self._resolver()
+        context = self._resolve_context(execution_id)
         if context is None or context.knowledge_service is None:
             logger.info(
                 RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
                 execution_id=execution_id,
-                reason="substrate_unavailable",
+                reason="no_provider_registered"
+                if context is None
+                else "knowledge_service_not_wired",
             )
             return await self._delegate(deliverable_content, execution_id, project_id)
 
@@ -153,6 +168,10 @@ class KnowledgeSubstrateGroundingChecker:
             return await self._delegate(deliverable_content, execution_id, project_id)
 
         if not claims:
+            logger.debug(
+                RED_TEAM_GROUNDING_EXTRACTION_EMPTY,
+                execution_id=execution_id,
+            )
             return ()
 
         flagged: list[UngroundedClaim] = []
@@ -163,6 +182,33 @@ class KnowledgeSubstrateGroundingChecker:
             if ungrounded is not None:
                 flagged.append(ungrounded)
         return tuple(flagged)
+
+    def _resolve_context(
+        self, execution_id: NotBlankStr
+    ) -> GroundingSubstrateContext | None:
+        """Resolve the live substrate context, treating a raise as unavailable.
+
+        The resolver reads live application state (provider registry,
+        knowledge service); a mid-flight hot-swap could surface a transient
+        error. Treating that as ``None`` keeps the degrade-to-heuristic path
+        symmetric with extraction failure rather than crashing the gate.
+
+        Returns:
+            The resolved context, or ``None`` when no provider is registered
+            or the resolver raised.
+        """
+        try:
+            return self._resolver()
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED,
+                execution_id=execution_id,
+                reason="resolver_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
 
     async def _delegate(
         self,
@@ -192,6 +238,13 @@ class KnowledgeSubstrateGroundingChecker:
         Returns:
             The extracted claim strings (possibly empty).
         """
+        if len(deliverable_content) > MAX_DELIVERABLE_CHARS:
+            logger.debug(
+                RED_TEAM_GROUNDING_DELIVERABLE_TRUNCATED,
+                execution_id=execution_id,
+                original_length=len(deliverable_content),
+                cap=MAX_DELIVERABLE_CHARS,
+            )
         response = await self._complete(
             context,
             execution_id,
@@ -275,6 +328,10 @@ class KnowledgeSubstrateGroundingChecker:
 
         verdict = parse_grounding_verdict(response)
         if verdict is None:
+            logger.debug(
+                RED_TEAM_GROUNDING_VERDICT_UNPARSEABLE,
+                execution_id=execution_id,
+            )
             return None
         label, confidence = verdict
         if label != _UNSUPPORTED_LABEL or confidence < SUBSTRATE_DROP_FLOOR:
