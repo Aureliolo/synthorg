@@ -44,13 +44,16 @@ def evidence_excerpt(
     """
     if max_chars <= 0:
         return ""
+    # Verbatim fast-path first: an excerpt that already fits is returned as-is,
+    # even under a tiny cap (a 1-char excerpt with max_chars=1 must not become
+    # an ellipsis).
+    if len(claim.excerpt) <= max_chars:
+        return claim.excerpt
     # A cap at or below the ellipsis width cannot fit "..." plus any prefix;
     # return as much of the ellipsis as the cap allows so the result never
     # exceeds max_chars.
     if max_chars <= _ELLIPSIS_OVERHEAD:
         return _ELLIPSIS[:max_chars]
-    if len(claim.excerpt) <= max_chars:
-        return claim.excerpt
     keep = max_chars - _ELLIPSIS_OVERHEAD
     return f"{claim.excerpt[:keep]}{_ELLIPSIS}"
 

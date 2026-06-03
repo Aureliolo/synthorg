@@ -43,6 +43,11 @@ class TestEvidenceExcerpt:
         # A cap at or below the ellipsis width must never overflow to "...".
         assert evidence_excerpt(_claim("y" * 20), max_chars=max_chars) == expected
 
+    def test_short_excerpt_under_tiny_cap_returned_verbatim(self) -> None:
+        # An excerpt that already fits must be returned as-is, even when the cap
+        # is at or below the ellipsis width (the fast-path runs first).
+        assert evidence_excerpt(_claim("x"), max_chars=1) == "x"
+
 
 @pytest.fixture
 def checker() -> HeuristicGroundingChecker:
