@@ -39,6 +39,9 @@ if TYPE_CHECKING:
         RedTeamReportArchiveRepository,
     )
     from synthorg.security.config import RedTeamConfig
+    from synthorg.security.redteam.grounding.resolver import (
+        GroundingSubstrateResolver,
+    )
 
 logger = get_logger(__name__)
 
@@ -122,6 +125,7 @@ def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all re
     seed: RedTeamToolSeed,
     report_archive: RedTeamReportArchiveRepository | None = None,
     clock: Clock | None = None,
+    grounding_substrate_resolver: GroundingSubstrateResolver | None = None,
 ) -> RedTeamRuntime | None:
     """Build the red-team runtime if the feature is enabled.
 
@@ -146,6 +150,12 @@ def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all re
             skipped). The gate's archive write is fail-OPEN.
         clock: Clock seam. Defaults to :class:`SystemClock` inside the
             gate when ``None``.
+        grounding_substrate_resolver: Lazy resolver for the knowledge
+            service + provider, threaded through to the grounding factory.
+            Required to build the substrate-backed checker when
+            ``config.grounding_checker_kind == "knowledge_substrate"``;
+            ``None`` (or an absent substrate at check time) degrades to
+            the heuristic.
 
     Returns:
         :class:`RedTeamRuntime` on success, ``None`` when the gate is
@@ -180,7 +190,10 @@ def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all re
         )
         raise RedTeamRuntimeSeedIncompleteError(msg)
 
-    grounding = build_grounding_checker(config.grounding_checker_kind)
+    grounding = build_grounding_checker(
+        config.grounding_checker_kind,
+        substrate_resolver=grounding_substrate_resolver,
+    )
     identity = build_red_team_agent_identity(model=model, clock=clock)
     runner = AgentEngineRunner(engine=engine, identity=identity)
     gate = RedTeamGateService(

@@ -331,9 +331,9 @@ class RedTeamConfig(BaseModel):
 
     Attributes:
         enabled: Master switch (``False`` builds no gate at boot).
-        grounding_checker_kind: Grounding discriminator; only
-            ``"heuristic"`` today (``"knowledge_substrate"`` lands with
-            the EPIC E substrate).
+        grounding_checker_kind: Grounding discriminator. ``"heuristic"``
+            (default, LOW-capped stub) or ``"knowledge_substrate"`` (LLM
+            entailment checker that escalates to HIGH; degrades when off).
         timeout_seconds: Per-evaluation cap on the inline AgentEngine.
         on_missing_deliverable: Posture when the gate is enabled but no
             deliverable is retrievable. ``"block"`` (default) fails
@@ -344,7 +344,7 @@ class RedTeamConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     enabled: bool = False
-    grounding_checker_kind: Literal["heuristic"] = "heuristic"
+    grounding_checker_kind: Literal["heuristic", "knowledge_substrate"] = "heuristic"
     timeout_seconds: float = Field(
         default=RED_TEAM_TIMEOUT_DEFAULT_SECONDS,
         gt=0.0,

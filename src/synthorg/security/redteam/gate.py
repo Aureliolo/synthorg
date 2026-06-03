@@ -150,8 +150,8 @@ class RedTeamGateService:
         report = await self._invoke_agent(review_input)
         grounding_claims = await self._run_grounding(review_input)
 
-        heuristic_findings = tuple(claim_to_finding(c) for c in grounding_claims)
-        all_findings = report.findings + heuristic_findings
+        grounding_findings = tuple(claim_to_finding(c) for c in grounding_claims)
+        all_findings = report.findings + grounding_findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
@@ -162,7 +162,7 @@ class RedTeamGateService:
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 findings=len(all_findings),
-                heuristic_findings=len(heuristic_findings),
+                grounding_findings=len(grounding_findings),
                 elapsed_seconds=elapsed,
             )
         else:
@@ -361,6 +361,7 @@ class RedTeamGateService:
             claims = await self._grounding_checker.check(
                 deliverable_content=review_input.deliverable_content,
                 execution_id=review_input.execution_id,
+                project_id=review_input.project_id,
             )
         except asyncio.CancelledError:
             raise

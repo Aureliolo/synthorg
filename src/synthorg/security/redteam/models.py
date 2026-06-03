@@ -225,6 +225,9 @@ class RedTeamReviewInput(BaseModel):
             the review-gate's self-review guard).
         autonomy: Effective autonomy level governing severity-tiered
             routing in :mod:`synthorg.security.redteam.routing`.
+        project_id: Owning project of the deliverable, when known. The
+            substrate-backed grounding checker scopes its corpus search
+            to it; ``None`` falls back to a global-only search.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -235,6 +238,7 @@ class RedTeamReviewInput(BaseModel):
     acceptance_criteria: tuple[NotBlankStr, ...] = Field(min_length=1)
     assigned_agent_id: NotBlankStr
     autonomy: AutonomyLevel
+    project_id: NotBlankStr | None = None
 
 
 class RedTeamGateResult(BaseModel):

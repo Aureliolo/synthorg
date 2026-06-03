@@ -31,6 +31,7 @@ class GroundingChecker(Protocol):
         *,
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,
+        project_id: NotBlankStr | None = None,
     ) -> tuple[UngroundedClaim, ...]:
         """Return zero or more :class:`UngroundedClaim` entries.
 
@@ -39,6 +40,11 @@ class GroundingChecker(Protocol):
             execution_id: Identifier for the execution that produced
                 the deliverable. Implementations may use it for
                 caching or diagnostic event correlation.
+            project_id: Owning project of the deliverable, when known.
+                Substrate-backed implementations scope the corpus search
+                to it (project plus global sources); ``None`` searches
+                global sources only. The heuristic implementation ignores
+                it.
 
         Returns:
             Tuple of claims that failed grounding. Empty tuple when

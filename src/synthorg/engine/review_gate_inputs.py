@@ -92,6 +92,7 @@ class DeliverableReviewInputBuilder:
             acceptance_criteria=criteria,
             assigned_agent_id=task.assigned_to,
             autonomy=autonomy,
+            project_id=task.project,
         )
 
     async def _latest_deliverable(self, task_id: str) -> tuple[str, str] | None:

@@ -47,6 +47,32 @@ RED_TEAM_GROUNDING_CHECK_COMPLETED: Final[str] = "red_team.grounding.completed"
 RED_TEAM_GROUNDING_CHECK_FAILED: Final[str] = "red_team.grounding.failed"
 """Grounding stub raised; the gate proceeds without grounding findings."""
 
+RED_TEAM_GROUNDING_SUBSTRATE_DEGRADED: Final[str] = (
+    "red_team.grounding.substrate_degraded"
+)
+"""Substrate checker found no wired knowledge service; degraded to heuristic."""
+
+RED_TEAM_GROUNDING_EXTRACTION_FAILED: Final[str] = (
+    "red_team.grounding.extraction_failed"
+)
+"""Claim-extraction LLM call failed; substrate checker degraded to heuristic."""
+
+RED_TEAM_GROUNDING_SEARCH_FAILED: Final[str] = "red_team.grounding.search_failed"
+"""Corpus search for one claim failed; the claim is skipped (fail-soft)."""
+
+RED_TEAM_GROUNDING_CORPUS_EMPTY: Final[str] = "red_team.grounding.corpus_empty"
+"""Corpus returned no hits for a claim; not flagged (empty-corpus degrade)."""
+
+RED_TEAM_GROUNDING_ENTAILMENT_FAILED: Final[str] = (
+    "red_team.grounding.entailment_failed"
+)
+"""Entailment LLM call for one claim failed; the claim is skipped (fail-soft)."""
+
+RED_TEAM_GROUNDING_CLAIM_UNSUPPORTED: Final[str] = (
+    "red_team.grounding.claim_unsupported"
+)
+"""Substrate checker judged a claim unsupported by the corpus; emitted a claim."""
+
 RED_TEAM_GATE_PASSED: Final[str] = "red_team.gate.passed"
 """Gate verdict was PASS or PASS_WITH_FINDINGS; deliverable proceeds."""
 

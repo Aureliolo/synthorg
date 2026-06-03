@@ -67,6 +67,58 @@ CRITICAL) because even an authoritative grounding gap is a quality
 defect, not a security incident.
 """
 
+SUBSTRATE_HIGH_CONFIDENCE_FLOOR: Final[float] = 0.85
+"""Ungrounded-confidence at or above which a substrate claim routes to HIGH.
+
+High floor by design: HIGH BLOCKs at every autonomy level, so a
+deliverable is only blocked when the checker is strongly confident the
+claim is unsupported. This is the precision knob that keeps grounded
+work from being wrongly rejected.
+"""
+
+SUBSTRATE_MEDIUM_CONFIDENCE_FLOOR: Final[float] = 0.65
+"""Ungrounded-confidence at or above which a substrate claim routes to MEDIUM.
+
+MEDIUM BLOCKs only under LOCKED / SUPERVISED autonomy; softer doubts
+surface without unconditionally blocking.
+"""
+
+SUBSTRATE_LOW_CONFIDENCE_FLOOR: Final[float] = 0.45
+"""Ungrounded-confidence at or above which a substrate claim routes to LOW.
+
+Below this floor the claim is dropped entirely: the signal is too weak
+to surface even as an informational finding.
+"""
+
+SUBSTRATE_DROP_FLOOR: Final[float] = SUBSTRATE_LOW_CONFIDENCE_FLOOR
+"""Confidence below which a substrate claim must not be emitted at all.
+
+Enforced by the checker so a claim that would map to no severity never
+becomes a finding; aliases the LOW floor so the band edges stay aligned.
+"""
+
+
+def substrate_severity_for_confidence(confidence: float) -> RedTeamSeverity | None:
+    """Map a substrate claim's ungrounded-confidence to a finding severity.
+
+    Banded so the HIGH (blocking) tier needs strong confidence: the top
+    band returns :data:`SUBSTRATE_GROUNDING_MAX_SEVERITY` directly, making
+    the HIGH cap the single source of truth (an authoritative grounding
+    gap is a quality defect, never escalated to CRITICAL).
+
+    Returns:
+        The severity tier for ``confidence``, or ``None`` when it falls
+        below :data:`SUBSTRATE_DROP_FLOOR` and the claim should not become
+        a finding.
+    """
+    if confidence >= SUBSTRATE_HIGH_CONFIDENCE_FLOOR:
+        return SUBSTRATE_GROUNDING_MAX_SEVERITY
+    if confidence >= SUBSTRATE_MEDIUM_CONFIDENCE_FLOOR:
+        return RedTeamSeverity.MEDIUM
+    if confidence >= SUBSTRATE_LOW_CONFIDENCE_FLOOR:
+        return RedTeamSeverity.LOW
+    return None
+
 
 def should_block(severity: RedTeamSeverity, autonomy: AutonomyLevel) -> bool:
     """Return whether a single finding of ``severity`` blocks at ``autonomy``.
