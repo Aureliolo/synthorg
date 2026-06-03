@@ -239,6 +239,38 @@ class TestAuditRepositoryConformance:
         )
         assert deleted == 0
 
+    async def test_purge_before_rejects_naive_cutoff(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A naive cutoff is rejected rather than silently coerced via
+        # ``astimezone(UTC)`` (assume-local), which could delete the
+        # wrong retention window. Mirrors the naive-rejection contract
+        # the sibling query/purge repositories enforce.
+        with pytest.raises(QueryError):
+            await backend.audit_entries.purge_before(
+                datetime(2026, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )
+
+    async def test_jsonb_query_rejects_naive_bounds(
+        self, backend: PersistenceBackend
+    ) -> None:  # lint-allow: dual-backend-parity -- JSONB is Postgres-only
+        # The public ``query`` path takes ``since``/``until`` through the
+        # ``AwareDatetime``-typed filter spec, so naive bounds are caught
+        # at construction. The JSONB capability takes raw ``datetime``
+        # kwargs, so the repository-level guard is the only barrier --
+        # assert it rejects naive bounds. Postgres-only (no SQLite JSONB).
+        if backend.backend_name != "postgres":
+            pytest.skip("JSONB containment query is Postgres-only")
+        naive = datetime(2026, 1, 1)  # noqa: DTZ001 -- naive on purpose
+        with pytest.raises(QueryError):
+            await backend.audit_entries.query_jsonb_key_exists(  # type: ignore[attr-defined]
+                "matched_rules", "rule-allowlist", since=naive
+            )
+        with pytest.raises(QueryError):
+            await backend.audit_entries.query_jsonb_key_exists(  # type: ignore[attr-defined]
+                "matched_rules", "rule-allowlist", until=naive
+            )
+
     async def test_matched_rules_order_preserved(
         self, backend: PersistenceBackend
     ) -> None:

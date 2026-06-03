@@ -13351,7 +13351,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/audit_protocol.py",
       "owning_feature": "persistence"
@@ -13708,7 +13708,7 @@
     },
     {
       "kind": "code",
-      "loc": 402,
+      "loc": 413,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/audit_repository.py",
       "owning_feature": "persistence"
@@ -14429,7 +14429,7 @@
     },
     {
       "kind": "code",
-      "loc": 279,
+      "loc": 289,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/audit_repository.py",
       "owning_feature": "persistence"

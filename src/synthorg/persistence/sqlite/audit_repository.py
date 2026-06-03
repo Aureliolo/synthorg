@@ -206,8 +206,8 @@ class SQLiteAuditRepository:
         """Validate query parameters before execution.
 
         Raises:
-            QueryError: If *limit* < 1, *offset* < 0, or
-                *until* < *since*.
+            QueryError: If *limit* < 1, *offset* < 0, *since* or *until*
+                is naive, or *until* < *since*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
@@ -225,6 +225,13 @@ class SQLiteAuditRepository:
                 error=msg,
                 offset=offset,
             )
+            raise QueryError(msg)
+
+        if since is not None and since.tzinfo is None:
+            msg = "since must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
+        if until is not None and until.tzinfo is None:
+            msg = "until must be timezone-aware; a naive datetime is rejected"
             raise QueryError(msg)
 
         if since is not None and until is not None and until < since:
@@ -283,15 +290,19 @@ class SQLiteAuditRepository:
         """Delete audit entries strictly older than *cutoff* (CFG-1).
 
         Args:
-            cutoff: UTC-normalised timestamp. Rows with
-                ``timestamp < cutoff`` are removed.
+            cutoff: Timezone-aware UTC timestamp. Rows with
+                ``timestamp < cutoff`` are removed. A naive datetime is
+                rejected to prevent silent local-time misinterpretation.
 
         Returns:
             Number of rows deleted.
 
         Raises:
-            QueryError: If the DELETE fails.
+            QueryError: If *cutoff* is naive or the DELETE fails.
         """
+        if cutoff.tzinfo is None:
+            msg = "cutoff must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         utc_cutoff = cutoff.astimezone(UTC).isoformat()
         async with self._write_context():
             try:

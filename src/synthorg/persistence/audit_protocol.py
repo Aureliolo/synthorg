@@ -137,13 +137,16 @@ class AuditRepository(
         the retention-window level, not per row.
 
         Args:
-            cutoff: Entries strictly older than this UTC timestamp
-                are deleted.
+            cutoff: Entries strictly older than this timestamp are
+                deleted. Must be timezone-aware; a naive datetime is
+                rejected (``QueryError``) rather than silently coerced,
+                so a wrong-timezone cutoff cannot delete the wrong audit
+                window.
 
         Returns:
             Number of rows removed.
 
         Raises:
-            QueryError: If the operation fails.
+            QueryError: If *cutoff* is naive or the operation fails.
         """
         ...
