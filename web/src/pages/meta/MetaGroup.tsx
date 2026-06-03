@@ -1,11 +1,11 @@
 import { Users } from 'lucide-react'
+import { useCallback } from 'react'
 import { Link } from 'react-router'
 
 import type { ActiveAgentSummary, ConversationParticipant } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { ChatInputArea } from '@/components/ui/chat-input-area'
 import { EmptyState } from '@/components/ui/empty-state'
-import { LiveRegion } from '@/components/ui/live-region'
 import { ResponderAttribution } from '@/components/ui/responder-attribution'
 import { cn } from '@/lib/utils'
 
@@ -19,24 +19,21 @@ interface GroupBubbleProps {
   onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
 }
 
-interface InviteBubbleProps {
-  msg: GroupMessage
-  resolvingInvites: ReadonlySet<string>
-  onResolveInvite: (msgId: number, approvalId: string, accept: boolean) => void
-}
-
 function InviteBubble({
   msg,
   resolvingInvites,
   onResolveInvite,
-}: InviteBubbleProps) {
+}: GroupBubbleProps) {
   const target = msg.targetRole
     ? `${msg.targetName} (${msg.targetRole})`
     : msg.targetName
   const resolving = msg.approvalId ? resolvingInvites.has(msg.approvalId) : false
-  const onResolve = (accept: boolean) => {
-    if (msg.approvalId) onResolveInvite(msg.id, msg.approvalId, accept)
-  }
+  const onResolve = useCallback(
+    (accept: boolean) => {
+      if (msg.approvalId) onResolveInvite(msg.id, msg.approvalId, accept)
+    },
+    [msg.approvalId, msg.id, onResolveInvite],
+  )
   return (
     <div className="mx-4 space-y-2 rounded-md border border-border bg-muted/50 p-card text-xs text-muted-foreground">
       <p>
@@ -54,6 +51,7 @@ function InviteBubble({
           <Button
             size="sm"
             disabled={resolving || !msg.approvalId}
+            aria-busy={resolving}
             onClick={() => onResolve(true)}
           >
             Approve
@@ -62,6 +60,7 @@ function InviteBubble({
             size="sm"
             variant="outline"
             disabled={resolving || !msg.approvalId}
+            aria-busy={resolving}
             onClick={() => onResolve(false)}
           >
             Decline
@@ -218,21 +217,19 @@ export function MetaGroup() {
           aria-label="Group conversation transcript"
           className="max-h-80 space-y-3 overflow-y-auto rounded-md border border-border p-card"
         >
-          <LiveRegion politeness="polite">
-            {ctrl.messages.map((msg) => (
-              <GroupBubble
-                key={msg.id}
-                msg={msg}
-                resolvingInvites={ctrl.resolvingInvites}
-                onResolveInvite={ctrl.resolveInvite}
-              />
-            ))}
-            {ctrl.loading && (
-              <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
-                Agents are responding...
-              </div>
-            )}
-          </LiveRegion>
+          {ctrl.messages.map((msg) => (
+            <GroupBubble
+              key={msg.id}
+              msg={msg}
+              resolvingInvites={ctrl.resolvingInvites}
+              onResolveInvite={ctrl.resolveInvite}
+            />
+          ))}
+          {ctrl.loading && (
+            <div className="mr-8 animate-pulse rounded-md bg-card p-card text-sm text-muted-foreground">
+              Agents are responding...
+            </div>
+          )}
         </div>
       )}
 

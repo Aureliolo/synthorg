@@ -288,6 +288,23 @@ class TestKeywordRoleRouter:
         assert decision is not None
         assert decision.responder.agent_id == str(omega_csuite.id)
 
+    async def test_equal_seniority_resolves_alphabetically(self) -> None:
+        # Two equally-senior CFOs registered out of alphabetical order:
+        # the name tiebreak (not registration order) must pick the
+        # alphabetically-first, the documented cross-backend determinism
+        # guarantee.
+        zoe = _identity(name="Zoe", role="CFO", level=SeniorityLevel.SENIOR)
+        aaron = _identity(name="Aaron", role="CFO", level=SeniorityLevel.SENIOR)
+        registry = await _registry(zoe, aaron)
+        router = KeywordRoleRouter(
+            agent_registry=registry, default_role=NotBlankStr("CEO")
+        )
+
+        decision = await router.route(_user_turn("What is our budget?"))
+
+        assert decision is not None
+        assert decision.responder.agent_id == str(aaron.id)
+
 
 class TestBuildRoleRouter:
     async def test_disabled_returns_none(self) -> None:

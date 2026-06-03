@@ -60,75 +60,6 @@ const TRUNCATION_NOTICE: Readonly<Record<string, string>> = {
     'Round stopped early: the conversation reached its total-turn limit.',
 }
 
-export function useMetaGroupState(): MetaGroupState {
-  const activeAgents = useMetaStore((s) => s.activeAgents)
-  const loading = useMetaStore((s) => s.groupChatLoading)
-  const converse = useMetaStore((s) => s.converseGroup)
-  const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
-
-  const [selectedIds, setSelectedIds] = useState<readonly string[]>([])
-  const [roster, setRoster] = useState<readonly ConversationParticipant[]>([])
-  const [messages, setMessages] = useState<readonly GroupMessage[]>([])
-  const [input, setInput] = useState('')
-  const [started, setStarted] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const msgIdRef = useRef(0)
-  const conversationIdRef = useRef<string | undefined>(undefined)
-
-  const fetchRef = useRef(fetchActiveAgents)
-  fetchRef.current = fetchActiveAgents
-  useEffect(() => {
-    void fetchRef.current()
-  }, [])
-
-  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
-
-  const toggleParticipant = useCallback((id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }, [])
-
-  const handleSend = useCallback(async () => {
-    const message = input.trim()
-    const canStart = conversationIdRef.current !== undefined || selectedIds.length > 0
-    if (!message || loading || !canStart) return
-    setInput('')
-    setMessages((prev) => [
-      ...prev,
-      { id: nextMsgId(), kind: 'human', content: message },
-    ])
-    const result = await converse(message, selectedIds, conversationIdRef.current)
-    setMessages((prev) => [...prev, ...buildRoundMessages(result, nextMsgId)])
-    if (result) {
-      conversationIdRef.current = result.conversation_id
-      setRoster(result.participants)
-      setStarted(true)
-    }
-    scrollToBottom(scrollRef)
-  }, [input, loading, selectedIds, converse, nextMsgId])
-
-  const triggerSend = useCallback(() => void handleSend(), [handleSend])
-
-  const { resolvingInvites, resolveInvite } = useInviteResolution(setMessages)
-
-  return {
-    activeAgents,
-    selectedIds,
-    started,
-    roster,
-    messages,
-    input,
-    loading,
-    resolvingInvites,
-    scrollRef,
-    toggleParticipant,
-    setInput,
-    triggerSend,
-    resolveInvite,
-  }
-}
-
 function useInviteResolution(
   setMessages: React.Dispatch<React.SetStateAction<readonly GroupMessage[]>>,
 ): {
@@ -177,6 +108,88 @@ function useInviteResolution(
   return { resolvingInvites, resolveInvite }
 }
 
+export function useMetaGroupState(): MetaGroupState {
+  const activeAgents = useMetaStore((s) => s.activeAgents)
+  const loading = useMetaStore((s) => s.groupChatLoading)
+  const converse = useMetaStore((s) => s.converseGroup)
+  const fetchActiveAgents = useMetaStore((s) => s.fetchActiveAgents)
+
+  const [selectedIds, setSelectedIds] = useState<readonly string[]>([])
+  const [roster, setRoster] = useState<readonly ConversationParticipant[]>([])
+  const [messages, setMessages] = useState<readonly GroupMessage[]>([])
+  const [input, setInput] = useState('')
+  const [started, setStarted] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const msgIdRef = useRef(0)
+  const conversationIdRef = useRef<string | undefined>(undefined)
+
+  const fetchRef = useRef(fetchActiveAgents)
+  fetchRef.current = fetchActiveAgents
+  useEffect(() => {
+    void fetchRef.current()
+  }, [])
+
+  // Keep the transcript pinned to the latest turn. Driving the scroll
+  // from an effect (rather than a fire-and-forget call in the send
+  // handler) lets the cleanup cancel a pending frame on unmount, so no
+  // animation-frame handle survives the component.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [messages])
+
+  const nextMsgId = useCallback(() => ++msgIdRef.current, [])
+
+  const toggleParticipant = useCallback((id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
+  }, [])
+
+  const handleSend = useCallback(async () => {
+    const message = input.trim()
+    const canStart = conversationIdRef.current !== undefined || selectedIds.length > 0
+    if (!message || loading || !canStart) return
+    setInput('')
+    setMessages((prev) => [
+      ...prev,
+      { id: nextMsgId(), kind: 'human', content: message },
+    ])
+    const result = await converse(message, selectedIds, conversationIdRef.current)
+    setMessages((prev) => [...prev, ...buildRoundMessages(result, nextMsgId)])
+    if (result) {
+      conversationIdRef.current = result.conversation_id
+      setRoster(result.participants)
+      setStarted(true)
+    }
+  }, [input, loading, selectedIds, converse, nextMsgId])
+
+  const triggerSend = useCallback(() => void handleSend(), [handleSend])
+
+  const { resolvingInvites, resolveInvite } = useInviteResolution(setMessages)
+
+  return {
+    activeAgents,
+    selectedIds,
+    started,
+    roster,
+    messages,
+    input,
+    loading,
+    resolvingInvites,
+    scrollRef,
+    toggleParticipant,
+    setInput,
+    triggerSend,
+    resolveInvite,
+  }
+}
+
 function buildRoundMessages(
   result: GroupConverseResult | null,
   nextMsgId: () => number,
@@ -220,13 +233,4 @@ function buildRoundMessages(
     })
   }
   return bubbles
-}
-
-function scrollToBottom(scrollRef: React.RefObject<HTMLDivElement | null>): void {
-  requestAnimationFrame(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: 'smooth',
-    })
-  })
 }

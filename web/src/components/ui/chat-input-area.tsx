@@ -1,4 +1,5 @@
 import { Send } from 'lucide-react'
+import { useCallback } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -24,6 +25,15 @@ export function ChatInputArea({
   placeholder,
   className,
 }: ChatInputAreaProps) {
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        onSend()
+      }
+    },
+    [onSend],
+  )
   return (
     <div className={cn('flex gap-2', className)}>
       <div className="flex-1">
@@ -32,12 +42,7 @@ export function ChatInputArea({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              onSend()
-            }
-          }}
+          onKeyDown={handleKeyDown}
         />
       </div>
       <Button

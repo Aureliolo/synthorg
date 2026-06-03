@@ -1,12 +1,30 @@
 """Unit tests for the shared per-conversation lock registry."""
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
 from synthorg.meta.chief_of_staff.conversation_lock import ConversationLockRegistry
 
 pytestmark = pytest.mark.unit
+
+_MAX_SCHEDULING_YIELDS = 100
+
+
+def _refcount(registry: ConversationLockRegistry, conversation_id: str) -> int:
+    """Return the live refcount for a conversation, or 0 when evicted."""
+    entry = registry._entries.get(conversation_id)
+    return entry.refcount if entry is not None else 0
+
+
+async def _wait_until(predicate: Callable[[], bool]) -> None:
+    """Yield the event loop until ``predicate`` holds (bounded)."""
+    for _ in range(_MAX_SCHEDULING_YIELDS):
+        if predicate():
+            return
+        await asyncio.sleep(0)
+    pytest.fail("condition not reached within the scheduling budget")
 
 
 class TestConversationLockRegistry:
@@ -53,10 +71,9 @@ class TestConversationLockRegistry:
         # entry is gone, so the dict does not grow unbounded.
         registry = ConversationLockRegistry()
         async with registry.hold("conv-1"):
-            assert "conv-1" in registry._locks
-            assert registry._refcounts["conv-1"] == 1
-        assert "conv-1" not in registry._locks
-        assert "conv-1" not in registry._refcounts
+            assert "conv-1" in registry._entries
+            assert _refcount(registry, "conv-1") == 1
+        assert "conv-1" not in registry._entries
 
     async def test_queued_waiter_prevents_eviction_then_evicts(self) -> None:
         # A queued waiter increments the refcount before it blocks on the
@@ -84,14 +101,33 @@ class TestConversationLockRegistry:
             _ = tg.create_task(first())
             _ = tg.create_task(second())
             await first_holding.wait()
-            # Let the second task reach its queued state on the lock.
-            for _ in range(10):
-                if registry._refcounts.get("c") == 2:
-                    break
-                await asyncio.sleep(0)
-            assert registry._refcounts.get("c") == 2
+            # The second task increments to 2 as soon as it is scheduled
+            # past ``first_holding.wait()``, then blocks on the lock.
+            await _wait_until(lambda: _refcount(registry, "c") == 2)
             let_first_go.set()
 
         assert order == ["first-in", "first-out", "second-in", "second-out"]
-        assert "c" not in registry._locks
-        assert "c" not in registry._refcounts
+        assert "c" not in registry._entries
+
+    async def test_cancelled_holder_releases_and_evicts(self) -> None:
+        # Cancelling a task while it holds the lock must still decrement
+        # the refcount and evict the entry. The ``finally`` decrement has
+        # no ``await``, so it completes during the cancellation unwind
+        # before the task finishes: no stranded, never-evicted entry.
+        registry = ConversationLockRegistry()
+        holding = asyncio.Event()
+
+        async def holder() -> None:
+            async with registry.hold("c"):
+                holding.set()
+                await asyncio.Event().wait()
+
+        task = asyncio.create_task(holder())
+        await holding.wait()
+        assert _refcount(registry, "c") == 1
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert "c" not in registry._entries

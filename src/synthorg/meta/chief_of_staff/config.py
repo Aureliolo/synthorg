@@ -8,7 +8,7 @@ opt-in with safe defaults (disabled).
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
@@ -87,8 +87,12 @@ _GROUP_MAX_TOTAL_TURNS_MAX: int = 500
 # so a hung provider connection (TCP alive, no bytes) would stall every
 # queued turn on that conversation indefinitely. This wall-clock bound is
 # the backstop the provider's own (optional) timeout may not supply: 120s
-# covers a slow large-model reply plus the provider retry budget; 5s is
-# the floor below which a legitimate slow reply would be cut off.
+# comfortably covers a slow large-model reply. Under sustained rate
+# limiting the provider's full retry budget can exceed this, in which
+# case the bound preempts the final retry; that degrades to the routing
+# generic-responder fallback or a skipped group turn (best-effort paths),
+# which is preferable to stalling every queued turn. 5s is the floor
+# below which a legitimate slow reply would be cut off.
 _AGENT_CALL_TIMEOUT_SECONDS_DEFAULT: float = 120.0
 _AGENT_CALL_TIMEOUT_SECONDS_MIN: float = 5.0
 _AGENT_CALL_TIMEOUT_SECONDS_MAX: float = 600.0
@@ -128,8 +132,10 @@ class KeywordRoleRule(BaseModel):
     the latest human message wins.
 
     Attributes:
-        keywords: Lower-case keyword group; a substring match in the
-            human message routes to ``role``.
+        keywords: Keyword group; a substring match in the latest human
+            message routes to ``role``. Normalised to case-folded form
+            on construction so an operator-supplied ``"Budget"`` matches
+            the case-folded message text the router compares against.
         role: Role name resolved against the active roster.
     """
 
@@ -137,6 +143,22 @@ class KeywordRoleRule(BaseModel):
 
     keywords: tuple[NotBlankStr, ...] = Field(min_length=1)
     role: NotBlankStr
+
+    @field_validator("keywords", mode="after")
+    @classmethod
+    def _casefold_keywords(
+        cls, keywords: tuple[NotBlankStr, ...]
+    ) -> tuple[NotBlankStr, ...]:
+        """Case-fold every keyword so matching is case-insensitive.
+
+        The router case-folds the human message and tests each keyword as
+        a substring, so a non-folded keyword would silently never match.
+        Normalising here makes that invariant enforced, not documented.
+
+        Returns:
+            The keyword tuple with every entry case-folded.
+        """
+        return tuple(NotBlankStr(keyword.casefold()) for keyword in keywords)
 
 
 class ChiefOfStaffConfig(BaseModel):

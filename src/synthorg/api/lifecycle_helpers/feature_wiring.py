@@ -314,7 +314,7 @@ async def _wire_research_engine(
         logger.info(API_APP_STARTUP, service="research_engine", note="wired")
     except Exception as exc:
         reraise_critical(exc)
-        logger.info(
+        logger.warning(
             API_APP_STARTUP,
             service="research_engine",
             note="research engine wiring unavailable; skipped",

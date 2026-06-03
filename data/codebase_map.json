@@ -527,7 +527,7 @@
     },
     {
       "kind": "orchestrator",
-      "loc": 543,
+      "loc": 552,
       "loc_cap": 600,
       "module": "src/synthorg/api/controllers/_conversational_resume.py",
       "owning_feature": "api_core"
@@ -758,7 +758,7 @@
     },
     {
       "kind": "controller",
-      "loc": 158,
+      "loc": 159,
       "loc_cap": 400,
       "module": "src/synthorg/api/controllers/conversational.py",
       "owning_feature": "api_core"
@@ -1549,14 +1549,14 @@
     },
     {
       "kind": "code",
-      "loc": 78,
+      "loc": 84,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_reconcile.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 243,
+      "loc": 254,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/conversational_wiring.py",
       "owning_feature": "api_core"
@@ -10124,28 +10124,28 @@
     },
     {
       "kind": "code",
-      "loc": 275,
+      "loc": 276,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/chat.py",
       "owning_feature": "meta"
     },
     {
       "kind": "declarative",
-      "loc": 282,
+      "loc": 297,
       "loc_cap": null,
       "module": "src/synthorg/meta/chief_of_staff/config.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 66,
+      "loc": 65,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/conversation_lock.py",
       "owning_feature": "meta"
     },
     {
       "kind": "code",
-      "loc": 66,
+      "loc": 65,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/enums.py",
       "owning_feature": "meta"
@@ -10285,7 +10285,7 @@
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 201,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/outcome_store.py",
       "owning_feature": "meta"
@@ -10327,7 +10327,7 @@
     },
     {
       "kind": "service",
-      "loc": 455,
+      "loc": 470,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/routing.py",
       "owning_feature": "meta"

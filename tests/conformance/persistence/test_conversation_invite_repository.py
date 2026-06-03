@@ -6,10 +6,10 @@ it directly), so the repo is built over the migrated
 catching divergence in the nullable ``target_role`` column and the
 ``status`` CHECK.
 
-The final test pins the migration-specific behaviour the invite feature
-depends on: the Postgres ``approvals.source`` CHECK was widened to admit
-``'conversational_invite'`` (a no-op on SQLite, where ``source`` is free
-TEXT), so a consent approval can be durably persisted on both backends.
+The source-CHECK test pins the cross-backend behaviour the invite
+feature depends on: the Postgres ``approvals.source`` CHECK admits
+``'conversational_invite'`` while SQLite leaves ``source`` as free TEXT,
+so a consent approval can be durably persisted on both backends.
 """
 
 from datetime import UTC, datetime
@@ -308,6 +308,33 @@ class TestConversationInviteRepository:
                     target_agent_id="agent-cfo",
                 )
             )
+
+    async def test_pending_invite_allowed_after_prior_declined(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # The partial-unique index keys only on PENDING rows, so once a
+        # prior invite for a target is DECLINED the slot is released: a
+        # fresh PENDING invite for the same target must persist. This is
+        # the whole point of the partial (vs full) unique constraint and
+        # would silently break if it were ever widened to all statuses.
+        await _seed_conversation(backend)
+        repo = _repo(backend)
+        first = _make_invite(
+            invite_id="re-1", approval_id="a-re-1", target_agent_id="agent-cfo"
+        )
+        await repo.save(first)
+        assert await repo.transition_if(
+            first.id,
+            from_state=ConversationInviteStatus.PENDING,
+            to_state=ConversationInviteStatus.DECLINED,
+        )
+        # The same target can now be re-invited without colliding.
+        await repo.save(
+            _make_invite(
+                invite_id="re-2", approval_id="a-re-2", target_agent_id="agent-cfo"
+            )
+        )
+        assert await repo.get("re-2") is not None
 
     async def test_distinct_target_pending_invites_allowed(
         self, backend: PersistenceBackend

@@ -22,10 +22,13 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function Controlled(
-  args: Omit<ComponentProps<typeof ChatInputArea>, 'value' | 'onChange'>,
-) {
-  const [value, setValue] = useState('')
+function Controlled({
+  initialValue = '',
+  ...args
+}: Omit<ComponentProps<typeof ChatInputArea>, 'value' | 'onChange'> & {
+  initialValue?: string
+}) {
+  const [value, setValue] = useState(initialValue)
   return <ChatInputArea {...args} value={value} onChange={setValue} />
 }
 
@@ -34,7 +37,9 @@ export const Empty: Story = {
 }
 
 export const WithValue: Story = {
-  args: { value: 'Cut the cloud budget by 20%' },
+  render: (args) => (
+    <Controlled {...args} initialValue="Cut the cloud budget by 20%" />
+  ),
 }
 
 export const Disabled: Story = {

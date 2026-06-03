@@ -319,7 +319,9 @@ class GroupChatService:
         # earlier turns. Keeping ``history`` static is load-bearing for the
         # invited-agent ``already_spoke`` check there: it must detect a
         # PRIOR-round appearance to gate the one-time invited preamble, so
-        # folding the current round into ``history`` would mis-fire it.
+        # folding the current round into ``history`` would match it
+        # incorrectly (suppressing the preamble on the invited agent's
+        # very first turn).
         for index, participant in enumerate(participants):
             truncated = self._round_bound(tracker, reserve, total_turns)
             if truncated is not None:

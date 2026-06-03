@@ -46,8 +46,11 @@ src/synthorg/meta/
 
   rules/               -- Signal pattern detection
     engine.py          -- RuleEngine (evaluates rules, sorts by severity)
-    builtin.py         -- 9 built-in rules with configurable thresholds
+    builtin.py         -- 9 built-in signal-detector rules with configurable thresholds
+    benchmark_rule.py  -- BenchmarkRegressionRule (golden-benchmark regression, the 10th rule)
     custom.py          -- Declarative custom rules (CustomRuleDefinition, DeclarativeRule, METRIC_REGISTRY, Comparator)
+    protocol.py        -- SignalRule protocol
+    service.py         -- CustomRuleService (custom signal rule CRUD service layer)
 
   strategies/          -- Proposal generation
     config_tuning.py   -- Config field changes
@@ -128,7 +131,8 @@ src/synthorg/meta/
   chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition
     prompts.py         -- Analysis + explanation + clarify-propose prompt templates
-    config.py          -- ChiefOfStaffConfig (learning, alerts, chat, propose, narrative)
+    config.py          -- ChiefOfStaffConfig (learning, alerts, chat, propose, routing, group chat, invite, direct MCP, narrative)
+    enums.py           -- Conversational-interface enums (routing / group-chat / invite)
     models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert,
                           ChatQuery/Response, Conversation, ConversationTurn,
                           ProposedWork, ProposeDecision, ConversationalProposal,
@@ -141,9 +145,15 @@ src/synthorg/meta/
     alerts.py          -- ProactiveAlertService + LoggingAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
     propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
+    _intake_parking.py -- Conversational-intake parking + steering execution helpers
     routing.py         -- RoleRouter (LLM / keyword concern routing to role agents)
+    responder.py       -- Responder selection for the concern-routed clarify-propose loop
+    transcript.py      -- Shared conversation-transcript rendering
     conversation_lock.py -- ConversationLockRegistry (per-conversation turn serialisation, self-evicting)
     group_chat.py      -- GroupChatService (round-robin multi-agent group chat)
+    group_models.py    -- Domain + boundary models for the multi-agent group chat
+    group_prompt.py    -- Prompt + transcript rendering for the multi-agent group chat
+    group_roster.py    -- Roster + transcript helpers for the multi-agent group chat
     group_invite.py    -- GroupInviteCoordinator (agent-initiated invite, human-consented)
     actor.py           -- ConversationalActor (direct MCP acting under trust)
     narrative/         -- Documentary mode (post-run run narrative)
@@ -262,7 +272,7 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 - **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
 
-- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; requires a registered LLM provider, a connected persistence backend, and a wired work pipeline (503 otherwise). When `routing_enabled` is on, a concern router (`routing.py`) classifies each turn to the best-fit role agent (CFO for budget, CEO for strategy, and so on, most senior holder of a tied role) so the turn answers in that agent's persona; an uncertain classification falls back to the generic Chief of Staff. A `routing_strategy` of `keyword` uses a static keyword map (operator-overridable via `routing_keyword_rules`) with no extra LLM call.
+- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; the builder requires a registered LLM provider and a connected persistence backend (503 otherwise). The work pipeline is consulted only at approval-decision time, so its absence surfaces as a 503 from Flow 0 when an approved item is executed, not at endpoint build. When `routing_enabled` is on, a concern router (`routing.py`) classifies each turn to the best-fit role agent (CFO for budget, CEO for strategy, and so on, most senior holder of a tied role) so the turn answers in that agent's persona; an uncertain classification falls back to the generic Chief of Staff. A `routing_strategy` of `keyword` uses a static keyword map (operator-overridable via `routing_keyword_rules`) with no extra LLM call.
 
 - **`POST /meta/chat/group`** (multi-agent group chat): one human, several agents, in a single conversation. Each round drives the active roster once in a stable round-robin, sharing the transcript, with per-round token budgeting and a participant cap; a single agent's dispatch failure skips that agent (surfaced in `participants_skipped`) rather than aborting the round, and each agent call is bounded by `agent_call_timeout_seconds`. When `invite_enabled` is on, an agent may request to bring another agent in: the request parks a `CONVERSATIONAL_INVITE` approval and the invited agent joins only after a human approves, receiving a fenced inviter+reason handover on its first turn. A partial-unique index plus an accept-time roster re-check keep the participant cap honest against concurrent invites. Rate-limited (`meta.chat.group`, 5/60s/user). Opt-in via `meta.chief_of_staff.group_chat_enabled`; requires a provider, agent registry, and connected persistence (503 otherwise); invites additionally require a wired approval store.
 

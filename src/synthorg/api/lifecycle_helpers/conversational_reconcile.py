@@ -11,15 +11,11 @@ intake survives. On a persistent store the approvals survive restart, so
 the rows stay resumable and are left untouched.
 """
 
-from typing import TYPE_CHECKING
-
 from synthorg.api.approval_store import ApprovalStore
+from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-
-if TYPE_CHECKING:
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.persistence.conversational_factory import ConversationalRepositories
+from synthorg.persistence.conversational_factory import ConversationalRepositories
 
 logger = get_logger(__name__)
 
@@ -41,6 +37,12 @@ async def reconcile_orphaned_conversational_intake(
         and not approval_store.has_persistent_repo
     )
     if not store_is_in_memory:
+        logger.info(
+            API_APP_STARTUP,
+            service="chief_of_staff_proposer",
+            note="conversational intake reconcile skipped: store treated as persistent",
+            approval_store_type=type(approval_store).__name__,
+        )
         return
     from synthorg.core.enums import (  # noqa: PLC0415
         ConversationalProposalStatus,
@@ -77,12 +79,18 @@ async def reconcile_orphaned_conversational_intake(
             ConversationInviteStatus.DECLINED,
         ):
             declined_invites += 1
-    if rejected_proposals or declined_invites:
+    if pending_proposals or pending_invites:
+        # Log queried counts alongside transitioned counts: a gap (queried
+        # > transitioned) means a concurrent process already retired those
+        # rows and the CAS lost the race, which is a normal non-error
+        # outcome that would otherwise be invisible.
         logger.info(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
             note="retired orphaned conversational intake rows (in-memory store)",
+            pending_proposals=len(pending_proposals),
             rejected_proposals=rejected_proposals,
+            pending_invites=len(pending_invites),
             declined_invites=declined_invites,
         )
 

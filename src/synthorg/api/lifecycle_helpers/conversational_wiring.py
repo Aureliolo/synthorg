@@ -19,8 +19,9 @@ from synthorg.api.conversational_builders import (
 from synthorg.api.lifecycle_helpers.conversational_reconcile import (
     reconcile_orphaned_conversational_intake,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 
 if TYPE_CHECKING:
@@ -107,9 +108,11 @@ async def wire_conversational_actor(app_state: AppState) -> None:
     agent_registry = app_state.slice(HrStateSlice).agent_registry
     if agent_registry is None:
         return
-    # Read the slice directly (not ``worker_execution_service_of``) so a
-    # not-yet-installed service stays ``None`` rather than lazily building
-    # the lifecycle-only baseline; only a real boot engine can act.
+    # Read the slice directly (not ``worker_execution_service_of``) to
+    # avoid the lazy fallback that builds a lifecycle-only
+    # ``LifecycleAdvancingExecutionService`` (no real agent engine): a
+    # not-yet-installed service must stay ``None`` here, because only a
+    # real boot ``AgentEngineExecutionService`` can drive an MCP action.
     service = app_state.slice(RuntimeStateSlice).worker_execution_service
     if not isinstance(service, AgentEngineExecutionService):
         return
@@ -220,9 +223,23 @@ async def wire_chief_of_staff_proposer(
             service="chief_of_staff_proposer",
             note="conversational proposal + invite + participant repos wired",
         )
-        await reconcile_orphaned_conversational_intake(
-            repositories, effective_approval_store
-        )
+        # Best-effort cleanup: a transient persistence error here must
+        # not poison startup (the controllers would simply 503), so a
+        # failed reconcile is logged and swallowed rather than crashing
+        # the lifespan hook, matching the sibling best-effort wirers.
+        try:
+            await reconcile_orphaned_conversational_intake(
+                repositories, effective_approval_store
+            )
+        except Exception as exc:
+            reraise_critical(exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="chief_of_staff_proposer",
+                note="orphaned intake reconcile failed; rows kept PENDING",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     if provider_registry is None:
         return
     meta_self_improvement = await load_self_improvement_config(

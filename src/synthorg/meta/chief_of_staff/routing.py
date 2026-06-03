@@ -170,12 +170,31 @@ def _resolve_agent_for_role(
     return min(matches, key=functools.cmp_to_key(_by_seniority_then_name))
 
 
+def _sanitise_label(value: str) -> str:
+    """Flatten an operator-configured label for safe prompt rendering.
+
+    Role and department come from operator-authored agent definitions,
+    so they are only semi-trusted. Collapsing whitespace (newlines
+    included) onto one line and dropping angle brackets stops a malformed
+    value from forging an untrusted-content fence or injecting a fresh
+    instruction line into the classifier's candidate roster.
+
+    Returns:
+        The single-line, angle-bracket-free label.
+    """
+    collapsed = " ".join(value.split())
+    return collapsed.replace("<", "").replace(">", "")
+
+
 def _render_candidate_roles(active: tuple[AgentIdentity, ...]) -> str:
     """Render the distinct active roles as a classifier candidate list.
 
-    System-controlled content (role names + catalog skills); never
-    fenced. One line per distinct role, enriched with the catalog's
-    required skills or description when the role is a builtin.
+    Role names and catalog skills are system-controlled, so the roster is
+    not wrapped as untrusted content (it is the very menu the classifier
+    must choose from). The operator-configured role / department labels
+    are still flattened via :func:`_sanitise_label` as defence in depth.
+    One line per distinct role, enriched with the catalog's required
+    skills or description when the role is a builtin.
 
     Returns:
         The newline-joined candidate roster.
@@ -187,16 +206,16 @@ def _render_candidate_roles(active: tuple[AgentIdentity, ...]) -> str:
         if key in seen:
             continue
         seen.add(key)
+        role = _sanitise_label(identity.role)
+        department = _sanitise_label(identity.department)
         catalog = get_builtin_role(identity.role)
         if catalog is not None and catalog.required_skills:
             descriptor = ", ".join(catalog.required_skills)
-            lines.append(f"- {identity.role} ({identity.department}): {descriptor}")
+            lines.append(f"- {role} ({department}): {descriptor}")
         elif catalog is not None and catalog.description:
-            lines.append(
-                f"- {identity.role} ({identity.department}): {catalog.description}"
-            )
+            lines.append(f"- {role} ({department}): {catalog.description}")
         else:
-            lines.append(f"- {identity.role} ({identity.department})")
+            lines.append(f"- {role} ({department})")
     return "\n".join(lines)
 
 

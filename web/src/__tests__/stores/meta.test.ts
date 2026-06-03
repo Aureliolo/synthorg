@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { useMetaStore } from '@/stores/meta'
 import { useToastStore } from '@/stores/toast'
 import { apiError, apiSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
+
+/** A SERVICE_UNAVAILABLE (503) body with a curated operator-facing detail. */
+function serviceUnavailable(detail: string) {
+  return apiError(detail, {
+    error_code: ErrorCode.SERVICE_UNAVAILABLE,
+    error_category: ErrorCategory.INTERNAL,
+    detail,
+  })
+}
 
 function resetStore() {
   useMetaStore.setState({
@@ -200,6 +210,25 @@ describe('proposeConversation', () => {
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Propose request failed')
   })
+
+  it('shows a distinct "unavailable" toast with the backend reason on 503', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/propose', () =>
+        HttpResponse.json(
+          serviceUnavailable('Clarify-and-propose is not enabled.'),
+          { status: 503 },
+        ),
+      ),
+    )
+
+    const result = await useMetaStore.getState().proposeConversation('do a thing')
+
+    expect(result).toBeNull()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Conversational mode unavailable')
+    expect(toasts[0]!.description).toBe('Clarify-and-propose is not enabled.')
+  })
 })
 
 describe('fetchActiveAgents', () => {
@@ -283,6 +312,24 @@ describe('converseGroup', () => {
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Group chat request failed')
   })
+
+  it('shows a distinct "unavailable" toast with the backend reason on 503', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/group', () =>
+        HttpResponse.json(serviceUnavailable('Group chat is not enabled.'), {
+          status: 503,
+        }),
+      ),
+    )
+
+    const result = await useMetaStore.getState().converseGroup('hi', ['a-1'])
+
+    expect(result).toBeNull()
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Conversational mode unavailable')
+    expect(toasts[0]!.description).toBe('Group chat is not enabled.')
+  })
 })
 
 describe('runAction', () => {
@@ -339,5 +386,31 @@ describe('runAction', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts).toHaveLength(1)
     expect(toasts[0]!.title).toBe('Direct action request failed')
+  })
+
+  it('shows a distinct "unavailable" toast on 503 (fail-closed governance)', async () => {
+    server.use(
+      http.post('/api/v1/meta/chat/act', () =>
+        HttpResponse.json(
+          serviceUnavailable('Direct MCP acting requires security governance.'),
+          { status: 503 },
+        ),
+      ),
+    )
+
+    const result = await useMetaStore
+      .getState()
+      .runAction('do a thing', 'agent-cfo')
+
+    expect(result).toBeNull()
+    expect(useMetaStore.getState().error).toBe(
+      'Direct MCP acting requires security governance.',
+    )
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.title).toBe('Conversational mode unavailable')
+    expect(toasts[0]!.description).toBe(
+      'Direct MCP acting requires security governance.',
+    )
   })
 })

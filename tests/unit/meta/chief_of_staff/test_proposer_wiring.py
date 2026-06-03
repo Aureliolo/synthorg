@@ -20,6 +20,7 @@ from synthorg.meta.chief_of_staff.enums import ConversationInviteStatus
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
+from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.conversational_factory import (
     ConversationalRepositories,
     build_conversational_repositories,
@@ -238,6 +239,28 @@ class TestReconcileOrphanedConversationalIntake:
         await reconcile_orphaned_conversational_intake(
             _reconcile_repos(proposal_repo, invite_repo),
             mock_of[ApprovalStoreProtocol](),
+        )
+
+        kept_proposal = await proposal_repo.get("p-keep")
+        assert kept_proposal is not None
+        assert kept_proposal.status is ConversationalProposalStatus.PENDING
+        kept_invite = await invite_repo.get("i-keep")
+        assert kept_invite is not None
+        assert kept_invite.status is ConversationInviteStatus.PENDING
+
+    async def test_persistent_repo_store_leaves_orphans(self) -> None:
+        # An ApprovalStore backed by a durable repo (has_persistent_repo)
+        # keeps its approvals across restart, so PENDING rows stay
+        # resumable and must NOT be retired -- this is the third
+        # discriminator branch (a real ApprovalStore, but persistent).
+        proposal_repo = FakeProposalRepo()
+        await proposal_repo.save(_pending_proposal("p-keep"))
+        invite_repo = FakeInviteRepo()
+        await invite_repo.save(_pending_invite("i-keep"))
+
+        await reconcile_orphaned_conversational_intake(
+            _reconcile_repos(proposal_repo, invite_repo),
+            ApprovalStore(repo=mock_of[ApprovalRepository]()),
         )
 
         kept_proposal = await proposal_repo.get("p-keep")
