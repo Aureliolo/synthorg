@@ -1,5 +1,5 @@
 import { Send } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, type KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -26,7 +26,7 @@ export function ChatInputArea({
   className,
 }: ChatInputAreaProps) {
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         onSend()

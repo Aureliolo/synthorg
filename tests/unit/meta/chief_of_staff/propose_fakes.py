@@ -55,7 +55,11 @@ def make_identity(  # noqa: PLR0913 -- test identity builder: many independent k
     status: AgentStatus = AgentStatus.ACTIVE,
     level: SeniorityLevel = SeniorityLevel.C_SUITE,
 ) -> AgentIdentity:
-    """Build a C-suite ``AgentIdentity`` for the proposer test suites.
+    """Build an ``AgentIdentity`` for the proposer test suites.
+
+    The ``level`` parameter sets the seniority (defaulting to
+    ``SeniorityLevel.C_SUITE``) so callers can build non-C-suite
+    identities for the concern-routing tests.
 
     Returns:
         A registered-shaped identity with the given role and provider.

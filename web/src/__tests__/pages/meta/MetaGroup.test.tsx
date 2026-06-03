@@ -186,6 +186,16 @@ describe('MetaGroup', () => {
   it('approves a pending invite in context', async () => {
     _useRoster()
     server.use(
+      http.post('/api/v1/approvals/:id/approve', ({ params }) =>
+        HttpResponse.json(
+          apiSuccess({
+            id: String(params.id),
+            status: 'approved',
+            decided_at: '2026-05-19T10:00:00Z',
+            decided_by: 'user-1',
+          }),
+        ),
+      ),
       http.post('/api/v1/meta/chat/group', () =>
         HttpResponse.json(
           apiSuccess(

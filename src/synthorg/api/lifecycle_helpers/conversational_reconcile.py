@@ -11,6 +11,9 @@ intake survives. On a persistent store the approvals survive restart, so
 the rows stay resumable and are left untouched.
 """
 
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Protocol
+
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.observability import get_logger
@@ -18,6 +21,34 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.conversational_factory import ConversationalRepositories
 
 logger = get_logger(__name__)
+
+
+class _HasId(Protocol):
+    @property
+    def id(self) -> str: ...
+
+
+async def _retire_pending_items[StatusT, SpecT, ItemT: _HasId](
+    repo_query: Callable[[SpecT], Awaitable[Sequence[ItemT]]],
+    transition_if: Callable[[str, StatusT, StatusT], Awaitable[bool]],
+    spec: SpecT,
+    pending: StatusT,
+    terminal: StatusT,
+) -> tuple[int, int]:
+    """Move every PENDING row matching *spec* to its terminal status via CAS.
+
+    Returns:
+        ``(queried, transitioned)`` -- a gap (queried greater than
+        transitioned) means a concurrent process already retired some
+        rows and the CAS lost the race, which is a normal non-error
+        outcome that would otherwise be invisible.
+    """
+    items = await repo_query(spec)
+    transitioned = 0
+    for item in items:
+        if await transition_if(item.id, pending, terminal):
+            transitioned += 1
+    return len(items), transitioned
 
 
 async def reconcile_orphaned_conversational_intake(
@@ -44,9 +75,7 @@ async def reconcile_orphaned_conversational_intake(
             approval_store_type=type(approval_store).__name__,
         )
         return
-    from synthorg.core.enums import (  # noqa: PLC0415
-        ConversationalProposalStatus,
-    )
+    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
     from synthorg.meta.chief_of_staff.enums import (  # noqa: PLC0415
         ConversationInviteStatus,
     )
@@ -57,40 +86,28 @@ async def reconcile_orphaned_conversational_intake(
         ConversationalProposalFilterSpec,
     )
 
-    pending_proposals = await repositories.proposal_repo.query(
-        ConversationalProposalFilterSpec(status=ConversationalProposalStatus.PENDING)
+    queried_proposals, rejected_proposals = await _retire_pending_items(
+        repositories.proposal_repo.query,
+        repositories.proposal_repo.transition_if,
+        ConversationalProposalFilterSpec(status=ConversationalProposalStatus.PENDING),
+        ConversationalProposalStatus.PENDING,
+        ConversationalProposalStatus.REJECTED,
     )
-    rejected_proposals = 0
-    for proposal in pending_proposals:
-        if await repositories.proposal_repo.transition_if(
-            proposal.id,
-            ConversationalProposalStatus.PENDING,
-            ConversationalProposalStatus.REJECTED,
-        ):
-            rejected_proposals += 1
-    pending_invites = await repositories.invite_repo.query(
-        ConversationInviteFilterSpec(status=ConversationInviteStatus.PENDING)
+    queried_invites, declined_invites = await _retire_pending_items(
+        repositories.invite_repo.query,
+        repositories.invite_repo.transition_if,
+        ConversationInviteFilterSpec(status=ConversationInviteStatus.PENDING),
+        ConversationInviteStatus.PENDING,
+        ConversationInviteStatus.DECLINED,
     )
-    declined_invites = 0
-    for invite in pending_invites:
-        if await repositories.invite_repo.transition_if(
-            invite.id,
-            ConversationInviteStatus.PENDING,
-            ConversationInviteStatus.DECLINED,
-        ):
-            declined_invites += 1
-    if pending_proposals or pending_invites:
-        # Log queried counts alongside transitioned counts: a gap (queried
-        # > transitioned) means a concurrent process already retired those
-        # rows and the CAS lost the race, which is a normal non-error
-        # outcome that would otherwise be invisible.
+    if queried_proposals or queried_invites:
         logger.info(
             API_APP_STARTUP,
             service="chief_of_staff_proposer",
             note="retired orphaned conversational intake rows (in-memory store)",
-            pending_proposals=len(pending_proposals),
+            pending_proposals=queried_proposals,
             rejected_proposals=rejected_proposals,
-            pending_invites=len(pending_invites),
+            pending_invites=queried_invites,
             declined_invites=declined_invites,
         )
 
