@@ -11,11 +11,13 @@ exactly N ticks; no wall-clock races.
 """
 
 import asyncio
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import create_autospec
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.api_core_state import (
     ApiCoreStateSlice,
@@ -27,6 +29,24 @@ from synthorg.api.lifecycle_helpers import ticket_cleanup as lifecycle_helpers
 from synthorg.api.state import AppState
 from synthorg.settings.state import config_resolver_of
 from tests._shared import make_app_state
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_store_protocols() -> Iterator[None]:
+    """Suppress typeguard module-wide for the cleanup kill-switch tests.
+
+    Every test drives the cleanup loop with minimal ``cleanup_expired``-only
+    store doubles and asserts via the instrumented ``*_store_of`` accessors.
+    The session / lockout accessors return ``SessionRepository`` /
+    ``LockoutRepository`` -- ``@runtime_checkable`` protocols that declare a
+    ``_revoked: set[str]`` *data* attribute (plus the full repository surface)
+    which a lightweight double cannot satisfy, and typeguard's ``check_protocol``
+    (unlike ``isinstance``) does not skip mocks. These tests verify cleanup-loop
+    behaviour, not store type conformance, so the runtime check is suppressed
+    for the whole module.
+    """
+    with suppress_type_checks():
+        yield
 
 
 def _no_arg_sync() -> object:

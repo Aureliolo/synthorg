@@ -20,7 +20,6 @@ Setting                                        Default
 """
 
 import asyncio
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -37,9 +36,10 @@ from synthorg.notifications.models import (
     NotificationSeverity,
 )
 from synthorg.persistence.connection_protocol import ConnectionRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 from tests._shared.fake_clock import FakeClock
 
 
@@ -294,7 +294,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
         connections_repo.list_items.return_value = ()
-        persistence = SimpleNamespace(connections=connections_repo)
+        persistence = mock_of[PersistenceBackend](connections=connections_repo)
         app_state = make_app_state(
             config_resolver=resolver,
             persistence=persistence,
@@ -325,7 +325,7 @@ class TestWebhookCleanupKillSwitch:
         resolver.get_float.return_value = 86_400.0
         connections_repo = AsyncMock(spec=ConnectionRepository)
         connections_repo.list_items.return_value = ()
-        persistence = SimpleNamespace(connections=connections_repo)
+        persistence = mock_of[PersistenceBackend](connections=connections_repo)
         app_state = make_app_state(
             config_resolver=resolver,
             persistence=persistence,

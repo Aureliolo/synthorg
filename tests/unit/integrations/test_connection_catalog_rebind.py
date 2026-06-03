@@ -8,13 +8,27 @@ repo. Tests verify the swap is atomic, idempotent, and invalidates
 the cache so subsequent reads observe the new backend.
 """
 
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_stub_repo() -> Iterator[None]:
+    """Suppress typeguard: tests drive a ``_StubRepo`` repository double.
+
+    The stub records its identity to verify ``rebind_repository`` swap / cache
+    behaviour; it does not satisfy the full ``ConnectionRepository`` protocol,
+    so the runtime check is suppressed.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _StubRepo:

@@ -11,10 +11,12 @@ mark_seen, RETRY never marks) that the dedup design depends on.
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.types import NotBlankStr
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
@@ -23,6 +25,23 @@ from synthorg.workers.worker import Worker
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def _suppress_typeguard_for_task_queue_doubles() -> Iterator[None]:
+    """Suppress typeguard for the worker dedup / idempotency flow tests.
+
+    Each flow drives ``Worker._run_once`` through a stub ``JetStreamTaskQueue``
+    (``_NullTaskQueue`` / ``_ScriptedTaskQueue``) whose claim iteration is
+    scripted; they verify dedup ordering invariants, not task-queue type
+    conformance. ``JetStreamTaskQueue`` is a concrete class whose ``isinstance``
+    check a behavioural stub cannot satisfy without a live JetStream binding,
+    so the runtime check is suppressed. Applied via ``@pytest.mark.usefixtures``
+    on the flow classes only, so the pure ``TaskClaim`` model tests keep
+    typeguard active.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _StubSeenClaims:
@@ -154,6 +173,7 @@ def queue_config() -> QueueConfig:
     )
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 class TestWorkerDedup:
     async def test_first_claim_executes(
         self,
@@ -233,6 +253,7 @@ class TestWorkerDedup:
         assert is_completed is False
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 class TestWorkerRunOnceDedupLifecycle:
     """Exercises the actual ``_run_once`` flow end-to-end.
 

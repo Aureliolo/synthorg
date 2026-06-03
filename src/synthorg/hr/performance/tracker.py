@@ -57,8 +57,6 @@ from synthorg.observability.events.performance import (
 )
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.task import AcceptanceCriterion
     from synthorg.engine.coordination.attribution import AgentContribution
     from synthorg.hr.enums import TrendDirection
@@ -469,7 +467,7 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> CollaborationScoreResult:
         """Compute collaboration score for an agent.
 
@@ -570,7 +568,7 @@ class PerformanceTracker:
 
         async with self._metrics_lock:
             records = tuple(self._collab_metrics.get(str(agent_id), []))
-        last_calibrated_at: AwareDatetime | None = None
+        last_calibrated_at: datetime | None = None
         if records:
             last_calibrated_at = max(r.recorded_at for r in records)
 
@@ -588,7 +586,7 @@ class PerformanceTracker:
         self,
         agent_ids: tuple[NotBlankStr, ...],
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> tuple[AgentPerformanceSnapshot | None, ...]:
         """Compute performance snapshots for a batch of agents.
 
@@ -641,7 +639,7 @@ class PerformanceTracker:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> AgentPerformanceSnapshot:
         """Compute a full performance snapshot for an agent.
 
@@ -710,7 +708,7 @@ class PerformanceTracker:
         records: tuple[TaskMetricRecord, ...],
         windows: tuple[WindowMetrics, ...],
         *,
-        now: AwareDatetime,
+        now: datetime,
     ) -> list[TrendResult]:
         """Compute trends for key metrics across windows.
 
@@ -734,7 +732,7 @@ class PerformanceTracker:
         self,
         records: tuple[TaskMetricRecord, ...],
         window: WindowMetrics,
-        now: AwareDatetime,
+        now: datetime,
     ) -> tuple[TaskMetricRecord, ...] | None:
         """Filter records to a window's time boundary.
 
@@ -796,8 +794,8 @@ class PerformanceTracker:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query raw task metric records with optional filters.
 
@@ -824,8 +822,8 @@ class PerformanceTracker:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.
 

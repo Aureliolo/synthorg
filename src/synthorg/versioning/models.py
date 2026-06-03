@@ -21,7 +21,7 @@ Usage::
 """
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
@@ -72,7 +72,7 @@ class VersionSnapshot[T: BaseModel](BaseModel):
 
     @field_validator("saved_at")
     @classmethod
-    def _validate_saved_at_utc(cls, v: AwareDatetime) -> AwareDatetime:
+    def _validate_saved_at_utc(cls, v: datetime) -> datetime:
         if v.utcoffset() != timedelta(0):
             msg = f"saved_at must be UTC, got offset {v.utcoffset()}"
             raise ValueError(msg)

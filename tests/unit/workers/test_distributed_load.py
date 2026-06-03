@@ -8,10 +8,11 @@ tests assert logic invariants the fake queue can model exactly.
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Final
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.workers.claim import TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
@@ -21,6 +22,23 @@ from tests._shared.fake_task_queue import FakeJetStreamTaskQueue
 from tests._shared.persistence import make_sqlite_seen_claims
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def _suppress_typeguard_for_task_queue_doubles() -> Iterator[None]:
+    """Suppress typeguard for the worker tests that drive a task-queue double.
+
+    The no-loss / no-duplication invariants are asserted against a
+    ``FakeJetStreamTaskQueue`` that models the broker exactly without a real
+    NATS binding; the tests verify those invariants, not task-queue type
+    conformance. ``JetStreamTaskQueue`` is a concrete class whose ``isinstance``
+    check the fake cannot satisfy, so the runtime check is suppressed. Applied
+    via ``@pytest.mark.usefixtures`` only on the tests that use the double, so
+    pure-logic tests (e.g. config-field assertions) keep typeguard active.
+    """
+    with suppress_type_checks():
+        yield
+
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
 """Wall-clock ceiling for every bounded wait in this module.
@@ -62,6 +80,7 @@ async def _run_workers_until(
             await t
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 async def test_no_loss_no_duplication_under_concurrent_workers() -> None:
     """N workers over M distinct claims: each executed exactly once."""
     worker_count: Final[int] = 4
@@ -100,6 +119,7 @@ async def test_no_loss_no_duplication_under_concurrent_workers() -> None:
     assert queue.terminated == [], "claim silently terminated"
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 async def test_redelivery_after_completion_is_deduped() -> None:
     """A redelivered, already-completed claim ack-skips, never re-runs.
 
@@ -146,6 +166,7 @@ async def test_redelivery_after_completion_is_deduped() -> None:
     assert len(queue.acked) == 2, "redelivered claim was not acked"
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 async def test_worker_extends_ack_during_long_execution() -> None:
     """While the executor runs, the worker working-acks the message.
 
@@ -182,6 +203,7 @@ async def test_worker_extends_ack_during_long_execution() -> None:
     assert queue.terminated == []
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 async def test_max_deliver_exceeded_routes_to_dead_subject() -> None:
     """A claim that exhausts ``max_deliver`` is republished to DLQ.
 
@@ -212,6 +234,7 @@ async def test_max_deliver_exceeded_routes_to_dead_subject() -> None:
     assert [c.task_id for c in queue.dead_letters] == ["task-dead"]
 
 
+@pytest.mark.usefixtures("_suppress_typeguard_for_task_queue_doubles")
 async def test_worker_emits_heartbeat_on_interval() -> None:
     """The worker publishes a liveness heartbeat on a core-NATS subject."""
     queue = FakeJetStreamTaskQueue()

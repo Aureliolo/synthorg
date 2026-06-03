@@ -300,7 +300,7 @@ class EmbeddingSimilarityDetector:
         """
         self.similarity_threshold = similarity_threshold
 
-    def detect(self, _response_content: str) -> bool:
+    def detect(self, response_content: str) -> bool:  # noqa: ARG002 -- protocol stub raises before use
         """Detect conflicts via embedding similarity.
 
         Raises:

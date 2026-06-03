@@ -1,6 +1,6 @@
 """Postgres repository implementation for security audit entries."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import psycopg
@@ -24,7 +24,6 @@ from synthorg.security.models import AuditVerdictStr
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
-    from pydantic import AwareDatetime
 
     from synthorg.core.enums import ApprovalRiskLevel
     from synthorg.core.types import NotBlankStr
@@ -179,14 +178,15 @@ class PostgresAuditRepository:
     def _validate_query_args(
         self,
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
     ) -> None:
         """Validate query parameters before execution.
 
         Raises:
-            QueryError: If *limit* < 1 or *until* < *since*.
+            QueryError: If *limit* < 1, *since* or *until* is naive, or
+                *until* < *since*.
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
@@ -195,6 +195,13 @@ class PostgresAuditRepository:
                 error=msg,
                 limit=limit,
             )
+            raise QueryError(msg)
+
+        if since is not None and since.tzinfo is None:
+            msg = "since must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
+        if until is not None and until.tzinfo is None:
+            msg = "until must be timezone-aware; a naive datetime is rejected"
             raise QueryError(msg)
 
         if since is not None and until is not None and until < since:
@@ -214,8 +221,8 @@ class PostgresAuditRepository:
         action_type: NotBlankStr | None,
         verdict: AuditVerdictStr | None,
         risk_level: ApprovalRiskLevel | None,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[str, list[object]]:
         """Build WHERE clause and parameters for audit query.
 
@@ -293,8 +300,8 @@ class PostgresAuditRepository:
 
     def _build_time_clause(
         self,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
     ) -> tuple[list[str], list[object]]:
         """Build timestamp filter conditions.
 
@@ -318,8 +325,8 @@ class PostgresAuditRepository:
         extra_condition: str,
         extra_params: list[object],
         *,
-        since: AwareDatetime | None,
-        until: AwareDatetime | None,
+        since: datetime | None,
+        until: datetime | None,
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -384,8 +391,8 @@ class PostgresAuditRepository:
         column: str,
         value: dict[str, object] | list[object],
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -413,8 +420,8 @@ class PostgresAuditRepository:
         column: str,
         key: str,
         *,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[tuple[AuditEntry, ...], int]:
@@ -437,19 +444,23 @@ class PostgresAuditRepository:
             offset=offset,
         )
 
-    async def purge_before(self, cutoff: AwareDatetime) -> int:
+    async def purge_before(self, cutoff: datetime) -> int:
         """Delete audit entries strictly older than *cutoff* (CFG-1).
 
         Args:
-            cutoff: UTC-normalised timestamp. Rows with
-                ``timestamp < cutoff`` are removed.
+            cutoff: Timezone-aware UTC timestamp. Rows with
+                ``timestamp < cutoff`` are removed. A naive datetime is
+                rejected to prevent silent local-time misinterpretation.
 
         Returns:
             Number of rows deleted.
 
         Raises:
-            QueryError: If the DELETE fails.
+            QueryError: If *cutoff* is naive or the DELETE fails.
         """
+        if cutoff.tzinfo is None:
+            msg = "cutoff must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         utc_cutoff = cutoff.astimezone(UTC)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

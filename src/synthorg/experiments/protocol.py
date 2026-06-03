@@ -1,8 +1,7 @@
 """Repository protocol for the A/B experiment registry."""
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
-
-from pydantic import AwareDatetime
 
 from synthorg.core.types import (
     NotBlankStr,
@@ -79,7 +78,7 @@ class ExperimentRepository(Protocol):
         """
         ...
 
-    async def assigned_at(self, *, now: AwareDatetime) -> AwareDatetime:
+    async def assigned_at(self, *, now: datetime) -> datetime:
         """Return the canonical assignment timestamp for repository writes.
 
         The default implementation echoes ``now``; backends override

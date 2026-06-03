@@ -6,9 +6,8 @@ persistence backend; the no-op sink discards frames. Recording is
 best-effort: a failing sink logs and never propagates into the engine.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
-
-from pydantic import AwareDatetime
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -236,7 +235,7 @@ def _frame_for_turn(  # noqa: PLR0913 -- per-turn frame fields, all required
     task_id: str | None,
     response: str | None,
     status: TaskStatus,
-    timestamp: AwareDatetime,
+    timestamp: datetime,
     summary_max_chars: int,
 ) -> FlightRecorderFrame:
     """Build one flight-recorder frame from a turn record.

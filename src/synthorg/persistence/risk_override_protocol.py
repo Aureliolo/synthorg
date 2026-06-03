@@ -1,12 +1,11 @@
 """Risk override repository protocol."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, IdKeyedRepository
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
     from synthorg.security.rules.risk_override import RiskTierOverride
 
@@ -100,7 +99,7 @@ class RiskOverrideRepository(
         override_id: NotBlankStr,
         *,
         revoked_by: NotBlankStr,
-        revoked_at: AwareDatetime,
+        revoked_at: datetime,
     ) -> bool:
         """Mark an override as revoked.
 

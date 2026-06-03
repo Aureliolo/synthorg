@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
@@ -301,7 +301,7 @@ class SQLiteRiskOverrideRepository:
         override_id: NotBlankStr,
         *,
         revoked_by: NotBlankStr,
-        revoked_at: AwareDatetime,
+        revoked_at: datetime,
     ) -> bool:
         """Mark an override as revoked.
 

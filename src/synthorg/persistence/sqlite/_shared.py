@@ -1,10 +1,8 @@
 """Shared helpers for the SQLite persistence backend."""
 
 import sqlite3
-from typing import TYPE_CHECKING, Protocol
-
-if TYPE_CHECKING:
-    from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager
+from typing import Protocol
 
 
 class WriteContext(Protocol):

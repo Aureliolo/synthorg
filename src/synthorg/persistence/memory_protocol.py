@@ -19,13 +19,12 @@ categories) because:
    without forcing callers to duplicate filtering logic.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.enums import OrgFactCategory
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.org.models import (
@@ -169,7 +168,7 @@ class OrgFactRepository(Protocol):
 
     async def snapshot_at(
         self,
-        timestamp: AwareDatetime,
+        timestamp: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,

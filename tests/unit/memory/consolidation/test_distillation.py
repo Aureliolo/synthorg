@@ -1,5 +1,6 @@
 """Tests for distillation request capture."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -8,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.engine.loop_protocol import (
@@ -218,6 +220,17 @@ class TestExtractMemoryToolInvocations:
 
 @pytest.mark.unit
 class TestCaptureDistillation:
+    @pytest.fixture(autouse=True)
+    def _suppress_typeguard(self) -> Iterator[None]:
+        """Suppress typeguard: tests pass a ``SimpleNamespace`` ExecutionResult.
+
+        ``capture_distillation`` is exercised with a ``SimpleNamespace``
+        stand-in for ``ExecutionResult`` to drive capture paths; these verify
+        capture behaviour, not result type conformance.
+        """
+        with suppress_type_checks():
+            yield
+
     async def test_successful_capture(self) -> None:
         backend = AsyncMock(spec=MemoryBackend)
         backend.store = AsyncMock(return_value="dist-1")

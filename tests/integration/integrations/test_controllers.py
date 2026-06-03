@@ -61,12 +61,14 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.list_all = AsyncMock(return_value=(_make_conn("a"), _make_conn("b")))
-        state = {
-            "app_state": make_app_state(
-                connection_catalog=catalog,
-                cursor_secret=CursorSecret.ephemeral(),
-            ),
-        }
+        state = State(
+            {
+                "app_state": make_app_state(
+                    connection_catalog=catalog,
+                    cursor_secret=CursorSecret.ephemeral(),
+                ),
+            }
+        )
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.list_connections.fn(ctrl, state=state)
@@ -78,7 +80,7 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.get = AsyncMock(return_value=None)
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError):
@@ -115,7 +117,7 @@ class TestConnectionsController:
         catalog.create = AsyncMock(
             side_effect=DuplicateConnectionError("dup"),
         )
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(ConflictError):
@@ -138,7 +140,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             return_value={"client_secret": "real-secret-value"},
         )
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         response = await ctrl.reveal_secret.fn(
@@ -157,7 +159,7 @@ class TestConnectionsController:
 
         catalog = MagicMock()
         catalog.get_credentials = AsyncMock(return_value={"other": "x"})
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -179,7 +181,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             side_effect=ConnectionNotFoundError("Connection 'gh' not found"),
         )
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -200,7 +202,7 @@ class TestConnectionsController:
         catalog.get_credentials = AsyncMock(
             side_effect=SecretRetrievalError("vault timeout"),
         )
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = ConnectionsController(owner=ConnectionsController)  # type: ignore[arg-type]
         with pytest.raises(NotFoundError) as exc_info:
@@ -214,14 +216,14 @@ class TestConnectionsController:
         assert "vault" not in str(exc_info.value).lower()
 
 
-def _make_audit_state(catalog: object) -> dict[str, object]:
-    """Build a minimal ``state`` mapping that pins ``connection_catalog``.
+def _make_audit_state(catalog: object) -> State:
+    """Build a minimal ``state`` object that pins ``connection_catalog``.
 
     Uses ``make_app_state`` so the controller resolves the catalog
     through the IntegrationsStateSlice. The controller only reads
     ``connection_catalog``; every other slice field stays ``None``.
     """
-    return {"app_state": make_app_state(connection_catalog=catalog)}
+    return State({"app_state": make_app_state(connection_catalog=catalog)})
 
 
 def _capture_emission(
@@ -461,7 +463,7 @@ class TestWebhooksController:
             connection_catalog=catalog,
             message_bus=MagicMock(spec=MessageBus),
         )
-        state = {"app_state": app_state}
+        state = State({"app_state": app_state})
 
         request = MagicMock()
 
@@ -509,7 +511,7 @@ class TestWebhooksController:
             connection_catalog=catalog,
             message_bus=MagicMock(spec=MessageBus),
         )
-        state = {"app_state": app_state}
+        state = State({"app_state": app_state})
 
         body = b'{"hello":1}'
         secret = "supersecret"
@@ -945,7 +947,7 @@ class TestTunnelController:
 
         tunnel = MagicMock()
         tunnel.start = AsyncMock(return_value="https://tunnel.example.com")
-        state = {"app_state": make_app_state(tunnel_provider=tunnel)}
+        state = State({"app_state": make_app_state(tunnel_provider=tunnel)})
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.start_tunnel.fn(ctrl, state=state)
         assert response.data == {"public_url": "https://tunnel.example.com"}
@@ -956,7 +958,7 @@ class TestTunnelController:
         tunnel = MagicMock()
         tunnel.get_url = AsyncMock(return_value="https://tunnel.example.com")
         tunnel.has_auth_token = True
-        state = {"app_state": make_app_state(tunnel_provider=tunnel)}
+        state = State({"app_state": make_app_state(tunnel_provider=tunnel)})
         ctrl = TunnelController(owner=TunnelController)  # type: ignore[arg-type]
         response = await ctrl.get_status.fn(ctrl, state=state)
         assert response.data == {
@@ -1072,7 +1074,7 @@ class TestOAuthController:
         catalog = MagicMock()
         catalog.get_or_raise = AsyncMock(return_value=conn)
         catalog.get_credentials = AsyncMock(return_value={})
-        state = {"app_state": make_app_state(connection_catalog=catalog)}
+        state = State({"app_state": make_app_state(connection_catalog=catalog)})
 
         ctrl = OAuthController(owner=OAuthController)  # type: ignore[arg-type]
         response = await ctrl.token_status.fn(

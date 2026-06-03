@@ -1,6 +1,7 @@
 """Unit tests for task controller helper functions."""
 
 import pytest
+from litestar.datastructures import State
 
 from synthorg.api.controllers.tasks import _extract_requester
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
@@ -26,25 +27,18 @@ class TestExtractRequester:
         class FakeUser:
             user_id = "user-123"
 
-        class FakeState:
-            _connection_user = FakeUser()
-
-        assert _extract_requester(FakeState()) == "user-123"  # type: ignore[arg-type]
+        state = State({"_connection_user": FakeUser()})
+        assert _extract_requester(state) == "user-123"
 
     def test_returns_api_fallback_when_no_user(self) -> None:
-        class FakeState:
-            pass
-
-        assert _extract_requester(FakeState()) == "api"  # type: ignore[arg-type]
+        assert _extract_requester(State({})) == "api"
 
     def test_returns_api_when_user_has_no_user_id(self) -> None:
         class FakeUser:
             pass
 
-        class FakeState:
-            _connection_user = FakeUser()
-
-        assert _extract_requester(FakeState()) == "api"  # type: ignore[arg-type]
+        state = State({"_connection_user": FakeUser()})
+        assert _extract_requester(state) == "api"
 
 
 # ── TaskEngine error HTTP metadata (replaces the deleted mapper) ─────

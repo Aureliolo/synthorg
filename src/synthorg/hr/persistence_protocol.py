@@ -4,7 +4,8 @@ Defines persistence interfaces for lifecycle events, task metrics,
 and collaboration metrics.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import LifecycleEventType
@@ -14,9 +15,6 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 
 @runtime_checkable
@@ -39,7 +37,7 @@ class LifecycleEventRepository(Protocol):
         *,
         agent_id: NotBlankStr | None = None,
         event_type: LifecycleEventType | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
@@ -79,8 +77,8 @@ class TaskMetricRepository(Protocol):
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query task metric records with optional filters.
@@ -120,7 +118,7 @@ class CollaborationMetricRepository(Protocol):
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.

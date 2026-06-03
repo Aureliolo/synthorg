@@ -12,10 +12,12 @@ covered without per-handler boilerplate.
 """
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.meta.mcp.handlers import build_handler_map
@@ -27,6 +29,29 @@ from synthorg.observability.events.mcp import (
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_chaos_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for this error-path sweep.
+
+    Every test here drives a ``_UniversalFailingAppState`` whose every service
+    attribute is a ``_UniversalFailingService`` chaos double that raises on call.
+    Instrumented service accessors return-check those doubles against the
+    concrete service types, which would pre-empt the ``except`` branches under
+    test before they run -- and there is no meaningful return type to enforce on
+    a deliberately-broken stub.
+
+    The suppression is module-wide (not per-call) on purpose: the module
+    parametrizes over all 200+ handlers from ``build_handler_map`` and each one
+    pulls a chaos double off the shared app state, so per-call scoping would mean
+    wrapping every parametrized invocation in the file. Rebuilding the doubles as
+    typeguard-skipped ``Mock``s would lose their deliberate
+    raise-before-the-awaitable-is-constructed semantics, which is what reliably
+    exercises both the sync and async handler call styles.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _UniversalFailingService:

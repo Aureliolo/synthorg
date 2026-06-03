@@ -17,6 +17,7 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.adapter_cost import Mem0AdapterCostMixin
 from synthorg.memory.backends.mem0.adapter_shared import Mem0AdapterSharedMixin
+from synthorg.memory.backends.mem0.client_protocol import Mem0Client
 from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,
     build_mem0_config_dict,
@@ -75,53 +76,12 @@ from synthorg.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
-    from typing import Protocol
-
     from synthorg.budget.tracker import CostTracker
     from synthorg.memory.models import (
         MemoryEntry,
         MemoryQuery,
         MemoryStoreRequest,
     )
-
-    class Mem0Client(Protocol):
-        """Subset of ``Memory`` methods used by the adapter."""
-
-        def add(self, **kwargs: Any) -> dict[str, Any]:
-            """Add.
-
-            Returns:
-                Mapping from ``str`` to ``Any``.
-            """
-            ...
-
-        def search(self, **kwargs: Any) -> dict[str, Any]:
-            """Search.
-
-            Returns:
-                Mapping from ``str`` to ``Any``.
-            """
-            ...
-
-        def get_all(self, **kwargs: Any) -> dict[str, Any]:
-            """Get all.
-
-            Returns:
-                Mapping from ``str`` to ``Any``.
-            """
-            ...
-
-        def get(self, memory_id: str) -> dict[str, Any] | None:
-            """Get.
-
-            Returns:
-                The matching ``dict[str, Any]``, or ``None`` when no match is found.
-            """
-            ...
-
-        def delete(self, memory_id: str) -> None:
-            """Delete."""
-            ...
 
 
 logger = get_logger(__name__)

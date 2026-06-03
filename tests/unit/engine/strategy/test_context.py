@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -132,7 +133,8 @@ class TestMemoryContextProvider:
             fallback=ConfigContextProvider(),
             memory_backend=backend,
         )
-        ctx = await provider.provide(config=default_strategy_config)
+        with suppress_type_checks():
+            ctx = await provider.provide(config=default_strategy_config)
         assert ctx.maturity_stage == "growth"
 
     @pytest.mark.unit

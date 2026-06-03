@@ -99,17 +99,17 @@ class FakeRiskOverrideRepository:
     def __init__(self) -> None:
         self._overrides: dict[str, RiskTierOverride] = {}
 
-    async def save(self, override: RiskTierOverride) -> None:
-        if override.id in self._overrides:
-            msg = f"Risk override {override.id!r} already exists"
+    async def save(self, entity: RiskTierOverride) -> None:
+        if entity.id in self._overrides:
+            msg = f"Risk override {entity.id!r} already exists"
             raise DuplicateRecordError(msg)
-        self._overrides[override.id] = override
+        self._overrides[entity.id] = entity
 
     async def get(
         self,
-        override_id: NotBlankStr,
+        entity_id: NotBlankStr,
     ) -> RiskTierOverride | None:
-        return self._overrides.get(override_id)
+        return self._overrides.get(entity_id)
 
     async def list_items(
         self,
@@ -130,8 +130,8 @@ class FakeRiskOverrideRepository:
         active.sort(key=lambda o: o.created_at, reverse=True)
         return tuple(active[:limit])
 
-    async def delete(self, override_id: NotBlankStr) -> bool:
-        return self._overrides.pop(override_id, None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._overrides.pop(entity_id, None) is not None
 
     async def revoke(
         self,
@@ -155,17 +155,17 @@ class FakeSsrfViolationRepository:
     def __init__(self) -> None:
         self._violations: dict[str, SsrfViolation] = {}
 
-    async def save(self, violation: SsrfViolation) -> None:
-        if violation.id in self._violations:
-            msg = f"SSRF violation {violation.id!r} already exists"
+    async def save(self, entity: SsrfViolation) -> None:
+        if entity.id in self._violations:
+            msg = f"SSRF violation {entity.id!r} already exists"
             raise DuplicateRecordError(msg)
-        self._violations[violation.id] = violation
+        self._violations[entity.id] = entity
 
     async def get(
         self,
-        violation_id: NotBlankStr,
+        entity_id: NotBlankStr,
     ) -> SsrfViolation | None:
-        return self._violations.get(violation_id)
+        return self._violations.get(entity_id)
 
     async def list_items(
         self,
@@ -541,14 +541,14 @@ class _FakePresetOverrideRepo:
         """Reset to a fresh, empty override map."""
         self._overrides = {}
 
-    async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
-        return self._overrides.get(preset_name)
+    async def get(self, entity_id: NotBlankStr) -> PresetOverride | None:
+        return self._overrides.get(entity_id)
 
-    async def save(self, override: PresetOverride) -> None:
-        self._overrides[override.preset_name] = override
+    async def save(self, entity: PresetOverride) -> None:
+        self._overrides[entity.preset_name] = entity
 
-    async def delete(self, preset_name: NotBlankStr) -> bool:
-        return self._overrides.pop(preset_name, None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._overrides.pop(entity_id, None) is not None
 
     async def list_items(
         self,
@@ -566,25 +566,25 @@ class FakeCustomRuleRepository:
     def __init__(self) -> None:
         self._rules: dict[str, CustomRuleDefinition] = {}
 
-    async def save(self, rule: CustomRuleDefinition) -> None:
+    async def save(self, entity: CustomRuleDefinition) -> None:
         from synthorg.core.persistence_errors import (
             ConstraintViolationError,
         )
 
         for existing in self._rules.values():
-            if existing.name == rule.name and existing.id != rule.id:
-                msg = f"Custom rule name '{rule.name}' already exists"
+            if existing.name == entity.name and existing.id != entity.id:
+                msg = f"Custom rule name '{entity.name}' already exists"
                 raise ConstraintViolationError(
                     msg,
                     constraint="custom_rules_name_unique",
                 )
-        self._rules[str(rule.id)] = rule
+        self._rules[str(entity.id)] = entity
 
     async def get(
         self,
-        rule_id: NotBlankStr,
+        entity_id: NotBlankStr,
     ) -> CustomRuleDefinition | None:
-        return self._rules.get(str(rule_id))
+        return self._rules.get(str(entity_id))
 
     async def get_by_name(
         self,
@@ -631,8 +631,8 @@ class FakeCustomRuleRepository:
             rules = [r for r in rules if r.enabled]
         return len(rules)
 
-    async def delete(self, rule_id: NotBlankStr) -> bool:
-        key = str(rule_id)
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        key = str(entity_id)
         if key in self._rules:
             del self._rules[key]
             return True

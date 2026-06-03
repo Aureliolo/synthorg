@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -642,7 +643,13 @@ class TestDeviceFlow:
         # cadence through the integer-typed parameter.  Reject both
         # at the boundary so the type annotation matches runtime.
         flow = DeviceFlow(clock=FakeClock())
-        with pytest.raises(ValueError, match=r"interval must be a positive int"):
+        # Floats are not int instances, so the WARN-level checker would
+        # reject the argument before the method's own positive-int guard
+        # runs; suppress it so this test exercises that domain validation.
+        with (
+            pytest.raises(ValueError, match=r"interval must be a positive int"),
+            suppress_type_checks(),
+        ):
             await flow.poll_for_token(
                 token_url="https://example.com/token",
                 client_id="cid",
@@ -676,8 +683,9 @@ class TestDeviceFlow:
         self, bad_max_wait: bool | float
     ) -> None:
         flow = DeviceFlow(clock=FakeClock())
-        with pytest.raises(
-            ValueError, match=r"max_wait_seconds must be a positive int"
+        with (
+            pytest.raises(ValueError, match=r"max_wait_seconds must be a positive int"),
+            suppress_type_checks(),
         ):
             await flow.poll_for_token(
                 token_url="https://example.com/token",

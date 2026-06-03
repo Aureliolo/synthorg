@@ -7,12 +7,13 @@ unregistered key raises ValueError with a helpful message listing the
 available options.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.conflict_resolution.escalation.config import (
     EscalationQueueConfig,
@@ -135,6 +136,17 @@ class TestNotifySubscriberCapabilityCheck:
     ``supports_cross_instance_notify`` attribute receive a real
     subscriber; everything else falls through to the no-op.
     """
+
+    @pytest.fixture(autouse=True)
+    def _suppress_typeguard(self) -> Iterator[None]:
+        """Suppress typeguard: tests pass intentional capability-probe stores.
+
+        These verify the factory's structural-Protocol capability check via
+        hand-built store doubles; they exercise dispatch behaviour, not store
+        type conformance.
+        """
+        with suppress_type_checks():
+            yield
 
     def test_in_memory_store_with_auto_returns_noop_subscriber(self) -> None:
         # InMemory has no capability marker; in ``auto`` mode the

@@ -20,7 +20,7 @@ import keyword
 import re
 from collections.abc import Callable, Iterator, Mapping
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, override
+from typing import Any, override
 
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -29,14 +29,12 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.registry import MCPToolDef, ToolDefReader
 from synthorg.meta.toolsmith.errors import ToolRegistrationError
+from synthorg.meta.toolsmith.models import ToolBlueprint
 from synthorg.observability import get_logger
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_TOOL_REGISTERED,
     TOOLSMITH_TOOL_UNREGISTERED,
 )
-
-if TYPE_CHECKING:
-    from synthorg.meta.toolsmith.models import ToolBlueprint
 
 logger = get_logger(__name__)
 

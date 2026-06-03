@@ -18,6 +18,7 @@ import inspect
 from typing import Any
 
 import pytest
+from litestar.datastructures import State
 from pydantic import ValidationError
 
 from synthorg.api.controllers._webhooks_wiring import (
@@ -29,7 +30,8 @@ from synthorg.api.controllers.webhooks.activity import WebhooksActivityControlle
 from synthorg.integrations.webhooks.activity_service import (
     WebhookActivityService,
 )
-from tests._shared import make_app_state
+from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -116,12 +118,17 @@ class TestListActivityRoutesThroughService:
         class _StubReceiptsRepo:
             pass
 
-        class _StubPersistence:
-            webhook_receipts = _StubReceiptsRepo()
-
-        state = {"app_state": make_app_state(persistence=_StubPersistence())}
-        first = await _get_activity_service(state)  # type: ignore[arg-type]
-        second = await _get_activity_service(state)  # type: ignore[arg-type]
+        state = State(
+            {
+                "app_state": make_app_state(
+                    persistence=mock_of[PersistenceBackend](
+                        webhook_receipts=_StubReceiptsRepo()
+                    )
+                )
+            }
+        )
+        first = await _get_activity_service(state)
+        second = await _get_activity_service(state)
         assert first is second
         assert isinstance(first, WebhookActivityService)
 

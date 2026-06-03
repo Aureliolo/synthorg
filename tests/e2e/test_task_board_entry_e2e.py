@@ -18,6 +18,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.controllers.tasks import process_task_board_pipeline
@@ -341,7 +342,14 @@ async def test_board_filing_propagates_memory_error(
         requested_by="user-42",
     )
 
-    with pytest.raises(MemoryError, match="simulated OOM"):
+    # ``_OOMAdapter`` is a deliberate fault-injection seam implementing only
+    # ``submit`` + ``source``; it is not a full ``TaskBoardEntryAdapter``.
+    # Suppress the runtime protocol check at just this call rather than across
+    # the whole test so unrelated type errors still surface.
+    with (
+        pytest.raises(MemoryError, match="simulated OOM"),
+        suppress_type_checks(),
+    ):
         await process_task_board_pipeline(
             adapter=_OOMAdapter(),  # type: ignore[arg-type]  # test seam
             filing=filing,

@@ -15,8 +15,6 @@ from synthorg.observability.events.performance import (
 )
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import QualityOverride
 
@@ -98,7 +96,7 @@ class QualityOverrideStore:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> QualityOverride | None:
         """Get the active (non-expired) override for an agent.
 
@@ -131,7 +129,7 @@ class QualityOverrideStore:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> bool:
         """Remove the active (non-expired) override for an agent.
 
@@ -174,7 +172,7 @@ class QualityOverrideStore:
         self,
         *,
         include_expired: bool = False,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> tuple[QualityOverride, ...]:
         """List all overrides, optionally including expired ones.
 

@@ -1,9 +1,8 @@
 """Append-only in-memory audit log for security evaluations."""
 
 from collections import deque
+from datetime import datetime
 from typing import Final
-
-from pydantic import AwareDatetime
 
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger
@@ -109,8 +108,8 @@ class AuditLog:
         verdict: str | None = None,
         risk_level: ApprovalRiskLevel | None = None,
         action_type: str | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = _DEFAULT_LIMIT,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.

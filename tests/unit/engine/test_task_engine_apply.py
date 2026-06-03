@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.task_engine_apply import (
@@ -76,7 +77,10 @@ class TestDispatch:
             request_id = "req-1"
             requested_by = "alice"
 
-        with pytest.raises(TypeError, match="Unknown mutation type"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(TypeError, match="Unknown mutation type"),
+        ):
             await dispatch(FakeMutation(), persistence, versions, timings)  # type: ignore[arg-type]
 
 

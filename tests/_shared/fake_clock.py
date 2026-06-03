@@ -19,8 +19,6 @@ import asyncio
 import math
 from datetime import UTC, datetime, timedelta
 
-from pydantic import AwareDatetime
-
 
 def _validate_seconds(seconds: float, *, action: str) -> None:
     """Reject negative and non-finite (NaN / inf) durations.
@@ -42,7 +40,7 @@ class FakeClock:
             Defaults to ``2026-01-01 00:00:00 UTC``.
     """
 
-    def __init__(self, *, start: AwareDatetime | None = None) -> None:
+    def __init__(self, *, start: datetime | None = None) -> None:
         if start is None:
             self._now: datetime = datetime(2026, 1, 1, tzinfo=UTC)
         else:
@@ -86,7 +84,7 @@ class FakeClock:
         self._sleep_calls.append(seconds)
         self._now = self._now + timedelta(seconds=seconds)
 
-    def now(self) -> AwareDatetime:
+    def now(self) -> datetime:
         """Return the current virtual time."""
         return self._now
 

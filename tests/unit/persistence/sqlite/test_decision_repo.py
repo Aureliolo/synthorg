@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import aiosqlite
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -279,7 +280,10 @@ class TestSQLiteDecisionRepositoryListByAgent:
         repo = SQLiteDecisionRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        with pytest.raises(QueryError, match="role must be"):
+        # typeguard would reject the deliberately-invalid Literal arg before the
+        # repository's own validation runs; suppress it so the code path under
+        # test (its QueryError guard) is what the assertion observes.
+        with pytest.raises(QueryError, match="role must be"), suppress_type_checks():
             await repo.list_by_agent("alice", role="observer")  # type: ignore[arg-type]
 
 

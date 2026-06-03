@@ -1,14 +1,17 @@
 """Tests for the require_org_mutation guard factory."""
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from litestar import Request
 from litestar.exceptions import PermissionDeniedException
+from litestar.testing import RequestFactory
 
 from synthorg.api.guards import require_org_mutation
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, OrgRole
 from synthorg.core.auth.roles import HumanRole
+
+_FACTORY = RequestFactory()
 
 
 def _make_connection(
@@ -18,8 +21,8 @@ def _make_connection(
     scoped_departments: tuple[str, ...] = (),
     path: str = "/api/v1/departments/eng",
     path_params: dict[str, str] | None = None,
-) -> Any:
-    """Build a minimal mock ASGIConnection for guard testing."""
+) -> Request[Any, Any, Any]:
+    """Build a real ASGIConnection (litestar ``Request``) for guard testing."""
     user = AuthenticatedUser(
         user_id="test-user",
         username="tester",
@@ -28,11 +31,9 @@ def _make_connection(
         org_roles=org_roles,
         scoped_departments=scoped_departments,
     )
-    return SimpleNamespace(
-        scope={"user": user},
-        url=SimpleNamespace(path=path),
-        path_params=path_params or {},
-    )
+    request = _FACTORY.get(path=path, path_params=path_params or {})
+    request.scope["user"] = user
+    return request
 
 
 @pytest.mark.unit

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, override, runtime_checkable
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.types import NotBlankStr
@@ -81,7 +81,7 @@ class DecisionRepository(
         decision: DecisionOutcome,
         reason: str | None,
         criteria_snapshot: tuple[NotBlankStr, ...],
-        recorded_at: AwareDatetime,
+        recorded_at: datetime,
         metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
         """Atomically append a decision record computing version in SQL.

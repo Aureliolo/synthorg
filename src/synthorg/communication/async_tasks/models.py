@@ -4,6 +4,7 @@ Defines the state channel, task records, and status enum
 for supervisor-facing async task management.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
@@ -160,7 +161,7 @@ class AsyncTaskStateChannel(BaseModel):
         self,
         task_id: str,
         status: AsyncTaskStatus,
-        updated_at: AwareDatetime,
+        updated_at: datetime,
     ) -> AsyncTaskStateChannel:
         """Update the status of a tracked task.
 

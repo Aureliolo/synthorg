@@ -6,10 +6,12 @@ while loading or persisting the allowlist is logged and swallowed
 exception still escapes via ``reraise_critical``.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.settings.resolver import ConfigResolver
@@ -34,6 +36,15 @@ def _failing_manager() -> DiscoveryAllowlistManager:
 
 @pytest.mark.unit
 class TestAllowlistUpdateErrorPaths:
+    @pytest.fixture(autouse=True)
+    def _suppress_typeguard(self) -> Iterator[None]:
+        """Suppress typeguard: tests pass ``SimpleNamespace`` provider-config
+        doubles to the best-effort ``update_for_*`` hooks; these verify the
+        swallow-and-log behaviour, not config type conformance.
+        """
+        with suppress_type_checks():
+            yield
+
     async def test_update_for_create_swallows_load_failure(self) -> None:
         manager = _failing_manager()
         config = SimpleNamespace(base_url="http://my-server:9090/v1")

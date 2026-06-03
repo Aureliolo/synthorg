@@ -1,14 +1,26 @@
 """Tests for ObservabilitySettingsSubscriber."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.settings.service import SettingsService
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.observability_subscriber import (
     ObservabilitySettingsSubscriber,
 )
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard() -> Iterator[None]:
+    """Suppress typeguard: tests drive a mocked ``SettingsService`` whose
+    ``MagicMock`` setting values flow through the rebuild path; these verify
+    subscriber rebuild behaviour, not settings-value type conformance.
+    """
+    with suppress_type_checks():
+        yield
 
 
 def _make_subscriber(

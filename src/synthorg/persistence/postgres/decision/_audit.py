@@ -7,10 +7,10 @@ no explicit ``commit`` call is needed.
 """
 
 import copy
+from datetime import datetime
 from types import MappingProxyType
 
 import psycopg
-from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.engine.decisions import DecisionRecord
@@ -107,7 +107,7 @@ class _AuditMixin(_DecisionRepoBase):
             )
             raise QueryError(msg) from exc
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete decision records older than threshold (retention).
 
         Args:

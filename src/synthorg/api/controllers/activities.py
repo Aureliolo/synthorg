@@ -1,7 +1,7 @@
 """Org-wide activity feed controller."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from enum import IntEnum
 from typing import TYPE_CHECKING, Annotated, Any, Final
 
@@ -394,7 +394,7 @@ class ActivityController(Controller):
             lists any data sources that failed gracefully.
         """
         app_state: AppState = state.app_state
-        now = datetime.now(UTC)
+        now = app_state.clock.now()
         since = now - timedelta(hours=last_n_hours)
         lifecycle_cap = app_state.api_bridge_config.max_lifecycle_events_per_query
 
