@@ -1612,7 +1612,7 @@
     },
     {
       "kind": "code",
-      "loc": 255,
+      "loc": 286,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -15927,7 +15927,7 @@
     },
     {
       "kind": "feature",
-      "loc": 34,
+      "loc": 36,
       "loc_cap": 100,
       "module": "src/synthorg/security/feature.py",
       "owning_feature": "security"
@@ -18125,7 +18125,7 @@
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 48,
       "loc_cap": 500,
       "module": "src/synthorg/tools/network_metadata.py",
       "owning_feature": "tools"

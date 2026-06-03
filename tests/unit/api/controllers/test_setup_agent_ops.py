@@ -461,6 +461,10 @@ class TestRandomizeAgentName:
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
+            # The randomiser must actually replace the seeded name, not echo
+            # it back: a no-op endpoint would still pass the non-empty/length
+            # checks below.
+            assert data["name"] != "agent-seed-001"
             assert data["name"] != ""
             assert len(data["name"]) >= 3
 

@@ -3,8 +3,10 @@
 
 Declares the security feature's surface: its settings namespace, state slice
 (audit log + trust service + autonomy-change strategy), and the audit /
-autonomy REST controllers. The services are constructed at app build time;
-the feature has no MCP domain or ghost-wired symbols of its own.
+autonomy REST controllers. The services are constructed at app build time. The
+feature has no MCP domain, but it does carry ghost-wired symbols for the
+red-team runtime and the vision-verifier gate (wired at runtime startup rather
+than construction); see ``FEATURE.ghost_wired_symbols`` for the manifest list.
 """
 
 from synthorg._core.features import FeatureManifest, FeatureModule

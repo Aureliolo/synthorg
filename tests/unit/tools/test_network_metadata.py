@@ -18,7 +18,9 @@ class TestIsCloudMetadataHost:
             "metadata.google.internal",
             "METADATA.GOOGLE.INTERNAL",  # case-insensitive hostname match
             "fe80::1",  # IPv6 link-local
+            "fe80::1%eth0",  # scoped link-local literal (zone id preserved)
             "::ffff:169.254.169.254",  # IPv4-mapped IPv6 metadata IP
+            "fd00:ec2::254",  # AWS IPv6 IMDS (ULA, not link-local)
         ],
     )
     def test_blocks_metadata_and_link_local(self, host: str) -> None:
@@ -34,6 +36,7 @@ class TestIsCloudMetadataHost:
             "172.17.0.2",  # docker-network address
             "example.com",  # public hostname
             "8.8.8.8",  # public IP
+            "fd00:1234::1",  # ULA but not the AWS IMDS prefix
             "",  # empty string is not an IP or known host
         ],
     )

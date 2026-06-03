@@ -325,12 +325,17 @@ class TestProjectBrainRoundTrip:
     ) -> None:
         """A reconstructed service answers decided/open/blocked over durable stores.
 
-        Models a multi-session resume: the durable stores (a persistent
-        memory backend -- here a reused InMemoryBackend instance -- plus the
-        SQL brain repo and the git workspace) survive while the service and
-        facade objects are rebuilt, as on a process restart. The structured
-        ``list_current`` reads go through the SQL repo, so they prove a fresh
-        service reads persisted state, not a shared in-process cache.
+        Models a multi-session resume: the durable stores (a persistent memory
+        backend -- here a reused InMemoryBackend instance -- plus the git
+        workspace) survive, while the brain repo is reopened as a *fresh*
+        object over its persisted rows and the service and facade objects are
+        rebuilt, as on a process restart. Because the resumed service reads
+        through a reconstructed repo (not the first harness's instance), the
+        structured ``list_current`` assertions prove a fresh service reads
+        persisted state rather than a shared in-process cache. Real SQL
+        serialisation round-trips are covered separately by
+        ``tests/conformance/persistence/test_project_brain_repository.py``;
+        this integration tier uses the in-memory fake by design.
         Volatile-index recovery (boot replay of a persisted-but-unindexed
         entry) is covered separately by ``test_boot_replay_heals_unindexed_gap``.
         """
@@ -341,7 +346,7 @@ class TestProjectBrainRoundTrip:
             resumed = await _build(
                 tmp_path,
                 memory_backend=first.backend,
-                repo=first.repo,
+                repo=FakeProjectBrainRepository.reopen(first.repo),
             )
             entries = await resumed.facade.retrieve(
                 agent_id=_BOB,

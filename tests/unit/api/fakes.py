@@ -922,6 +922,26 @@ class FakeProjectBrainRepository:
         self._rows: list[BrainEntry] = []
         self._indexed: dict[tuple[str, str], int] = {}
 
+    @classmethod
+    def reopen(cls, other: FakeProjectBrainRepository) -> FakeProjectBrainRepository:
+        """Build a fresh repo over another's persisted rows.
+
+        Models a process restart: a new repository object reads the durable
+        store that survived. ``BrainEntry`` is frozen, so copying the row list
+        and the index map is enough to make this an independent instance --
+        mutating one repo never reaches the other.
+
+        Args:
+            other: The repository whose persisted state should be carried over.
+
+        Returns:
+            A new repository seeded with copies of *other*'s rows and index.
+        """
+        fresh = cls()
+        fresh._rows = list(other._rows)
+        fresh._indexed = dict(other._indexed)
+        return fresh
+
     def _for_entry(self, project_id: str, entry_id: str) -> list[BrainEntry]:
         return [
             row
