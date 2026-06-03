@@ -11,6 +11,9 @@ from synthorg.engine.decisions import DecisionRecord
 from synthorg.engine.errors import SelfReviewError
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.security.redteam.protocol import RedTeamGate
+from tests._shared import mock_of
 
 
 def _make_mock_task_engine(
@@ -614,3 +617,71 @@ class TestReviewGateServiceReceiptSeam:
         )
 
         assert len(seam.calls) == 1
+
+
+@pytest.mark.unit
+class TestDispatchCompletion:
+    """Tests for ``dispatch_completion`` inline-vs-background routing."""
+
+    async def test_runs_inline_without_background_registry(self) -> None:
+        """A gated approve with no background registry completes inline.
+
+        ``dispatch_completion`` backgrounds a gated approve only when BOTH
+        a red-team gate AND a background registry are attached. With the
+        gate set but no registry (a boot that never wired one) the
+        completion must run inline and the method must report ``False`` so
+        the caller awaits the transition rather than expecting a deferred
+        one.
+        """
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            red_team_gate=mock_of[RedTeamGate](evaluate=AsyncMock()),
+        )
+
+        dispatched = await service.dispatch_completion(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        assert dispatched is False
+        mock_te.submit.assert_awaited_once()
+        mutation = mock_te.submit.call_args.args[0]
+        assert mutation.target_status == TaskStatus.COMPLETED
+
+    async def test_rejection_runs_inline_even_with_full_wiring(self) -> None:
+        """A rejection is never backgrounded, even with gate + registry wired.
+
+        The background path is reserved for gated *approvals* (the inline
+        AgentEngine latency the registry hides). A reject has no gate to
+        run, so it must complete inline and report ``False`` regardless of
+        whether a registry is attached.
+        """
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        registry = mock_of[BackgroundTaskRegistry](spawn=MagicMock())
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            red_team_gate=mock_of[RedTeamGate](evaluate=AsyncMock()),
+            background_tasks=registry,
+        )
+
+        dispatched = await service.dispatch_completion(
+            task_id="task-1",
+            requested_by="bob",
+            approved=False,
+            decided_by="bob",
+            reason="missing tests",
+        )
+
+        assert dispatched is False
+        registry.spawn.assert_not_called()
+        mock_te.submit.assert_awaited_once()
+        assert mock_te.submit.call_args.args[0].target_status == TaskStatus.IN_PROGRESS

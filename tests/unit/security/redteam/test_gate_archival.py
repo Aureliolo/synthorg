@@ -15,6 +15,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
+    RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
 )
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -248,3 +249,60 @@ async def test_duplicate_archive_is_benign() -> None:
     assert result.verdict is RedTeamVerdict.BLOCK
     archived = [e for e in logs if e["event"] == RED_TEAM_REPORT_ALREADY_ARCHIVED]
     assert any(e.get("note") == "already archived for this execution" for e in archived)
+
+
+def _stale_report() -> RedTeamReport:
+    """A HIGH-finding report stamped with a *different* execution id.
+
+    The runner files this under the queried execution key, but its own
+    ``execution_id`` belongs to another run, so the gate must reject it
+    as a mismatch rather than act on its (stale) HIGH finding.
+    """
+    return RedTeamReport(
+        execution_id="exec-OTHER",
+        task_id="task-1",
+        findings=(
+            RedTeamFinding(
+                attack_surface=RedTeamAttackSurface.SECURITY,
+                severity=RedTeamSeverity.HIGH,
+                description="Hardcoded secret in deliverable.",
+                evidence=("api_key = 'sk-live'",),
+            ),
+        ),
+        summary="Stale HIGH defect from another run.",
+    )
+
+
+async def test_execution_id_mismatch_fails_open_and_discards_stale_report() -> None:
+    """A report stamped to another execution is discarded, not acted on.
+
+    The completion-path input builder sources ``execution_id`` from
+    flight-recorder aggregates, so a report left in the per-execution repo
+    under the queried key but belonging to a *different* run is reachable.
+    The gate must NOT pass that stale deliverable's verdict through: it
+    drops the mismatched report, logs the degradation with
+    ``gate_degraded=True``, and falls OPEN to a synthetic INFO finding so a
+    bookkeeping mismatch never blocks completion AND never leaks the stale
+    HIGH. The fail-OPEN INFO finding makes the aggregate
+    ``PASS_WITH_FINDINGS`` (a degraded-but-not-blocking verdict), never
+    BLOCK.
+    """
+    repo = InMemoryRedTeamReportRepository()
+    archive = _RecordingArchive()
+    gate = _gate(report=_stale_report(), repo=repo, archive=archive)
+
+    with structlog.testing.capture_logs() as logs:
+        result = await gate.evaluate(_input())
+
+    assert result.verdict is not RedTeamVerdict.BLOCK
+    assert result.verdict is RedTeamVerdict.PASS_WITH_FINDINGS
+    assert not any(
+        f.description == "Hardcoded secret in deliverable."
+        for f in result.report.findings
+    )
+    assert all(f.severity is RedTeamSeverity.INFO for f in result.report.findings)
+    mismatch = [e for e in logs if e["event"] == RED_TEAM_REPORT_EXECUTION_ID_MISMATCH]
+    assert len(mismatch) == 1
+    assert mismatch[0]["gate_degraded"] is True
+    assert mismatch[0]["stored_execution_id"] == "exec-OTHER"
+    assert mismatch[0]["expected_execution_id"] == "exec-1"
