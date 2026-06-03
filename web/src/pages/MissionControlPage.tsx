@@ -18,21 +18,39 @@ function CockpitTabPanel({
   tab,
   initialExecutionId,
   initialProjectId,
+  onReplay,
 }: {
   tab: CockpitTab
   initialExecutionId: string | null
   initialProjectId: string | null
+  onReplay: (executionId: string) => void
 }) {
-  if (tab === 'live') return <LiveCockpit />
+  if (tab === 'live') return <LiveCockpit onReplay={onReplay} />
   if (tab === 'steering') return <Steering initialProjectId={initialProjectId} />
-  return <FlightRecorder initialExecutionId={initialExecutionId} />
+  // Key by the execution id so a deep-link from a live agent row remounts
+  // the recorder against the new run (and its mount effect auto-loads it)
+  // rather than leaving the previously-typed run on screen.
+  return (
+    <FlightRecorder
+      key={initialExecutionId ?? 'manual'}
+      initialExecutionId={initialExecutionId}
+    />
+  )
 }
 
 export default function MissionControlPage() {
   const [tab, setTab] = useState<CockpitTab>('live')
   const [searchParams] = useSearchParams()
-  const initialExecutionId = searchParams.get('executionId') ?? searchParams.get('taskId')
+  const urlExecutionId = searchParams.get('executionId') ?? searchParams.get('taskId')
   const initialProjectId = searchParams.get('project')
+  const [replayExecutionId, setReplayExecutionId] = useState<string | null>(
+    urlExecutionId,
+  )
+
+  function handleReplay(executionId: string): void {
+    setReplayExecutionId(executionId)
+    setTab('recorder')
+  }
 
   return (
     <div className="space-y-section-gap">
@@ -54,8 +72,9 @@ export default function MissionControlPage() {
 
       <CockpitTabPanel
         tab={tab}
-        initialExecutionId={initialExecutionId}
+        initialExecutionId={replayExecutionId}
         initialProjectId={initialProjectId}
+        onReplay={handleReplay}
       />
     </div>
   )

@@ -262,6 +262,30 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
 }
 
 /**
+ * Extract nullable data from an ApiResponse envelope.
+ *
+ * Returns `null` when the server reports success with `data: null` -- a
+ * legitimate "no such resource" result (e.g. a run with no recorded
+ * red-team verdict), not an error. Throws only when the envelope itself
+ * reports failure (`success: false`). Use this instead of {@link unwrap}
+ * for endpoints whose response type is `ApiResponse<T | null>`.
+ */
+export function unwrapNullable<T>(
+  response: AxiosResponse<ApiResponse<T | null>>,
+): T | null {
+  const body = response.data
+  if (!body || typeof body !== 'object') {
+    throw new ApiRequestError('Unknown API error')
+  }
+  if (!body.success) {
+    const detail =
+      'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
+  }
+  return body.data ?? null
+}
+
+/**
  * Validate an ApiResponse envelope without extracting data.
  * Use for endpoints that return `ApiResponse<null>` (including 204 No Content).
  */

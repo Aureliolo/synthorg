@@ -6,7 +6,7 @@ closing over ``create_app`` locals) and is scheduled into the Litestar
 ``on_startup`` sequence by the composition root.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -19,7 +19,10 @@ from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.enums import AutonomyLevel
 from synthorg.core.error_taxonomy import set_error_docs_base_url
+from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_gate_inputs import AutonomyProvider
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -30,11 +33,8 @@ from synthorg.observability.events.api import (
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
 )
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
+from synthorg.security.redteam.builder import RedTeamRuntime
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
-
-if TYPE_CHECKING:
-    from synthorg.engine.review_gate import ReviewGateService
-    from synthorg.security.redteam.builder import RedTeamRuntime
 
 logger = get_logger(__name__)
 
@@ -229,13 +229,26 @@ async def install_runtime_services(
     if review_gate_service is not None:
         review_gate_service.set_vision_gate(services.vision_gate)
     # Same seam for the adversarial red-team gate: built in the runtime
-    # wiring once the boot engine exists, published + attached here so a
-    # review pipeline supplied with red_team_input reaches the live gate.
+    # wiring once the boot engine exists, published + attached here so the
+    # deliverable-receipt builder can snapshot findings and the gate is
+    # attached to the review service. ``None`` clears it on the
+    # disabled-reinit path.
     _publish_red_team_runtime(
         app_state,
         red_team_runtime=services.red_team_runtime,
         review_gate_service=review_gate_service,
     )
+    # Completion-path extras that make the attached gate fire on every path
+    # to COMPLETED: the input builder sources the deliverable from the
+    # flight-recorder frame store, the posture forwards on_missing_deliverable,
+    # and the background registry keeps the inline gate latency off the
+    # approve/reject response. Only when the subsystem is enabled.
+    if services.red_team_runtime is not None and review_gate_service is not None:
+        _wire_red_team_completion(
+            app_state,
+            review_gate_service,
+            services.red_team_runtime,
+        )
     # Bring the real client-request, goal/objective, and
     # task-board work-entry paths online: ensure the configured
     # default projects exist and attach the entry adapters. No-op
@@ -251,6 +264,65 @@ async def install_runtime_services(
     await wire_real_intake_entry(app_state)
     await wire_real_objective_entry(app_state)
     await wire_real_task_board_entry(app_state)
+
+
+def _wire_red_team_completion(
+    app_state: AppState,
+    review_gate_service: ReviewGateService,
+    runtime: RedTeamRuntime,
+) -> None:
+    """Attach the red-team input builder + posture + background registry.
+
+    Makes the gate (already attached by ``_publish_red_team_runtime``) fire
+    on the real completion path: the builder sources the deliverable from
+    the flight-recorder frame store, the posture forwards
+    ``on_missing_deliverable``, and the background registry keeps the inline
+    AgentEngine evaluation off the operator's approve/reject response.
+    """
+    from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
+        DeliverableReviewInputBuilder,
+    )
+    from synthorg.observability.background_tasks import (  # noqa: PLC0415
+        BackgroundTaskRegistry,
+    )
+    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+
+    review_gate_service.set_red_team_on_missing_deliverable(
+        runtime.on_missing_deliverable,
+    )
+    review_gate_service.set_red_team_input_builder(
+        DeliverableReviewInputBuilder(
+            frame_repository=persistence_of(app_state).flight_recorder_frames,
+            autonomy_provider=_company_autonomy_provider(app_state),
+        ),
+    )
+    review_gate_service.set_background_tasks(
+        BackgroundTaskRegistry(owner="review_gate.completion"),
+    )
+
+
+def _company_autonomy_provider(app_state: AppState) -> AutonomyProvider:
+    """Build an autonomy provider reading the company autonomy level.
+
+    Returns:
+        An async callable returning the configured company
+        ``AutonomyLevel``, defaulting to the strict ``SUPERVISED``
+        posture when settings are unavailable or unset so the red-team
+        severity routing never silently relaxes.
+    """
+
+    async def _provide() -> AutonomyLevel:
+        from synthorg.settings.state import SettingsStateSlice  # noqa: PLC0415
+
+        resolver = app_state.slice(SettingsStateSlice).config_resolver
+        if resolver is None:
+            return AutonomyLevel.SUPERVISED
+        try:
+            return await resolver.get_autonomy_level()
+        except SettingNotFoundError:
+            return AutonomyLevel.SUPERVISED
+
+    return _provide
 
 
 async def wire_brownfield_intake(app_state: AppState) -> bool:

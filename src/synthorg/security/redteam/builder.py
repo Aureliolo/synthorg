@@ -15,7 +15,7 @@ The function is the single ENFORCED construction site for every
 red-team symbol in the ghost-wiring manifest.
 """
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
@@ -32,6 +32,9 @@ from synthorg.tools.base import BaseTool
 if TYPE_CHECKING:
     from synthorg.core.agent import ModelConfig
     from synthorg.engine.agent_engine import AgentEngine
+    from synthorg.persistence.red_team_report_protocol import (
+        RedTeamReportArchiveRepository,
+    )
     from synthorg.security.config import RedTeamConfig
 
 logger = get_logger(__name__)
@@ -96,20 +99,25 @@ class RedTeamRuntime(NamedTuple):
             writes to.
         runner: Production :class:`AgentRunner`. Wraps the boot
             :class:`AgentEngine` and the red-team :class:`AgentIdentity`.
+        on_missing_deliverable: Security posture forwarded to the review
+            gate for the case where a configured gate cannot retrieve a
+            deliverable to inspect (``"block"`` fail-closed default).
     """
 
     submit_tool: SubmitRedTeamReportTool
     gate: RedTeamGateService
     report_repo: InMemoryRedTeamReportRepository
     runner: AgentEngineRunner
+    on_missing_deliverable: Literal["block", "skip"]
 
 
-def build_red_team_runtime(
+def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all required
     *,
     config: RedTeamConfig,
     engine: AgentEngine,
     model: ModelConfig,
     seed: RedTeamToolSeed,
+    report_archive: RedTeamReportArchiveRepository | None = None,
     clock: Clock | None = None,
 ) -> RedTeamRuntime | None:
     """Build the red-team runtime if the feature is enabled.
@@ -129,6 +137,10 @@ def build_red_team_runtime(
             the engine's tool registry at construction time) are reused
             here; the gate writes through the same repo the tool wrote
             to.
+        report_archive: Optional durable cross-process archive for the
+            merged report + verdict. Wired from the connected persistence
+            backend; ``None`` in a persistence-less boot (archival then
+            skipped). The gate's archive write is fail-OPEN.
         clock: Clock seam. Defaults to :class:`SystemClock` inside the
             gate when ``None``.
 
@@ -172,6 +184,7 @@ def build_red_team_runtime(
         agent_runner=runner,
         report_repo=seed.report_repo,
         grounding_checker=grounding,
+        report_archive=report_archive,
         clock=clock,
     )
     return RedTeamRuntime(
@@ -179,4 +192,5 @@ def build_red_team_runtime(
         gate=gate,
         report_repo=seed.report_repo,
         runner=runner,
+        on_missing_deliverable=config.on_missing_deliverable,
     )

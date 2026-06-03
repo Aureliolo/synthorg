@@ -59,12 +59,6 @@ class BriefShapeError(EvalError):
     default_message: ClassVar[str] = "Brief shape does not match its declared kind"
 
 
-class CassetteIntegrityError(EvalError):
-    """Raised when the cassette body sha256 does not match its manifest header."""
-
-    default_message: ClassVar[str] = "Cassette body does not match its manifest header"
-
-
 class CassettePlaybackUnavailableError(EvalError):
     """Raised when the synthorg cassette playback hook is not installable.
 
@@ -139,7 +133,6 @@ __all__ = [
     "BriefSuiteEmptyError",
     "BriefSuitePathTraversalError",
     "BriefTimeoutError",
-    "CassetteIntegrityError",
     "CassetteNotFoundError",
     "CassettePlaybackUnavailableError",
     "CompanyConfigInvalidError",

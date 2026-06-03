@@ -23,6 +23,11 @@ from synthorg.budget.errors import (
     CostForecastRejectedError,
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.budget.forecast_roles import (
+    DEFAULT_ROLE_SKELETON,
+    BriefRoleSkeleton,
+    RoleSkeletonProvider,
+)
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.observability import get_logger
@@ -49,23 +54,22 @@ def _signal_from_work_item(
     work_item: WorkItem,
     *,
     currency: NotBlankStr,
+    skeleton: BriefRoleSkeleton,
 ) -> BriefSignal:
-    """Build a :class:`BriefSignal` from a :class:`WorkItem`.
+    """Build a :class:`BriefSignal` from a :class:`WorkItem` + role skeleton.
 
-    At the work-entry stage the role-skeleton is not yet assigned;
-    the gate uses a single-role placeholder (``"default"``) so the
-    forecast is a coarse estimate over the brief text. A sharper
-    estimate can be computed downstream once the work pipeline
-    assigns concrete agents to roles.
+    The skeleton is resolved once per dispatch (from the live roster when a
+    provider is wired, else the single-role default) so the forecast spans
+    every role that could participate instead of a single placeholder.
 
     Returns:
-        A :class:`BriefSignal` carrying the work item's raw intent,
-        the placeholder role skeleton, and the configured currency.
+        A :class:`BriefSignal` carrying the work item's raw intent, the
+        resolved role skeleton + per-role model assignments, and the currency.
     """
     return BriefSignal(
         brief_text=work_item.raw_intent,
-        role_skeleton=("default",),
-        model_assignments={},
+        role_skeleton=skeleton.roles,
+        model_assignments=skeleton.model_assignments,
         currency=currency,
     )
 
@@ -86,6 +90,7 @@ class ForecastGate:
         "_budget_config",
         "_forecast_repo",
         "_forecaster",
+        "_role_skeleton_provider",
         "_work_pipeline",
     )
 
@@ -96,11 +101,13 @@ class ForecastGate:
         forecaster: CostForecaster,
         forecast_repo: CostForecastRepository,
         budget_config: BudgetConfig,
+        role_skeleton_provider: RoleSkeletonProvider | None = None,
     ) -> None:
         self._work_pipeline = work_pipeline
         self._forecaster = forecaster
         self._forecast_repo = forecast_repo
         self._budget_config = budget_config
+        self._role_skeleton_provider = role_skeleton_provider
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Gate-check ``work_item`` and forward to the pipeline.
@@ -148,8 +155,11 @@ class ForecastGate:
             CostForecastRejectedError: When the linked forecast was
                 explicitly rejected.
         """
+        skeleton = await self._resolve_skeleton()
         existing = await self._lookup_forecast(work_item)
-        if existing is not None and self._forecast_covers_brief(work_item, existing):
+        if existing is not None and self._forecast_covers_brief(
+            work_item, existing, skeleton
+        ):
             if existing.decision is ForecastDecision.APPROVED:
                 # Carry the operator-approved ceiling onto the work item so
                 # the intake phase can stamp it onto the Task; without this
@@ -165,7 +175,7 @@ class ForecastGate:
 
         # No matching forecast via the caller's id: reuse a pending row for
         # this brief if one exists, else mint one.
-        forecast = await self._forecast_for_brief(work_item)
+        forecast = await self._forecast_for_brief(work_item, skeleton)
         # Inlined (rather than via _raise_approval_required) so the static
         # analyser sees run() always terminates in a return or raise.
         self._log_approval_required(forecast)
@@ -182,7 +192,21 @@ class ForecastGate:
             currency=forecast.currency,
         )
 
-    async def _forecast_for_brief(self, work_item: WorkItem) -> Forecast:
+    async def _resolve_skeleton(self) -> BriefRoleSkeleton:
+        """Resolve the role skeleton for this dispatch, once.
+
+        Returns:
+            The live roster's role skeleton when a provider is wired and yields
+            roles; the single-role default otherwise.
+        """
+        if self._role_skeleton_provider is None:
+            return DEFAULT_ROLE_SKELETON
+        skeleton = await self._role_skeleton_provider()
+        return skeleton if skeleton.roles else DEFAULT_ROLE_SKELETON
+
+    async def _forecast_for_brief(
+        self, work_item: WorkItem, skeleton: BriefRoleSkeleton
+    ) -> Forecast:
         """Return the pending forecast for the brief, minting one if absent.
 
         Reuses an existing pending row (the partial-unique index permits
@@ -203,6 +227,7 @@ class ForecastGate:
         signal = _signal_from_work_item(
             work_item,
             currency=self._budget_config.currency,
+            skeleton=skeleton,
         )
         brief_hash = compute_brief_hash(signal)
         pending = await self._pending_forecast_for_brief(brief_hash)
@@ -291,6 +316,7 @@ class ForecastGate:
         self,
         work_item: WorkItem,
         existing: Forecast,
+        skeleton: BriefRoleSkeleton,
     ) -> bool:
         """Reject a forecast whose brief no longer matches the work item.
 
@@ -309,6 +335,7 @@ class ForecastGate:
             _signal_from_work_item(
                 work_item,
                 currency=self._budget_config.currency,
+                skeleton=skeleton,
             ),
         )
         if existing.brief_hash == expected:

@@ -8,6 +8,11 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit.state import CockpitStateSlice
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
+from synthorg.security.redteam.models import (
+    RedTeamReport,
+    RedTeamReportRecord,
+    RedTeamVerdict,
+)
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -52,6 +57,27 @@ def _seed_frame(
     )
     # Direct dict seed: the controller reads through the same fake repo.
     backend.flight_recorder_frames._frames[frame.id] = frame
+
+
+def _seed_red_team_record(
+    backend: FakePersistenceBackend,
+    *,
+    execution_id: str,
+    verdict: RedTeamVerdict = RedTeamVerdict.BLOCK,
+) -> None:
+    record = RedTeamReportRecord(
+        execution_id=NotBlankStr(execution_id),
+        task_id=NotBlankStr("task-1"),
+        verdict=verdict,
+        report=RedTeamReport(
+            execution_id=NotBlankStr(execution_id),
+            task_id=NotBlankStr("task-1"),
+            summary="Adversarial review recorded.",
+        ),
+        recorded_at=datetime.now(UTC),
+    )
+    # Direct dict seed: the controller reads through the same fake archive.
+    backend.red_team_reports._records[execution_id] = record
 
 
 @pytest.mark.unit
@@ -106,6 +132,35 @@ class TestCockpitController:
         assert data["turn_index"] == 2
         assert [f["turn_index"] for f in data["frames"]] == [1, 2]
         assert data["current_frame"]["turn_index"] == 2
+
+    async def test_red_team_report_returns_recorded_verdict(
+        self,
+        async_test_client: LoopAsyncClient,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        _seed_red_team_record(fake_persistence, execution_id="exec-rt-block")
+
+        resp = await async_test_client.get(
+            "/api/v1/cockpit/flight-recorder/exec-rt-block/red-team",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data is not None
+        assert data["verdict"] == "block"
+        assert data["execution_id"] == "exec-rt-block"
+        assert data["report"]["summary"] == "Adversarial review recorded."
+
+    async def test_red_team_report_null_when_unrecorded(
+        self,
+        async_test_client: LoopAsyncClient,
+    ) -> None:
+        resp = await async_test_client.get(
+            "/api/v1/cockpit/flight-recorder/exec-rt-absent/red-team",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"] is None
 
     async def test_pause_rejects_unknown_field(
         self,

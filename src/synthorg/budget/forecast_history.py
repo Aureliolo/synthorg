@@ -1,0 +1,128 @@
+# module-kind: code
+"""CostTracker-backed historical cost-per-turn lookup for the forecaster.
+
+Supplies the :class:`~synthorg.budget.forecaster.CostForecaster`'s
+``HistoryLookup`` so its pre-flight estimate blends real observed per-turn costs
+into the static prior instead of always cold-starting on the empty default.
+
+Each productive LLM call in the react loop is one agent turn, so a productive
+:class:`~synthorg.budget.cost_record.CostRecord`'s cost is a per-turn cost
+observation. Records are grouped by the recording agent's CURRENT role (resolved
+through the live registry) and the model's tier (resolved the same way the
+forecaster derives a brief's tier), so a lookup for ``(tier, role_id)`` returns
+the matching observations within the cost window.
+"""
+
+from collections import defaultdict
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Final
+
+from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.forecaster import _tier_from_model_id
+from synthorg.core.normalization import normalize_identifier
+from synthorg.observability import get_logger
+
+if TYPE_CHECKING:
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.hr.registry import AgentRegistryService
+
+logger = get_logger(__name__)
+
+#: Observed-cost window (days) for the per-(tier, role) history baseline.
+COST_WINDOW_DAYS: Final[int] = 30
+
+#: Default tier for a model id the forecaster cannot classify; matches the
+#: forecaster's own fallback so the lookup buckets records the same way.
+_DEFAULT_TIER: Final[str] = "medium"
+
+ClockFn = Callable[[], datetime]
+
+#: Call categories excluded from per-turn observations: only direct task work
+#: (productive, or untagged legacy records) approximates an agent's turn cost.
+_EXCLUDED_CATEGORIES: Final[frozenset[LLMCallCategory]] = frozenset(
+    {
+        LLMCallCategory.COORDINATION,
+        LLMCallCategory.SYSTEM,
+        LLMCallCategory.EMBEDDING,
+    }
+)
+
+
+def _utc_now() -> datetime:
+    """Return the current UTC time.
+
+    Returns:
+        Result of type ``datetime``.
+    """
+    return datetime.now(UTC)
+
+
+class CostTrackerHistoryLookup:
+    """Resolve per-(tier, role) cost-per-turn history from observed spend.
+
+    Satisfies :data:`~synthorg.budget.forecaster.HistoryLookup`. A lookup
+    builds the ``(tier, role) -> [cost_per_turn, ...]`` index once per call from
+    the cost-window records and the live roster, then returns the bucket for the
+    requested key (empty when that role/tier has no observed productive spend, so
+    the forecaster's blend collapses to the static prior for it).
+
+    Args:
+        registry: Live agent registry (active agents -> role + id).
+        cost_tracker: Source of observed per-call cost records.
+        clock: UTC clock seam for the cost-window lower bound.
+        window_days: Width of the observed-cost window.
+    """
+
+    def __init__(
+        self,
+        *,
+        registry: AgentRegistryService,
+        cost_tracker: CostTracker,
+        clock: ClockFn | None = None,
+        window_days: int = COST_WINDOW_DAYS,
+    ) -> None:
+        self._registry = registry
+        self._cost_tracker = cost_tracker
+        self._clock = clock if clock is not None else _utc_now
+        self._window_days = window_days
+
+    async def __call__(self, tier: str, role_id: str) -> Sequence[float]:
+        """Return per-turn cost observations for ``(tier, role_id)``.
+
+        Returns:
+            Productive per-call costs recorded by agents currently in
+            ``role_id`` running a ``tier`` model within the window; empty
+            when there is no such observed spend.
+        """
+        index = await self._build_index()
+        return index.get((tier, normalize_identifier(role_id)), ())
+
+    async def _build_index(self) -> dict[tuple[str, str], tuple[float, ...]]:
+        """Group windowed productive spend by (tier, current role).
+
+        Returns:
+            Mapping of ``(tier, role)`` to the per-turn cost observations.
+        """
+        end = self._clock()
+        start = end - timedelta(days=self._window_days)
+        records = await self._cost_tracker.get_records(start=start, end=end)
+        if not records:
+            return {}
+        agents = await self._registry.list_active()
+        role_by_agent = {
+            str(agent.id): normalize_identifier(str(agent.role)) for agent in agents
+        }
+        buckets: dict[tuple[str, str], list[float]] = defaultdict(list)
+        for record in records:
+            if record.call_category in _EXCLUDED_CATEGORIES or record.cost <= 0:
+                continue
+            role = role_by_agent.get(str(record.agent_id))
+            if role is None:
+                continue
+            tier = _tier_from_model_id(record.model) or _DEFAULT_TIER
+            buckets[(tier, role)].append(record.cost)
+        return {key: tuple(values) for key, values in buckets.items()}
+
+
+__all__ = ["COST_WINDOW_DAYS", "CostTrackerHistoryLookup"]

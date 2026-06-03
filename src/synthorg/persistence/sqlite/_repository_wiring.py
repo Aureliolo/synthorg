@@ -153,6 +153,9 @@ from synthorg.persistence.sqlite.project_workspace_repo import (
 from synthorg.persistence.sqlite.provider_audit_repo import (
     SQLiteProviderAuditRepo,
 )
+from synthorg.persistence.sqlite.red_team_report_repo import (
+    SQLiteRedTeamReportArchiveRepository,
+)
 from synthorg.persistence.sqlite.refresh_repo import (
     SQLiteRefreshTokenRepository,
 )
@@ -258,6 +261,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._api_keys = None
         self._checkpoints = None
         self._flight_recorder_frames = None
+        self._red_team_reports = None
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
@@ -398,6 +402,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._flight_recorder_frames = SQLiteFlightRecorderFrameRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._red_team_reports = SQLiteRedTeamReportArchiveRepository(
             self._db,
             write_context=self.write_context,
         )

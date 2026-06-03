@@ -1306,6 +1306,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/cockpit/flight-recorder/{execution_id}/red-team": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetRedTeamReport */
+        readonly get: operations["ApiV1CockpitFlightRecorderExecutionIdRedTeamGetRedTeamReport"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/cockpit/flight-recorder/{execution_id}/seek/{turn_index}": {
         readonly parameters: {
             readonly query?: never;
@@ -7136,6 +7153,19 @@ export type components = {
         /** ApiResponse[Union[PresetOverride, NoneType]] */
         readonly ApiResponse_Union_PresetOverride_NoneType_: {
             readonly data: components["schemas"]["PresetOverride"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /**
+             * @description Whether the request succeeded (derived from ``error``).
+             *
+             *     Returns:
+             *         ``True`` or ``False`` reflecting the condition.
+             */
+            readonly success: boolean;
+        };
+        /** ApiResponse[Union[RedTeamReportRecord, NoneType]] */
+        readonly ApiResponse_Union_RedTeamReportRecord_NoneType_: {
+            readonly data: components["schemas"]["RedTeamReportRecord"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /**
@@ -13506,6 +13536,26 @@ export type components = {
             readonly source: "agent" | "heuristic" | "knowledge_substrate";
             readonly suggested_fix: string | null;
         };
+        /** RedTeamReport */
+        readonly RedTeamReport: {
+            readonly execution_id: string;
+            /** @default [] */
+            readonly findings: readonly components["schemas"]["RedTeamFinding"][];
+            readonly summary: string;
+            readonly task_id: string;
+        };
+        /** RedTeamReportRecord */
+        readonly RedTeamReportRecord: {
+            readonly execution_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly recorded_at: string;
+            readonly report: components["schemas"]["RedTeamReport"];
+            readonly task_id: string;
+            readonly verdict: components["schemas"]["RedTeamVerdict"];
+        };
         /**
          * RedTeamSeverity
          * @description Severity of a single red-team finding.
@@ -19141,6 +19191,35 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PaginatedResponse_FlightRecorderFrame_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitFlightRecorderExecutionIdRedTeamGetRedTeamReport: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly execution_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Union_RedTeamReportRecord_NoneType_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

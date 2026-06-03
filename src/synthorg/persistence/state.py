@@ -16,6 +16,9 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.red_team_report_protocol import (
+    RedTeamReportArchiveRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.api.state_slices import AppStateSliceMixin
@@ -72,6 +75,29 @@ def code_execution_records_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.code_execution_records if backend is not None else None
+
+
+def red_team_reports_of(
+    app_state: AppStateSliceMixin,
+) -> RedTeamReportArchiveRepository | None:
+    """Return the durable red-team report archive, or ``None`` if unwired.
+
+    Companion to :func:`persistence_of` for the optional audit-trail
+    path: the red-team gate persists each evaluation's merged report +
+    verdict into this append-only archive, but a dev / empty-company run
+    with no backend must still build its red-team runtime. Returning
+    ``None`` lets the gate skip archival (its write is fail-OPEN) rather
+    than 503-ing the whole runtime.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The append-only red-team report archive, or ``None`` when no
+        backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.red_team_reports if backend is not None else None
 
 
 def persistence_backend_label(app_state: AppStateSliceMixin) -> str:

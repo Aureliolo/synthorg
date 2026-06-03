@@ -13,6 +13,11 @@ from synthorg.budget.errors import (
     CostForecastRejectedError,
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.budget.forecast_roles import (
+    DEFAULT_ROLE_SKELETON,
+    BriefRoleSkeleton,
+    RoleSkeletonProvider,
+)
 from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
 from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.persistence_errors import ConstraintViolationError
@@ -55,7 +60,9 @@ def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
 # Hash the standard work item exactly as the gate does so "covering"
 # fixtures carry a brief_hash that matches the live work item.
 _BRIEF_HASH = compute_brief_hash(
-    _signal_from_work_item(_work_item(), currency="USD"),
+    _signal_from_work_item(
+        _work_item(), currency="USD", skeleton=DEFAULT_ROLE_SKELETON
+    ),
 )
 
 
@@ -188,6 +195,7 @@ def _gate(
     forecast_required: bool = True,
     repo: _FakeForecastRepo | None = None,
     history: Sequence[float] | None = None,
+    role_skeleton_provider: RoleSkeletonProvider | None = None,
 ) -> tuple[ForecastGate, _FakeForecastRepo, _StubWorkPipeline]:
     config = _config(forecast_required=forecast_required)
     history_tuple = tuple(history) if history is not None else ()
@@ -208,6 +216,7 @@ def _gate(
         forecaster=forecaster,
         forecast_repo=repo_instance,
         budget_config=config,
+        role_skeleton_provider=role_skeleton_provider,
     )
     return gate, repo_instance, work_pipeline
 
@@ -229,6 +238,34 @@ class TestForecastGate:
         # Fresh row persisted for operator to decide on.
         assert len(repo.saves) == 1
         assert repo.saves[0].decision is ForecastDecision.PENDING
+
+    async def test_role_skeleton_provider_widens_the_forecast(self) -> None:
+        """A multi-role roster forecasts over real roles, not the placeholder.
+
+        The minted forecast's brief_hash is computed over the provider's role
+        skeleton, so it differs from the default single-role hash -- proving the
+        live roster (not ``("default",)``) drives the estimate.
+        """
+        skeleton = BriefRoleSkeleton(
+            roles=("Backend Developer", "Designer"),
+            model_assignments={
+                "Backend Developer": "example-large-001",
+                "Designer": "example-small-001",
+            },
+        )
+
+        async def provider() -> BriefRoleSkeleton:
+            return skeleton
+
+        gate, repo, _ = _gate(role_skeleton_provider=provider)
+        with pytest.raises(CostForecastApprovalRequiredError):
+            await gate.run(_work_item())
+
+        expected_hash = compute_brief_hash(
+            _signal_from_work_item(_work_item(), currency="USD", skeleton=skeleton),
+        )
+        assert repo.saves[0].brief_hash == expected_hash
+        assert repo.saves[0].brief_hash != _BRIEF_HASH
 
     async def test_stale_linked_forecast_falls_through_to_fresh(self) -> None:
         """A linked forecast whose brief no longer matches is ignored.

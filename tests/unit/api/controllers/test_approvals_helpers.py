@@ -190,7 +190,7 @@ class TestSignalResumeIntent:
             dispatch_resume=AsyncMock(),
         )
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=mock_gate,
@@ -218,7 +218,7 @@ class TestSignalResumeIntent:
             decision_reason=None,
         )
         # Flow 2 must NOT run -- the mid-execution flow owns this id.
-        mock_review.complete_review.assert_not_awaited()
+        mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow1_review_gate_source_falls_through(self) -> None:
         """A review-gate-sourced approval -> Flow 2 (review gate) runs."""
@@ -228,7 +228,7 @@ class TestSignalResumeIntent:
             dispatch_resume=AsyncMock(),
         )
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=mock_gate,
@@ -251,7 +251,7 @@ class TestSignalResumeIntent:
         # must bypass the parked-context probe entirely.
         mock_gate.has_parked_context.assert_not_awaited()
         mock_worker.dispatch_resume.assert_not_awaited()
-        mock_review.complete_review.assert_awaited_once_with(
+        mock_review.dispatch_completion.assert_awaited_once_with(
             task_id="task-1",
             requested_by="admin",
             approved=True,
@@ -273,7 +273,7 @@ class TestSignalResumeIntent:
             side_effect=RuntimeError("db error"),
         )
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=mock_gate,
@@ -292,7 +292,7 @@ class TestSignalResumeIntent:
         # The fallback probe must actually have been exercised
         # (item is None -> probe), not short-circuited before it.
         mock_gate.has_parked_context.assert_awaited_once_with("approval-1")
-        mock_review.complete_review.assert_not_awaited()
+        mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow1_dispatch_failure_is_swallowed_not_5xx(self) -> None:
         """A dispatch failure is logged, not raised (decision persisted).
@@ -307,7 +307,7 @@ class TestSignalResumeIntent:
             ),
         )
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=mock_of[ApprovalGate](),
@@ -330,7 +330,7 @@ class TestSignalResumeIntent:
         # would pass even if _signal_resume_intent returned before
         # awaiting dispatch_resume, never exercising the swallow).
         mock_worker.dispatch_resume.assert_awaited_once()
-        mock_review.complete_review.assert_not_awaited()
+        mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow1_runtime_not_configured_propagates(self) -> None:
         """A runtime-misconfig dispatch failure must NOT be swallowed.
@@ -347,7 +347,7 @@ class TestSignalResumeIntent:
             ),
         )
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=mock_of[ApprovalGate](),
@@ -368,12 +368,12 @@ class TestSignalResumeIntent:
             )
 
         mock_worker.dispatch_resume.assert_awaited_once()
-        mock_review.complete_review.assert_not_awaited()
+        mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow2_review_gate_called_with_task_id(self) -> None:
         """When no approval_gate and task_id provided, review gate runs."""
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=None,
@@ -390,7 +390,7 @@ class TestSignalResumeIntent:
             task_id="task-42",
         )
 
-        mock_review.complete_review.assert_awaited_once_with(
+        mock_review.dispatch_completion.assert_awaited_once_with(
             task_id="task-42",
             requested_by="reviewer",
             approved=False,
@@ -402,7 +402,7 @@ class TestSignalResumeIntent:
     async def test_flow2_skipped_when_no_task_id(self) -> None:
         """When task_id is None, review gate is not called."""
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock()
+        mock_review.dispatch_completion = AsyncMock()
 
         app_state = _app_state(
             gate=None,
@@ -418,7 +418,7 @@ class TestSignalResumeIntent:
             task_id=None,
         )
 
-        mock_review.complete_review.assert_not_awaited()
+        mock_review.dispatch_completion.assert_not_awaited()
 
     async def test_flow2_unknown_exception_propagates(self) -> None:
         """Unknown errors from the review gate propagate -- not swallowed.
@@ -432,7 +432,7 @@ class TestSignalResumeIntent:
         propagates to the caller as an unhandled error.
         """
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock(
+        mock_review.dispatch_completion = AsyncMock(
             side_effect=RuntimeError("transition failed"),
         )
 
@@ -451,7 +451,7 @@ class TestSignalResumeIntent:
                 task_id="task-1",
             )
 
-        mock_review.complete_review.assert_awaited_once()
+        mock_review.dispatch_completion.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "error_cls",
@@ -491,7 +491,7 @@ class TestSignalResumeIntent:
     ) -> None:
         """MemoryError/RecursionError from review gate propagates."""
         mock_review = MagicMock()
-        mock_review.complete_review = AsyncMock(
+        mock_review.dispatch_completion = AsyncMock(
             side_effect=error_cls("fatal"),
         )
 
@@ -602,7 +602,7 @@ class TestTryReviewGateTransition:
     async def test_passes_approval_id_to_service(self) -> None:
         """approval_id is threaded through for audit cross-reference."""
         review_gate = MagicMock()
-        review_gate.complete_review = AsyncMock()
+        review_gate.dispatch_completion = AsyncMock()
 
         await try_review_gate_transition(
             review_gate,
@@ -612,7 +612,7 @@ class TestTryReviewGateTransition:
             decided_by="bob",
             decision_reason=None,
         )
-        review_gate.complete_review.assert_awaited_once_with(
+        review_gate.dispatch_completion.assert_awaited_once_with(
             task_id="task-1",
             requested_by="bob",
             approved=True,
@@ -624,7 +624,7 @@ class TestTryReviewGateTransition:
     async def test_self_review_race_raises_forbidden(self) -> None:
         """Late SelfReviewError (reassignment between preflight and transition)."""
         review_gate = MagicMock()
-        review_gate.complete_review = AsyncMock(
+        review_gate.dispatch_completion = AsyncMock(
             side_effect=SelfReviewError(task_id="task-1", agent_id="alice"),
         )
 
@@ -644,7 +644,7 @@ class TestTryReviewGateTransition:
     async def test_task_version_conflict_raises_409(self) -> None:
         """TaskVersionConflictError maps to ConflictError (409)."""
         review_gate = MagicMock()
-        review_gate.complete_review = AsyncMock(
+        review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskVersionConflictError("Version 3 != 2"),
         )
 
@@ -663,7 +663,7 @@ class TestTryReviewGateTransition:
     async def test_task_not_found_raises_404(self) -> None:
         """TaskNotFoundError maps to NotFoundError with a generic message."""
         review_gate = MagicMock()
-        review_gate.complete_review = AsyncMock(
+        review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
         )
 
@@ -681,7 +681,7 @@ class TestTryReviewGateTransition:
     async def test_task_internal_error_raises_503(self) -> None:
         """TaskInternalError maps to ServiceUnavailableError."""
         review_gate = MagicMock()
-        review_gate.complete_review = AsyncMock(
+        review_gate.dispatch_completion = AsyncMock(
             side_effect=TaskInternalError("Persistence backend offline"),
         )
 

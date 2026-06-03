@@ -52,3 +52,27 @@ RED_TEAM_GATE_BLOCKED: Final[str] = "red_team.gate.blocked"
 
 RED_TEAM_REWORK_ROUTED: Final[str] = "red_team.rework.routed"
 """Review gate consumed the BLOCK verdict and routed task to IN_PROGRESS."""
+
+RED_TEAM_GATE_DISPATCHED: Final[str] = "red_team.gate.dispatched"
+"""Completion gate dispatched as a tracked background task off the approve path."""
+
+RED_TEAM_NO_DELIVERABLE: Final[str] = "red_team.gate.no_deliverable"
+"""No reviewable deliverable could be built for a completing task."""
+
+RED_TEAM_REPORT_ARCHIVED: Final[str] = "red_team.report.archived"
+"""Merged report + verdict persisted to the durable cross-process archive."""
+
+RED_TEAM_REPORT_ARCHIVE_FAILED: Final[str] = "red_team.report.archive_failed"
+"""Durable archive write failed; the gate verdict stands (fail-OPEN audit)."""
+
+RED_TEAM_REPORT_SAVE_FAILED: Final[str] = "red_team.report.save_failed"
+"""Archive repository failed to persist a report record."""
+
+RED_TEAM_REPORT_QUERY_FAILED: Final[str] = "red_team.report.query_failed"
+"""Archive repository failed to read report records."""
+
+RED_TEAM_REPORT_DELETE_FAILED: Final[str] = "red_team.report.delete_failed"
+"""Archive repository failed to purge report records before a threshold."""
+
+RED_TEAM_REPORT_DESERIALIZE_FAILED: Final[str] = "red_team.report.deserialize_failed"
+"""A stored report row could not be decoded back into a record."""

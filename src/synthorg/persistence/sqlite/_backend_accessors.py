@@ -118,6 +118,9 @@ if TYPE_CHECKING:
         ProjectWorkspaceRepository,
     )
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+    from synthorg.persistence.red_team_report_protocol import (
+        RedTeamReportArchiveRepository,
+    )
     from synthorg.persistence.research_protocol import ResearchRunRepository
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -172,6 +175,7 @@ class _BackendRepositoryAccessors:
     _api_keys: ApiKeyRepository | None
     _checkpoints: CheckpointRepository | None
     _flight_recorder_frames: FlightRecorderFrameRepository | None
+    _red_team_reports: RedTeamReportArchiveRepository | None
     _deliverable_receipts: DeliverableReceiptRepository | None
     _knowledge_usage_records: KnowledgeUsageRecordRepository | None
     _code_execution_records: CodeExecutionRecordRepository | None
@@ -396,6 +400,18 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._flight_recorder_frames,
             "flight_recorder_frames",
+        )
+
+    @property
+    def red_team_reports(self) -> RedTeamReportArchiveRepository:
+        """Repository for the durable red-team report archive.
+
+        Returns:
+            Result of type ``RedTeamReportArchiveRepository``.
+        """
+        return self._require_connected(
+            self._red_team_reports,
+            "red_team_reports",
         )
 
     @property

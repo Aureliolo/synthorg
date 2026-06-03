@@ -1,0 +1,30 @@
+# Runtime-reachability manifest -- pinned load-bearing call edges.
+#
+# Each line pins ONE call edge that must exist for a request/loop-path
+# component to actually fire in the shipped product. Format:
+#
+#     <module> <enclosing_fn> <required_callee> <issue> -- <why>
+#
+# The gate (scripts/check_runtime_reachability.py) asserts the body of
+# <enclosing_fn> defined in <module> contains a call to <required_callee>
+# (matched by callee name, walking the full function subtree so a call
+# nested as an argument still counts). A severed edge fails LOUDLY.
+#
+# Why this exists alongside the ghost-wiring gate: that gate proves a
+# component is CONSTRUCTED somewhere in src/, not that it is REACHABLE from
+# a request/loop entry. The red-team completion gate once shipped
+# CONSTRUCTED-and-ENFORCED yet unreachable from the human approval path --
+# it lived only in run_pipeline, which has no caller in src/. Construction
+# checking gave false assurance. These pinned edges encode the production
+# chain so the same class of regression cannot recur silently.
+#
+# Deliberately NOT a transitive call-graph: a name-token graph can
+# manufacture spurious edges via collisions and PASS when the wiring is
+# broken -- the exact silent false-assurance this gate prevents.
+
+# Red-team / vision completion gate fires on the human approval path.
+# Chain: try_review_gate_transition [controller] -> dispatch_completion
+#        -> complete_review -> run_completion_gates -> red-team/vision gate.
+src/synthorg/api/controllers/_approval_review_gate.py try_review_gate_transition dispatch_completion #1986 -- entry edge: the approvals controller dispatches the review completion
+src/synthorg/engine/review_gate.py dispatch_completion complete_review #1986 -- dispatch routes (inline and background) to complete_review
+src/synthorg/engine/review_gate.py complete_review run_completion_gates #1986 -- the shared completion-gate chain runs before the COMPLETED transition

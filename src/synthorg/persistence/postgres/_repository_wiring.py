@@ -140,6 +140,9 @@ from synthorg.persistence.postgres.project_workspace_repo import (
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
+from synthorg.persistence.postgres.red_team_report_repo import (
+    PostgresRedTeamReportArchiveRepository,
+)
 from synthorg.persistence.postgres.refresh_repo import (
     PostgresRefreshTokenRepository,
 )
@@ -227,6 +230,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._api_keys = None
         self._checkpoints = None
         self._flight_recorder_frames = None
+        self._red_team_reports = None
         self._deliverable_receipts = None
         self._knowledge_usage_records = None
         self._code_execution_records = None
@@ -311,6 +315,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._api_keys = PostgresApiKeyRepository(pool)
         self._checkpoints = PostgresCheckpointRepository(pool)
         self._flight_recorder_frames = PostgresFlightRecorderFrameRepository(pool)
+        self._red_team_reports = PostgresRedTeamReportArchiveRepository(pool)
         self._deliverable_receipts = PostgresDeliverableReceiptRepository(pool)
         self._knowledge_usage_records = PostgresKnowledgeUsageRecordRepository(pool)
         self._code_execution_records = PostgresCodeExecutionRecordRepository(pool)

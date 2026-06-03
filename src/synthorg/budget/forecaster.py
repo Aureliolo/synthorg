@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.core.normalization import normalize_identifier
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -135,9 +136,9 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     """
     payload = {
         "brief_text": signal.brief_text,
-        "role_skeleton": [r.strip().lower() for r in signal.role_skeleton],
+        "role_skeleton": [normalize_identifier(r) for r in signal.role_skeleton],
         "model_assignments": {
-            k.strip().lower(): v.strip()
+            normalize_identifier(k): v.strip()
             for k, v in sorted(signal.model_assignments.items())
         },
         "currency": signal.currency,

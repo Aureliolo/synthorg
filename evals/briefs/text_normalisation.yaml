@@ -1,0 +1,44 @@
+# Executable brief: a text-normalisation helper.
+#
+# Unlike the judged checkout brief, this brief is graded objectively: the
+# runner materialises the company's deliverable as ``solution.py`` in an
+# isolated work directory, then the grader runs the hidden / build / lint
+# commands against it and the exit codes decide the grade. The ``{python}``
+# token in each command is substituted for the running interpreter
+# (``sys.executable``) at grade time so the checks are portable across
+# platforms and virtual environments.
+#
+# A competent deliverable passes every check (full marks); a deliverable that
+# compiles but does not trim/case-fold fails only the hidden test (it loses the
+# hidden-test weight); a non-code deliverable fails to import and scores zero.
+# The competent-vs-degraded gap is a genuine, grader-measured quality signal,
+# independent of the per-run budget ceiling.
+brief_id: text-normalisation
+schema_version: 1
+kind: executable
+title: "text normalisation helper"
+description: >-
+  Implement ``normalise(value)`` in solution.py so it returns the input
+  stripped of surrounding whitespace and lower-cased.
+priority: medium
+estimated_complexity: 2
+expected_artifacts:
+  - kind: file
+    path: solution.py
+acceptance_criteria:
+  - "normalise trims surrounding whitespace and case-folds its input."
+  - "The deliverable is importable Python."
+limits:
+  max_total_cost_usd: 5.0
+  max_wall_clock_seconds: 60
+  max_turns: 4
+checks:
+  build:
+    - cmd: ["{python}", "-c", "import solution; assert callable(getattr(solution, 'normalise', None))"]
+      timeout_seconds: 15
+  hidden_tests:
+    - cmd: ["{python}", "-c", "import solution; assert solution.normalise('  AB ') == 'ab'"]
+      timeout_seconds: 15
+  lint:
+    - cmd: ["{python}", "-c", "import solution; assert isinstance(solution.normalise(''), str)"]
+      timeout_seconds: 15

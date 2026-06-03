@@ -403,6 +403,28 @@ CREATE INDEX idx_frf_task_id ON flight_recorder_frames (task_id);
 CREATE INDEX idx_frf_agent_id ON flight_recorder_frames (agent_id);
 CREATE INDEX idx_frf_timestamp ON flight_recorder_frames (timestamp);
 
+-- ── Red-team report archive ───────────────────────────────────
+-- Durable audit record of one red-team gate evaluation, keyed by
+-- ``execution_id`` (single-shot per execution via the primary key). The
+-- merged report is stored as JSON text in ``report_json``; ``task_id`` /
+-- ``verdict`` / ``finding_count`` / ``report_summary`` are structured
+-- columns the flight-recorder read surface filters and previews on.
+CREATE TABLE red_team_reports (
+    execution_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    verdict TEXT NOT NULL CHECK (
+        verdict IN ('pass', 'pass_with_findings', 'block')
+    ),
+    finding_count INTEGER NOT NULL DEFAULT 0 CHECK (finding_count >= 0),
+    report_summary TEXT NOT NULL,
+    report_json TEXT NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_rtr_task_id ON red_team_reports (task_id);
+CREATE INDEX idx_rtr_verdict ON red_team_reports (verdict);
+CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at);
+
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (
     execution_id TEXT NOT NULL PRIMARY KEY,

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import {
   getCockpitSnapshot,
   getFlightRecorderFrames,
+  getRedTeamReport,
   killTask,
   pauseTask,
   seekFlightRecorder,
@@ -11,6 +12,7 @@ import {
 import type {
   FlightRecorderFrame,
   LiveActivitySnapshot,
+  RedTeamReportRecord,
   ReplaySeekView,
   Task,
 } from '@/api/types'
@@ -35,6 +37,10 @@ interface MissionControlState {
   framesNextCursor: string | null
   framesHasMore: boolean
   seekView: ReplaySeekView | null
+
+  // Durable red-team verdict for the loaded run (read; null when no gate
+  // ran for the execution or the archive is unwired).
+  redTeamReport: RedTeamReportRecord | null
 
   fetchSnapshot: () => Promise<void>
   fetchFrames: (executionId: string) => Promise<void>
@@ -68,6 +74,7 @@ async function fetchFramesImpl(
   set({
     frames: [],
     seekView: null,
+    redTeamReport: null,
     framesLoading: true,
     framesError: null,
     framesExecutionId: executionId,
@@ -94,6 +101,27 @@ async function fetchFramesImpl(
       framesNextCursor: null,
       framesHasMore: false,
     })
+    return
+  }
+  await fetchRedTeamReportImpl(set, get, requestExecutionId)
+}
+
+async function fetchRedTeamReportImpl(
+  set: McSet,
+  get: McGet,
+  requestExecutionId: string,
+): Promise<void> {
+  // Best-effort audit-trail read: a missing verdict is a normal "no
+  // red-team review recorded" state, and an error must not mask the
+  // frames the operator came to see, so failures leave the report null.
+  try {
+    const report = await getRedTeamReport(requestExecutionId)
+    if (get().framesExecutionId !== requestExecutionId) return
+    set({ redTeamReport: report })
+  } catch (err) {
+    if (get().framesExecutionId !== requestExecutionId) return
+    log.warn('red_team_report_fetch_failed', { error: sanitizeForLog(err) })
+    set({ redTeamReport: null })
   }
 }
 
@@ -159,6 +187,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
   framesNextCursor: null,
   framesHasMore: false,
   seekView: null,
+  redTeamReport: null,
 
   fetchSnapshot: () => fetchSnapshotImpl(set),
   fetchFrames: (executionId) => fetchFramesImpl(set, get, executionId),

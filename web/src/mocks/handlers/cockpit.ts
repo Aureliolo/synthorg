@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import type {
   getCockpitSnapshot,
   getFlightRecorderFrames,
+  getRedTeamReport,
   killTask,
   pauseTask,
   seekFlightRecorder,
@@ -82,6 +83,36 @@ export const cockpitHandlers = [
           truncated: false,
         }),
       ),
+  ),
+  http.get(
+    '/api/v1/cockpit/flight-recorder/:executionId/red-team',
+    ({ params }) => {
+      const execId = String(params.executionId)
+      return HttpResponse.json(
+        successFor<typeof getRedTeamReport>({
+          execution_id: execId,
+          task_id: 'task-1',
+          verdict: 'block',
+          recorded_at: '2026-05-22T12:00:00Z',
+          report: {
+            execution_id: execId,
+            task_id: 'task-1',
+            summary: 'Adversarial review blocked completion.',
+            findings: [
+              {
+                attack_surface: 'security',
+                severity: 'high',
+                description: 'Hardcoded credential in the deliverable.',
+                evidence: ["api_key = 'sk-live'"],
+                suggested_fix: 'Load the credential from a secret backend.',
+                source: 'agent',
+                citations: [],
+              },
+            ],
+          },
+        }),
+      )
+    },
   ),
   http.post('/api/v1/cockpit/interventions/pause', () =>
     HttpResponse.json(successFor<typeof pauseTask>(buildTask({ status: 'interrupted' }))),

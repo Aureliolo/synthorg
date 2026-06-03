@@ -488,6 +488,23 @@ class _FakeFlightRecorderRepository:
         return 0
 
 
+class _FakeRedTeamReportArchiveRepository:
+    async def append(self, record: Any) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        return ()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
+
+
 class _FakeCheckpointRepository:
     async def append(self, checkpoint: Checkpoint) -> None:
         pass
@@ -1170,6 +1187,10 @@ class _FakeBackend:
     @property
     def flight_recorder_frames(self) -> _FakeFlightRecorderRepository:
         return _FakeFlightRecorderRepository()
+
+    @property
+    def red_team_reports(self) -> _FakeRedTeamReportArchiveRepository:
+        return _FakeRedTeamReportArchiveRepository()
 
     @property
     def heartbeats(self) -> _FakeHeartbeatRepository:

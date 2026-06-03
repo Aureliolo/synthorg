@@ -1,3 +1,4 @@
+# module-kind: declarative
 """PersistenceBackend protocol -- lifecycle + repository access.
 
 Application code depends on this protocol for storage lifecycle
@@ -133,6 +134,9 @@ from synthorg.persistence.project_workspace_protocol import (
 )
 from synthorg.persistence.provider_audit_protocol import (
     ProviderAuditRepo,
+)
+from synthorg.persistence.red_team_report_protocol import (
+    RedTeamReportArchiveRepository,
 )
 from synthorg.persistence.research_protocol import (
     ResearchRunRepository,
@@ -420,6 +424,11 @@ class PersistenceBackend(Protocol):
     @property
     def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
         """Repository for flight-recorder frame persistence."""
+        ...
+
+    @property
+    def red_team_reports(self) -> RedTeamReportArchiveRepository:
+        """Repository for the durable red-team report archive."""
         ...
 
     @property

@@ -23,6 +23,7 @@ simulation runtime).
 import os
 from typing import TYPE_CHECKING
 
+from synthorg.budget.forecast_roles import CompanyRoleSkeletonProvider
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.client.state import (
     client_simulation_state_of,
@@ -41,6 +42,7 @@ from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.state import EngineStateSlice, work_pipeline_of
 from synthorg.engine.workspace.state import WorkspaceStateSlice
+from synthorg.hr.state import HrStateSlice
 from synthorg.integrations.state import IntegrationsStateSlice
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.observability import get_logger, log_exception_redacted
@@ -101,11 +103,20 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
             )
             raise ServiceUnavailableError(msg)
         return None
+    # Source the forecast's role skeleton from the live roster so a multi-agent
+    # company is forecast over every role rather than a single placeholder
+    # (which systematically under-estimates). A missing registry degrades to the
+    # gate's single-role default.
+    registry = app_state.slice(HrStateSlice).agent_registry
+    role_skeleton_provider = (
+        CompanyRoleSkeletonProvider(registry=registry) if registry is not None else None
+    )
     return ForecastGate(
         work_pipeline=work_pipeline_of(app_state),
         forecaster=forecaster,
         forecast_repo=repo,
         budget_config=budget_config,
+        role_skeleton_provider=role_skeleton_provider,
     )
 
 
