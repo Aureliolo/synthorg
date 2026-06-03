@@ -965,14 +965,15 @@ filterwarnings = [
     # ``asyncio.iscoroutinefunction`` in several places inside
     # ``nats/aio/client.py`` (connect, subscribe, request). Python 3.14
     # deprecated that function and our global ``error`` filter promotes it
-    # to an error. Upstream ships no Python 3.14 support: classifiers top
-    # out at 3.13 and ``main`` still has the calls. The project keeps
-    # nats-py (not the modular nats-core family) per the dependency
-    # decision in issue #2037. Removal owner: issue #2202. Remove this
-    # filter after upgrading this repo's pinned nats-py (currently
-    # nats-py==2.14.0) to a release that no longer calls the deprecated
-    # asyncio.iscoroutinefunction, or when the codebase migrates off
-    # nats-py under the modular-family path.
+    # to an error. The warning persists because we pin the older
+    # nats-py==2.14.0 release; upstream main has already replaced the call
+    # with ``inspect.iscoroutinefunction``, but no release past 2.14.0
+    # ships that fix yet. The project keeps nats-py (not the modular
+    # nats-core family) per the dependency decision in issue #2037.
+    # Removal owner: issue #2202. Remove this filter after upgrading this
+    # repo's pinned nats-py to a release that no longer calls the
+    # deprecated asyncio.iscoroutinefunction, or when the codebase
+    # migrates off nats-py under the modular-family path.
     # Filter is scoped by message text (unique to asyncio.iscoroutinefunction)
     # because Python's stacklevel-based module attribution varies between
     # the C and Python warning implementations, making module-based
