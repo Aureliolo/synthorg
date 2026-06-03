@@ -101,6 +101,7 @@ _CONSTRUCTION_KWARGS: Final[dict[str, dict[str, Any]]] = {
 # value is still distinct from the registered default.
 _ENV_VALUE_OVERRIDES: Final[dict[tuple[str, str], str]] = {
     ("BudgetConfig", "currency"): "GBP",
+    ("BudgetConfig", "benchmark_provider"): "measured",
     ("CompanyMemoryConfig", "backend"): "inmemory",
 }
 
