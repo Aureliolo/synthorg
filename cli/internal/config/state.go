@@ -730,7 +730,7 @@ func Save(s State) error {
 	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := json.MarshalIndent(s, "", "  ") //nolint:gosec // G117: the state file is the CLI's own config store, persisted at 0600 under the user's data dir
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}

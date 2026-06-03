@@ -46,12 +46,12 @@ var ErrNoProvenanceAttestations = errors.New("no SLSA provenance attestations fo
 
 // githubAPIBase is the effective base URL for the GitHub REST API.
 // Defaults to the production URL; tests override via setGitHubAPIBase.
-var githubAPIBase = defaultGitHubAPIBase //nolint:gochecknoglobals // test override
+var githubAPIBase = defaultGitHubAPIBase
 
 // attestationHTTPClient is a dedicated client for GitHub attestation API
 // requests, isolated from http.DefaultClient to avoid side effects from
 // other packages modifying global state.
-var attestationHTTPClient = &http.Client{} //nolint:gochecknoglobals // package-scoped client
+var attestationHTTPClient = &http.Client{}
 
 // setGitHubAPIBase overrides the GitHub API base URL (for tests only).
 func setGitHubAPIBase(base string) { githubAPIBase = base }

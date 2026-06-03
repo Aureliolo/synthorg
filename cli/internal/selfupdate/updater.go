@@ -797,7 +797,7 @@ func extractFromZip(data []byte) ([]byte, error) {
 	for _, f := range r.File {
 		name := filepath.Base(f.Name)
 		if name == binaryName+".exe" || name == binaryName {
-			if f.UncompressedSize64 > uint64(maxArchiveEntryBytes) {
+			if f.UncompressedSize64 > uint64(maxArchiveEntryBytes) { //nolint:gosec // G115: maxArchiveEntryBytes is a positive byte cap (128 MiB default), so the int64->uint64 conversion cannot wrap
 				return nil, fmt.Errorf("archive entry too large: %d bytes", f.UncompressedSize64)
 			}
 			rc, err := f.Open()

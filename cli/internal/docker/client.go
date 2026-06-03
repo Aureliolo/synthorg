@@ -97,7 +97,7 @@ func composeArgs(info Info, args ...string) (string, []string) {
 func ComposeExec(ctx context.Context, info Info, dir string, args ...string) error {
 	name, fullArgs := composeArgs(info, args...)
 
-	cmd := exec.CommandContext(ctx, name, fullArgs...)
+	cmd := exec.CommandContext(ctx, name, fullArgs...) //nolint:gosec // G204: compose binary is CLI-detected (info.ComposeCmd), args internally assembled, never attacker-controlled
 	cmd.Dir = dir
 	return cmd.Run()
 }
@@ -106,7 +106,7 @@ func ComposeExec(ctx context.Context, info Info, dir string, args ...string) err
 func ComposeExecOutput(ctx context.Context, info Info, dir string, args ...string) (string, error) {
 	name, fullArgs := composeArgs(info, args...)
 
-	cmd := exec.CommandContext(ctx, name, fullArgs...)
+	cmd := exec.CommandContext(ctx, name, fullArgs...) //nolint:gosec // G204: compose binary is CLI-detected (info.ComposeCmd), args internally assembled, never attacker-controlled
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -114,7 +114,7 @@ func ComposeExecOutput(ctx context.Context, info Info, dir string, args ...strin
 
 // RunCmd executes a command and returns stdout. Exported for testing.
 func RunCmd(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: name is a caller-resolved binary, args internally assembled, never attacker-controlled
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

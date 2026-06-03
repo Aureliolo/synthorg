@@ -147,7 +147,7 @@ func collectConfig(r *Report, state config.State) {
 	if redacted.SettingsKey != "" {
 		redacted.SettingsKey = "[REDACTED]"
 	}
-	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil {
+	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil { //nolint:gosec // G117: JWTSecret and SettingsKey are replaced with [REDACTED] above before marshalling
 		r.ConfigRedacted = string(b)
 	}
 }

@@ -178,7 +178,7 @@ func extractImageRepo(line string) (repo string, hasTag, hasDigest, ok bool) {
 // loadAndGenerate reads the existing compose and generates a fresh one from
 // the template. Returns (nil, nil, nil) if no compose.yml exists on disk.
 func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, error) {
-	existing, err := os.ReadFile(composePath)
+	existing, err := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, nil
@@ -330,7 +330,7 @@ func imageLinePattern() *regexp.Regexp {
 // prevents config.Save from advancing state when compose is unpatched.
 func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnabled bool, safeDir string) error {
 	composePath := filepath.Join(safeDir, "compose.yml")
-	existing, err := os.ReadFile(composePath)
+	existing, err := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 	if err != nil {
 		return fmt.Errorf("reading compose for image patching: %w", err)
 	}

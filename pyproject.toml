@@ -961,13 +961,16 @@ filterwarnings = [
     "default::typeguard.TypeHintWarning",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
-    # nats-py 2.14.0 (latest) calls ``asyncio.iscoroutinefunction`` in
-    # several places inside ``nats/aio/client.py`` (connect, subscribe,
-    # request). Python 3.14 deprecated that function and our global
-    # ``error`` filter promotes it to an error. Upstream has no plan and
-    # no issue for 3.14 support (checked 2026-04-10): classifiers top out
-    # at 3.13 and ``main`` still has the calls. Tracked in issue #1217
-    # (evaluate migrating to ``nats-core`` or filing upstream patch).
+    # nats-py 2.14.0 (the version this repo pins) calls
+    # ``asyncio.iscoroutinefunction`` in several places inside
+    # ``nats/aio/client.py`` (connect, subscribe, request). Python 3.14
+    # deprecated that function and our global ``error`` filter promotes it
+    # to an error. Upstream ships no Python 3.14 support: classifiers top
+    # out at 3.13 and ``main`` still has the calls. The project keeps
+    # nats-py (not the modular nats-core family) per the dependency
+    # decision in issue #2037. Removal owner: issue #2202. Remove this
+    # filter when nats-py ships Python 3.14 support, or when the codebase
+    # migrates off nats-py under the modular-family path.
     # Filter is scoped by message text (unique to asyncio.iscoroutinefunction)
     # because Python's stacklevel-based module attribution varies between
     # the C and Python warning implementations, making module-based

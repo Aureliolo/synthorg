@@ -349,7 +349,7 @@ func reexecUpdate(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd)...)
+	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd)...) //nolint:gosec // G204: execPath is the CLI's own resolved binary, args reconstructed from known flags (not raw os.Args)
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
@@ -583,12 +583,12 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
-	backup, backupErr := os.ReadFile(composePath)
+	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 	backupExists := backupErr == nil
 
 	rollback := func() {
 		if backupExists {
-			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil {
+			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G703: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"Warning: failed to restore compose.yml backup: %v\n", wErr)
 			}
