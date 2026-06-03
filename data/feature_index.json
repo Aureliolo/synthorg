@@ -42,6 +42,7 @@
         "build_chief_of_staff_proposer",
         "build_role_router",
         "build_group_chat_service",
+        "GroupInviteCoordinator",
         "build_conversational_actor",
         "build_chief_of_staff_narrator"
       ],
@@ -1224,6 +1225,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-03T13:28:27.337452Z",
+  "generated_at": "2026-06-03T13:33:05.200210Z",
   "schema_version": 1
 }
