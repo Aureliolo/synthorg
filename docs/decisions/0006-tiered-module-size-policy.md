@@ -228,7 +228,7 @@ feature isolation).
 `cli/.golangci.yml` enables `gocyclo` (min-complexity 10), `funlen`
 (80/60), `gocognit` (15), `nestif` (4), stricter `revive`, and `gosec`
 (security scanner; scoped exclusions for test files, the Windows
-`unsafe` disk-free syscall (G103), and the shell-completion installer's
+`unsafe` disk-free system call (G103), and the shell-completion installer's
 perm/path findings (G301/G302/G304/G306)).
 
 ### New docs / SQL / YAML tools
