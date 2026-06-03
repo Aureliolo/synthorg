@@ -87,3 +87,6 @@ BUDGET_PENDING_RECORD_DRAIN_UNEXPECTED: Final[str] = (
 BUDGET_BENCHMARK_SCORE_FETCHED: Final[str] = "budget.benchmark_score.fetched"
 BUDGET_BENCHMARK_SCORE_LISTED: Final[str] = "budget.benchmark_score.listed"
 BUDGET_BENCHMARK_SCORE_FAILED: Final[str] = "budget.benchmark_score.failed"
+BUDGET_BENCHMARK_SCORE_FALLBACK: Final[str] = "budget.benchmark_score.fallback"
+BUDGET_BENCHMARK_SEED_ABSENT: Final[str] = "budget.benchmark_seed.absent"
+BUDGET_BENCHMARK_SEED_MALFORMED: Final[str] = "budget.benchmark_seed.malformed"

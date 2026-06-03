@@ -181,7 +181,7 @@ class BenchmarkModelEntry(BaseModel):
             record/replay.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     model_id: NotBlankStr
     company_config: NotBlankStr
@@ -199,7 +199,7 @@ class BenchmarkScoringManifest(BaseModel):
             per-model granularity).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     brief_suite: NotBlankStr
     models: tuple[BenchmarkModelEntry, ...] = Field(min_length=1)

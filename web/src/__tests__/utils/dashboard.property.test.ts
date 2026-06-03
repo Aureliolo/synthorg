@@ -74,6 +74,8 @@ const arbBudgetConfig: fc.Arbitrary<BudgetConfig> = fc.record({
   forecast_static_prior_per_turn_small: fc.constant(0.005),
   forecast_static_prior_per_turn_local_small: fc.constant(0),
   forecast_shrinkage_prior_weight: fc.constant(5),
+  benchmark_provider: fc.constant('stub' as const),
+  model_tier_overrides: fc.constant({}),
   risk_budget: fc.constant({
     alerts: { critical_at: 90, warn_at: 75 },
     enabled: false,

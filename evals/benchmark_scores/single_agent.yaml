@@ -1,4 +1,4 @@
-# Single-agent company config for per-model benchmark scoring (#2204).
+# Single-agent company config for per-model benchmark scoring.
 #
 # The benchmark runner pins the agent's model per measured model id (see
 # `run_benchmark_async(model_id=...)`), so this one config serves every model

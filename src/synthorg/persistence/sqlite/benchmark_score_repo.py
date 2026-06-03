@@ -1,3 +1,4 @@
+# module-kind: repository
 """SQLite repository for measured per-model benchmark scores.
 
 Satisfies ``BenchmarkScoreRepository`` structurally: id-keyed CRUD

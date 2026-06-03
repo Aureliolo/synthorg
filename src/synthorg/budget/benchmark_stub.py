@@ -1,3 +1,4 @@
+# module-kind: code
 """Stub benchmark-score provider for the Pareto view.
 
 Implements :class:`BenchmarkScoreProvider` using calibrated per-tier

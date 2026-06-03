@@ -1,3 +1,4 @@
+# module-kind: code
 """Eval-backed golden-scorecard provider for the tool-validation gate.
 
 Adapts the golden-company eval spine into the toolsmith's

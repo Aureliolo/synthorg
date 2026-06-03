@@ -1,3 +1,4 @@
+# module-kind: code
 """Persisted per-model benchmark-score record.
 
 A :class:`BenchmarkScoreRecord` is the durable row behind a measured
@@ -13,10 +14,9 @@ reads these rows and projects them onto ``BenchmarkScore`` for the
 Pareto / stakes-routing seam.
 """
 
-from datetime import datetime
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
 from synthorg.core.types import NotBlankStr
@@ -64,7 +64,9 @@ class BenchmarkScoreRecord(BaseModel):
     cassette_sha256: NotBlankStr = Field(
         description="Determinism-source digest of the recorded run",
     )
-    last_updated: datetime = Field(description="When this score was last refreshed")
+    last_updated: AwareDatetime = Field(
+        description="When this score was last refreshed (timezone-aware UTC)",
+    )
 
     @model_validator(mode="after")
     def _score_within_confidence_band(self) -> Self:

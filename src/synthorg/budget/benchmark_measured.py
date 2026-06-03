@@ -1,3 +1,4 @@
+# module-kind: code
 """Measured benchmark-score provider backed by the repository.
 
 Reads measured per-model scores from a
@@ -16,6 +17,8 @@ from collections.abc import Mapping
 from synthorg.budget.benchmark_protocol import BenchmarkScore, BenchmarkScoreProvider
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.budget import BUDGET_BENCHMARK_SCORE_FALLBACK
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
 
 logger = get_logger(__name__)
@@ -56,6 +59,7 @@ class MeasuredBenchmarkScoreProvider:
         if record is not None:
             return record.to_score()
         if self._fallback is not None:
+            logger.debug(BUDGET_BENCHMARK_SCORE_FALLBACK, model_id=model_id)
             return await self._fallback.get_score(model_id)
         return None
 
@@ -69,8 +73,17 @@ class MeasuredBenchmarkScoreProvider:
         merged: dict[NotBlankStr, BenchmarkScore] = {}
         if self._fallback is not None:
             merged.update(await self._fallback.list_scores())
-        for record in await self._repo.list_items():
-            merged[record.model_id] = record.to_score()
+        # Page through every measured row: a single default-limit call
+        # would silently truncate at DEFAULT_PAGE_SIZE once the operator
+        # records more models than one page holds.
+        offset = 0
+        while True:
+            page = await self._repo.list_items(limit=DEFAULT_PAGE_SIZE, offset=offset)
+            for record in page:
+                merged[record.model_id] = record.to_score()
+            if len(page) < DEFAULT_PAGE_SIZE:
+                break
+            offset += DEFAULT_PAGE_SIZE
         return merged
 
 

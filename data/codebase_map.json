@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 321,
+      "loc": 323,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -219,7 +219,7 @@
     },
     {
       "kind": "code",
-      "loc": 121,
+      "loc": 143,
       "loc_cap": 500,
       "module": "src/synthorg/api/_benchmark_wiring.py",
       "owning_feature": "api_core"
@@ -2221,14 +2221,14 @@
     },
     {
       "kind": "code",
-      "loc": 62,
+      "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_measured.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_models.py",
       "owning_feature": "budget"
@@ -2242,7 +2242,7 @@
     },
     {
       "kind": "code",
-      "loc": 43,
+      "loc": 58,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_seed.py",
       "owning_feature": "budget"
@@ -2305,7 +2305,7 @@
     },
     {
       "kind": "code",
-      "loc": 448,
+      "loc": 465,
       "loc_cap": 500,
       "module": "src/synthorg/budget/config.py",
       "owning_feature": "budget"
@@ -12077,7 +12077,7 @@
     },
     {
       "kind": "code",
-      "loc": 67,
+      "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/budget.py",
       "owning_feature": "observability"
@@ -13448,9 +13448,9 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "declarative",
       "loc": 68,
-      "loc_cap": 500,
+      "loc_cap": null,
       "module": "src/synthorg/persistence/benchmark_score_protocol.py",
       "owning_feature": "persistence"
     },
@@ -13833,7 +13833,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/benchmark_score_repo.py",
@@ -14561,7 +14561,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 255,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/benchmark_score_repo.py",
@@ -16809,7 +16809,7 @@
     },
     {
       "kind": "code",
-      "loc": 354,
+      "loc": 379,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/budget.py",
       "owning_feature": "settings"
@@ -17033,7 +17033,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 208,
       "loc_cap": 500,
       "module": "src/synthorg/settings/mirrors.py",
       "owning_feature": "settings"

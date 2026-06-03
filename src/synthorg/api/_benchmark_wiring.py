@@ -1,25 +1,30 @@
+# module-kind: code
 """Benchmark-score provider + repository wiring for the cost-dial.
 
-Extracted from :mod:`synthorg.api._app_wiring` so the per-backend
-``BenchmarkScoreRepository`` build, the ``budget.benchmark_provider``
-discriminator selection, and the boot-time seed of the measured scores
-live together as one cohesive unit instead of crowding the broader
-cost-dial wiring helper.
+Groups the per-backend ``BenchmarkScoreRepository`` build, the
+``budget.benchmark_provider`` discriminator selection, and the boot-time
+seed of the measured scores into one cohesive unit so the broader
+cost-dial wiring helper stays focused on the forecaster + Pareto axis.
 
 The provider selection fails loudly on an unknown discriminator; the
-seed step is idempotent and best-effort (it never poisons startup).
+seed step is idempotent and best-effort (it never poisons startup), and
+a corrupt committed seed artifact is surfaced at ERROR rather than being
+masked as a transient failure.
 """
 
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
-    from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreRepository
+    from synthorg.budget.benchmark_models import BenchmarkScoreRecord
 
 logger = get_logger(__name__)
 
@@ -114,12 +119,28 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
     config = budget_slice.budget_config
     if repo is None or config is None or config.benchmark_provider != "measured":
         return
+    records: tuple[BenchmarkScoreRecord, ...] = ()
     try:
         if await repo.list_items(limit=1):
             return
         records = load_seed_records()
         for record in records:
             await repo.save(record)
+    except (ValueError, ValidationError) as exc:
+        # A malformed committed artifact never self-heals on the next
+        # boot, so it is an operator-actionable defect (ERROR), not the
+        # transient degradation the broad handler below covers.
+        logger.error(
+            API_APP_STARTUP,
+            service="benchmark_scores",
+            note=(
+                "benchmark seed artifact is corrupt; regenerate via"
+                " scripts/record_benchmark_scores.py"
+            ),
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
     except Exception as exc:
         reraise_critical(exc)
         logger.warning(
@@ -136,6 +157,12 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
             service="benchmark_scores",
             note="seeded measured scores from committed artifact",
             count=len(records),
+        )
+    else:
+        logger.debug(
+            API_APP_STARTUP,
+            service="benchmark_scores",
+            note="no measured scores to seed; table stays empty until a recording run",
         )
 
 

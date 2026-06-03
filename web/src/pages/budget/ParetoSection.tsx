@@ -136,6 +136,8 @@ function SourceBadge({ source }: SourceBadgeProps) {
   const kind = badgeKind(source)
   return (
     <span
+      role="img"
+      aria-label={BADGE_TITLE[kind]}
       className={cn(
         'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
         BADGE_CLASS[kind],

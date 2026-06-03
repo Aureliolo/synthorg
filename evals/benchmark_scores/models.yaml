@@ -1,4 +1,4 @@
-# Recording manifest for measured per-model benchmark scores (#2204).
+# Recording manifest for measured per-model benchmark scores.
 #
 # Each entry is one measured model scored against the shared brief suite via a
 # single-agent company config (the model is pinned at run time, so one config

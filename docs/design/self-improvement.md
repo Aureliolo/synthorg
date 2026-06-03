@@ -61,12 +61,13 @@ src/synthorg/meta/
   toolsmith/           -- Self-extending toolkit (TOOL_CREATION altitude)
     models.py          -- ToolBlueprint, ToolBlueprintState, CapabilityGap, ToolValidationResult
     config.py          -- ToolsmithConfig (enabled, gap thresholds, allowlists, sandbox, validation)
-    protocol.py        -- CapabilityGapStore, ToolBlueprintGenerator, ToolValidationGate, overflow handler
+    protocol.py        -- CapabilityGapSink, CapabilityGapStore, ToolBlueprintGenerator, GoldenScorecardProvider, ToolValidationGate, overflow handler
     gap_store.py       -- RingBufferCapabilityGapStore (recurrence aggregation)
     strategy.py        -- LLMToolBlueprintGenerator (LLM authors a sandbox tool)
     dynamic_registry.py -- DynamicToolRegistry + LayeredToolRegistry/HandlerMap (runtime registration)
     script_handler.py  -- Per-tool closure handler (runs script_body in the sandbox)
     validation_gate.py -- BenchmarkToolValidationGate (per-tool brief + golden delta)
+    golden_scorecard.py -- EvalGoldenScorecardProvider, GoldenScoreRunner (eval-spine adapter for the golden-delta gate)
     applier.py         -- ToolCreationApplier (validate, persist, register, retire)
     service.py         -- ToolsmithService (orchestration + gap sink seam)
     overflow.py        -- CodeModificationOverflowHandler (service-access gap routing)
@@ -243,7 +244,7 @@ Disabling a learning subsystem measurably flattens the curve; this is validated 
 
 `BenchmarkToolValidationGate` trusts an authored tool only when its per-tool acceptance brief passes AND the golden-company scorecard does not regress (`candidate_total >= baseline_total + min_score_margin`). The golden stage needs a `GoldenScorecardProvider`, selected by `toolsmith.validation.golden_scorecard_provider`:
 
-- `none` (the default) wires no provider, so a `require_golden_delta` gate **fails closed**: a missing provider rejects the apply rather than trusting a tool the gate could not validate.
+- `none` (the default) wires no provider, so a `require_golden_delta` gate **fails closed**: once a candidate's per-tool brief passes and the golden stage is entered, a missing provider raises `ToolValidationConfigError` (rejecting the apply) rather than trusting a tool the gate could not validate. (A tool whose brief fails never reaches the golden stage.)
 - `eval` wires `EvalGoldenScorecardProvider`, which adapts the golden-company eval spine into the gate's seam so the no-regression check runs end-to-end (an unknown value fails loudly at wiring; selecting `eval` without the in-repo eval harness on disk fails loudly too).
 
 The provider depends only on an injected scorecard runner, so the framework's production code stays decoupled from the out-of-package eval harness. The default deterministic eval ignores authored tools, so the candidate arm equals the baseline: a no-regression **smoke check** that registers any tool whose presence does not break the golden run. A genuinely-measured delta (a candidate arm scored against a live provider, or a cassette recorded with the candidate tool active) is what makes a regressing tool score below baseline and be rejected.

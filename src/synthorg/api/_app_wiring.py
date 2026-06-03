@@ -42,6 +42,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     """
     from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
+    from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.persistence.db_handle import (  # noqa: PLC0415
@@ -114,6 +115,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
         assignment_lookup=assignment_lookup,
+        model_tier_map=ModelTierMap(overrides=budget_config.model_tier_overrides),
     )
     app_state.wire(
         BudgetStateSlice,

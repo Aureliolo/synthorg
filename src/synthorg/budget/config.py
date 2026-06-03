@@ -6,6 +6,7 @@ and risk budget configuration.
 """
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,6 +21,7 @@ from synthorg.settings.mirrors import (
     parse_bool,
     parse_float,
     parse_int,
+    parse_json_str_dict,
 )
 
 
@@ -335,6 +337,12 @@ class BudgetConfig(BaseModel):
             namespace=SettingNamespace.BUDGET,
             key="benchmark_provider",
         ),
+        MirrorField(
+            field="model_tier_overrides",
+            namespace=SettingNamespace.BUDGET,
+            key="model_tier_overrides",
+            parse=parse_json_str_dict,
+        ),
     )
 
     total_monthly: float = Field(
@@ -442,6 +450,15 @@ class BudgetConfig(BaseModel):
             " and stakes-routing floors: `stub` (calibrated per-tier"
             " constants, the safe default) or `measured` (repository-backed"
             " measured scores with stub fallback)"
+        ),
+    )
+    model_tier_overrides: Mapping[NotBlankStr, str] = Field(
+        default_factory=dict,
+        description=(
+            "Operator map of model id to quality tier, consulted by the"
+            " Pareto downgrade traversal before the built-in archetype"
+            " heuristic. Values are validated against the canonical tiers"
+            " when the ModelTierMap is built at wiring."
         ),
     )
 

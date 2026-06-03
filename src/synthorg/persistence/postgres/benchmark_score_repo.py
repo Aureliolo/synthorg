@@ -1,3 +1,4 @@
+# module-kind: repository
 """Postgres repository for measured per-model benchmark scores.
 
 Sibling of :class:`SQLiteBenchmarkScoreRepository` backed by

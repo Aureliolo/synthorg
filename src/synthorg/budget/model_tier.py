@@ -1,3 +1,4 @@
+# module-kind: code
 """Model-id to tier-archetype resolution for the cost-dial.
 
 The Pareto downgrade traversal and the stub benchmark provider both need

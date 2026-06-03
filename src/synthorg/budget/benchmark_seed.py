@@ -1,3 +1,4 @@
+# module-kind: code
 """Loader for the committed measured benchmark-score seed artifact.
 
 The offline recording entry-point (``scripts/record_benchmark_scores.py``)
@@ -15,6 +16,10 @@ from pathlib import Path
 
 from synthorg.budget.benchmark_models import BenchmarkScoreRecord
 from synthorg.observability import get_logger
+from synthorg.observability.events.budget import (
+    BUDGET_BENCHMARK_SEED_ABSENT,
+    BUDGET_BENCHMARK_SEED_MALFORMED,
+)
 
 logger = get_logger(__name__)
 
@@ -39,16 +44,30 @@ def load_seed_records(path: Path | None = None) -> tuple[BenchmarkScoreRecord, .
     """
     seed_path = path if path is not None else _SEED_PATH
     if not seed_path.exists():
+        # A legitimate state for a fresh checkout, but logged so an
+        # artifact dropped by a packaging mistake stays observable rather
+        # than reading as "no scores recorded yet".
+        logger.debug(BUDGET_BENCHMARK_SEED_ABSENT, path=str(seed_path))
         return ()
     raw = seed_path.read_text(encoding="utf-8")
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
+        logger.warning(
+            BUDGET_BENCHMARK_SEED_MALFORMED,
+            path=str(seed_path),
+            reason="not valid JSON",
+        )
         msg = f"benchmark seed artifact {seed_path} is not valid JSON"
         raise ValueError(msg) from exc
     if not isinstance(payload, list):
         # Uniform malformed-artifact error type (matches the decode failure
         # above); the loader's contract is "ValueError on a malformed seed".
+        logger.warning(
+            BUDGET_BENCHMARK_SEED_MALFORMED,
+            path=str(seed_path),
+            reason="top-level JSON is not a list",
+        )
         msg = f"benchmark seed artifact {seed_path} must be a JSON list of records"
         raise ValueError(msg)  # noqa: TRY004
     return tuple(BenchmarkScoreRecord.model_validate(entry) for entry in payload)

@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Repository protocol for measured per-model benchmark scores.
 
 A :class:`BenchmarkScoreRecord` row is the durable record of a per-model

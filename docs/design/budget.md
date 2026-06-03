@@ -281,9 +281,11 @@ through the eval spine and derives each score from the resulting `Scorecard` (me
 normalised brief score plus a 95% confidence band), writing the committed seed artifact
 `src/synthorg/budget/benchmark_seed.json`. The repository is boot-seeded from that artifact
 when empty, so a fresh operator database carries the measured scores without a recording
-run. Every `ParetoPoint` and the frontier carry a `source` field that the dashboard
-surfaces verbatim (a `benchmark:`/`stub:` mix reads as "mixed", never "measured") so stub
-data is never mistaken for measured data. The frontier is advisory: downgrade callouts
+run. Every `ParetoPoint` and the frontier carry a `source` field (the per-point provenance,
+joined with ` | ` when a point's current and candidate scores differ in provenance, and
+comma-joined across the frontier). The dashboard derives a provenance badge from it: a
+`source` carrying both a `benchmark:` and a `stub:` token renders the badge as "mixed",
+never "measured", so stub data is never mistaken for measured data. The frontier is advisory: downgrade callouts
 link to the agent settings surface rather than mutating models inline.
 
 ## Quota Degradation
