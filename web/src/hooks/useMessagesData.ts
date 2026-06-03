@@ -88,12 +88,12 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
 
   const polling = usePolling(pollFn, MESSAGES_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
     if (!activeChannel) return
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- start/stop are stable useCallback refs
-  }, [activeChannel, polling.start, polling.stop])
+    start()
+    return () => stop()
+  }, [activeChannel, start, stop])
 
   // WebSocket bindings (stable -- reads activeChannel via ref)
   const bindings: ChannelBinding[] = useMemo(

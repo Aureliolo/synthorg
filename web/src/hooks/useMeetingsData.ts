@@ -38,11 +38,11 @@ export function useMeetingsData(): UseMeetingsDataReturn {
   }, [])
   const polling = usePolling(pollFn, MEETINGS_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling start/stop are stable useCallback refs
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(

@@ -36,7 +36,7 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
       // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
       setJsonError(null)
     }
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- rawJson intentionally excluded
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rawJson intentionally excluded: this resyncs local state FROM the prop, so depending on rawJson would loop
   }, [config.sources])
 
   return (

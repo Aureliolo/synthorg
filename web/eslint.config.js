@@ -3,10 +3,15 @@ import tseslint from 'typescript-eslint'
 import eslintReact from '@eslint-react/eslint-plugin'
 import { reactRefresh } from 'eslint-plugin-react-refresh'
 import pluginSecurity from 'eslint-plugin-security'
+import reactHooks from 'eslint-plugin-react-hooks'
 
-// TODO: Add eslint-plugin-react-hooks when it supports ESLint 10 (v5 caps at ESLint 9).
-// @eslint-react provides hooks analysis via the recommended-type-checked preset
-// in the meantime (rules-of-hooks, exhaustive-deps, set-state-in-effect, etc.).
+// eslint-plugin-react-hooks v7 supports ESLint 10 (peerDeps allow ^10), so the
+// canonical rules-of-hooks + exhaustive-deps rule pair is wired below. We enable
+// only those two (not the recommended-latest preset, which also pulls in the
+// React-Compiler ``react-hooks/lints`` bundle -- this project does not run the
+// compiler, and that bundle flags compiler-migration constraints rather than
+// runtime bugs). ``@eslint-react/exhaustive-deps`` is retired in favour of the
+// canonical rule; ``@eslint-react/rules-of-hooks`` stays on for redundant coverage.
 
 export default tseslint.config(
   // Generated artefacts are never linted. They live alongside the
@@ -35,12 +40,25 @@ export default tseslint.config(
     },
   },
   {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      // Retire the @eslint-react port now that the canonical rule is live: keeping
+      // both would double-report and collide with the existing disable directives.
+      '@eslint-react/exhaustive-deps': 'off',
+    },
+  },
+  {
     plugins: {
       'react-refresh': reactRefresh.plugin,
     },
     rules: {
       'react-refresh/only-export-components': [
-        'warn',
+        'error',
         { allowConstantExport: true },
       ],
       'no-useless-assignment': 'error',
@@ -59,18 +77,25 @@ export default tseslint.config(
       // -- eslint-react rules not in recommended-type-checked --
       // Prevent dollar signs from leaking into rendered JSX output
       '@eslint-react/jsx-no-leaked-dollar': 'error',
-      // Remove unnecessary <></> fragment wrappers
-      '@eslint-react/jsx-no-useless-fragment': 'warn',
+      // Remove unnecessary <></> fragment wrappers. Options pinned explicitly so a
+      // future preset default flip cannot start erroring `<>{expr}</>` sites.
+      '@eslint-react/jsx-no-useless-fragment': [
+        'error',
+        { allowEmptyFragment: false, allowExpressions: true },
+      ],
       // Require type attribute on <button> to prevent unintended form submission
-      '@eslint-react/dom-no-missing-button-type': 'warn',
+      '@eslint-react/dom-no-missing-button-type': 'error',
       // Require rel="noopener" with target="_blank" (security)
       '@eslint-react/dom-no-unsafe-target-blank': 'error',
       // Catch duplicate keys in JSX lists
       '@eslint-react/no-duplicate-key': 'error',
       // Catch unstable context values that cause unnecessary re-renders
-      '@eslint-react/no-unstable-context-value': 'warn',
+      '@eslint-react/no-unstable-context-value': 'error',
       // Catch unstable default props that cause unnecessary re-renders
-      '@eslint-react/no-unstable-default-props': 'warn',
+      '@eslint-react/no-unstable-default-props': 'error',
+      // setState synchronously in an effect (derived-state smell). The preset
+      // ships this at warn; promote to error explicitly.
+      '@eslint-react/set-state-in-effect': 'error',
       // -- v5 explicit opt-ins beyond the preset --
       // Detect fetch() in effects without AbortController cleanup. We use
       // axios via apiClient today, but the rule guards future raw fetch

@@ -430,6 +430,10 @@ deserialization
 deserialize
 deserializer
 deserializers
+destructure
+destructured
+destructures
+destructuring
 dev
 devcontainer
 devs

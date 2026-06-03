@@ -172,7 +172,7 @@ export function useOrgChartViewMode(nodes: Node[], edges: Edge[], _viewMode: Vie
         animFrameRef.current = null
       }
     }
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- transition.displayNodes is read for starting position only; including it would cause infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- transition.displayNodes is read for starting position only; including it would cause infinite loops
   }, [nodes, edges])
 
   useLayoutEffect(() => {

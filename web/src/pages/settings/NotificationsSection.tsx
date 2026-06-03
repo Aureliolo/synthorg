@@ -103,8 +103,7 @@ export function NotificationsSection() {
       const actual = Notification.permission
       if (actual !== preferences.browserPermission) setBrowserPermission(actual)
     }
-    // Only run on mount
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: reads preferences.browserPermission once to reconcile against the live Notification.permission; re-running on its change would loop via setBrowserPermission
   }, [])
 
   async function handleRequestPermission() {

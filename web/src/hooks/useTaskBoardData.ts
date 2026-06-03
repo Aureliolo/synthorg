@@ -63,10 +63,11 @@ export function useTaskBoardData(): UseTaskBoardDataReturn {
 
   const polling = usePolling(pollFn, TASK_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-  }, []) // eslint-disable-line @eslint-react/exhaustive-deps
+    start()
+    return () => stop()
+  }, [start, stop])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(

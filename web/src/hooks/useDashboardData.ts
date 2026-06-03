@@ -64,12 +64,12 @@ export function useDashboardData(): UseDashboardDataReturn {
   )
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL, { skipIfFresh })
 
-  // polling.start/stop are stable refs from useCallback inside usePolling
+  // start/stop are stable refs from useCallback inside usePolling
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(

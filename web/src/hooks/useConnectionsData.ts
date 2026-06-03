@@ -107,11 +107,11 @@ export function useConnectionsData(): UseConnectionsDataReturn {
   }, [])
   const polling = usePolling(pollFn, CONNECTIONS_POLL_INTERVAL_MS)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   const filteredConnections = useMemo(() => {
     const filtered = filterConnections(connections, {
