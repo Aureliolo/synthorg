@@ -28,11 +28,13 @@ from synthorg.api.lifecycle_helpers.feature_wiring import (
 from synthorg.api.lifecycle_helpers.finetune_wiring import (
     _wire_fine_tune_orchestrator,
 )
+from synthorg.api.lifecycle_helpers.startup_steps import _publish_red_team_runtime
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.pipeline.protocol import WorkPipeline
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.state import EngineStateSlice
 from synthorg.memory.backends.inmemory import InMemoryBackend
 from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
@@ -51,6 +53,10 @@ from synthorg.ontology.state import OntologyStateSlice
 from synthorg.persistence.approval_protocol import ApprovalRepository
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.redteam.builder import RedTeamRuntime
+from synthorg.security.redteam.gate import RedTeamGateService
+from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
+from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
@@ -590,3 +596,59 @@ class TestWireRunNarrator:
                 provider_registry=mock_of[ProviderRegistry](),
                 cost_tracker=None,
             )
+
+
+class TestPublishRedTeamRuntime:
+    """`_publish_red_team_runtime` publishes, clears, and gates the store."""
+
+    def test_enabled_publishes_repo_and_attaches_gate(self) -> None:
+        repo = InMemoryRedTeamReportRepository()
+        gate = mock_of[RedTeamGateService]()
+        runtime = mock_of[RedTeamRuntime](report_repo=repo, gate=gate)
+        review_gate = mock_of[ReviewGateService]()
+        state = _make_state()
+
+        _publish_red_team_runtime(
+            state, red_team_runtime=runtime, review_gate_service=review_gate
+        )
+
+        assert state.slice(SecurityStateSlice).red_team_reports is repo
+        review_gate.set_red_team_gate.assert_called_once_with(gate)
+
+    def test_disabled_clears_stale_repo(self) -> None:
+        """An enabled -> disabled reinit must reset a previously-published store."""
+        stale = InMemoryRedTeamReportRepository()
+        state = _make_state(slices={SecurityStateSlice: {"red_team_reports": stale}})
+
+        _publish_red_team_runtime(
+            state,
+            red_team_runtime=None,
+            review_gate_service=mock_of[ReviewGateService](),
+        )
+
+        assert state.slice(SecurityStateSlice).red_team_reports is None
+
+    def test_disabled_clears_gate(self) -> None:
+        """An enabled -> disabled reinit must detach the previous gate, not leave it."""
+        review_gate = mock_of[ReviewGateService]()
+        state = _make_state()
+
+        _publish_red_team_runtime(
+            state, red_team_runtime=None, review_gate_service=review_gate
+        )
+
+        review_gate.set_red_team_gate.assert_called_once_with(None)
+
+    def test_no_review_gate_is_a_noop_for_the_gate(self) -> None:
+        """With no review gate wired, the store is still published, gate untouched."""
+        repo = InMemoryRedTeamReportRepository()
+        runtime = mock_of[RedTeamRuntime](
+            report_repo=repo, gate=mock_of[RedTeamGateService]()
+        )
+        state = _make_state()
+
+        _publish_red_team_runtime(
+            state, red_team_runtime=runtime, review_gate_service=None
+        )
+
+        assert state.slice(SecurityStateSlice).red_team_reports is repo

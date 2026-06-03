@@ -286,7 +286,7 @@ MCP handlers (operator-driven, `meta/mcp/domains/knowledge.py`):
 
 `KnowledgeConfig` (frozen) defaults to `enabled=False` until setup wires it.
 It carries the `pdf_loader` and `code_chunker` discriminators (defaults
-`pdfplumber` / `tree_sitter`) and a `reranker_enabled` flag. Chunk budgets and
+`pdfplumber` / `tree_sitter`). Chunk budgets and
 namespace/tag constants live in `knowledge/constants.py` as module-level
 `Final` values because they are part of the on-disk plus RAG-index contract: a
 runtime change would silently invalidate previously indexed chunks (the same

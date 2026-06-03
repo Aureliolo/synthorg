@@ -1087,7 +1087,8 @@
         "SubmitRedTeamReportTool",
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
-        "build_red_team_agent_identity"
+        "build_red_team_agent_identity",
+        "build_vision_verifier_gate"
       ],
       "mcp_tool_names": [],
       "name": "security",
@@ -1101,7 +1102,8 @@
       "state_slice_fields": [
         "audit_log",
         "trust_service",
-        "autonomy_change_strategy"
+        "autonomy_change_strategy",
+        "red_team_reports"
       ]
     },
     {
@@ -1148,6 +1150,7 @@
         "BrowserTool",
         "SSIMDiffer",
         "WorkspaceBaselineStore",
+        "DesktopTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy"
@@ -1199,7 +1202,8 @@
         "build_git_backend",
         "EmbeddedGitBackend",
         "LocalPathGitBackend",
-        "ExternalRemoteGitBackend"
+        "ExternalRemoteGitBackend",
+        "EnvironmentService"
       ],
       "mcp_tool_names": [],
       "name": "workspace",
@@ -1216,6 +1220,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-02T09:31:16.058104Z",
+  "generated_at": "2026-06-03T06:43:14.515788Z",
   "schema_version": 1
 }

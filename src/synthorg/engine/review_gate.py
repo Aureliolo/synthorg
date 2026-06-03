@@ -104,25 +104,23 @@ class ReviewGateService:
         """Attach the receipt service after construction (boot wiring seam)."""
         self._receipt_service = receipt_service
 
-    def set_vision_gate(self, vision_gate: VisionVerifierGate) -> None:
-        """Attach the vision gate after construction (boot wiring seam).
+    def set_vision_gate(self, vision_gate: VisionVerifierGate | None) -> None:
+        """Attach (or clear) the vision gate after construction (boot wiring seam).
 
-        The service is built during app construction (before a provider
-        is connected), while the vision gate is built in on-startup
-        runtime wiring once the workspace and provider are available, so
-        the gate is injected post-construction rather than at __init__.
+        Built in on-startup runtime wiring once the workspace and provider
+        are available, so it is injected post-construction rather than at
+        __init__. Passing ``None`` clears a previously-attached gate so an
+        enabled -> disabled reinit does not leave a stale gate firing.
         """
         self._vision_gate = vision_gate
 
-    def set_red_team_gate(self, red_team_gate: RedTeamGate) -> None:
-        """Attach the red-team gate after construction (boot wiring seam).
+    def set_red_team_gate(self, red_team_gate: RedTeamGate | None) -> None:
+        """Attach (or clear) the red-team gate after construction (boot wiring seam).
 
-        Mirrors :meth:`set_vision_gate`: the red-team runtime is built in
-        on-startup wiring once the boot ``AgentEngine`` exists, after this
-        service is constructed during app construction. Callers that pass
-        ``red_team_input`` to :meth:`run_pipeline` then reach the live
-        gate; building that input from a completed task's deliverable is
-        the review-pipeline integration's responsibility, not this seam.
+        Mirrors :meth:`set_vision_gate`: built in on-startup wiring once the
+        boot ``AgentEngine`` exists, after construction. Passing ``None``
+        clears a previously-attached gate so an enabled -> disabled reinit
+        does not leave a stale gate firing.
         """
         self._red_team_gate = red_team_gate
 

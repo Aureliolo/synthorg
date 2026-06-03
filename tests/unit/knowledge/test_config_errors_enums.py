@@ -54,7 +54,6 @@ class TestKnowledgeConfig:
         assert cfg.enabled is False
         assert cfg.pdf_loader == "pdfplumber"
         assert cfg.code_chunker == "tree_sitter"
-        assert cfg.reranker_enabled is False
 
     def test_frozen(self) -> None:
         cfg = KnowledgeConfig()

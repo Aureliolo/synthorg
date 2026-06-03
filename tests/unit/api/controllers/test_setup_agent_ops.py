@@ -13,7 +13,7 @@ import pytest
 from synthorg.providers.state import ProvidersStateSlice
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
-from tests.unit.api.controllers.conftest import setup_mock_providers
+from tests.unit.api.controllers.conftest import mock_providers, setup_mock_providers
 
 
 @pytest.mark.unit
@@ -432,20 +432,39 @@ class TestRandomizeAgentName:
         async_test_client: LoopAsyncClient,
     ) -> None:
         """Randomize endpoint generates a non-empty name."""
-        app_state, original = setup_mock_providers(async_test_client)
-        try:
-            await async_test_client.post(
-                "/api/v1/setup/company",
+        with mock_providers(async_test_client):
+            # Seed a single agent directly: randomize only needs one
+            # existing agent at index 0, so the cheaper per-agent create
+            # path avoids the heavier template-based company seeding.
+            create = await async_test_client.post(
+                "/api/v1/setup/agent",
                 json={
-                    "company_name": "Randomize Test",
-                    "template_name": "solo_founder",
+                    "name": "agent-seed-001",
+                    "role": "CEO",
+                    "model_provider": "test-provider",
+                    "model_id": "test-small-001",
                 },
             )
+            assert create.status_code == 201
+
+            # Pin a single name locale so the randomize endpoint builds a
+            # one-locale Faker instead of the all-Latin-script default,
+            # whose cold provider init is the slowest part of this test.
+            locales = await async_test_client.put(
+                "/api/v1/setup/name-locales",
+                json={"locales": ["en_US"]},
+            )
+            assert locales.status_code == 200
+
             resp = await async_test_client.post(
                 "/api/v1/setup/agents/0/randomize-name",
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
+            # The randomiser must actually replace the seeded name, not echo
+            # it back: a no-op endpoint would still pass the non-empty/length
+            # checks below.
+            assert data["name"] != "agent-seed-001"
             assert data["name"] != ""
             assert len(data["name"]) >= 3
 
@@ -453,8 +472,6 @@ class TestRandomizeAgentName:
             get_resp = await async_test_client.get("/api/v1/setup/agents")
             agents = get_resp.json()["data"]
             assert any(a["name"] == data["name"] for a in agents)
-        finally:
-            app_state.wire(ProvidersStateSlice, management=original)
 
     async def test_out_of_range_index(
         self,

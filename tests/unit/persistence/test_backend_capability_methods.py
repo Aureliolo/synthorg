@@ -1,7 +1,7 @@
 """Tests for ``PersistenceBackend`` capability factory methods.
 
 Locks the contract of ``build_ontology_versioning()`` -- the
-capability method introduced by ARC-1 that replaces the
+capability method that replaces the
 ``isinstance(persistence, PostgresPersistenceBackend)`` check in
 ``api/auto_wire.py``.  Both the SQLite and Postgres backends must
 construct a versioning service with the expected surface

@@ -25,6 +25,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "BrowserTool",
         "SSIMDiffer",
         "WorkspaceBaselineStore",
+        "DesktopTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",

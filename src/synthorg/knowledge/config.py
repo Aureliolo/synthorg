@@ -46,7 +46,3 @@ class KnowledgeConfig(BaseModel):
         default="tree_sitter",
         description="Code chunking strategy discriminator",
     )
-    reranker_enabled: bool = Field(
-        default=False,
-        description="Whether to apply the LLM query-specific reranker to hits",
-    )

@@ -6,7 +6,7 @@ closing over ``create_app`` locals) and is scheduled into the Litestar
 ``on_startup`` sequence by the composition root.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -32,7 +32,54 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
+if TYPE_CHECKING:
+    from synthorg.engine.review_gate import ReviewGateService
+    from synthorg.security.redteam.builder import RedTeamRuntime
+
 logger = get_logger(__name__)
+
+
+def _publish_red_team_runtime(
+    app_state: AppState,
+    *,
+    red_team_runtime: RedTeamRuntime | None,
+    review_gate_service: ReviewGateService | None,
+) -> None:
+    """Publish or clear the red-team report store, then attach the gate.
+
+    Publishes the per-execution red-team report store onto
+    ``SecurityStateSlice`` so the deliverable-receipt builder (wired later in
+    ``wire_features_on_startup``) can snapshot a run's findings into its
+    receipt. The publish is a partial wire, so the audit log / trust service /
+    autonomy strategy already on the slice survive. ``post_setup_reinit()``
+    rebuilds runtime services on the existing app state, so an enabled ->
+    disabled transition must reset the store to ``None``; otherwise the
+    previous run's repository would keep leaking stale findings into fresh
+    receipts. Independent of the review gate: receipts need the store even
+    where no review gate is wired.
+
+    Args:
+        app_state: Application state holding the security slice.
+        red_team_runtime: The built red-team bundle, or ``None`` when the
+            adversarial subsystem is disabled.
+        review_gate_service: The review-gate service to attach the red-team
+            gate to, or ``None`` when no review gate is wired.
+    """
+    from synthorg.security.state import SecurityStateSlice  # noqa: PLC0415
+
+    app_state.wire(
+        SecurityStateSlice,
+        red_team_reports=(
+            red_team_runtime.report_repo if red_team_runtime is not None else None
+        ),
+    )
+    # Attach the live gate, or clear it on the disabled path: a reinit that
+    # turns red-team off must detach the previous run's gate so the review
+    # pipeline does not keep firing a stale one.
+    if review_gate_service is not None:
+        review_gate_service.set_red_team_gate(
+            red_team_runtime.gate if red_team_runtime is not None else None
+        )
 
 
 async def install_runtime_services(
@@ -170,23 +217,25 @@ async def install_runtime_services(
     # one is a logged no-op then.
     if services.work_pipeline is not None:
         app_state.set_work_pipeline_if_absent(services.work_pipeline)
-    # Attach the vision verifier gate to the review gate service when
-    # the subsystem is enabled. The service was built during app
-    # construction (before a provider connected); the gate is built
-    # here once the workspace + provider are available.
+    # Attach the vision verifier gate to the review gate service, or clear
+    # it on the disabled path. The service was built during app construction
+    # (before a provider connected); the gate is built here once the
+    # workspace + provider are available. A reinit that turns vision off must
+    # detach the previous gate so the review pipeline does not keep firing a
+    # stale one (same enabled -> disabled concern as the red-team gate).
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
 
     review_gate_service = app_state.slice(ApprovalStateSlice).review_gate
-    if services.vision_gate is not None and review_gate_service is not None:
+    if review_gate_service is not None:
         review_gate_service.set_vision_gate(services.vision_gate)
-    # Same seam for the adversarial red-team gate: built in the
-    # runtime wiring once the boot engine exists, attached here so a
-    # review pipeline supplied with red_team_input reaches the live
-    # gate. ``None`` when the red-team subsystem is disabled.
-    if services.red_team_runtime is not None and review_gate_service is not None:
-        review_gate_service.set_red_team_gate(
-            services.red_team_runtime.gate,
-        )
+    # Same seam for the adversarial red-team gate: built in the runtime
+    # wiring once the boot engine exists, published + attached here so a
+    # review pipeline supplied with red_team_input reaches the live gate.
+    _publish_red_team_runtime(
+        app_state,
+        red_team_runtime=services.red_team_runtime,
+        review_gate_service=review_gate_service,
+    )
     # Bring the real client-request, goal/objective, and
     # task-board work-entry paths online: ensure the configured
     # default projects exist and attach the entry adapters. No-op

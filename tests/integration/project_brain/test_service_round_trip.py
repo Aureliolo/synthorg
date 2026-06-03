@@ -320,6 +320,67 @@ class TestProjectBrainRoundTrip:
         finally:
             await harness.backend.disconnect()
 
+    async def test_multi_session_gap_resume_answers_from_brain(
+        self, tmp_path: Path
+    ) -> None:
+        """A reconstructed service answers decided/open/blocked over durable stores.
+
+        Models a multi-session resume: the durable stores (a persistent memory
+        backend -- here a reused InMemoryBackend instance -- plus the git
+        workspace) survive, while the brain repo is reopened as a *fresh*
+        object over its persisted rows and the service and facade objects are
+        rebuilt, as on a process restart. Because the resumed service reads
+        through a reconstructed repo (not the first harness's instance), the
+        structured ``list_current`` assertions prove a fresh service reads
+        persisted state rather than a shared in-process cache. Real SQL
+        serialisation round-trips are covered separately by
+        ``tests/conformance/persistence/test_project_brain_repository.py``;
+        this integration tier uses the in-memory fake by design.
+        Volatile-index recovery (boot replay of a persisted-but-unindexed
+        entry) is covered separately by ``test_boot_replay_heals_unindexed_gap``.
+        """
+        first = await _build(tmp_path)
+        try:
+            await _seed_resume_state(first)
+
+            resumed = await _build(
+                tmp_path,
+                memory_backend=first.backend,
+                repo=FakeProjectBrainRepository.reopen(first.repo),
+            )
+            entries = await resumed.facade.retrieve(
+                agent_id=_BOB,
+                project_id=_PROJECT,
+                query=MemoryQuery(text=NotBlankStr("checkout"), limit=20),
+            )
+            brain_hits = [e for e in entries if f"<{TAG_BRAIN_STATE}>" in e.content]
+            assert brain_hits, "brain state must survive a multi-session gap"
+            corpus = "\n".join(e.content for e in brain_hits).lower()
+            assert "event-sourcing" in corpus  # the decision outcome
+            assert "queue backend" in corpus  # the open question subject
+            assert "staging" in corpus  # the blocker subject
+
+            # The structured durable path answers the same question through
+            # the freshly-built service, proving it reads persisted SQL state.
+            service = resumed.runtime.brain_service  # type: ignore[attr-defined]
+            decided = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.ACCEPTED
+            )
+            open_qs = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.OPEN
+            )
+            blocked = await service.list_current(
+                project_id=_PROJECT, status=BrainEntryStatus.BLOCKED
+            )
+            assert len(decided) == 1
+            assert len(open_qs) == 1
+            assert len(blocked) == 1
+            assert {d.entry_kind for d in decided} == {BrainEntryKind.DECISION}
+            assert {q.entry_kind for q in open_qs} == {BrainEntryKind.OPEN_QUESTION}
+            assert {b.entry_kind for b in blocked} == {BrainEntryKind.BLOCKER}
+        finally:
+            await first.backend.disconnect()
+
     async def test_reindex_replaces_prior_chunks(self, tmp_path: Path) -> None:
         harness = await _build(tmp_path)
         try:

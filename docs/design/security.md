@@ -753,7 +753,18 @@ enabled, the boot path in `workers/runtime_builder.py` constructs the
 full subsystem via `security/redteam/builder.py::build_red_team_runtime`,
 which returns a `RedTeamRuntime` NamedTuple (gate, submit tool, repo,
 runner). Operators flip the flag once the review-gate integration
-point is wired in their deployment.
+point is wired in their deployment. The per-execution report repo is
+also published on `SecurityStateSlice.red_team_reports` by the runtime
+wiring and read at receipt-build time, so a completed deliverable's
+`DeliverableReceipt.red_team` snapshots the run's findings; it degrades
+to an empty section when the subsystem is disabled. The snapshot
+(including finding prose) is returned over the project-scoped receipt
+REST endpoint and rendered in the dashboard receipt panel by design:
+the receipt is the deliverable's provenance record, surfaced to
+project read-access principals for review. The `ReceiptRenderer`
+separately keeps that agent-authored prose out of the living-doc / RAG
+channel, so the only consumer of the verbatim findings is the
+human-facing receipt view.
 
 ### Failure modes
 

@@ -22,7 +22,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
-| **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec | QA, frontend devs, agents validating web deliverables |
+| **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec. The `url` field is restricted to `http`/`https` and rejects link-local / cloud-metadata hosts (169.254.169.254, `metadata.google.internal`); local files use the workspace-scoped `path` field. Loopback and private addresses stay allowed so the in-sandbox app-under-test is reachable | QA, frontend devs, agents validating web deliverables |
 | **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host (SSRF policy + DNS pinning), per-connection rate limiting, sensitive/write calls gated to approval | Agents consuming third-party APIs while building deliverables |
 | **Desktop** | Virtual desktop (Xvfb + xdotool + scrot in a container): launch a GUI app, click/type/press-keys/scroll, capture screenshots | QA, frontend devs, agents validating GUI deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
