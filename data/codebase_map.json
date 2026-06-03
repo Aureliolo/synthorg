@@ -16102,7 +16102,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/_grounding_findings.py",
       "owning_feature": "security"
@@ -16130,7 +16130,7 @@
     },
     {
       "kind": "code",
-      "loc": 374,
+      "loc": 378,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/gate.py",
       "owning_feature": "security"
@@ -16186,7 +16186,7 @@
     },
     {
       "kind": "service",
-      "loc": 340,
+      "loc": 343,
       "loc_cap": 600,
       "module": "src/synthorg/security/redteam/grounding/substrate.py",
       "owning_feature": "security"
