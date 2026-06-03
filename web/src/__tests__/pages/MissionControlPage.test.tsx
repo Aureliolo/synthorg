@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -113,14 +113,20 @@ describe('MissionControlPage', () => {
   })
 
   it('shows no red-team panel when the run has no recorded verdict', async () => {
+    let redTeamFetches = 0
     server.use(
-      http.get('/api/v1/cockpit/flight-recorder/:executionId/red-team', () =>
-        HttpResponse.json(successFor<typeof getRedTeamReport>(null)),
-      ),
+      http.get('/api/v1/cockpit/flight-recorder/:executionId/red-team', () => {
+        redTeamFetches += 1
+        return HttpResponse.json(successFor<typeof getRedTeamReport>(null))
+      }),
     )
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Replay' }))
     await screen.findByRole('button', { name: 'Play' })
+    // Prove the null-response branch actually ran: without waiting for the
+    // fetch the panel is absent by default, so the assertion below could
+    // pass even if the request never fired.
+    await waitFor(() => expect(redTeamFetches).not.toBe(0))
     expect(screen.queryByText('Red-team review')).not.toBeInTheDocument()
   })
 

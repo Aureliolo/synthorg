@@ -289,6 +289,14 @@ class ReviewGateService:
                 approved=approved,
                 vision_input=None,
             )
+            # A gate that reroutes the human-approved task back to rework
+            # rewrites ``transition_reason`` with its block summary; align
+            # the recorded decision reason so the audit row matches the
+            # transition instead of carrying the stale human note (which
+            # the pipeline path already does via normalized_reason=
+            # transition_reason).
+            if not approved:
+                normalized_reason = transition_reason
         else:
             target = TaskStatus.IN_PROGRESS
             transition_reason = f"Review rejected by {decided_by}"

@@ -54,7 +54,7 @@ from .redaction import CassetteRedactor
 
 logger = get_logger(__name__)
 
-CASSETTE_FORMAT_VERSION: Final[int] = 1
+CASSETTE_FORMAT_VERSION: Final[int] = 2
 
 
 class CassetteSession:
@@ -374,10 +374,11 @@ class CassetteSession:
         expected = document.body_sha256
         actual = body_digest(document.interactions)
         if expected is None:
-            # No digest header: an older cassette recorded before integrity
-            # protection existed. The resolution is to re-record, not to
-            # investigate tampering, so the reason is distinct from a
-            # genuine mismatch.
+            # No digest header on a current-version cassette: recording
+            # always writes the digest, so a missing one means the file was
+            # truncated or hand-edited. The reason stays distinct from a
+            # value mismatch so the operator can tell "header stripped" from
+            # "body altered".
             reason = "integrity_absent"
         elif expected != actual:
             reason = "integrity_mismatch"

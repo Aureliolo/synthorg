@@ -2424,7 +2424,7 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 88,
       "loc_cap": 500,
       "module": "src/synthorg/budget/pareto_assignments.py",
       "owning_feature": "budget"
@@ -6057,7 +6057,7 @@
     },
     {
       "kind": "code",
-      "loc": 629,
+      "loc": 631,
       "loc_cap": 500,
       "module": "src/synthorg/engine/review_gate.py",
       "owning_feature": "engine"
@@ -14134,7 +14134,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/red_team_report_repo.py",
@@ -14855,7 +14855,7 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
+      "kind": "repository",
       "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/red_team_report_repo.py",

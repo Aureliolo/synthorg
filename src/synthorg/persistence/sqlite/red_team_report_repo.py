@@ -1,3 +1,4 @@
+# module-kind: repository
 """SQLite repository for the durable red-team report archive.
 
 Satisfies ``RedTeamReportArchiveRepository`` structurally: append-only

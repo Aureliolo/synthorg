@@ -1,3 +1,4 @@
+# module-kind: repository
 """Postgres implementation of the ``RedTeamReportArchiveRepository`` protocol.
 
 Postgres sibling of ``persistence/sqlite/red_team_report_repo.py``.

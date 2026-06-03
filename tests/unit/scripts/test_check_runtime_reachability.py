@@ -14,13 +14,13 @@ the production red-team-gate chain (#1986 / #1979) stays pinned.
 import importlib.util
 import sys
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Final, Protocol, cast
 
 import pytest
 
 pytestmark = pytest.mark.unit
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 
 
 class _GateModule(Protocol):
@@ -45,7 +45,7 @@ def _load_module() -> _GateModule:
     return cast(_GateModule, module)
 
 
-_MODULE = _load_module()
+_MODULE: Final[_GateModule] = _load_module()
 
 
 def _seed(

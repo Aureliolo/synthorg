@@ -101,3 +101,6 @@ class AgentRegistryAssignmentLookup:
             totals[record.model] += record.cost
             counts[record.model] += 1
         return {model: totals[model] / counts[model] for model in totals}
+
+
+__all__ = ["AgentRegistryAssignmentLookup"]

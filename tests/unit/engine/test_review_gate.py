@@ -5,13 +5,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import DecisionOutcome, Priority, TaskStatus, TaskType
+from synthorg.core.enums import (
+    AutonomyLevel,
+    DecisionOutcome,
+    Priority,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.engine.errors import SelfReviewError
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.security.redteam.models import (
+    RedTeamGateResult,
+    RedTeamReport,
+    RedTeamReviewInput,
+    RedTeamVerdict,
+)
 from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import mock_of
 
@@ -364,6 +377,65 @@ class TestReviewGateServiceDecisionRecording:
         kwargs = repo.append_with_next_version.call_args.kwargs
         assert kwargs["decision"] is DecisionOutcome.REJECTED
         assert kwargs["reason"] == "needs rework"
+
+    async def test_gate_block_after_approval_records_gate_reason(self) -> None:
+        """A gate that reworks a human-approved task records the gate reason.
+
+        Regression: ``run_completion_gates`` rewrites ``transition_reason``
+        with the block summary when it reroutes an approved task to rework,
+        but the recorded ``DecisionRecord.reason`` used to keep the stale
+        human note (``None`` here). The audit row then drifted from the
+        task-history transition. The decision reason must track the gate's
+        block reason, matching what the pipeline path already records.
+        """
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        block_result = RedTeamGateResult(
+            verdict=RedTeamVerdict.BLOCK,
+            report=RedTeamReport(
+                execution_id="exec-1",
+                task_id="task-1",
+                summary="HIGH: hardcoded credential in deliverable.",
+            ),
+            elapsed_seconds=0.0,
+        )
+        review_input = RedTeamReviewInput(
+            task_id="task-1",
+            execution_id="exec-1",
+            deliverable_content="Service complete.",
+            acceptance_criteria=("Login works",),
+            assigned_agent_id="alice",
+            autonomy=AutonomyLevel.SUPERVISED,
+        )
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            red_team_gate=mock_of[RedTeamGate](
+                evaluate=AsyncMock(return_value=block_result),
+            ),
+            red_team_input_builder=mock_of[DeliverableReviewInputBuilder](
+                build=AsyncMock(return_value=review_input),
+            ),
+        )
+
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        expected_reason = (
+            "Red-team review blocked completion: "
+            "HIGH: hardcoded credential in deliverable."
+        )
+        mutation = mock_te.submit.call_args.args[0]
+        assert mutation.target_status == TaskStatus.IN_PROGRESS
+        assert mutation.reason == expected_reason
+        kwargs = repo.append_with_next_version.call_args.kwargs
+        assert kwargs["decision"] is DecisionOutcome.REJECTED
+        assert kwargs["reason"] == expected_reason
 
     async def test_decision_includes_criteria_snapshot(self) -> None:
         """Decision record includes deduped acceptance-criteria descriptions.

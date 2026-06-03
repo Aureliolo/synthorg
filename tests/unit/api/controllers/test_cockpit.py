@@ -77,7 +77,9 @@ def _seed_red_team_record(
         recorded_at=datetime.now(UTC),
     )
     # Direct dict seed: the controller reads through the same fake archive.
-    backend.red_team_reports._records[execution_id] = record
+    # Key by the record's NotBlankStr execution_id to mirror the
+    # repository's ``append`` keying exactly.
+    backend.red_team_reports._records[record.execution_id] = record
 
 
 @pytest.mark.unit
