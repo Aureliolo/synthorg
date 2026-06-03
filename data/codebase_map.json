@@ -18664,7 +18664,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 122,
       "loc_cap": 500,
       "module": "src/synthorg/workers/_red_team_runtime.py",
       "owning_feature": "runtime"

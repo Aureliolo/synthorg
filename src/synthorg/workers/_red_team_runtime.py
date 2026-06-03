@@ -68,9 +68,11 @@ def _build_grounding_substrate_resolver(
 
     def _resolve() -> GroundingSubstrateContext | None:
         registry = app_state.slice(ProvidersStateSlice).registry
-        if registry is None or len(registry) == 0:
+        if registry is None:
             return None
         available = registry.list_providers()
+        if not available:
+            return None
         if provider_name in available:
             name = provider_name
         else:

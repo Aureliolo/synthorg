@@ -207,7 +207,7 @@ class RedTeamGateService:
 
         Args:
             review_input: The evaluated input (supplies the keys).
-            merged_report: The merged report (agent + heuristic findings).
+            merged_report: The merged report (agent + grounding findings).
             verdict: The aggregate verdict the gate computed.
 
         Raises:
