@@ -30,7 +30,7 @@ export function useMcpCatalogData(): UseMcpCatalogDataReturn {
     // ``installedEntryIds`` Set starts empty and the UI mis-renders
     // already-installed entries as fresh installs.
     void useMcpCatalogStore.getState().fetchInstalled()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydration; entries.length / loading are read once to gate the initial fetch, re-running on their change would redundantly refetch
   }, [])
 
   const visibleEntries = useMemo<readonly McpCatalogEntry[]>(() => {

@@ -126,7 +126,7 @@ function useBuilderCoreState(
 ): BuilderCoreState {
   const initialFlat = useMemo(
     () => (value ? parseForBuilderState(value) : null),
-    [], // eslint-disable-line @eslint-react/exhaustive-deps -- intentionally mount-only
+    [], // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only: seeds the builder from the initial `value` once
   )
   const [mode, setMode] = useState<'builder' | 'advanced'>(() =>
     !value ? 'builder' : initialFlat ? 'builder' : 'advanced',
@@ -189,7 +189,8 @@ function useExternalValueSync({
     lastSyncedRef.current = value
     appliedExternalUpdateRef.current = true
     applyExternalValue(value, core, allocKey, toEntries)
-  }, [value]) // eslint-disable-line @eslint-react/exhaustive-deps -- resync only on external change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resync only on external `value` change; depending on core/allocKey/toEntries would re-run on every internal edit and loop the external-apply
+  }, [value])
 }
 
 function computeCurrentSerialized(core: BuilderCoreState): string {

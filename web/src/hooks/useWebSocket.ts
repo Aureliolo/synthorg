@@ -127,10 +127,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         unsubscribe: subscribed,
       })
     }
-    // Bindings and filters are intentionally excluded -- they are captured
-    // once on mount and remain stable for the component's lifetime. Changing
-    // them requires remounting the component (e.g. via a key prop).
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bindings/filters are captured once on mount and remain stable for the component's lifetime; changing them requires remounting (e.g. via a key prop), so they are intentionally excluded
   }, [isEnabled])
 
   return { connected, reconnectExhausted, setupError }

@@ -164,12 +164,11 @@ function HealthStatusButton() {
   }, [])
 
   const healthPolling = usePolling(pollHealth, HEALTH_POLL_INTERVAL)
+  const { start: startHealthPolling, stop: stopHealthPolling } = healthPolling
   useEffect(() => {
-    healthPolling.start()
-    return () => healthPolling.stop()
-    // healthPolling.start/stop are stable refs from usePolling.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    startHealthPolling()
+    return () => stopHealthPolling()
+  }, [startHealthPolling, stopHealthPolling])
 
   const statusCfg = resolveCombinedStatus(healthStatus, wsConnected, wsReconnectExhausted)
   return (

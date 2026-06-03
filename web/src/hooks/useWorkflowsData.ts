@@ -30,11 +30,11 @@ export function useWorkflowsData(): UseWorkflowsDataReturn {
   }, [])
   const polling = usePolling(pollFn, WORKFLOWS_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   const filteredWorkflows = useMemo(() => {
     let result = [...workflows]

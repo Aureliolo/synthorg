@@ -200,11 +200,7 @@ function useWebhookActivity(selected: string, selection: WebhookSelection): Webh
     return () => {
       cancelled = true
     }
-    // The effect intentionally clears state only when ``selected``
-    // changes; ``useBulkSelection`` memoises ``selection`` (it changes
-    // whenever ``selectedIds`` mutates), so listing it here would re-run
-    // the clear loop after every selection toggle.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clears state only when `selected` changes; `selection` (memoised by useBulkSelection) changes whenever selectedIds mutates, so listing it would re-run the clear loop after every selection toggle
   }, [selected])
 
   useEffect(() => {

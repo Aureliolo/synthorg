@@ -49,12 +49,12 @@ export function useOntologyData(): UseOntologyDataReturn {
   const polling = usePolling(pollFn, POLL_INTERVAL)
 
   // Initial fetch + start polling
+  const { start, stop } = polling
   useEffect(() => {
     void pollFn()
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    start()
+    return () => stop()
+  }, [pollFn, start, stop])
 
   // Client-side filtering
   const filteredEntities = useMemo(() => {

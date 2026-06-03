@@ -72,11 +72,11 @@ export function useApprovalsData(): UseApprovalsDataReturn {
 
   const polling = usePolling(pollFn, APPROVAL_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- start/stop are stable useCallback refs; polling object identity is not stable
-  }, [polling.start, polling.stop])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(

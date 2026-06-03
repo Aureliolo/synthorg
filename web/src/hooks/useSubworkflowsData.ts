@@ -23,11 +23,11 @@ export function useSubworkflowsData(): UseSubworkflowsDataReturn {
   }, [])
   const polling = usePolling(pollFn, SUBWORKFLOWS_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   const filteredSubworkflows = useMemo(() => {
     if (!searchQuery) return [...subworkflows]

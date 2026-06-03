@@ -217,8 +217,7 @@ function useEditorMount(
       view.destroy()
       viewRef.current = null
     }
-    // Only run on mount: value/language/readOnly/extensions synced via separate effects.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: constructs the EditorView once from the initial args; value/language/readOnly/extensions are synced by separate effects, and the refs are stable
   }, [])
 }
 

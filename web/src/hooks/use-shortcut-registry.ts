@@ -47,14 +47,14 @@ export function useRegisterShortcuts(shortcuts: RegisteredShortcut[]) {
   const register = ctx?.register
   const unregister = ctx?.unregister
   const ownerId = useId()
+  // Content-based change key: consumers that build `shortcuts` inline pass a
+  // fresh array identity each render, so we re-register on content change only
+  // (an unmemoised array of the same content does not thrash the registry).
+  const shortcutsKey = JSON.stringify(shortcuts)
   useEffect(() => {
     if (!register || !unregister) return
     register(ownerId, shortcuts)
     return () => unregister(ownerId)
-    // Shortcuts array identity change forces re-registration; consumers
-    // should memoize via useMemo if they construct shortcuts inline. We
-    // keep JSON.stringify for content-based change detection so an
-    // unmemoized array of the same content does not thrash the registry.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [register, unregister, ownerId, JSON.stringify(shortcuts)])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shortcuts` is keyed by content via `shortcutsKey`, not identity, to avoid re-registration thrash on inline arrays
+  }, [register, unregister, ownerId, shortcutsKey])
 }

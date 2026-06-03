@@ -50,12 +50,12 @@ export function useProviderDetailData(
   }, [providerName])
   const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
     if (!providerName) return
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [providerName])
+    start()
+    return () => stop()
+  }, [providerName, start, stop])
 
   if (!providerName) {
     return {

@@ -176,8 +176,7 @@ function useOrgInitialFetch(start: () => void, stop: () => void): void {
       mounted = false
       stop()
     }
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; start / stop are stable
-  }, [])
+  }, [start, stop])
 }
 
 export function useOrgChartData(

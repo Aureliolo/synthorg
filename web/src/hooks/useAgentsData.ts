@@ -44,13 +44,11 @@ export function useAgentsData(): UseAgentsDataReturn {
   }, [])
   const polling = usePolling(pollFn, AGENTS_POLL_INTERVAL)
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // polling is a new object each render but start/stop are stable;
-    // including it would restart polling on every render
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   // WebSocket -- debounce to coalesce burst events into a single refetch
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)

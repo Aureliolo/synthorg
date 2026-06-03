@@ -114,6 +114,10 @@ Dedup
 Deduplicates
 Deduplication
 Denylist
+destructure
+destructured
+destructures
+destructuring
 Deps
 Deserialize
 Dev

@@ -71,8 +71,7 @@ function useNavigationOverlayClose(
     if (prevPathnameRef.current === location.pathname) return
     prevPathnameRef.current = location.pathname
     if (overlayOpen && onOverlayClose) onOverlayClose()
-    // Only trigger on route changes, not on prop changes
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on route change only; the prevPathnameRef guard makes re-runs from overlayOpen/onOverlayClose prop changes no-ops, so they are deliberately excluded
   }, [location.pathname])
 }
 

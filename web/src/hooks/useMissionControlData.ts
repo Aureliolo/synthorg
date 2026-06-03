@@ -64,11 +64,11 @@ export function useMissionControlData(): UseMissionControlDataReturn {
   )
   const polling = usePolling(pollFn, SNAPSHOT_POLL_INTERVAL, { skipIfFresh })
 
+  const { start, stop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    start()
+    return () => stop()
+  }, [start, stop])
 
   const bindings: ChannelBinding[] = useMemo(
     () =>

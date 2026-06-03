@@ -71,7 +71,7 @@ export function usePersonalitiesAdminController(): PersonalitiesAdminController 
     // effect on every render and reset the page on every keystroke. The
     // ``resetPage`` reference is what we actually need; depending on the
     // search/sort primitives is sufficient.
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- pagination.resetPage identity is unstable; sort/search are the real triggers
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pagination.resetPage identity is unstable; sort/search are the real triggers
   }, [list.searchQuery, list.sortKey])
 
   const handleCreateSubmit = useCallback(

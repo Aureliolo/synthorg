@@ -118,7 +118,7 @@ function usePollRefs(
   const inFlightRef = useRef(false)
   const pendingResumeRef = useRef(false)
   // Stabilise the refs bundle so consumers can list it in dependency
-  // arrays without forcing an `eslint-disable @eslint-react/exhaustive-deps`
+  // arrays without forcing an `eslint-disable react-hooks/exhaustive-deps`
   // override. Ref identities themselves are stable across renders, but
   // returning a fresh object literal each render would re-trigger any
   // memoised hook that depends on `refs`.
@@ -213,7 +213,7 @@ export function usePolling(
       }
       timerRef.current = setTimeout(() => { void tick() }, delayMs)
     },
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- refs / handlers are derived from refs that don't trigger re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs / handlers are derived from refs that don't trigger re-render
     [intervalMs],
   )
 
@@ -231,7 +231,7 @@ export function usePolling(
       if (_shouldRunPoll(refs, runId, handlers)) await _invokePoll(refs, handlers)
       scheduleTick(runId)
     })()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- refs / handlers are derived from refs that don't trigger re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs / handlers are derived from refs that don't trigger re-render
   }, [scheduleTick, isValidInterval, intervalMs])
 
   const stop = useCallback(() => {
@@ -243,7 +243,7 @@ export function usePolling(
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- ref handles are stable identities; the rule lists them because they were destructured from a non-ref local
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ref handles are stable identities; the rule lists them because they were destructured from a non-ref local
   }, [])
 
   useEffect(() => stop, [stop])
@@ -253,7 +253,7 @@ export function usePolling(
     const handler = _buildVisibilityHandler(refs, scheduleTick)
     document.addEventListener('visibilitychange', handler)
     return () => document.removeEventListener('visibilitychange', handler)
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- refs is derived from refs that don't trigger re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs is derived from refs that don't trigger re-render
   }, [scheduleTick])
 
   return { active, error, isRefetching, start, stop }
