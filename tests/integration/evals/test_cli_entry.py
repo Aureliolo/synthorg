@@ -1,10 +1,15 @@
 # module-kind: tests
 """Standalone-import smoke test for the ``python -m evals`` entry point.
 
-Runs the entry point in a SUBPROCESS deliberately: importing ``evals.__main__``
-in-process would be primed by the test suite's conftest and pass even if the cold
-standalone import is broken, giving false confidence. The subprocess starts from a
-cold interpreter, so it proves the entry point's own import-graph prime works.
+Runs the entry point in a real SUBPROCESS deliberately: importing
+``evals.__main__`` in-process would be primed by the test suite's conftest
+and pass even if the cold standalone import is broken, giving false
+confidence. The subprocess starts from a cold interpreter, so it proves the
+entry point's own import-graph prime works end to end.
+
+Lives in the integration tier because the cold subprocess primes the full
+``evals`` -> ``synthorg.persistence`` import graph, which is genuine heavy
+I/O that runs past the unit tier's per-test wall-clock budget.
 """
 
 import subprocess
@@ -14,7 +19,7 @@ from typing import Final
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 

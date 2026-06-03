@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
@@ -150,6 +150,14 @@ class TestRedTeamReportArchiveRepository:
         assert removed == 1
         remaining = await backend.red_team_reports.query(RedTeamReportFilterSpec())
         assert {r.execution_id for r in remaining} == {"fresh"}
+
+    async def test_purge_before_rejects_naive(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.red_team_reports.purge_before(
+                datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )
 
     async def test_query_empty_when_no_match(self, backend: PersistenceBackend) -> None:
         page = await backend.red_team_reports.query(

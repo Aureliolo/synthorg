@@ -34,6 +34,9 @@ from synthorg.security.redteam.models import (
 )
 
 if TYPE_CHECKING:
+    # psycopg_pool ships only in the ``postgres`` extra; importing it under
+    # TYPE_CHECKING keeps this module importable without that extra (the
+    # Postgres backend, and thus this repository, is wired only when present).
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -139,17 +142,21 @@ class PostgresRedTeamReportArchiveRepository:
     async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``recorded_at < threshold``.
 
-        ``threshold`` must be timezone-aware; ``normalize_utc`` rejects naive
-        values so they cannot slip through silently. The annotation is a plain
-        ``datetime`` (matching the sibling repositories) so runtime
+        ``threshold`` must be timezone-aware; a naive value is rejected by an
+        explicit guard (``normalize_utc`` coerces naive datetimes to UTC rather
+        than raising, so it cannot enforce this on its own). The annotation is a
+        plain ``datetime`` (matching the sibling repositories) so runtime
         type-checking does not reject an aware ``datetime`` instance.
 
         Returns:
             Number of rows deleted.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the database query fails.
         """
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

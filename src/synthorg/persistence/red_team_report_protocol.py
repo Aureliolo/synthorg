@@ -108,13 +108,15 @@ class RedTeamReportArchiveRepository(
         """Delete records with ``recorded_at < threshold``. Returns rows removed.
 
         ``threshold`` must be timezone-aware; passing a naive value is a
-        contract violation rejected at the persistence boundary (via
-        ``normalize_utc``) so the cut-off cannot drift with the session
-        timezone. The annotation is a plain ``datetime`` (matching the other
-        repository protocols) rather than ``AwareDatetime`` so runtime
-        type-checking does not reject an aware ``datetime`` instance.
+        contract violation rejected at the persistence boundary by an explicit
+        ``if threshold.tzinfo is None`` guard in each concrete implementation
+        (``normalize_utc`` coerces naive datetimes to UTC rather than raising,
+        so it cannot enforce this on its own), keeping the cut-off from drifting
+        with the session timezone. The annotation is a plain ``datetime``
+        (matching the other repository protocols) rather than ``AwareDatetime``
+        so runtime type-checking does not reject an aware ``datetime`` instance.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``threshold`` is naive, or the database query fails.
         """
         ...
