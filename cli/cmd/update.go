@@ -588,7 +588,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	rollback := func() {
 		if backupExists {
-			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G703: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
+			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"Warning: failed to restore compose.yml backup: %v\n", wErr)
 			}

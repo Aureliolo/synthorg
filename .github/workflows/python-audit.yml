@@ -30,6 +30,14 @@ jobs:
         #   reachable through anything we ship. Remove when py leaves the
         #   dependency tree.
         run: |
+          set -euo pipefail
+          # pip-audit does not error when an --ignore-vuln target is absent
+          # from the report, so the suppression can silently outlive the
+          # package it covers. Fail loudly once py has left the lockfile.
+          if ! grep -q '^name = "py"$' uv.lock; then
+            echo "::error::PYSEC-2022-42969 is suppressed but 'py' is no longer in uv.lock; drop the --ignore-vuln." >&2
+            exit 1
+          fi
           uv run pip-audit \
             --ignore-vuln PYSEC-2022-42969
 

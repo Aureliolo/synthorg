@@ -10,7 +10,7 @@ func diskUsage(path string) (total, free uint64, err error) {
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return 0, 0, err
 	}
-	total = stat.Blocks * uint64(stat.Bsize)
-	free = stat.Bavail * uint64(stat.Bsize)
+	total = stat.Blocks * uint64(stat.Bsize) //nolint:gosec // G115: Bsize is the statfs block size, always non-negative
+	free = stat.Bavail * uint64(stat.Bsize)  //nolint:gosec // G115: Bsize is the statfs block size, always non-negative
 	return total, free, nil
 }
