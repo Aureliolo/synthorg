@@ -77,6 +77,7 @@ class MeasuredBenchmarkScoreProvider:
         # would silently truncate at DEFAULT_PAGE_SIZE once the operator
         # records more models than one page holds.
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded pagination drain
         while True:
             page = await self._repo.list_items(limit=DEFAULT_PAGE_SIZE, offset=offset)
             for record in page:
