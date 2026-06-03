@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 408,
+      "loc": 321,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -215,6 +215,13 @@
       "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/api/_approval_expiration.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 121,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/_benchmark_wiring.py",
       "owning_feature": "api_core"
     },
     {
