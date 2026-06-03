@@ -51,6 +51,19 @@ def _lookup(*, agents: tuple[Any, ...], records: tuple[Any, ...]) -> Any:
     )
 
 
+@pytest.mark.parametrize("window_days", [0, -1])
+def test_rejects_non_positive_window(window_days: int) -> None:
+    """A zero or negative window would silently always cold-start."""
+    registry = mock_of[AgentRegistryService](list_active=AsyncMock(return_value=()))
+    tracker = mock_of[CostTracker](get_records=AsyncMock(return_value=()))
+    with pytest.raises(ValueError, match="window_days must be >= 1"):
+        CostTrackerHistoryLookup(
+            registry=registry,
+            cost_tracker=tracker,
+            window_days=window_days,
+        )
+
+
 async def test_returns_productive_costs_for_role_and_tier() -> None:
     """Productive spend by a role on a tier is returned as per-turn samples."""
     lookup = _lookup(

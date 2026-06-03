@@ -14,12 +14,17 @@ the matching observations within the cost window.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
+from collections.abc import Sequence
+from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
+from synthorg.budget._cost_window import (
+    COST_WINDOW_DAYS,
+    ClockFn,
+    tier_from_model_id,
+    utc_now,
+)
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.forecaster import _tier_from_model_id
 from synthorg.core.normalization import normalize_identifier
 from synthorg.observability import get_logger
 
@@ -29,14 +34,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-#: Observed-cost window (days) for the per-(tier, role) history baseline.
-COST_WINDOW_DAYS: Final[int] = 30
-
 #: Default tier for a model id the forecaster cannot classify; matches the
 #: forecaster's own fallback so the lookup buckets records the same way.
 _DEFAULT_TIER: Final[str] = "medium"
-
-ClockFn = Callable[[], datetime]
 
 #: Call categories excluded from per-turn observations: only direct task work
 #: (productive, or untagged legacy records) approximates an agent's turn cost.
@@ -49,23 +49,14 @@ _EXCLUDED_CATEGORIES: Final[frozenset[LLMCallCategory]] = frozenset(
 )
 
 
-def _utc_now() -> datetime:
-    """Return the current UTC time.
-
-    Returns:
-        Result of type ``datetime``.
-    """
-    return datetime.now(UTC)
-
-
 class CostTrackerHistoryLookup:
     """Resolve per-(tier, role) cost-per-turn history from observed spend.
 
-    Satisfies :data:`~synthorg.budget.forecaster.HistoryLookup`. A lookup
-    builds the ``(tier, role) -> [cost_per_turn, ...]`` index once per call from
-    the cost-window records and the live roster, then returns the bucket for the
-    requested key (empty when that role/tier has no observed productive spend, so
-    the forecaster's blend collapses to the static prior for it).
+    Satisfies :data:`~synthorg.budget.forecaster.HistoryLookup`. Each call
+    builds a fresh ``(tier, role) -> [cost_per_turn, ...]`` index (no caching)
+    from the cost-window records and the live roster, then returns the bucket
+    for the requested key (empty when that role/tier has no observed productive
+    spend, so the forecaster's blend collapses to the static prior for it).
 
     Args:
         registry: Live agent registry (active agents -> role + id).
@@ -82,9 +73,12 @@ class CostTrackerHistoryLookup:
         clock: ClockFn | None = None,
         window_days: int = COST_WINDOW_DAYS,
     ) -> None:
+        if window_days < 1:
+            msg = f"window_days must be >= 1, got {window_days!r}"
+            raise ValueError(msg)
         self._registry = registry
         self._cost_tracker = cost_tracker
-        self._clock = clock if clock is not None else _utc_now
+        self._clock = clock if clock is not None else utc_now
         self._window_days = window_days
 
     async def __call__(self, tier: str, role_id: str) -> Sequence[float]:
@@ -120,7 +114,7 @@ class CostTrackerHistoryLookup:
             role = role_by_agent.get(str(record.agent_id))
             if role is None:
                 continue
-            tier = _tier_from_model_id(record.model) or _DEFAULT_TIER
+            tier = tier_from_model_id(record.model) or _DEFAULT_TIER
             buckets[(tier, role)].append(record.cost)
         return {key: tuple(values) for key, values in buckets.items()}
 

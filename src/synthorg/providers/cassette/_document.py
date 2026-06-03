@@ -40,7 +40,7 @@ class CassetteRecordedError(BaseModel):
     the recording boundary; it is safe to persist verbatim.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     error_class: NotBlankStr = Field(description="Recorded type(exc).__name__")
     message: str = Field(description="Scrubbed error description")
@@ -59,7 +59,7 @@ class CassetteOutcome(BaseModel):
     request copy.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     kind: CassetteOutcomeKind = Field(description="Outcome discriminator")
     response: CompletionResponse | None = Field(default=None)
@@ -183,7 +183,7 @@ class CassetteOutcome(BaseModel):
 class CassetteInteraction(BaseModel):
     """One recorded provider call: request key + verbatim outcome."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     method: CassetteMethod = Field(description="Provider method")
     request_hash: NotBlankStr = Field(description="Canonical request hash")
@@ -224,9 +224,9 @@ class CassetteDocument(BaseModel):
     cassette read from disk in replay mode must carry it.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    cassette_format_version: int = Field(description="Schema version")
+    cassette_format_version: int = Field(ge=1, description="Schema version")
     body_sha256: NotBlankStr | None = Field(
         default=None, description="sha256 over the canonical interactions payload"
     )

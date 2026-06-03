@@ -373,23 +373,32 @@ class CassetteSession:
         """
         expected = document.body_sha256
         actual = body_digest(document.interactions)
-        if expected is None or expected != actual:
-            logger.warning(
-                PROVIDER_CASSETTE_FORMAT_ERROR,
-                path=str(self._path),
-                reason="integrity",
-                expected=expected,
-                actual=actual,
-            )
-            raise CassetteIntegrityError(
-                CassetteIntegrityError.default_message,
-                context={
-                    "path": str(self._path),
-                    "reason": "integrity",
-                    "expected": expected,
-                    "actual": actual,
-                },
-            )
+        if expected is None:
+            # No digest header: an older cassette recorded before integrity
+            # protection existed. The resolution is to re-record, not to
+            # investigate tampering, so the reason is distinct from a
+            # genuine mismatch.
+            reason = "integrity_absent"
+        elif expected != actual:
+            reason = "integrity_mismatch"
+        else:
+            return
+        logger.warning(
+            PROVIDER_CASSETTE_FORMAT_ERROR,
+            path=str(self._path),
+            reason=reason,
+            expected=expected,
+            actual=actual,
+        )
+        raise CassetteIntegrityError(
+            CassetteIntegrityError.default_message,
+            context={
+                "path": str(self._path),
+                "reason": reason,
+                "expected": expected,
+                "actual": actual,
+            },
+        )
 
     def _load(self) -> None:
         """Load + validate the cassette, then index it by (hash, lane).

@@ -1619,7 +1619,7 @@
     },
     {
       "kind": "code",
-      "loc": 344,
+      "loc": 376,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -1640,7 +1640,7 @@
     },
     {
       "kind": "code",
-      "loc": 221,
+      "loc": 229,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_runner_shutdown.py",
       "owning_feature": "api_core"
@@ -2172,6 +2172,13 @@
     },
     {
       "kind": "code",
+      "loc": 37,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/_cost_window.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 461,
       "loc_cap": 500,
       "module": "src/synthorg/budget/_enforcer_helpers.py",
@@ -2375,14 +2382,14 @@
     },
     {
       "kind": "code",
-      "loc": 69,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/budget/forecast_roles.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 310,
+      "loc": 285,
       "loc_cap": 500,
       "module": "src/synthorg/budget/forecaster.py",
       "owning_feature": "budget"
@@ -2417,7 +2424,7 @@
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 87,
       "loc_cap": 500,
       "module": "src/synthorg/budget/pareto_assignments.py",
       "owning_feature": "budget"
@@ -4216,7 +4223,7 @@
     },
     {
       "kind": "code",
-      "loc": 267,
+      "loc": 285,
       "loc_cap": 500,
       "module": "src/synthorg/engine/_review_completion_gates.py",
       "owning_feature": "engine"
@@ -6050,7 +6057,7 @@
     },
     {
       "kind": "code",
-      "loc": 616,
+      "loc": 629,
       "loc_cap": 500,
       "module": "src/synthorg/engine/review_gate.py",
       "owning_feature": "engine"
@@ -12532,7 +12539,7 @@
     },
     {
       "kind": "code",
-      "loc": 53,
+      "loc": 57,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/red_team.py",
       "owning_feature": "observability"
@@ -14128,7 +14135,7 @@
     },
     {
       "kind": "code",
-      "loc": 208,
+      "loc": 211,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/red_team_report_repo.py",
       "owning_feature": "persistence"
@@ -14849,7 +14856,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/red_team_report_repo.py",
       "owning_feature": "persistence"
@@ -15262,7 +15269,7 @@
     },
     {
       "kind": "code",
-      "loc": 409,
+      "loc": 414,
       "loc_cap": 500,
       "module": "src/synthorg/providers/cassette/store.py",
       "owning_feature": "providers"
@@ -16102,7 +16109,7 @@
     },
     {
       "kind": "code",
-      "loc": 169,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/builder.py",
       "owning_feature": "security"
@@ -16116,7 +16123,7 @@
     },
     {
       "kind": "code",
-      "loc": 367,
+      "loc": 371,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/gate.py",
       "owning_feature": "security"
@@ -16158,7 +16165,7 @@
     },
     {
       "kind": "code",
-      "loc": 248,
+      "loc": 256,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/models.py",
       "owning_feature": "security"

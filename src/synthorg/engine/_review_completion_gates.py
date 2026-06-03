@@ -25,6 +25,7 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.observability.events.red_team import (
     RED_TEAM_GATE_SKIPPED,
+    RED_TEAM_NO_DELIVERABLE,
     RED_TEAM_REWORK_ROUTED,
 )
 from synthorg.observability.events.review_pipeline import (
@@ -64,10 +65,18 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
 ) -> GateOutcome:
     """Run the red-team then vision gates before a COMPLETED transition.
 
-    The red-team input is built from the task's recorded deliverable via
-    ``red_team_input_builder``; a ``None`` build result is handled by
-    :func:`apply_red_team_gate` under ``on_missing_deliverable``. A BLOCK
-    from either gate reroutes the task to IN_PROGRESS rework.
+    When the incoming verdict is already a rejection (``approved`` is
+    ``False``), returns immediately without evaluating any gate. The
+    red-team gate is active only when BOTH the gate and its
+    ``red_team_input_builder`` are wired; a gate attached without a
+    builder (for example a boot with no persistence, where the
+    flight-recorder deliverable source is absent) is left inert rather
+    than fail-closed, since blocking every completion on a wiring gap the
+    operator did not ask for would be worse than not gating. When active,
+    the input is built from the task's recorded deliverable; a ``None``
+    build result is handled by :func:`apply_red_team_gate` under
+    ``on_missing_deliverable``. A BLOCK from either gate reroutes the task
+    to IN_PROGRESS rework.
 
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)``
@@ -76,19 +85,28 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     """
     if not approved:
         return target, transition_reason, event, approved
-    red_team_input: RedTeamReviewInput | None = None
     if red_team_gate is not None and red_team_input_builder is not None:
         red_team_input = await red_team_input_builder.build(task)
-    target, transition_reason, event, approved = await apply_red_team_gate(
-        gate=red_team_gate,
-        on_missing_deliverable=on_missing_deliverable,
-        task_id=task.id,
-        target=target,
-        transition_reason=transition_reason,
-        event=event,
-        approved=approved,
-        red_team_input=red_team_input,
-    )
+        target, transition_reason, event, approved = await apply_red_team_gate(
+            gate=red_team_gate,
+            on_missing_deliverable=on_missing_deliverable,
+            task_id=task.id,
+            target=target,
+            transition_reason=transition_reason,
+            event=event,
+            approved=approved,
+            red_team_input=red_team_input,
+        )
+    elif red_team_gate is not None:
+        logger.warning(
+            RED_TEAM_GATE_SKIPPED,
+            task_id=task.id,
+            reason="input_builder_not_wired",
+            note=(
+                "Red-team gate is attached but no input builder is wired "
+                "(e.g. persistence absent); gate is inert this run."
+            ),
+        )
     if approved:
         target, transition_reason, event, approved = await apply_vision_gate(
             gate=vision_gate,
@@ -144,7 +162,7 @@ async def apply_red_team_gate(  # noqa: PLR0913 -- gate inputs, all required
             )
             return target, transition_reason, event, approved
         logger.warning(
-            RED_TEAM_REWORK_ROUTED,
+            RED_TEAM_NO_DELIVERABLE,
             task_id=task_id,
             reason="no_deliverable_block",
             note=(

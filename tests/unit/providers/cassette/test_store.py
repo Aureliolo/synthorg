@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.providers.cassette.errors import (
     CassetteFormatError,
@@ -26,6 +27,7 @@ from synthorg.providers.cassette.mode import CassetteMode
 from synthorg.providers.cassette.redaction import NullRedactor, PatternRedactor
 from synthorg.providers.cassette.store import (
     CASSETTE_FORMAT_VERSION,
+    CassetteDocument,
     CassetteOutcome,
     CassetteOutcomeKind,
     CassetteSession,
@@ -412,3 +414,16 @@ class TestConcurrentFanoutDeterminism:
         # ``take`` failure there would have aborted the TaskGroup).
         assert replayed == recorded
         assert len(replayed) == n * 2
+
+
+@pytest.mark.parametrize("version", [0, -1])
+def test_cassette_document_rejects_non_positive_version(version: int) -> None:
+    """A zero or negative format version is refused at construction."""
+    with pytest.raises(ValidationError):
+        CassetteDocument(cassette_format_version=version)
+
+
+def test_cassette_document_accepts_current_version() -> None:
+    """The current format version constructs cleanly."""
+    doc = CassetteDocument(cassette_format_version=CASSETTE_FORMAT_VERSION)
+    assert doc.cassette_format_version == CASSETTE_FORMAT_VERSION

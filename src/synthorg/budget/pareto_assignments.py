@@ -14,10 +14,11 @@ for it would be meaningless.
 """
 
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
-from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from collections.abc import Sequence
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
+from synthorg.budget._cost_window import COST_WINDOW_DAYS, ClockFn, utc_now
 from synthorg.budget.pareto import RoleAssignment
 from synthorg.observability import get_logger
 
@@ -26,20 +27,6 @@ if TYPE_CHECKING:
     from synthorg.hr.registry import AgentRegistryService
 
 logger = get_logger(__name__)
-
-#: Observed-cost window (days) for the per-model mean-cost baseline.
-COST_WINDOW_DAYS: Final[int] = 30
-
-ClockFn = Callable[[], datetime]
-
-
-def _utc_now() -> datetime:
-    """Return the current UTC time.
-
-    Returns:
-        Result of type ``datetime``.
-    """
-    return datetime.now(UTC)
 
 
 class AgentRegistryAssignmentLookup:
@@ -66,7 +53,7 @@ class AgentRegistryAssignmentLookup:
     ) -> None:
         self._registry = registry
         self._cost_tracker = cost_tracker
-        self._clock = clock if clock is not None else _utc_now
+        self._clock = clock if clock is not None else utc_now
 
     async def __call__(self) -> Sequence[RoleAssignment]:
         """Return one assignment per active role with observed spend.

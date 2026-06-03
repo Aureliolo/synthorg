@@ -152,6 +152,18 @@ class ReviewGateService:
         """
         self._background_tasks = registry
 
+    async def drain_background_tasks(self) -> None:
+        """Drain in-flight gated-completion background tasks (shutdown seam).
+
+        A gated approve runs the red-team evaluation in a tracked
+        background task (see :meth:`dispatch_completion`); without this
+        drain a graceful shutdown would cancel an in-flight evaluation and
+        leave the task stranded in IN_REVIEW. No-op when no registry is
+        attached.
+        """
+        if self._background_tasks is not None:
+            await self._background_tasks.drain()
+
     def set_red_team_on_missing_deliverable(
         self, policy: Literal["block", "skip"]
     ) -> None:
@@ -167,8 +179,11 @@ class ReviewGateService:
         """Return whether any adversarial completion gate is configured.
 
         Returns:
-            ``True`` when a red-team or vision gate is attached, so a
-            completion must run the gate chain before COMPLETED.
+            ``True`` when at least one completion gate (red-team or
+            vision) is attached, so a completion must pass every
+            configured gate before reaching COMPLETED. A ``True`` result
+            does not imply both gates run: the chain evaluates only those
+            that are attached.
         """
         return self._red_team_gate is not None or self._vision_gate is not None
 

@@ -19,7 +19,10 @@ from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
-from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
+from synthorg.observability.events.red_team import (
+    RED_TEAM_GATE_BUILD_FAILED,
+    RED_TEAM_GATE_SKIPPED,
+)
 from synthorg.security.redteam.agent import build_red_team_agent_identity
 from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -169,7 +172,7 @@ def build_red_team_runtime(  # noqa: PLR0913 -- boot-time builder inputs, all re
             "tool is registered on the engine's tool registry."
         )
         logger.error(
-            RED_TEAM_GATE_SKIPPED,
+            RED_TEAM_GATE_BUILD_FAILED,
             reason="seed_incomplete",
             has_report_repo=seed.report_repo is not None,
             has_submit_tool=seed.submit_tool is not None,

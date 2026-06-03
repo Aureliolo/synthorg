@@ -34,6 +34,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CHECK_COMPLETED,
     RED_TEAM_GROUNDING_CHECK_FAILED,
     RED_TEAM_GROUNDING_CHECK_STARTED,
+    RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
     RED_TEAM_REPORT_ARCHIVED,
     RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
@@ -220,7 +221,7 @@ class RedTeamGateService:
             await self._report_archive.append(record)
         except DuplicateRecordError:
             logger.debug(
-                RED_TEAM_REPORT_ARCHIVED,
+                RED_TEAM_REPORT_ALREADY_ARCHIVED,
                 execution_id=review_input.execution_id,
                 note="already archived for this execution",
             )
@@ -288,6 +289,7 @@ class RedTeamGateService:
                 task_id=review_input.task_id,
                 error_type=type(original).__name__,
                 error=safe_error_description(original),
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
 
@@ -305,6 +307,7 @@ class RedTeamGateService:
                 task_id=review_input.task_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
 
@@ -318,6 +321,7 @@ class RedTeamGateService:
                 expected_execution_id=review_input.execution_id,
                 stored_task_id=report.task_id,
                 expected_task_id=review_input.task_id,
+                gate_degraded=True,
             )
             return self._fail_open_report(review_input)
         logger.info(

@@ -10,15 +10,36 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.budget.forecast_roles import (
     DEFAULT_ROLE_SKELETON,
+    BriefRoleSkeleton,
     CompanyRoleSkeletonProvider,
 )
 from synthorg.hr.registry import AgentRegistryService
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
+
+
+def test_skeleton_rejects_assignment_role_not_in_roles() -> None:
+    """A model assignment keyed on an unlisted role is a construction error."""
+    with pytest.raises(ValidationError, match="not in roles"):
+        BriefRoleSkeleton(
+            roles=("backend developer",),
+            model_assignments={"designer": "example-small-001"},
+        )
+
+
+def test_skeleton_accepts_assignment_subset_of_roles() -> None:
+    """An assignment whose keys are a subset of roles is valid."""
+    skeleton = BriefRoleSkeleton(
+        roles=("backend developer", "designer"),
+        model_assignments={"designer": "example-small-001"},
+    )
+
+    assert skeleton.model_assignments == {"designer": "example-small-001"}
 
 
 def _agent(role: str, model_id: str) -> Any:

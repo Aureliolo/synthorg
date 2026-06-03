@@ -13,8 +13,8 @@ import structlog.testing
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability.events.red_team import (
+    RED_TEAM_REPORT_ALREADY_ARCHIVED,
     RED_TEAM_REPORT_ARCHIVE_FAILED,
-    RED_TEAM_REPORT_ARCHIVED,
 )
 from synthorg.persistence.red_team_report_protocol import RedTeamReportFilterSpec
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -246,5 +246,5 @@ async def test_duplicate_archive_is_benign() -> None:
         result = await gate.evaluate(_input())
 
     assert result.verdict is RedTeamVerdict.BLOCK
-    archived = [e for e in logs if e["event"] == RED_TEAM_REPORT_ARCHIVED]
+    archived = [e for e in logs if e["event"] == RED_TEAM_REPORT_ALREADY_ARCHIVED]
     assert any(e.get("note") == "already archived for this execution" for e in archived)

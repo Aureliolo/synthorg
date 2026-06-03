@@ -542,8 +542,8 @@
     },
     "src/synthorg/engine/review_gate.py": {
       "cap": 500,
-      "loc": 616,
-      "ratio": 1.232,
+      "loc": 629,
+      "ratio": 1.258,
       "tier": "code"
     },
     "src/synthorg/engine/shutdown.py": {
@@ -1262,8 +1262,8 @@
     },
     "src/synthorg/providers/cassette/store.py": {
       "cap": 500,
-      "loc": 409,
-      "ratio": 0.818,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/providers/drivers/litellm_driver.py": {
@@ -1492,7 +1492,7 @@
     "synthorg.api.state": 146,
     "synthorg.api.state_slices": 30,
     "synthorg.approval.protocol": 36,
-    "synthorg.approval.state": 20,
+    "synthorg.approval.state": 21,
     "synthorg.budget.call_category": 43,
     "synthorg.budget.config": 25,
     "synthorg.budget.cost_record": 24,

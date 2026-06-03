@@ -14,9 +14,9 @@ an operator-approved ceiling.
 
 from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -35,10 +35,32 @@ class BriefRoleSkeleton(BaseModel):
     so the forecaster derives the right per-role tier prior.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     roles: tuple[NotBlankStr, ...] = Field(min_length=1)
     model_assignments: Mapping[NotBlankStr, NotBlankStr] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _assignments_subset_of_roles(self) -> Self:
+        """Reject assignments naming a role absent from ``roles``.
+
+        A model assignment keyed on a role the skeleton does not span is
+        a construction error: the forecaster would never look it up, so
+        it silently does nothing. Failing fast keeps the two fields
+        consistent.
+
+        Returns:
+            The validated skeleton.
+
+        Raises:
+            ValueError: If ``model_assignments`` keys are not a subset of
+                ``roles``.
+        """
+        extra = self.model_assignments.keys() - set(self.roles)
+        if extra:
+            msg = f"model_assignments names roles not in roles: {sorted(extra)!r}"
+            raise ValueError(msg)
+        return self
 
 
 #: The single-role fallback used when no roster is available (an empty company,

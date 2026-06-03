@@ -32,7 +32,11 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
 )
-from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
+from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
+from synthorg.observability.events.settings import (
+    SETTINGS_FETCH_FAILED,
+    SETTINGS_VALUE_RESOLVED,
+)
 from synthorg.security.redteam.builder import RedTeamRuntime
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
@@ -278,6 +282,12 @@ def _wire_red_team_completion(
     the flight-recorder frame store, the posture forwards
     ``on_missing_deliverable``, and the background registry keeps the inline
     AgentEngine evaluation off the operator's approve/reject response.
+
+    No-op when persistence is not connected: the builder's deliverable
+    source is the flight-recorder frame store, so without a backend there
+    is nothing to wire. The gate stays attached but inert (see
+    ``run_completion_gates``), rather than crashing boot on the missing
+    frame repository.
     """
     from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
         DeliverableReviewInputBuilder,
@@ -285,8 +295,22 @@ def _wire_red_team_completion(
     from synthorg.observability.background_tasks import (  # noqa: PLC0415
         BackgroundTaskRegistry,
     )
-    from synthorg.persistence.state import persistence_of  # noqa: PLC0415
+    from synthorg.persistence.state import (  # noqa: PLC0415
+        PersistenceStateSlice,
+        persistence_of,
+    )
 
+    if app_state.slice(PersistenceStateSlice).backend is None:
+        logger.warning(
+            RED_TEAM_GATE_SKIPPED,
+            reason="no_persistence",
+            note=(
+                "Red-team completion wiring skipped: persistence is not "
+                "connected, so the flight-recorder deliverable source is "
+                "unavailable; the gate stays inert this boot."
+            ),
+        )
+        return
     review_gate_service.set_red_team_on_missing_deliverable(
         runtime.on_missing_deliverable,
     )
@@ -307,8 +331,8 @@ def _company_autonomy_provider(app_state: AppState) -> AutonomyProvider:
     Returns:
         An async callable returning the configured company
         ``AutonomyLevel``, defaulting to the strict ``SUPERVISED``
-        posture when settings are unavailable or unset so the red-team
-        severity routing never silently relaxes.
+        posture when settings are unavailable, unset, or unreadable so the
+        red-team severity routing never silently relaxes.
     """
 
     async def _provide() -> AutonomyLevel:
@@ -320,6 +344,19 @@ def _company_autonomy_provider(app_state: AppState) -> AutonomyProvider:
         try:
             return await resolver.get_autonomy_level()
         except SettingNotFoundError:
+            return AutonomyLevel.SUPERVISED
+        except (SettingsEncryptionError, ValueError) as exc:
+            # A stored autonomy_level that cannot be decrypted or is not a
+            # valid enum member is a real misconfiguration: log it (unlike
+            # the never-set case) and fall back to the strict posture so a
+            # bad setting cannot crash every completion at the gate.
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                setting="autonomy_level",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="autonomy level unreadable; falling back to SUPERVISED",
+            )
             return AutonomyLevel.SUPERVISED
 
     return _provide

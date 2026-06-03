@@ -12,6 +12,9 @@ RED_TEAM_GATE_STARTED: Final[str] = "red_team.gate.started"
 RED_TEAM_GATE_SKIPPED: Final[str] = "red_team.gate.skipped"
 """Gate skipped (feature flag off, or no provider configured)."""
 
+RED_TEAM_GATE_BUILD_FAILED: Final[str] = "red_team.gate.build_failed"
+"""Gate enabled but a boot-time build precondition failed (raises)."""
+
 RED_TEAM_AGENT_INVOKED: Final[str] = "red_team.agent.invoked"
 """Gate dispatched the red-team agent for inline evaluation."""
 
@@ -64,6 +67,9 @@ RED_TEAM_REPORT_ARCHIVED: Final[str] = "red_team.report.archived"
 
 RED_TEAM_REPORT_ARCHIVE_FAILED: Final[str] = "red_team.report.archive_failed"
 """Durable archive write failed; the gate verdict stands (fail-OPEN audit)."""
+
+RED_TEAM_REPORT_ALREADY_ARCHIVED: Final[str] = "red_team.report.already_archived"
+"""A report for this execution was already archived; the write is a no-op."""
 
 RED_TEAM_REPORT_SAVE_FAILED: Final[str] = "red_team.report.save_failed"
 """Archive repository failed to persist a report record."""

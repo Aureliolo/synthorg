@@ -322,6 +322,7 @@ Sidebar layout (220px expanded, 56px icon rail):
   - Roles, `Briefcase`, `/roles`
   - Task Board, `KanbanSquare`, `/tasks`
   - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
+  - Mission Control, `Radio`, `/mission-control` (live cockpit, steering, flight recorder)
   - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
 - **Workspace** (collapsible label):
   - Agents, `Users`, `/agents`
@@ -376,6 +377,9 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/tasks?selected=:taskId` | Task detail (panel) | Panel overlay on board view |
 | `/budget` | Budget | P&L dashboard |
 | `/budget/forecast` | Budget forecast | Projection charts |
+| `/mission-control` | Mission Control | Tabbed: live cockpit (stuck/runaway flags, pause/kill), mid-flight steering, and the flight recorder (time-travel seek/replay + durable red-team verdict). The active tab is in-page state, not URL-addressable |
+| `/mission-control?executionId=:id` | Flight recorder (deep link) | Auto-loads the execution into the recorder (from a live cockpit agent row); `?taskId=:id` is accepted as a fallback key |
+| `/mission-control?project=:id` | Steering (deep link) | Seeds the steering project from the URL |
 | `/approvals` | Approvals | Pending queue |
 | `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
 | `/approvals?risk=:level` | Approvals (filtered) | Filter by risk level |

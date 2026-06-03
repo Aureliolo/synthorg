@@ -31,12 +31,12 @@ import json
 import math
 import statistics
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.budget._cost_window import ClockFn, tier_from_model_id, utc_now
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.normalization import normalize_identifier
@@ -70,9 +70,6 @@ _DEFAULT_TURNS_PER_ROLE: Final[float] = 8.0
 HistoryLookup = Callable[[str, "NotBlankStr"], Awaitable[Sequence[float]]]
 """Lookup of historical per-turn cost observations keyed by (tier, role_id)."""
 
-ClockFn = Callable[[], datetime]
-"""Clock seam returning UTC datetime."""
-
 
 async def _empty_history(_tier: str, _role_id: str) -> Sequence[float]:
     """Default :class:`HistoryLookup` returning no observations.
@@ -81,15 +78,6 @@ async def _empty_history(_tier: str, _role_id: str) -> Sequence[float]:
         Result of type ``Sequence[float]``.
     """
     return ()
-
-
-def _utc_now() -> datetime:
-    """Default clock returning the current UTC timestamp.
-
-    Returns:
-        Result of type ``datetime``.
-    """
-    return datetime.now(UTC)
 
 
 class BriefSignal(BaseModel):
@@ -145,30 +133,6 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _tier_from_model_id(model_id: str) -> str | None:
-    """Best-effort tier extraction from a canonical model id.
-
-    Canonical model ids follow ``example-<tier>-<rev>``; we read the
-    tier suffix. Unknown patterns return ``None`` and the caller
-    falls back to ``medium``.
-
-    Returns:
-        The resulting ``str``, or ``None`` when unavailable.
-    """
-    parts = model_id.split("-")
-    if len(parts) < 2:  # noqa: PLR2004 -- canonical id requires at least two parts
-        return None
-    # Check local-small before the plain-tier set: a canonical
-    # ``example-local-small-001`` id has ``parts[-2] == "small"``, so the
-    # bare-tier branch would otherwise shadow the local-small case.
-    if "local" in parts and "small" in parts:
-        return "local-small"
-    candidate = parts[-2].lower()
-    if candidate in {"large", "medium", "small"}:
-        return candidate
-    return None
 
 
 def _static_prior_per_turn(config: BudgetConfig, tier: str) -> float:
@@ -246,7 +210,7 @@ class CostForecaster:
         self._history_lookup: HistoryLookup = (
             history_lookup if history_lookup is not None else _empty_history
         )
-        self._clock: ClockFn = clock if clock is not None else _utc_now
+        self._clock: ClockFn = clock if clock is not None else utc_now
 
     async def forecast(self, signal: BriefSignal) -> Forecast:
         """Produce a forecast for ``signal``.
@@ -333,7 +297,7 @@ class CostForecaster:
         tiers: list[str] = []
         for role_id in roles:
             model_id = signal.model_assignments.get(role_id, "")
-            tier = _tier_from_model_id(model_id) if model_id else "medium"
+            tier = tier_from_model_id(model_id) if model_id else "medium"
             tiers.append(tier if tier is not None else "medium")
 
         # Per-role history lookups are independent; fan them out so a

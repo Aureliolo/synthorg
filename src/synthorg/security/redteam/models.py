@@ -7,7 +7,9 @@ via the ``_SEVERITY_RANK`` lookup table so the enum stays a plain
 :mod:`synthorg.security.redteam.routing`.
 """
 
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -57,13 +59,15 @@ SEVERITY_RANK_MEDIUM: Final[int] = 2
 SEVERITY_RANK_HIGH: Final[int] = 3
 SEVERITY_RANK_CRITICAL: Final[int] = 4
 
-_SEVERITY_RANK: Final[dict[RedTeamSeverity, int]] = {
-    RedTeamSeverity.INFO: SEVERITY_RANK_INFO,
-    RedTeamSeverity.LOW: SEVERITY_RANK_LOW,
-    RedTeamSeverity.MEDIUM: SEVERITY_RANK_MEDIUM,
-    RedTeamSeverity.HIGH: SEVERITY_RANK_HIGH,
-    RedTeamSeverity.CRITICAL: SEVERITY_RANK_CRITICAL,
-}
+_SEVERITY_RANK: Final[Mapping[RedTeamSeverity, int]] = MappingProxyType(
+    {
+        RedTeamSeverity.INFO: SEVERITY_RANK_INFO,
+        RedTeamSeverity.LOW: SEVERITY_RANK_LOW,
+        RedTeamSeverity.MEDIUM: SEVERITY_RANK_MEDIUM,
+        RedTeamSeverity.HIGH: SEVERITY_RANK_HIGH,
+        RedTeamSeverity.CRITICAL: SEVERITY_RANK_CRITICAL,
+    }
+)
 
 
 def severity_rank(severity: RedTeamSeverity) -> int:
@@ -155,6 +159,11 @@ class RedTeamFinding(BaseModel):
 MAX_FINDINGS_PER_REPORT: Final[int] = 25
 """Upper bound on findings per report to keep critiques actionable."""
 
+MAX_REPORT_SUMMARY_LENGTH: Final[int] = 4096
+"""Upper bound on the report summary; the agent (an LLM) controls its
+length, so the bound caps archive-row size and the operator-facing
+rework reason derived from it."""
+
 
 class RedTeamReport(BaseModel):
     """The structured report a red-team agent files for one deliverable.
@@ -175,7 +184,7 @@ class RedTeamReport(BaseModel):
     execution_id: NotBlankStr
     task_id: NotBlankStr
     findings: tuple[RedTeamFinding, ...] = ()
-    summary: NotBlankStr
+    summary: NotBlankStr = Field(max_length=MAX_REPORT_SUMMARY_LENGTH)
 
     @model_validator(mode="after")
     def _check_findings_bounded(self) -> Self:

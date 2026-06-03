@@ -206,7 +206,9 @@ class SQLiteRedTeamReportArchiveRepository:
         """Flatten a record into a row dict (report JSON-encoded).
 
         Returns:
-            Result of type ``dict[str, object]``.
+            The named-parameter row: structured columns plus the full
+            report serialised into ``report_json`` and an ISO-8601 UTC
+            ``recorded_at``.
         """
         return {
             "execution_id": record.execution_id,
@@ -225,7 +227,8 @@ class SQLiteRedTeamReportArchiveRepository:
             QueryError: If the row cannot be deserialized.
 
         Returns:
-            Result of type ``RedTeamReportRecord``.
+            The record reconstructed from the row, with the report
+            decoded from ``report_json``.
         """
         try:
             report = RedTeamReport.model_validate_json(str(row["report_json"]))

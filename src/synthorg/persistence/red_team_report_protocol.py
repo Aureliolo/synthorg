@@ -9,11 +9,11 @@ run, so the flight-recorder read surface can answer "why was this
 deliverable sent back?" long after the execution finished.
 
 The repository composes :class:`AppendOnlyRepository`: a red-team verdict
-is an immutable audit fact (``append`` only, never updated), queryable
-newest-first by ``execution_id`` / ``task_id`` / ``verdict``, with
-``purge_before`` for retention. Single-shot per ``execution_id`` is
-enforced by the storage layer (a primary key on ``execution_id``); a
-second append for the same execution raises
+is an immutable audit fact (``append`` only, never updated), filterable
+by ``execution_id`` / ``task_id`` / ``verdict`` and ordered newest-first
+by ``recorded_at``, with ``purge_before`` for retention. Single-shot per
+``execution_id`` is enforced by the storage layer (a primary key on
+``execution_id``); a second append for the same execution raises
 :class:`~synthorg.core.persistence_errors.DuplicateRecordError`.
 
 Concrete implementations live in the backend packages

@@ -19,7 +19,7 @@ from synthorg.core.role import Skill
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
+from synthorg.observability.events.red_team import RED_TEAM_GATE_BUILD_FAILED
 from synthorg.security.redteam.errors import RedTeamRoleMissingError
 
 logger = get_logger(__name__)
@@ -101,8 +101,8 @@ def build_red_team_agent_identity(
     """
     role = get_builtin_role(RED_TEAM_ROLE_NAME)
     if role is None:
-        logger.warning(
-            RED_TEAM_GATE_SKIPPED,
+        logger.error(
+            RED_TEAM_GATE_BUILD_FAILED,
             reason="role_missing_from_catalog",
             role_name=RED_TEAM_ROLE_NAME,
             note=(

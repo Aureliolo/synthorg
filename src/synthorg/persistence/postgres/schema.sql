@@ -421,9 +421,9 @@ CREATE TABLE red_team_reports (
     recorded_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX idx_rtr_task_id ON red_team_reports (task_id);
-CREATE INDEX idx_rtr_verdict ON red_team_reports (verdict);
-CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at);
+CREATE INDEX idx_rtr_task_id ON red_team_reports (task_id, recorded_at DESC);
+CREATE INDEX idx_rtr_verdict ON red_team_reports (verdict, recorded_at DESC);
+CREATE INDEX idx_rtr_recorded_at ON red_team_reports (recorded_at DESC);
 
 -- ── Heartbeats ────────────────────────────────────────────────
 CREATE TABLE heartbeats (

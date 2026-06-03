@@ -17,6 +17,7 @@ afterEach(() => {
     framesLoading: false,
     framesError: null,
     seekView: null,
+    redTeamReport: null,
   })
 })
 
