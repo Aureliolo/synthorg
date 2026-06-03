@@ -20,7 +20,7 @@ reaching into ``_agents`` directly.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import AgentStatus, AutonomyLevel
 from synthorg.core.normalization import (
@@ -56,8 +56,6 @@ from synthorg.observability.events.versioning import VERSION_SNAPSHOT_FAILED
 MAX_BATCH_NAMES_LOOKUP: Final[int] = 1024
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.clock import Clock

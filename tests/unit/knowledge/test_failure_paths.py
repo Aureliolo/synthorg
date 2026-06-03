@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, override
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import (
     ContentKind,
@@ -135,7 +136,8 @@ class _ExplodingGuard:
 
 class TestWebLoaderFailures:
     async def test_sanitize_failure_maps_to_ingest_error(self) -> None:
-        loader = WebLoader(fetcher=_StaticFetcher(), guard=_ExplodingGuard())  # type: ignore[arg-type]
+        with suppress_type_checks():
+            loader = WebLoader(fetcher=_StaticFetcher(), guard=_ExplodingGuard())  # type: ignore[arg-type]
         with pytest.raises(KnowledgeIngestError):
             await loader.load(_source())
 
@@ -277,7 +279,7 @@ class _SlowFetcher(HtmlFetcher):
         self.peak = 0
 
     @override
-    async def fetch(self, _url: str) -> str:
+    async def fetch(self, url: str) -> str:
         self.in_flight += 1
         self.peak = max(self.peak, self.in_flight)
         try:

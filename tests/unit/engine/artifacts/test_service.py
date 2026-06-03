@@ -39,9 +39,9 @@ class _FakeArtifactRepo:
     async def save(self, entity: Artifact) -> None:
         self._rows[entity.id] = entity
 
-    async def save_returning_outcome(self, entity: Artifact) -> bool:
-        created = entity.id not in self._rows
-        self._rows[entity.id] = entity
+    async def save_returning_outcome(self, artifact: Artifact) -> bool:
+        created = artifact.id not in self._rows
+        self._rows[artifact.id] = artifact
         return created
 
     async def get(self, entity_id: NotBlankStr) -> Artifact | None:

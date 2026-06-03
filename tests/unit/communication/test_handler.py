@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.handler import (
@@ -82,7 +83,7 @@ class TestFunctionHandler:
 
     def test_rejects_non_callable(self) -> None:
         """FunctionHandler raises TypeError for non-callable input."""
-        with pytest.raises(TypeError, match="must be async"):
+        with suppress_type_checks(), pytest.raises(TypeError, match="must be async"):
             FunctionHandler("not a function")  # type: ignore[arg-type]
 
     def test_rejects_sync_function(self) -> None:

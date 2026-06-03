@@ -10,7 +10,8 @@ import pytest
 
 from synthorg.api.state import AppState
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
-from tests._shared import make_app_state
+from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -37,7 +38,7 @@ def fake_app_state(config: SimpleNamespace) -> AppState:
     versions_repo.count_versions.return_value = 0
     versions_repo.get_version.return_value = None
 
-    persistence = SimpleNamespace(budget_config_versions=versions_repo)
+    persistence = mock_of[PersistenceBackend](budget_config_versions=versions_repo)
 
     return make_app_state(
         cost_tracker=tracker,

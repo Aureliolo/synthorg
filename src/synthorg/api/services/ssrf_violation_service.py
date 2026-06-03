@@ -20,6 +20,7 @@ stay on the API namespace because they carry no audit-chain
 implication.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -41,8 +42,6 @@ from synthorg.security.ssrf_violation import (
 )
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
 
 logger = get_logger(__name__)
@@ -182,7 +181,7 @@ class SsrfViolationService:
         *,
         status: SsrfViolationStatus,
         resolved_by: NotBlankStr,
-        resolved_at: AwareDatetime,
+        resolved_at: datetime,
     ) -> bool:
         """Transition a pending violation to ALLOWED or DENIED.
 

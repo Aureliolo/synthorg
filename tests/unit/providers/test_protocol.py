@@ -6,6 +6,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.providers.base import BaseCompletionProvider
@@ -291,7 +292,10 @@ class TestBaseCompletionProvider:
     async def test_complete_rejects_none_model(self) -> None:
         provider = _ConcreteProvider()
         msg = ChatMessage(role=MessageRole.USER, content="Hi")
-        with pytest.raises(InvalidRequestError, match="non-blank"):
+        with (
+            suppress_type_checks(),
+            pytest.raises(InvalidRequestError, match="non-blank"),
+        ):
             await provider.complete([msg], None)  # type: ignore[arg-type]
 
     async def test_complete_rejects_blank_model(self) -> None:

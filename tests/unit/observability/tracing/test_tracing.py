@@ -26,6 +26,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import NoOpTracer, StatusCode
+from typeguard import suppress_type_checks
 
 from synthorg.observability.tracing import (
     DisabledTraceConfig,
@@ -129,7 +130,10 @@ def test_noop_handler_force_flush_and_shutdown_are_noop() -> None:
 
 def test_factory_rejects_unknown_variant() -> None:
     """Defensive branch -- callers can't normally reach this."""
-    with pytest.raises(ValueError, match="Unsupported TraceConfig variant"):
+    with (
+        suppress_type_checks(),
+        pytest.raises(ValueError, match="Unsupported TraceConfig variant"),
+    ):
         _build("not-a-config")  # type: ignore[arg-type]
 
 

@@ -40,7 +40,11 @@ logger = get_logger(__name__)
 class RowLike(Protocol):
     """A database row supporting string-key access (dict / sqlite Row)."""
 
-    def __getitem__(self, key: str) -> object: ...
+    # ``key`` is positional-only: the real rows this abstracts
+    # (``dict`` and ``sqlite3.Row``) both expose a positional-only
+    # ``__getitem__``, so a named parameter here would make neither a
+    # structural match under runtime protocol checking.
+    def __getitem__(self, key: str, /) -> object: ...
 
 
 def row_to_conversation(row: RowLike) -> Conversation:

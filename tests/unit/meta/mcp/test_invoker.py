@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.meta.mcp.invoker import MCPToolInvoker
 from synthorg.meta.mcp.registry import MCPToolDef
@@ -357,11 +358,12 @@ class TestMCPToolInvokerArgsModelValidation:
         invoker = MCPToolInvoker(registry, {"synthorg_test_validated": handler})
         # ``[("name", "alice")]`` is the classic failure mode
         # ``dict(...)`` would have silently accepted.
-        result = await invoker.invoke(
-            "synthorg_test_validated",
-            [("name", "alice"), ("count", 1)],  # type: ignore[arg-type]
-            app_state=None,
-        )
+        with suppress_type_checks():
+            result = await invoker.invoke(
+                "synthorg_test_validated",
+                [("name", "alice"), ("count", 1)],  # type: ignore[arg-type]
+                app_state=None,
+            )
         assert result.is_error is True
         assert invoked == []  # handler MUST NOT be reached
         body = json.loads(result.content)

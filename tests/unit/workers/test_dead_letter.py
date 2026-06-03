@@ -6,9 +6,11 @@ proven failed raises loudly rather than acking into silent loss.
 """
 
 import asyncio
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Final
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.workers_errors import WorkerDeadLetterError
 from synthorg.workers.claim import TaskClaim
@@ -26,6 +28,19 @@ if TYPE_CHECKING:
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_fake_task_queue() -> Iterator[None]:
+    """Suppress typeguard: tests drive a ``FakeJetStreamTaskQueue`` double.
+
+    The fake models the broker without a real NATS binding and cannot satisfy
+    the concrete ``JetStreamTaskQueue`` isinstance check; these tests verify the
+    dead-letter no-loss closure, not task-queue type conformance.
+    """
+    with suppress_type_checks():
+        yield
+
 
 _HARD_CAP_SECONDS: Final[float] = 5.0
 _POLL_SECONDS: Final[float] = 0.01

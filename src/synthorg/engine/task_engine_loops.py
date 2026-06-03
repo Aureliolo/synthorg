@@ -20,6 +20,7 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
     TaskStateChanged,
 )
+from synthorg.engine.task_engine_version import TaskTimingTracker, VersionTracker
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_COMPLETE,
@@ -40,10 +41,6 @@ if TYPE_CHECKING:
 
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.engine.task_engine_config import TaskEngineConfig
-    from synthorg.engine.task_engine_version import (
-        TaskTimingTracker,
-        VersionTracker,
-    )
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)

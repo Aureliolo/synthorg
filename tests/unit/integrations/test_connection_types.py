@@ -1,6 +1,7 @@
 """Unit tests for connection type authenticators."""
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.integrations.connections.models import ConnectionType
 from synthorg.integrations.connections.types import get_authenticator
@@ -268,5 +269,5 @@ class TestConnectionTypeRegistry:
             assert auth.connection_type == ct
 
     def test_unknown_type_raises(self) -> None:
-        with pytest.raises(KeyError):
+        with suppress_type_checks(), pytest.raises(KeyError):
             get_authenticator("nonexistent")  # type: ignore[arg-type]

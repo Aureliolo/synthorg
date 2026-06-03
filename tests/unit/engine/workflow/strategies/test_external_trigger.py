@@ -1,6 +1,7 @@
 """Tests for the ExternalTriggerStrategy implementation."""
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
@@ -576,7 +577,8 @@ class TestBoundaryInputs:
         config = _make_sprint_config()
         await strategy.on_sprint_activated(sprint, config)
 
-        await strategy.on_external_event(sprint, event_name, {})  # type: ignore[arg-type]
+        with suppress_type_checks():
+            await strategy.on_external_event(sprint, event_name, {})  # type: ignore[arg-type]
         assert len(strategy._received_events) == 0
 
     @pytest.mark.unit

@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 627,
+      "loc": 626,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/analytics.py",
       "owning_feature": "api_core"
@@ -2298,7 +2298,7 @@
     },
     {
       "kind": "code",
-      "loc": 128,
+      "loc": 129,
       "loc_cap": 500,
       "module": "src/synthorg/budget/coordination_store.py",
       "owning_feature": "budget"
@@ -2823,7 +2823,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 172,
       "loc_cap": 500,
       "module": "src/synthorg/communication/async_tasks/models.py",
       "owning_feature": "communication"
@@ -3117,7 +3117,7 @@
     },
     {
       "kind": "code",
-      "loc": 336,
+      "loc": 335,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/service.py",
       "owning_feature": "communication"
@@ -3712,7 +3712,7 @@
     },
     {
       "kind": "code",
-      "loc": 87,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/core/clock.py",
       "owning_feature": null
@@ -6344,7 +6344,7 @@
     },
     {
       "kind": "code",
-      "loc": 514,
+      "loc": 511,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_apply.py",
       "owning_feature": "engine"
@@ -6365,7 +6365,7 @@
     },
     {
       "kind": "code",
-      "loc": 315,
+      "loc": 312,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_loops.py",
       "owning_feature": "engine"
@@ -7205,7 +7205,7 @@
     },
     {
       "kind": "code",
-      "loc": 295,
+      "loc": 292,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workspace/semantic_llm.py",
       "owning_feature": "workspace"
@@ -7366,7 +7366,7 @@
     },
     {
       "kind": "code",
-      "loc": 491,
+      "loc": 490,
       "loc_cap": 500,
       "module": "src/synthorg/hr/evaluation/evaluator.py",
       "owning_feature": "hr"
@@ -7562,7 +7562,7 @@
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/collaboration_override_store.py",
       "owning_feature": "hr"
@@ -7597,7 +7597,7 @@
     },
     {
       "kind": "code",
-      "loc": 334,
+      "loc": 341,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/llm_calibration_sampler.py",
       "owning_feature": "hr"
@@ -7618,14 +7618,14 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 141,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/multi_window_strategy.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 166,
+      "loc": 165,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/quality_override_store.py",
       "owning_feature": "hr"
@@ -7653,28 +7653,28 @@
     },
     {
       "kind": "complex_service",
-      "loc": 913,
+      "loc": 912,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/performance/tracker.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 35,
+      "loc": 34,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/trend_protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 39,
+      "loc": 38,
       "loc_cap": 500,
       "module": "src/synthorg/hr/performance/window_protocol.py",
       "owning_feature": "hr"
     },
     {
       "kind": "code",
-      "loc": 109,
+      "loc": 108,
       "loc_cap": 500,
       "module": "src/synthorg/hr/persistence_protocol.py",
       "owning_feature": "hr"
@@ -7807,7 +7807,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 692,
+      "loc": 691,
       "loc_cap": 1100,
       "module": "src/synthorg/hr/registry.py",
       "owning_feature": "hr"
@@ -9039,7 +9039,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 762,
+      "loc": 733,
       "loc_cap": 1100,
       "module": "src/synthorg/memory/backends/mem0/adapter.py",
       "owning_feature": "memory"
@@ -9060,6 +9060,13 @@
     },
     {
       "kind": "code",
+      "loc": 38,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/backends/mem0/client_protocol.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
       "loc": 405,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/config.py",
@@ -9067,7 +9074,7 @@
     },
     {
       "kind": "code",
-      "loc": 659,
+      "loc": 657,
       "loc_cap": 500,
       "module": "src/synthorg/memory/backends/mem0/mappers.py",
       "owning_feature": "memory"
@@ -9347,7 +9354,7 @@
     },
     {
       "kind": "code",
-      "loc": 269,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/memory/factory.py",
       "owning_feature": "memory"
@@ -11566,7 +11573,7 @@
     },
     {
       "kind": "code",
-      "loc": 305,
+      "loc": 304,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/dynamic_registry.py",
       "owning_feature": "toolsmith"
@@ -13344,7 +13351,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/audit_protocol.py",
       "owning_feature": "persistence"
@@ -13379,7 +13386,7 @@
     },
     {
       "kind": "code",
-      "loc": 156,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/checkpoint_protocol.py",
       "owning_feature": "persistence"
@@ -13393,7 +13400,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 125,
+      "loc": 129,
       "loc_cap": null,
       "module": "src/synthorg/persistence/code_execution_protocol.py",
       "owning_feature": "persistence"
@@ -13554,14 +13561,14 @@
     },
     {
       "kind": "code",
-      "loc": 201,
+      "loc": 200,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/flight_recorder_protocol.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 197,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/idempotency_protocol.py",
       "owning_feature": "persistence"
@@ -13589,7 +13596,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 95,
+      "loc": 99,
       "loc_cap": null,
       "module": "src/synthorg/persistence/knowledge_usage_protocol.py",
       "owning_feature": "persistence"
@@ -13701,7 +13708,7 @@
     },
     {
       "kind": "code",
-      "loc": 403,
+      "loc": 413,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/audit_repository.py",
       "owning_feature": "persistence"
@@ -13764,7 +13771,7 @@
     },
     {
       "kind": "repository",
-      "loc": 187,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -13876,7 +13883,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 84,
+      "loc": 83,
       "loc_cap": null,
       "module": "src/synthorg/persistence/postgres/decision/_sql.py",
       "owning_feature": "persistence"
@@ -13911,28 +13918,28 @@
     },
     {
       "kind": "code",
-      "loc": 293,
+      "loc": 297,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/flight_recorder_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/heartbeat_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 409,
+      "loc": 422,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/hr_repositories.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 393,
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -13953,7 +13960,7 @@
     },
     {
       "kind": "repository",
-      "loc": 183,
+      "loc": 191,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -14121,7 +14128,7 @@
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/seen_claims_repo.py",
       "owning_feature": "persistence"
@@ -14149,7 +14156,7 @@
     },
     {
       "kind": "code",
-      "loc": 661,
+      "loc": 655,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/subworkflow_repo.py",
       "owning_feature": "persistence"
@@ -14394,7 +14401,7 @@
     },
     {
       "kind": "code",
-      "loc": 45,
+      "loc": 44,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/_shared.py",
       "owning_feature": "persistence"
@@ -14422,7 +14429,7 @@
     },
     {
       "kind": "code",
-      "loc": 280,
+      "loc": 289,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/audit_repository.py",
       "owning_feature": "persistence"
@@ -14471,7 +14478,7 @@
     },
     {
       "kind": "repository",
-      "loc": 197,
+      "loc": 206,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/code_execution_repo.py",
       "owning_feature": "persistence"
@@ -14583,7 +14590,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 98,
+      "loc": 97,
       "loc_cap": null,
       "module": "src/synthorg/persistence/sqlite/decision/_sql.py",
       "owning_feature": "persistence"
@@ -14618,28 +14625,28 @@
     },
     {
       "kind": "code",
-      "loc": 298,
+      "loc": 302,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/flight_recorder_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 203,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/heartbeat_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 402,
+      "loc": 413,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/hr_repositories.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 373,
+      "loc": 374,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/idempotency_repo.py",
       "owning_feature": "persistence"
@@ -14660,7 +14667,7 @@
     },
     {
       "kind": "repository",
-      "loc": 189,
+      "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/knowledge_usage_repo.py",
       "owning_feature": "persistence"
@@ -14828,7 +14835,7 @@
     },
     {
       "kind": "code",
-      "loc": 153,
+      "loc": 152,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/seen_claims_repo.py",
       "owning_feature": "persistence"
@@ -14849,14 +14856,14 @@
     },
     {
       "kind": "code",
-      "loc": 369,
+      "loc": 370,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/ssrf_violation_repo.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "complex_service",
-      "loc": 762,
+      "loc": 763,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/subworkflow_repo.py",
       "owning_feature": "persistence"
@@ -16452,7 +16459,7 @@
     },
     {
       "kind": "code",
-      "loc": 265,
+      "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/security/trust/milestone_strategy.py",
       "owning_feature": "security"
@@ -18559,7 +18566,7 @@
     },
     {
       "kind": "code",
-      "loc": 150,
+      "loc": 149,
       "loc_cap": 500,
       "module": "src/synthorg/workers/backend_services.py",
       "owning_feature": "runtime"

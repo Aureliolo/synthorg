@@ -2,10 +2,11 @@
 
 import contextlib
 import sqlite3
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
@@ -325,7 +326,7 @@ class SQLiteSsrfViolationRepository:
         *,
         status: SsrfViolationStatus,
         resolved_by: NotBlankStr,
-        resolved_at: AwareDatetime,
+        resolved_at: datetime,
     ) -> bool:
         """Update a violation's status (allow or deny).
 

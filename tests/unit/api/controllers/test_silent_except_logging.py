@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 import structlog
 from structlog.testing import capture_logs
+from typeguard import suppress_type_checks
 
 from synthorg.api.controllers import activities
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -43,7 +44,7 @@ class TestSilentExceptStructuredLogging:
     async def test_activities_budget_config_failure_logs_error_fields(self) -> None:
         app_state = make_app_state(config_resolver=_ExplodingResolver())
         degraded: list[str] = []
-        with capture_logs() as caplog:
+        with capture_logs() as caplog, suppress_type_checks():
             result = await activities._resolve_currency(
                 app_state,
                 degraded,

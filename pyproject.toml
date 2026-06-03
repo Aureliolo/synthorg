@@ -97,11 +97,9 @@ test = [
     # Runtime type checking during pytest. ``--typeguard-packages=synthorg``
     # in [tool.pytest.ini_options].addopts instruments every function under
     # ``synthorg.*`` so argument and return types are checked against their
-    # annotations at call time. Activation is staged: the wiring lives
-    # here and the activation flags are present-but-commented because the
-    # source tree still carries import cycles whose annotations cannot
-    # resolve at runtime. ADR-0006 Section F documents the re-activation
-    # checklist.
+    # annotations at call time. Active at WARN across the full ``synthorg``
+    # package; ERROR-policy hardening (the residual TYPE_CHECKING-only
+    # signature-import migration) is the remaining follow-up.
     "typeguard==4.5.2",
     # CI matrix sharding of unit + integration test arms. Partitions tests by
     # recorded durations in `.test_durations.{unit,integration}` so each shard
@@ -922,19 +920,17 @@ addopts = [
     "no:randomly",
     "-p",
     "no:unraisableexception",
-    # Runtime type-check every call in ``synthorg.*`` against its annotations.
-    # Kept COMMENTED: activation is NOT a one-line uncomment. An authoritative
-    # full ``pytest -m unit`` with the hook live (WARN) surfaced 1,949 failures
-    # across 231 test files -- ~1,500 resolved-type ``TypeCheckError``s that
-    # ``forward_ref_policy`` does NOT skip (AwareDatetime-vs-datetime, test
-    # doubles failing Protocol/isinstance checks, DTO generics), plus the
-    # ~1,055-module ``TYPE_CHECKING``-guarded-signature class. Activation is a
-    # dedicated multi-PR programme (WARN pass, then ERROR hardening); ADR-0006
-    # Section F documents the scope and tracks the follow-up work. The wiring,
-    # dependency pin, conftest hook, and ruff TC001/2/3 disable all ship now so
-    # activation starts from a clean base.
-    # "--typeguard-packages=synthorg",
-    # "--typeguard-forward-ref-policy=WARN",
+    # Runtime type-check calls in the instrumented ``synthorg`` packages against
+    # their annotations. Active at WARN across the full ``synthorg`` package.
+    # This package list MUST stay identical to the ``install_import_hook`` list
+    # in tests/conftest.py (the conftest hook does the real bytecode rewrite;
+    # this plugin install is the redundant attempt whose InstrumentationWarning
+    # is filtered below). WARN routes the eager-eval NameError class through
+    # tests/_typeguard_checker.py; resolved-type mismatches still raise
+    # regardless of the policy. ERROR-policy hardening is the remaining
+    # follow-up.
+    "--typeguard-packages=synthorg",
+    "--typeguard-forward-ref-policy=WARN",
 ]
 filterwarnings = [
     "error",
@@ -951,6 +947,18 @@ filterwarnings = [
     # ``error`` rule above promotes it and pytest exits 2 with zero tests
     # run despite typeguard being live.
     "ignore::typeguard.InstrumentationWarning",
+    # ``--typeguard-forward-ref-policy=WARN`` plus the policy-honouring checker
+    # (tests/_typeguard_checker.py) SKIP a check and emit a ``TypeHintWarning``
+    # when a signature or member type is only importable under
+    # ``if TYPE_CHECKING:`` AND cannot be hoisted to a runtime import without an
+    # import cycle. Non-cycle TYPE_CHECKING signature imports are HOISTED to
+    # module level instead (so the boundary is really checked); only genuine
+    # cycle-breakers reach this path. ``default`` (not ``error``, not ``ignore``)
+    # keeps the residual skips NON-FATAL but VISIBLE in the pytest warnings
+    # summary, so the remaining unchecked surface stays countable. A
+    # resolved-type mismatch is a ``TypeCheckError`` (an exception, not a
+    # warning), so it still fails regardless of this filter.
+    "default::typeguard.TypeHintWarning",
     "ignore:Core Pydantic V1 functionality:UserWarning",
     "ignore:Exception in thread.*_connection_worker_thread:pytest.PytestUnhandledThreadExceptionWarning",
     # nats-py 2.14.0 (latest) calls ``asyncio.iscoroutinefunction`` in

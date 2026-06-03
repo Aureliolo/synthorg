@@ -4,11 +4,12 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/ssrf_violation_r
 Postgres stores timestamps as native TIMESTAMPTZ and port as BIGINT.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
@@ -23,8 +24,6 @@ from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from psycopg_pool import AsyncConnectionPool
 
 logger = get_logger(__name__)
@@ -303,7 +302,7 @@ class PostgresSsrfViolationRepository:
         *,
         status: SsrfViolationStatus,
         resolved_by: NotBlankStr,
-        resolved_at: AwareDatetime,
+        resolved_at: datetime,
     ) -> bool:
         """Update a violation's status (allow or deny).
 

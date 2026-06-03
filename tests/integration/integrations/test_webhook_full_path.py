@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from typing import Any, override
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.bus.memory import InMemoryMessageBus
 from synthorg.engine.workflow.strategies.external_trigger import (
@@ -96,10 +97,14 @@ class TestWebhookFullPath:
         strategy = _SpyExternalTriggerStrategy()
         sprint = object()
         scheduler = _SpyCeremonyScheduler(strategy, sprint)
-        bridge = WebhookEventBridge(
-            bus=memory_bus,
-            ceremony_scheduler=scheduler,  # type: ignore[arg-type]
-        )
+        # The spy duck-types only the scheduler surface the bridge calls;
+        # the WARN-level checker rejects it against the concrete
+        # CeremonyScheduler, so suppress the structural check here.
+        with suppress_type_checks():
+            bridge = WebhookEventBridge(
+                bus=memory_bus,
+                ceremony_scheduler=scheduler,  # type: ignore[arg-type]
+            )
         await bridge.start()
         try:
             await publish_webhook_event(
@@ -127,10 +132,11 @@ class TestWebhookFullPath:
         memory_bus: InMemoryMessageBus,
     ) -> None:
         scheduler = _SpyCeremonyScheduler(strategy=None, sprint=None)
-        bridge = WebhookEventBridge(
-            bus=memory_bus,
-            ceremony_scheduler=scheduler,  # type: ignore[arg-type]
-        )
+        with suppress_type_checks():
+            bridge = WebhookEventBridge(
+                bus=memory_bus,
+                ceremony_scheduler=scheduler,  # type: ignore[arg-type]
+            )
         await bridge.start()
         try:
             await publish_webhook_event(

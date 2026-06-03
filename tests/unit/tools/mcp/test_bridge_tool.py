@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
@@ -188,9 +189,14 @@ class TestBridgeToolWithCache:
             client=mock_client,
             cache=result_cache,
         )
-        result = await bridge.execute(
-            arguments=cast("dict[str, Any]", {"obj": Unhashable()}),
-        )
+        # The unhashable object deliberately flows into the cache-key path,
+        # whose helper is annotated to return ``Hashable``; that is exactly the
+        # bypass branch under test, so the runtime check is suppressed for this
+        # call (the test asserts graceful non-crashing execution).
+        with suppress_type_checks():
+            result = await bridge.execute(
+                arguments=cast("dict[str, Any]", {"obj": Unhashable()}),
+            )
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error
 

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy
@@ -165,7 +166,7 @@ class TestSelfEditingMemoryConfig:
 class TestSelfEditingMemoryStrategyInit:
     def test_requires_durable_backend(self) -> None:
         """Constructor must reject backend=None."""
-        with pytest.raises(TypeError):
+        with suppress_type_checks(), pytest.raises(TypeError):
             SelfEditingMemoryStrategy(
                 backend=None,  # type: ignore[arg-type]
                 config=SelfEditingMemoryConfig(),

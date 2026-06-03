@@ -9,8 +9,6 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from uuid import uuid4
 
-from pydantic import AwareDatetime
-
 from synthorg.communication.conflict_resolution.config import (
     ConflictResolutionConfig,
 )
@@ -246,7 +244,7 @@ class ConflictResolutionService:
         agent_id: NotBlankStr | None = None,
         conflict_type: ConflictType | None = None,
         strategy: ConflictResolutionStrategy | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
     ) -> tuple[DissentRecord, ...]:
         """Query dissent records with optional filters.
 

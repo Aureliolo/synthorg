@@ -9,12 +9,12 @@ read-modify-write race.
 
 import copy
 import sqlite3
-from datetime import UTC
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import aiosqlite
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -51,7 +51,7 @@ class _CasMixin(_DecisionRepoBase):
         decision: DecisionOutcome,
         reason: str | None,
         criteria_snapshot: tuple[NotBlankStr, ...],
-        recorded_at: AwareDatetime,
+        recorded_at: datetime,
         metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
         """Atomically insert a decision record with server-computed version.
@@ -78,7 +78,7 @@ class _CasMixin(_DecisionRepoBase):
                 race.
             ValueError: If ``recorded_at`` is a naive datetime (no
                 tzinfo).  Rejected before any SQL runs; the
-                parameter is typed as ``AwareDatetime`` but Python
+                parameter is typed as ``datetime`` but Python
                 does not enforce type hints at the function
                 boundary, so we guard explicitly to prevent silent
                 wall-clock drift from ``astimezone(UTC)``'s
@@ -111,14 +111,13 @@ class _CasMixin(_DecisionRepoBase):
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
             copy.deepcopy(dict(metadata or {}))
         )
-        # Reject naive datetimes explicitly.  The parameter type is
-        # ``AwareDatetime``, which Pydantic validates at model
-        # boundaries -- but this function accepts it as a raw
-        # argument, so there's no runtime enforcement until the
-        # draft ``DecisionRecord`` is constructed.  A naive datetime
-        # passed through ``astimezone(UTC)`` would silently convert
-        # assuming local time, producing a timestamp that disagrees
-        # with the caller's actual wall clock.  Fail fast instead.
+        # Reject naive datetimes explicitly.  The draft ``DecisionRecord``
+        # declares ``recorded_at: AwareDatetime``, which Pydantic validates
+        # on construction -- but this function takes a raw ``datetime``
+        # argument, so there is no runtime tz check until then.  A naive
+        # datetime passed through ``astimezone(UTC)`` would silently convert
+        # assuming local time, producing a timestamp that disagrees with
+        # the caller's actual wall clock.  Fail fast instead.
         if recorded_at.tzinfo is None:
             msg = (
                 f"recorded_at must be timezone-aware, got a naive "

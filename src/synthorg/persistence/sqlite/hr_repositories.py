@@ -5,7 +5,7 @@ LifecycleEvent, TaskMetric, and CollaborationMetric repositories.
 
 import json
 import sqlite3
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -37,9 +37,6 @@ from synthorg.persistence._shared.pagination import (
     validate_pagination_args,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 
@@ -126,7 +123,7 @@ INSERT INTO lifecycle_events (
         *,
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[AgentLifecycleEvent, ...]:
         """List lifecycle events with optional filters.
@@ -137,7 +134,7 @@ INSERT INTO lifecycle_events (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         clauses: list[str] = []
         params: list[str | int] = []
@@ -148,6 +145,9 @@ INSERT INTO lifecycle_events (
             clauses.append("event_type = ?")
             params.append(event_type.value)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("timestamp >= ?")
             params.append(since.isoformat())
 
@@ -269,8 +269,8 @@ INSERT INTO task_metrics (
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[TaskMetricRecord, ...]:
         """Query task metric records with optional filters.
@@ -281,7 +281,8 @@ INSERT INTO task_metrics (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` or ``until`` is naive, or the database
+                query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
@@ -292,9 +293,15 @@ INSERT INTO task_metrics (
             clauses.append("agent_id = ?")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at >= ?")
             params.append(since.isoformat())
         if until is not None:
+            if until.tzinfo is None:
+                msg = "until must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at <= ?")
             params.append(until.isoformat())
 
@@ -410,7 +417,7 @@ INSERT INTO collaboration_metrics (
         self,
         *,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[CollaborationMetricRecord, ...]:
         """Query collaboration metric records with optional filters.
@@ -421,7 +428,7 @@ INSERT INTO collaboration_metrics (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
@@ -432,6 +439,9 @@ INSERT INTO collaboration_metrics (
             clauses.append("agent_id = ?")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("recorded_at >= ?")
             params.append(since.isoformat())
 

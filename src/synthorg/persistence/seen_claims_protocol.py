@@ -8,9 +8,8 @@ existence check that returns ``True`` only when ``mark_seen`` has
 previously recorded a terminal outcome for the same idempotency key.
 """
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
-
-from pydantic import AwareDatetime
 
 from synthorg.core.types import NotBlankStr
 
@@ -51,7 +50,7 @@ class SeenClaimsRepository(Protocol):
         *,
         idempotency_key: NotBlankStr,
         claim_id: NotBlankStr,
-        now: AwareDatetime,
+        now: datetime,
         ttl_seconds: float,
     ) -> bool:
         """Try to record ``idempotency_key`` as a completed claim.
@@ -86,7 +85,7 @@ class SeenClaimsRepository(Protocol):
         """
         ...
 
-    async def prune_expired(self, now: AwareDatetime) -> int:
+    async def prune_expired(self, now: datetime) -> int:
         """Delete rows whose TTL has elapsed.
 
         Args:

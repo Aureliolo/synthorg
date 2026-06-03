@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.backends.mem0.mappers import (
@@ -194,7 +195,8 @@ class TestParseMem0Metadata:
 
     def test_non_dict_truthy_metadata(self) -> None:
         """Non-dict truthy metadata (e.g. string) uses defaults."""
-        category, metadata, expires_at = parse_mem0_metadata("not-a-dict")  # type: ignore[arg-type]
+        with suppress_type_checks():
+            category, metadata, expires_at = parse_mem0_metadata("not-a-dict")  # type: ignore[arg-type]
         assert category == MemoryCategory.WORKING
         assert metadata.confidence == 1.0
         assert expires_at is None

@@ -16,6 +16,7 @@ from synthorg.api.controllers.providers.local_models import (
     ProviderLocalModelsController,
 )
 from synthorg.api.controllers.providers.models import ProviderModelsController
+from synthorg.api.cursor import CursorSecret
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.state import ProvidersStateSlice
@@ -191,7 +192,7 @@ def _make_provider_state_and_mgmt() -> tuple[Any, AsyncMock]:
     mgmt = AsyncMock(spec=ProviderManagementService)
     state = State()
     state.app_state = make_app_state(
-        cursor_secret="test-cursor-secret-0123456789abcdef",
+        cursor_secret=CursorSecret.from_key("test-key-32-bytes-padding0000000"),
         slices={ProvidersStateSlice: {"management": mgmt}},
     )
     return state, mgmt

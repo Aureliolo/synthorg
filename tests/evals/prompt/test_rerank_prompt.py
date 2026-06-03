@@ -68,6 +68,8 @@ class TestRerankPromptContract:
         from typing import cast
         from unittest.mock import AsyncMock
 
+        from typeguard import suppress_type_checks
+
         from synthorg.memory.retrieval.models import (
             RetrievalCandidate,
             RetrievalQuery,
@@ -84,11 +86,6 @@ class TestRerankPromptContract:
                 return_value=SimpleNamespace(content=json.dumps({"ranking": [0]})),
             ),
         )
-        reranker = LLMQuerySpecificReranker(
-            provider=cast(CompletionProvider, provider),
-            model="test-small-001",
-            cache=None,
-        )
         query = cast(
             RetrievalQuery,
             SimpleNamespace(text="needle", agent_id="test-agent"),
@@ -102,7 +99,18 @@ class TestRerankPromptContract:
                 ),
             ),
         )
-        await reranker._rerank_via_llm(query, candidates)
+        # ``provider`` / ``query`` / ``candidates`` are structural stand-ins for
+        # the ``CompletionProvider`` protocol and the retrieval models; this test
+        # asserts the pinned ``config=`` reaches ``provider.complete``, not type
+        # conformance of those doubles, so the runtime check is suppressed across
+        # the reranker construction and the ``_rerank_via_llm`` call.
+        with suppress_type_checks():
+            reranker = LLMQuerySpecificReranker(
+                provider=cast(CompletionProvider, provider),
+                model="test-small-001",
+                cache=None,
+            )
+            await reranker._rerank_via_llm(query, candidates)
         provider.complete.assert_awaited_once()
         kwargs = provider.complete.await_args.kwargs
         assert kwargs.get("config") is _mod._RERANK_COMPLETION_CONFIG, (

@@ -331,7 +331,7 @@ ON CONFLICT(id) DO NOTHING""",
                 raise QueryError(msg) from exc
         return cursor.rowcount > 0
 
-    async def save(self, definition: WorkflowDefinition) -> None:
+    async def save(self, entity: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
 
         The upsert enforces optimistic concurrency: updates only
@@ -339,7 +339,7 @@ ON CONFLICT(id) DO NOTHING""",
         behind the incoming version.
 
         Args:
-            definition: Workflow definition model to persist.
+            entity: Workflow definition model to persist.
 
         Raises:
             QueryError: If the database operation fails or the
@@ -347,18 +347,18 @@ ON CONFLICT(id) DO NOTHING""",
                 :meth:`_require_valid_revision`).
             PersistenceVersionConflictError: If the row version no longer matches.
         """
-        self._require_valid_revision(definition)
+        self._require_valid_revision(entity)
         nodes_json = json.dumps(
-            [n.model_dump(mode="json") for n in definition.nodes],
+            [n.model_dump(mode="json") for n in entity.nodes],
         )
         edges_json = json.dumps(
-            [e.model_dump(mode="json") for e in definition.edges],
+            [e.model_dump(mode="json") for e in entity.edges],
         )
         inputs_json = json.dumps(
-            [i.model_dump(mode="json") for i in definition.inputs],
+            [i.model_dump(mode="json") for i in entity.inputs],
         )
         outputs_json = json.dumps(
-            [o.model_dump(mode="json") for o in definition.outputs],
+            [o.model_dump(mode="json") for o in entity.outputs],
         )
         async with self._write_context():
             try:
@@ -383,20 +383,20 @@ ON CONFLICT(id) DO UPDATE SET
     revision=excluded.revision
 WHERE workflow_definitions.revision = excluded.revision - 1""",
                     (
-                        definition.id,
-                        definition.name,
-                        definition.description,
-                        definition.workflow_type.value,
-                        definition.version,
+                        entity.id,
+                        entity.name,
+                        entity.description,
+                        entity.workflow_type.value,
+                        entity.version,
                         inputs_json,
                         outputs_json,
-                        1 if definition.is_subworkflow else 0,
+                        1 if entity.is_subworkflow else 0,
                         nodes_json,
                         edges_json,
-                        definition.created_by,
-                        definition.created_at.astimezone(UTC).isoformat(),
-                        definition.updated_at.astimezone(UTC).isoformat(),
-                        definition.revision,
+                        entity.created_by,
+                        entity.created_at.astimezone(UTC).isoformat(),
+                        entity.updated_at.astimezone(UTC).isoformat(),
+                        entity.revision,
                     ),
                 )
                 if cursor.rowcount == 0:
@@ -405,30 +405,30 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                     # revision than expected.
                     check = await self._db.execute(
                         "SELECT revision FROM workflow_definitions WHERE id = ?",
-                        (definition.id,),
+                        (entity.id,),
                     )
                     existing = await check.fetchone()
                     await self._db.rollback()
                     current = existing["revision"] if existing else "N/A"
                     msg = (
                         f"Version conflict saving workflow definition"
-                        f" {definition.id!r}: current revision is"
+                        f" {entity.id!r}: current revision is"
                         f" {current}, incoming revision is"
-                        f" {definition.revision}"
+                        f" {entity.revision}"
                     )
                     logger.warning(
                         PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                        definition_id=definition.id,
+                        definition_id=entity.id,
                         error=msg,
                     )
                     raise PersistenceVersionConflictError(msg)
                 await self._db.commit()
             except sqlite3.Error as exc:
                 await _rollback_quietly(self._db)
-                msg = f"Failed to save workflow definition {definition.id!r}"
+                msg = f"Failed to save workflow definition {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
-                    definition_id=definition.id,
+                    definition_id=entity.id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

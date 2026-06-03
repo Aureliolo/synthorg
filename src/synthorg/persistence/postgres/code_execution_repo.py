@@ -7,11 +7,12 @@ as BOOLEAN.
 """
 # ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.observability import get_logger, safe_error_description
@@ -128,15 +129,23 @@ class PostgresCodeExecutionRecordRepository:
             raise QueryError(msg) from exc
         return tuple(self._row_to_model(r) for r in rows)
 
-    async def purge_before(self, threshold: AwareDatetime) -> int:
+    async def purge_before(self, threshold: datetime) -> int:
         """Delete records with ``executed_at < threshold``.
+
+        Args:
+            threshold: Timezone-aware UTC timestamp. A naive datetime is
+                rejected to prevent silent local-time misinterpretation
+                deleting the wrong retention window.
 
         Returns:
             Number of rows deleted.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If *threshold* is naive or the database query fails.
         """
+        if threshold.tzinfo is None:
+            msg = "threshold must be timezone-aware; a naive datetime is rejected"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

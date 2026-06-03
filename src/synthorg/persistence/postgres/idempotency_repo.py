@@ -10,13 +10,12 @@ to overwrite expired/failed rows in a follow-up ``UPDATE``.
 """
 
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from psycopg import AsyncCursor
 from psycopg import Error as PsycopgError
 from psycopg.rows import BaseRowFactory, DictRow
-from pydantic import AwareDatetime
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
@@ -24,6 +23,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.idempotency import (
     IDEMPOTENCY_PERSISTENCE_ERROR,
 )
+from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,
@@ -69,7 +69,7 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         ttl_seconds: int,
-        now: AwareDatetime,
+        now: datetime,
     ) -> IdempotencyClaim:
         """Atomically claim ``(scope, key)`` for *ttl_seconds*.
 
@@ -95,6 +95,7 @@ class PostgresIdempotencyRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        now = normalize_utc(now)
         expires_at = now + timedelta(seconds=ttl_seconds)
         last_status: str | None = None
         try:
@@ -184,8 +185,8 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         new_token: str,
-        now: AwareDatetime,
-        expires_at: AwareDatetime,
+        now: datetime,
+        expires_at: datetime,
     ) -> bool:
         """Try to win FRESH via ``INSERT ... ON CONFLICT DO NOTHING``.
 
@@ -214,7 +215,7 @@ class PostgresIdempotencyRepository:
         *,
         scope: NotBlankStr,
         key: NotBlankStr,
-        now: AwareDatetime,
+        now: datetime,
     ) -> tuple[IdempotencyOutcome, str | None] | None:
         """Lock the existing row and classify the next outcome.
 
@@ -258,7 +259,7 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
         new_token: str,
-        expires_at: AwareDatetime,
+        expires_at: datetime,
     ) -> None:
         """Rotate an expired/failed row to a fresh in-flight lease.
 
@@ -445,7 +446,7 @@ class PostgresIdempotencyRepository:
             msg = "Failed to fetch idempotency key"
             raise QueryError(msg) from exc
 
-    async def cleanup_expired(self, now: AwareDatetime) -> int:
+    async def cleanup_expired(self, now: datetime) -> int:
         """Delete expired rows and return the count removed.
 
         Returns:
@@ -454,6 +455,7 @@ class PostgresIdempotencyRepository:
         Raises:
             QueryError: If the database query fails.
         """
+        now = normalize_utc(now)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

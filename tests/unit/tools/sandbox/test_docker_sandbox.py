@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 import pytest
 import structlog.contextvars
+from typeguard import suppress_type_checks
 
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import (
@@ -571,7 +572,8 @@ class TestWindowsPathConversion:
         ):
             # Use PurePosixPath to avoid Windows path normalisation
             posix_path = PurePosixPath("/home/user/workspace")
-            result = _to_posix_bind_path(posix_path)  # type: ignore[arg-type]
+            with suppress_type_checks():
+                result = _to_posix_bind_path(posix_path)  # type: ignore[arg-type]
             assert result == "/home/user/workspace"
 
     def test_windows_path_converted(self) -> None:

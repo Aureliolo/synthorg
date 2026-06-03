@@ -1,6 +1,7 @@
 """Tests for custom structlog processors."""
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.observability.processors import (
     sanitize_sensitive_fields,
@@ -99,7 +100,8 @@ class TestSanitizeSensitiveFields:
 
     def test_non_string_key_preserved(self) -> None:
         event: dict[str | int, str] = {42: "value", "event": "test"}
-        result = sanitize_sensitive_fields(None, "info", event)  # type: ignore[arg-type]
+        with suppress_type_checks():
+            result = sanitize_sensitive_fields(None, "info", event)  # type: ignore[arg-type]
         assert result[42] == "value"  # type: ignore[index]
         assert result["event"] == "test"
 

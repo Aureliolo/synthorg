@@ -7,7 +7,7 @@ stays thin.
 
 import math
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -29,9 +29,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FILTER_APPLIED,
     MEMORY_MODEL_INVALID,
 )
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 logger = get_logger(__name__)
 
@@ -71,7 +68,7 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
     return meta
 
 
-def parse_mem0_datetime(raw: str | None) -> AwareDatetime | None:
+def parse_mem0_datetime(raw: str | None) -> datetime | None:
     """Parse a datetime string from Mem0 into an aware datetime.
 
     Mem0 stores timestamps as ISO 8601 strings.  Naive datetimes
@@ -228,7 +225,7 @@ def _normalize_tags(
 
 def parse_mem0_metadata(
     raw_metadata: dict[str, Any] | None,
-) -> tuple[MemoryCategory, MemoryMetadata, AwareDatetime | None]:
+) -> tuple[MemoryCategory, MemoryMetadata, datetime | None]:
     """Deserialize Mem0 metadata dict into domain objects.
 
     Args:
@@ -274,9 +271,9 @@ def parse_mem0_metadata(
 def _resolve_created_at(
     raw: dict[str, Any],
     *,
-    updated_at: AwareDatetime | None,
-    expires_at: AwareDatetime | None,
-) -> AwareDatetime:
+    updated_at: datetime | None,
+    expires_at: datetime | None,
+) -> datetime:
     """Pick the best fallback when ``created_at`` is missing.
 
     Uses the earliest available candidate to avoid violating
@@ -284,7 +281,7 @@ def _resolve_created_at(
     ``expires_at >= created_at``).
 
     Returns:
-        Result of type ``AwareDatetime``.
+        Result of type ``datetime``.
     """
     candidates: list[datetime] = []
     if updated_at is not None:

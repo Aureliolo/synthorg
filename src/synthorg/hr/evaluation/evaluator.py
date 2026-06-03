@@ -41,8 +41,6 @@ from synthorg.observability.events.evaluation import (
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.settings.resolver import ConfigResolver
@@ -209,7 +207,7 @@ class EvaluationService:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> EvaluationReport:
         """Compute a five-pillar evaluation report for an agent.
 
@@ -243,7 +241,7 @@ class EvaluationService:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime,
+        now: datetime,
     ) -> EvaluationContext:
         """Fetch data from tracker and build the evaluation context.
 
@@ -402,7 +400,7 @@ class EvaluationService:
     def _assemble_report(
         self,
         agent_id: NotBlankStr,
-        now: AwareDatetime,
+        now: datetime,
         snapshot: AgentPerformanceSnapshot,
         pillar_scores: list[PillarScore],
         weights: dict[str, float],
@@ -471,7 +469,7 @@ class EvaluationService:
         self,
         *,
         agent_id: NotBlankStr | None = None,
-        since: AwareDatetime | None = None,
+        since: datetime | None = None,
     ) -> tuple[InteractionFeedback, ...]:
         """Query stored feedback records.
 

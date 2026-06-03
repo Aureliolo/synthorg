@@ -15,8 +15,6 @@ from synthorg.observability.events.performance import (
 )
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import CollaborationOverride
 
@@ -54,7 +52,7 @@ class CollaborationOverrideStore:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> CollaborationOverride | None:
         """Get the active (non-expired) override for an agent.
 
@@ -87,7 +85,7 @@ class CollaborationOverrideStore:
         self,
         agent_id: NotBlankStr,
         *,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> bool:
         """Remove the active (non-expired) override for an agent.
 
@@ -130,7 +128,7 @@ class CollaborationOverrideStore:
         self,
         *,
         include_expired: bool = False,
-        now: AwareDatetime | None = None,
+        now: datetime | None = None,
     ) -> tuple[CollaborationOverride, ...]:
         """List all overrides, optionally including expired ones.
 

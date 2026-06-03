@@ -7,7 +7,7 @@ flight-recorder frames; cost comes from the cost tracker when wired.
 """
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -173,7 +173,7 @@ class CockpitService:
     async def _build_activity(
         self,
         task: Task,
-        stuck_cutoff: AwareDatetime,
+        stuck_cutoff: datetime,
         runaway_pct: float,
     ) -> AgentActivity:
         """Derive one task's activity row from the frame aggregate.

@@ -10,12 +10,12 @@ and the loser retries with a freshly computed version.
 """
 
 import copy
-from datetime import UTC
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 import psycopg
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
@@ -57,7 +57,7 @@ class _CasMixin(_DecisionRepoBase):
         decision: DecisionOutcome,
         reason: str | None,
         criteria_snapshot: tuple[NotBlankStr, ...],
-        recorded_at: AwareDatetime,
+        recorded_at: datetime,
         metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
         """Atomically insert a decision record with server-computed version.

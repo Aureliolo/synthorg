@@ -89,12 +89,12 @@ class FakeSubworkflowRepository(SubworkflowRepository):
         self._parents: dict[str, list[ParentReference]] = {}
 
     @override
-    async def save(self, definition: WorkflowDefinition) -> None:
-        key = (definition.id, definition.version)
+    async def save(self, entity: WorkflowDefinition) -> None:
+        key = (entity.id, entity.version)
         if key in self._rows:
             msg = f"Duplicate {key}"
             raise DuplicateRecordError(msg)
-        self._rows[key] = copy.deepcopy(definition)
+        self._rows[key] = copy.deepcopy(entity)
 
     @override
     async def get(

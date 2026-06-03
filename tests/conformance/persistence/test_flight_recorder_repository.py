@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from synthorg.core.enums import InterventionKind, TaskStatus
-from synthorg.core.persistence_errors import DuplicateRecordError
+from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
@@ -160,6 +160,14 @@ class TestFlightRecorderFrameRepository:
             FlightRecorderFrameFilterSpec(execution_id=NotBlankStr("exec-001")),
         )
         assert [f.id for f in page] == ["new"]
+
+    async def test_purge_before_rejects_naive(
+        self, backend: PersistenceBackend
+    ) -> None:
+        with pytest.raises(QueryError):
+            await backend.flight_recorder_frames.purge_before(
+                datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )
 
     async def test_append_many_batches_atomically(
         self, backend: PersistenceBackend

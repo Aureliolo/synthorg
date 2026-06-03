@@ -7,11 +7,14 @@ swallowed rather than aborting the steering write path.
 """
 
 import json
+from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.app_helpers import make_steering_notifier
 from synthorg.api.ws_models import WsEventType
+from synthorg.engine.intervention import SteeringNotifier
 from synthorg.observability.events.cockpit import (
     STEERING_DIRECTIVE_ADOPTED,
     STEERING_DIRECTIVE_ISSUED,
@@ -32,10 +35,22 @@ class _SpyChannels:
         self.published.append((str(data), channels))
 
 
+def _make_notifier(channels: Any) -> SteeringNotifier:
+    """Build a notifier from a behavioural ``_SpyChannels`` recorder.
+
+    ``channels`` stands in for a concrete ``ChannelsPlugin``; the runtime
+    check is suppressed at the same boundary as the static
+    ``# type: ignore[arg-type]`` these calls carried, because the tests verify
+    the published envelope, not channels-plugin type conformance.
+    """
+    with suppress_type_checks():
+        return make_steering_notifier(channels)
+
+
 class TestSteeringNotifier:
     async def test_issued_event_publishes_valid_envelope(self) -> None:
         spy = _SpyChannels()
-        notify = make_steering_notifier(spy)  # type: ignore[arg-type]
+        notify = _make_notifier(spy)
         await notify(
             STEERING_DIRECTIVE_ISSUED,
             {"project_id": "p1", "directive_id": "d1", "kind": "redirect"},
@@ -50,7 +65,7 @@ class TestSteeringNotifier:
 
     async def test_proposed_event_carries_task_ids(self) -> None:
         spy = _SpyChannels()
-        notify = make_steering_notifier(spy)  # type: ignore[arg-type]
+        notify = _make_notifier(spy)
         await notify(
             STEERING_SUPERSESSION_PROPOSED,
             {"project_id": "p1", "directive_id": "d1", "proposed_task_ids": ["t1"]},
@@ -60,7 +75,7 @@ class TestSteeringNotifier:
 
     async def test_superseded_event_carries_task_ids(self) -> None:
         spy = _SpyChannels()
-        notify = make_steering_notifier(spy)  # type: ignore[arg-type]
+        notify = _make_notifier(spy)
         await notify(
             STEERING_TASKS_SUPERSEDED,
             {"project_id": "p1", "directive_id": "d1", "task_ids": ["t1", "t2"]},
@@ -70,7 +85,7 @@ class TestSteeringNotifier:
 
     async def test_unmapped_worker_event_is_swallowed(self) -> None:
         spy = _SpyChannels()
-        notify = make_steering_notifier(spy)  # type: ignore[arg-type]
+        notify = _make_notifier(spy)
         # ADOPTED is a worker-side observability event with no WsEventType;
         # the enum lookup raises ValueError which the notifier swallows.
         await notify(STEERING_DIRECTIVE_ADOPTED, {"project_id": "p1"})

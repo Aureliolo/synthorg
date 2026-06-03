@@ -4,13 +4,11 @@ Defines the interface for pluggable trend detection strategies
 that analyze metric time series (see Agents design page, D12).
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import TrendResult
-
-if TYPE_CHECKING:
-    from pydantic import AwareDatetime
 
 
 # TheilSenTrendStrategy impl in theil_sen_strategy.py + PerformanceTracker
@@ -32,7 +30,7 @@ class TrendDetectionStrategy(Protocol):
         self,
         *,
         metric_name: NotBlankStr,
-        values: tuple[tuple[AwareDatetime, float], ...],
+        values: tuple[tuple[datetime, float], ...],
         window_size: NotBlankStr,
     ) -> TrendResult:
         """Detect the trend direction in a metric time series.

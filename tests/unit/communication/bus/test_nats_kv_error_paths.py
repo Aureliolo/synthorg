@@ -5,10 +5,12 @@ Transport failures while reading / writing the KV bucket must wrap into
 and never absorb an interpreter-critical exception.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.bus._nats_kv import (
     create_channel_in_kv,
@@ -21,6 +23,21 @@ from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_nats_state_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for the NATS KV error-path tests.
+
+    Each test passes a ``SimpleNamespace(kv=...)`` stand-in for the concrete
+    ``_NatsState`` whose ``kv`` operations are scripted to raise; the tests
+    verify the error-wrapping behaviour, not ``_NatsState`` type conformance.
+    A concrete-class ``isinstance`` check cannot be satisfied by a structural
+    double without reconstructing a live NATS connection, so the runtime check
+    is suppressed for the module.
+    """
+    with suppress_type_checks():
+        yield
 
 
 async def _boom(*_args: Any, **_kwargs: Any) -> Any:

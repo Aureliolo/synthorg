@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
@@ -99,7 +100,14 @@ class TestCoordinationConstraintsFacts:
         ctx.task_ledger = None
         ctx.model_copy = lambda update: update
 
-        updates: Any = await middleware.before_dispatch(ctx)
+        # ``ctx`` is a structural MagicMock whose ``model_copy`` returns the
+        # raw update mapping so the wrapped facts can be read by key; that
+        # dict return deliberately violates ``before_dispatch``'s declared
+        # ``CoordinationMiddlewareContext`` return, so the runtime check is
+        # suppressed for this single call (the test verifies fact wrapping,
+        # not the type contract).
+        with suppress_type_checks():
+            updates: Any = await middleware.before_dispatch(ctx)
         ledger = updates["task_ledger"]
         for fact in ledger.known_facts:
             assert fact.startswith("<task-fact>\n")

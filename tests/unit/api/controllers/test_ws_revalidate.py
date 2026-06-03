@@ -5,6 +5,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.api.controllers.ws_revalidation import (
     _periodic_revalidate,
@@ -13,10 +14,23 @@ from synthorg.api.controllers.ws_revalidation import (
 from synthorg.api.state import AppState
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
-from tests._shared import make_app_state
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
+
+
+async def _run_revalidate(socket: Any, user: AuthenticatedUser) -> None:
+    """Drive ``_periodic_revalidate`` with a behavioural ``_FakeSocket``.
+
+    ``socket`` is a close-capturing stand-in for a concrete ``WebSocket``;
+    the runtime check is suppressed at the same boundary as the static
+    ``# type: ignore[arg-type]`` these calls carried, because the tests
+    verify close behaviour, not socket type conformance.
+    """
+    with suppress_type_checks():
+        await _periodic_revalidate(socket, user, interval_seconds=0)
 
 
 def _make_user(role: HumanRole = HumanRole.CEO) -> User:
@@ -94,7 +108,7 @@ async def test_periodic_revalidate_closes_on_user_deleted() -> None:
     """When persistence reports the user vanished, the socket closes 4003."""
     socket = _FakeSocket(persisted_user=None)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
+    await _run_revalidate(socket, user)
     assert socket.closed is True
     assert socket.close_code == 4003
     assert "user_deleted" in (socket.close_reason or "")
@@ -105,7 +119,7 @@ async def test_periodic_revalidate_closes_on_role_demoted() -> None:
     demoted = _make_user(role=HumanRole.SYSTEM)
     socket = _FakeSocket(persisted_user=demoted)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
+    await _run_revalidate(socket, user)
     assert socket.closed is True
     assert socket.close_code == 4003
     assert "role_demoted" in (socket.close_reason or "")
@@ -120,7 +134,7 @@ async def test_periodic_revalidate_tolerates_transient_failure() -> None:
     """
     socket = _FakeSocket(persisted_user=_make_user(), raise_on_get=True)
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
+    await _run_revalidate(socket, user)
     assert socket.closed is True
     assert socket.close_code == 4011
 
@@ -144,7 +158,7 @@ async def test_periodic_revalidate_failure_window_does_not_reset_on_success() ->
         RuntimeError("blip 3"),  # saturates the 3-slot window -> close
     ]
     user = _make_auth_user()
-    await _periodic_revalidate(socket, user, interval_seconds=0)  # type: ignore[arg-type]
+    await _run_revalidate(socket, user)
     assert socket.closed is True
     assert socket.close_code == 4011
 
@@ -185,7 +199,7 @@ class _FakeApp:
             users_repo.get.side_effect = RuntimeError("transient db blip")
         else:
             users_repo.get.return_value = persisted_user
-        persistence = type("Pst", (), {"users": users_repo})()
+        persistence = mock_of[PersistenceBackend](users=users_repo)
         app_state = make_app_state(persistence=persistence)
         # Tight revalidation-window bounds so the transient-failure
         # regression test can saturate the window in a few iterations.

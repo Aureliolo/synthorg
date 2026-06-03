@@ -1,12 +1,11 @@
 """SSRF violation repository protocol."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 
 if TYPE_CHECKING:
-    from pydantic import AwareDatetime
-
     from synthorg.core.types import NotBlankStr
     from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 
@@ -93,7 +92,7 @@ class SsrfViolationRepository(Protocol):
         *,
         status: SsrfViolationStatus,
         resolved_by: NotBlankStr,
-        resolved_at: AwareDatetime,
+        resolved_at: datetime,
     ) -> bool:
         """Update a violation's status (allow or deny).
 

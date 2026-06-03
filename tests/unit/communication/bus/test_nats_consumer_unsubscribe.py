@@ -7,10 +7,12 @@ operation, which would mislead telemetry consumers into seeing both a
 """
 
 import asyncio
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.communication.bus import _nats_consumers
 from synthorg.communication.bus._nats_consumers import unsubscribe
@@ -19,6 +21,20 @@ from synthorg.communication.enums import ChannelType
 from synthorg.observability.events.communication import COMM_SUBSCRIPTION_REMOVED
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _suppress_typeguard_for_nats_state_doubles() -> Iterator[None]:
+    """Suppress typeguard module-wide for the NATS unsubscribe telemetry tests.
+
+    The tests drive ``unsubscribe`` with a ``SimpleNamespace`` stand-in for the
+    concrete ``_NatsState`` whose consumer teardown is scripted to fail; they
+    verify the single-WARNING telemetry contract, not ``_NatsState`` type
+    conformance, which a structural double cannot satisfy without a live NATS
+    connection.
+    """
+    with suppress_type_checks():
+        yield
 
 
 class _RecordingLogger:

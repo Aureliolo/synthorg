@@ -148,6 +148,11 @@ class CodeExecutionRecordRepository(
         ...
 
     @override
-    async def purge_before(self, threshold: AwareDatetime) -> int:
-        """Delete records with ``executed_at < threshold``. Returns rows removed."""
+    async def purge_before(self, threshold: datetime) -> int:
+        """Delete records with ``executed_at < threshold``. Returns rows removed.
+
+        ``threshold`` must be timezone-aware; a naive datetime is rejected
+        (``QueryError``) rather than silently coerced, so a wrong-timezone
+        threshold cannot delete the wrong retention window.
+        """
         ...

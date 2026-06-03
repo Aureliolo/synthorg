@@ -1,5 +1,6 @@
 """Audit repository protocol."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol, override, runtime_checkable
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -126,7 +127,7 @@ class AuditRepository(
         ...
 
     @override
-    async def purge_before(self, cutoff: AwareDatetime) -> int:
+    async def purge_before(self, cutoff: datetime) -> int:
         """Delete audit entries older than *cutoff* (CFG-1 audit).
 
         This is the one exception to the append-only rule: it powers
@@ -136,13 +137,16 @@ class AuditRepository(
         the retention-window level, not per row.
 
         Args:
-            cutoff: Entries strictly older than this UTC timestamp
-                are deleted.
+            cutoff: Entries strictly older than this timestamp are
+                deleted. Must be timezone-aware; a naive datetime is
+                rejected (``QueryError``) rather than silently coerced,
+                so a wrong-timezone cutoff cannot delete the wrong audit
+                window.
 
         Returns:
             Number of rows removed.
 
         Raises:
-            QueryError: If the operation fails.
+            QueryError: If *cutoff* is naive or the operation fails.
         """
         ...

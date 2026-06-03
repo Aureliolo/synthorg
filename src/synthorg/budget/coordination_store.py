@@ -6,6 +6,7 @@ queries for the ``GET /coordination/metrics`` endpoint.
 """
 
 from collections import deque
+from datetime import datetime
 from typing import Final
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -90,8 +91,8 @@ class CoordinationMetricsStore:
         *,
         task_id: str | None = None,
         agent_id: str | None = None,
-        since: AwareDatetime | None = None,
-        until: AwareDatetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int = _DEFAULT_LIMIT,
     ) -> tuple[tuple[CoordinationMetricsRecord, ...], int]:
         """Query records with optional AND-combined filters.

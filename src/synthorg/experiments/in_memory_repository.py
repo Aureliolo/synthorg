@@ -10,8 +10,7 @@ persist anything across process restarts.
 
 import asyncio
 from dataclasses import dataclass
-
-from pydantic import AwareDatetime
+from datetime import datetime
 
 from synthorg.core.types import NotBlankStr
 from synthorg.experiments.models import (
@@ -123,7 +122,7 @@ class InMemoryExperimentRepository:
         end = offset + max(0, limit)
         return tuple(matches[offset:end]), total
 
-    async def assigned_at(self, *, now: AwareDatetime) -> AwareDatetime:
+    async def assigned_at(self, *, now: datetime) -> datetime:
         return now
 
     async def clear(self) -> None:

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, cast
 
 from psycopg.rows import BaseRowFactory, DictRow, TupleRow
-from pydantic import AwareDatetime, ValidationError
+from pydantic import ValidationError
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
@@ -587,7 +587,7 @@ class PostgresOrgFactRepository:
 
     async def snapshot_at(
         self,
-        timestamp: AwareDatetime,
+        timestamp: datetime,
         *,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
@@ -597,8 +597,8 @@ class PostgresOrgFactRepository:
         ``timestamp`` must be timezone-aware so psycopg binds it to the
         ``TIMESTAMPTZ`` parameter at a known instant; a naive datetime
         would otherwise bind in the session timezone and silently
-        produce a wrong-but-plausible snapshot.  The signature is
-        :class:`pydantic.AwareDatetime` to make that contract explicit.
+        produce a wrong-but-plausible snapshot.  The parameter is a
+        :class:`datetime.datetime`; callers must pass an aware value.
         Rows page in ``fact_id`` order so a cursor walk is repeatable
         across the same snapshot; callers needing the whole snapshot
         drain via :func:`synthorg.persistence._shared.collect_all`.
