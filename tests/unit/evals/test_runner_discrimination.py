@@ -13,6 +13,7 @@ from typing import Final
 
 import pytest
 
+from evals.errors import CassettePlaybackUnavailableError
 from evals.models.brief import BriefKind
 from evals.models.scorecard import BriefResult, Scorecard
 from evals.run import run_benchmark_async
@@ -51,6 +52,23 @@ def _executable_brief(scorecard: Scorecard) -> BriefResult:
     assert len(rows) == 1, f"expected one executable brief row, got {len(rows)}"
     assert rows[0].kind is BriefKind.EXECUTABLE
     return rows[0]
+
+
+async def test_cassette_without_provider_refuses_to_run(tmp_path: Path) -> None:
+    """A cassette label without a replaying provider is a sharp failure.
+
+    The cassette is descriptor-only; without an injected provider the run
+    would mislabel the scorecard's determinism source. The guard fires before
+    any work begins, so the cassette path need not even exist.
+    """
+    with pytest.raises(CassettePlaybackUnavailableError):
+        await run_benchmark_async(
+            company_config=_EVALS / "baselines" / "reference.yaml",
+            brief_suite=_BRIEFS,
+            out_dir=tmp_path / "out",
+            anchors_dir=_ANCHORS,
+            cassette=tmp_path / "recording.jsonl",
+        )
 
 
 async def test_broken_config_scores_measurably_worse(tmp_path: Path) -> None:
