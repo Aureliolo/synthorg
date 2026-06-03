@@ -152,7 +152,11 @@ class RedTeamGateService:
         report = await self._invoke_agent(review_input)
         grounding_claims = await self._run_grounding(review_input)
 
-        grounding_findings = tuple(claim_to_finding(c) for c in grounding_claims)
+        grounding_findings = tuple(
+            finding
+            for claim in grounding_claims
+            if (finding := claim_to_finding(claim)) is not None
+        )
         all_findings = report.findings + grounding_findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)

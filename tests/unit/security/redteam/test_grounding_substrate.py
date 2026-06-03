@@ -23,6 +23,9 @@ from synthorg.providers.models import (
     ToolCall,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.security.redteam.grounding._llm import EXTRACT_CLAIMS_TOOL_NAME
+from synthorg.security.redteam.grounding.models import UngroundedClaim
+from synthorg.security.redteam.grounding.protocol import GroundingChecker
 from synthorg.security.redteam.grounding.resolver import GroundingSubstrateContext
 from synthorg.security.redteam.grounding.substrate import (
     KnowledgeSubstrateGroundingChecker,
@@ -115,10 +118,44 @@ def _context(
     )
 
 
+_FALLBACK_EXCERPT = "fallback claim"
+
+
+class _StubFallbackChecker:
+    """Deterministic fallback so degradation tests assert an exact claim.
+
+    Decouples the degradation paths from whatever the production heuristic
+    happens to flag for ``_NUMERIC_DELIVERABLE``: a heuristic-rule change
+    must not break tests that only exercise substrate delegation.
+    """
+
+    async def check(
+        self,
+        *,
+        deliverable_content: NotBlankStr,
+        execution_id: NotBlankStr,
+        project_id: NotBlankStr | None = None,
+    ) -> tuple[UngroundedClaim, ...]:
+        return (
+            UngroundedClaim(
+                excerpt=NotBlankStr(_FALLBACK_EXCERPT),
+                reason=NotBlankStr("fallback used"),
+                confidence=0.7,
+                source="heuristic",
+                expected_source_kind=None,
+            ),
+        )
+
+
 def _checker(
     context: GroundingSubstrateContext | None,
+    *,
+    fallback: GroundingChecker | None = None,
 ) -> KnowledgeSubstrateGroundingChecker:
-    return KnowledgeSubstrateGroundingChecker(resolver=lambda: context)
+    return KnowledgeSubstrateGroundingChecker(
+        resolver=lambda: context,
+        fallback=fallback,
+    )
 
 
 class TestPrecision:
@@ -241,11 +278,17 @@ class TestEscalation:
         assert kwargs["project_id"] == _PROJECT
 
     async def test_per_claim_search_failure_skips_only_that_claim(self) -> None:
+        def _search(**kwargs: Any) -> tuple[KnowledgeHit, ...]:
+            # Per-claim search runs under a concurrent fan-out, so call
+            # order is non-deterministic; dispatch on the claim text so the
+            # first claim always fails regardless of which task runs first.
+            if "First claim" in str(kwargs["query"]):
+                error = ValueError("boom")
+                raise error
+            return (_hit(),)
+
         knowledge = mock_of[KnowledgeService](
-            search=AsyncMock(
-                spec=KnowledgeService.search,
-                side_effect=[ValueError("boom"), (_hit(),)],
-            ),
+            search=AsyncMock(spec=KnowledgeService.search, side_effect=_search),
         )
         provider = _provider(
             [
@@ -266,32 +309,36 @@ class TestEscalation:
 
 
 class TestDegradation:
-    async def test_resolver_returns_none_degrades_to_heuristic(self) -> None:
-        checker = _checker(None)
+    async def test_resolver_returns_none_degrades_to_fallback(self) -> None:
+        checker = _checker(None, fallback=_StubFallbackChecker())
 
         claims = await checker.check(
             deliverable_content=_NUMERIC_DELIVERABLE,
             execution_id=_EXEC,
         )
 
-        assert len(claims) >= 1
-        assert all(c.source == "heuristic" for c in claims)
+        assert len(claims) == 1
+        assert claims[0].excerpt == _FALLBACK_EXCERPT
+        assert claims[0].source == "heuristic"
 
-    async def test_absent_knowledge_service_degrades_to_heuristic(self) -> None:
+    async def test_absent_knowledge_service_degrades_to_fallback(self) -> None:
         provider = _provider([])
-        checker = _checker(_context(provider=provider, knowledge_service=None))
+        checker = _checker(
+            _context(provider=provider, knowledge_service=None),
+            fallback=_StubFallbackChecker(),
+        )
 
         claims = await checker.check(
             deliverable_content=_NUMERIC_DELIVERABLE,
             execution_id=_EXEC,
         )
 
-        assert len(claims) >= 1
-        assert all(c.source == "heuristic" for c in claims)
+        assert len(claims) == 1
+        assert claims[0].excerpt == _FALLBACK_EXCERPT
         # The provider is never touched when the substrate is unavailable.
         provider.complete.assert_not_awaited()  # type: ignore[attr-defined]
 
-    async def test_extraction_failure_degrades_to_heuristic(self) -> None:
+    async def test_extraction_failure_degrades_to_fallback(self) -> None:
         provider = mock_of[CompletionProvider](
             complete=AsyncMock(
                 spec=CompletionProvider.complete,
@@ -299,7 +346,8 @@ class TestDegradation:
             ),
         )
         checker = _checker(
-            _context(provider=provider, knowledge_service=_knowledge((_hit(),)))
+            _context(provider=provider, knowledge_service=_knowledge((_hit(),))),
+            fallback=_StubFallbackChecker(),
         )
 
         claims = await checker.check(
@@ -307,8 +355,8 @@ class TestDegradation:
             execution_id=_EXEC,
         )
 
-        assert len(claims) >= 1
-        assert all(c.source == "heuristic" for c in claims)
+        assert len(claims) == 1
+        assert claims[0].excerpt == _FALLBACK_EXCERPT
 
     async def test_no_extracted_claims_returns_empty(self) -> None:
         knowledge = _knowledge((_hit(),))
@@ -327,15 +375,22 @@ class TestDegradation:
 
 class TestPerClaimResilience:
     async def test_entailment_failure_skips_only_that_claim(self) -> None:
+        def _complete(*args: Any, **kwargs: Any) -> CompletionResponse:
+            tools = kwargs["tools"]
+            if tools[0].name == EXTRACT_CLAIMS_TOOL_NAME:
+                return _extract_response(["First claim 10%.", "Second claim 47%."])
+            # Entailment runs concurrently per claim; dispatch on the fenced
+            # claim so the first claim's entailment always fails regardless
+            # of completion order.
+            messages = args[0] if args else kwargs["messages"]
+            blob = " ".join(str(message.content or "") for message in messages)
+            if "First claim" in blob:
+                error = ValueError("entailment exploded")
+                raise error
+            return _verdict_response("unsupported", 0.9)
+
         provider = mock_of[CompletionProvider](
-            complete=AsyncMock(
-                spec=CompletionProvider.complete,
-                side_effect=[
-                    _extract_response(["First claim 10%.", "Second claim 47%."]),
-                    ValueError("entailment exploded"),
-                    _verdict_response("unsupported", 0.9),
-                ],
-            ),
+            complete=AsyncMock(spec=CompletionProvider.complete, side_effect=_complete),
         )
         checker = _checker(
             _context(provider=provider, knowledge_service=_knowledge((_hit(),)))

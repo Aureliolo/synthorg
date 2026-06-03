@@ -128,7 +128,9 @@ class KnowledgeSubstrateGroundingChecker:
         Degrades to the heuristic fallback when the substrate is not wired
         or claim-extraction fails. Returns substrate-source claims only for
         claims whose corpus search returned evidence AND whose entailment
-        verdict was an at-or-above-floor "unsupported".
+        verdict was an at-or-above-floor "unsupported". Extracted claims are
+        evaluated concurrently (bounded by MAX_CLAIMS), preserving the
+        deterministic order of the extracted list in the result.
 
         Returns:
             The ungrounded claims; an empty tuple when none are found or
@@ -174,14 +176,25 @@ class KnowledgeSubstrateGroundingChecker:
             )
             return ()
 
-        flagged: list[UngroundedClaim] = []
-        for claim in claims:
-            ungrounded = await self._evaluate_claim(
+        # Fan the per-claim corpus search + entailment round-trips out
+        # concurrently: each claim costs two LLM calls, so a serial loop
+        # makes worst-case latency scale linearly with claim count (up to
+        # MAX_CLAIMS) and starves later claims under timeout pressure.
+        # ``_evaluate_claim`` is fail-soft (it swallows everything but
+        # critical errors and cancellation), so a single bad claim never
+        # aborts the group. Results are slotted by index to keep output
+        # order deterministic regardless of completion order.
+        flagged: list[UngroundedClaim | None] = [None] * len(claims)
+
+        async def _evaluate_into(index: int, claim: str) -> None:
+            flagged[index] = await self._evaluate_claim(
                 context, claim, execution_id, project_id
             )
-            if ungrounded is not None:
-                flagged.append(ungrounded)
-        return tuple(flagged)
+
+        async with asyncio.TaskGroup() as task_group:
+            for index, claim in enumerate(claims):
+                task_group.create_task(_evaluate_into(index, claim))
+        return tuple(claim for claim in flagged if claim is not None)
 
     def _resolve_context(
         self, execution_id: NotBlankStr

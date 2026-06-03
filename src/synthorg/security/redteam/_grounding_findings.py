@@ -65,24 +65,23 @@ def evidence_excerpt(
     return f"{claim.excerpt[:keep]}{_ELLIPSIS}"
 
 
-def _claim_severity(claim: UngroundedClaim) -> RedTeamSeverity:
+def _claim_severity(claim: UngroundedClaim) -> RedTeamSeverity | None:
     """Resolve the finding severity for ``claim`` from its source.
 
     ``heuristic`` claims are pinned to :data:`HEURISTIC_GROUNDING_MAX_SEVERITY`
     (LOW). ``knowledge_substrate`` claims map their ungrounded-confidence
-    through :func:`substrate_severity_for_confidence`; the checker never
-    emits a substrate claim below the drop floor, so the mapping returns a
-    concrete tier, but a defensive LOW floor guards against a stray
-    low-confidence claim still becoming at most an informational finding.
+    through :func:`substrate_severity_for_confidence`, which returns ``None``
+    below the substrate drop floor: a sub-floor substrate claim is dropped,
+    not coerced into a LOW finding, so the checker's "drop below the floor"
+    contract holds end-to-end instead of reintroducing the low-confidence
+    noise the substrate checker exists to suppress.
 
     Returns:
-        The severity tier for the claim.
+        The severity tier for the claim, or ``None`` when a substrate claim
+        falls below the drop floor and must not become a finding.
     """
     if claim.source == "knowledge_substrate":
-        return (
-            substrate_severity_for_confidence(claim.confidence)
-            or HEURISTIC_GROUNDING_MAX_SEVERITY
-        )
+        return substrate_severity_for_confidence(claim.confidence)
     return HEURISTIC_GROUNDING_MAX_SEVERITY
 
 
@@ -101,7 +100,7 @@ def _suggested_fix(claim: UngroundedClaim) -> str:
     return base
 
 
-def claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:
+def claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding | None:
     """Convert an :class:`UngroundedClaim` into a :class:`RedTeamFinding`.
 
     Severity is source-aware (see :func:`_claim_severity`): heuristic
@@ -111,11 +110,16 @@ def claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:
     HIGH-severity findings require.
 
     Returns:
-        A ``RedTeamFinding`` on the grounding surface.
+        A ``RedTeamFinding`` on the grounding surface, or ``None`` when the
+        claim is a below-floor substrate claim that must be dropped rather
+        than surfaced.
     """
+    severity = _claim_severity(claim)
+    if severity is None:
+        return None
     return RedTeamFinding(
         attack_surface=RedTeamAttackSurface.GROUNDING,
-        severity=_claim_severity(claim),
+        severity=severity,
         description=f"Ungrounded claim: {claim.reason}",
         evidence=(evidence_excerpt(claim),),
         suggested_fix=_suggested_fix(claim),
