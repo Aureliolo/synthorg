@@ -198,7 +198,7 @@ func writeAtomicAll(files []RenderedFile, resolved []string) ([]string, error) {
 // no-op.
 func writeFileAtomic(abs string, contents []byte) error {
 	dir := filepath.Dir(abs)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // G301: scaffolds source files into the user's repo; 0755 is the source-tree-standard dir perm
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 	tmp, err := os.CreateTemp(dir, ".scaffold-*")
@@ -242,7 +242,7 @@ func writeFileAtomic(abs string, contents []byte) error {
 // logged at debug rather than swallowed so support logs can observe it.
 // Mirrors cli/internal/compose/writer.go.
 func fsyncParentDir(dir string) {
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) //nolint:gosec // G304: dir is the scaffold target directory just created above, not external input
 	if err != nil {
 		slog.Debug("scaffold: dir open for fsync failed", "dir", dir, "err", err)
 		return

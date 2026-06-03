@@ -645,7 +645,7 @@ func dockerRunQuiet(ctx context.Context, info docker.Info, args ...string) error
 		dockerBin = "docker"
 	}
 	var buf bytes.Buffer
-	c := exec.CommandContext(ctx, dockerBin, args...)
+	c := exec.CommandContext(ctx, dockerBin, args...) //nolint:gosec // G204: dockerBin is the resolved docker binary (info.DockerPath), args internally assembled, never attacker-controlled
 	c.Stdout = &buf
 	c.Stderr = &buf
 	if err := c.Run(); err != nil {
@@ -826,7 +826,7 @@ func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, 
 	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
 	fullArgs = append(fullArgs, args...)
 
-	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...)
+	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...) //nolint:gosec // G204: compose binary is CLI-detected (info.ComposeCmd), args internally assembled, never attacker-controlled
 	c.Dir = dir
 	c.Stdout = cobraCmd.OutOrStdout()
 	c.Stderr = cobraCmd.ErrOrStderr()
@@ -842,7 +842,7 @@ func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...
 	fullArgs = append(fullArgs, args...)
 
 	var buf bytes.Buffer
-	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...)
+	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...) //nolint:gosec // G204: compose binary is CLI-detected (info.ComposeCmd), args internally assembled, never attacker-controlled
 	c.Dir = dir
 	c.Stdout = &buf
 	c.Stderr = &buf

@@ -325,7 +325,7 @@ func loadWith(dataDir string, validate func(State) error) (State, error) {
 		return State{}, err
 	}
 	path := StatePath(safeDir)
-	data, err := os.ReadFile(path) //nolint:gosec // path validated by SecurePath
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is the state file under the SecurePath-cleaned data dir
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
@@ -730,9 +730,9 @@ func Save(s State) error {
 	if err := os.MkdirAll(safeDir, 0o700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := json.MarshalIndent(s, "", "  ") //nolint:gosec // G117: State is the CLI's own config store; secret-bearing fields are intentionally persisted to the 0600 state file under the user's data dir
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
-	return os.WriteFile(StatePath(safeDir), data, 0o600) //nolint:gosec // path validated by SecurePath
+	return os.WriteFile(StatePath(safeDir), data, 0o600)
 }

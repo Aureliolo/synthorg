@@ -226,7 +226,10 @@ feature isolation).
 ### Tightened Go lint
 
 `cli/.golangci.yml` enables `gocyclo` (min-complexity 10), `funlen`
-(80/60), `gocognit` (15), `nestif` (4), stricter `revive`.
+(80/60), `gocognit` (15), `nestif` (4), stricter `revive`, and `gosec`
+(security scanner; scoped exclusions for test files, the Windows
+`unsafe` disk-free system call (G103), and the shell-completion installer's
+perm/path findings (G301/G302/G304/G306)).
 
 ### New docs / SQL / YAML tools
 
@@ -311,7 +314,7 @@ follow-ups below is the contract for "100% enforced".**
 | Exemption | Mechanism | Acceptance |
 |-----------|-----------|------------|
 | `_state_slice_immutability_baseline.txt` (empty) | PR 2 introduces every state slice; baseline must stay empty | Gate green after every PR 2 slice lands |
-| `_settings_namespace_baseline.txt` (1: `settings` namespace lacks definitions file) | PR 2 may file the missing `settings/definitions/settings.py` | Baseline drains to 0 |
+| `_settings_namespace_baseline.txt` | `settings/definitions/settings.py` already satisfies the namespace; the residual `settings` entry was a stale orphan | LIFTED: baseline drained to 0 |
 | Typeguard wiring | PR 2's manifest substrate was expected to eliminate most `TYPE_CHECKING`-only imports; in practice ~1,055 modules still guard signature types | #2182 (WARN) landed; #2183 (ERROR) remains; see Section F |
 
 ### B. Lifted naturally by PR 3 (#2049)

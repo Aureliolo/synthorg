@@ -452,7 +452,7 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 
 	// Spawn detached -- use context.Background so parent context
 	// cancellation doesn't kill the cleanup process.
-	c := exec.CommandContext(context.Background(), "cmd.exe", "/c", batPath) //nolint:noctx // intentionally detached
+	c := exec.CommandContext(context.Background(), "cmd.exe", "/c", batPath) //nolint:gosec,noctx // G204: cmd.exe is constant, batPath is the CLI-generated temp uninstaller script; noctx: intentionally detached
 	c.SysProcAttr = windowsDetachedProcAttr()
 	if err := c.Start(); err != nil {
 		_ = os.Remove(batPath)

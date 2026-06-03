@@ -1016,7 +1016,7 @@ func writeTarEntry(tw *tar.Writer, path, rel string, d fs.DirEntry) error {
 
 // addFileToTar copies a single file into the tar writer.
 func addFileToTar(tw *tar.Writer, path, rel string) error {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: path comes from the filepath.Walk over the data-dir backup root, not external input
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", rel, err)
 	}

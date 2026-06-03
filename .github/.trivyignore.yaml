@@ -1,35 +1,50 @@
-# Trivy CVE ignore list -- structured YAML format
+# Trivy CVE ignore list (structured YAML format).
+#
+# Suppression removal owner: issue #2202 (one entry maps to one tracked
+# removal owner). Dated entries carry an `expired_at` re-review cadence;
+# after that date Trivy reports the CVE again unless it is re-triaged.
 
 vulnerabilities:
   - id: CVE-2026-22184
+    expired_at: "2027-06-03T00:00:00Z"
     statement: >-
-      Disputed zlib vulnerability affecting only the untgz demo utility
-      in contrib/, not core zlib compression. Our images do not ship or
-      invoke untgz. Upstream disputes CVE validity:
+      Disputed zlib vulnerability affecting only the untgz demo utility in
+      contrib/, not core zlib compression. Debian excludes contrib/untgz
+      from the zlib orig tarball (since 1:1.2.3.5.dfsg-1) and marks this CVE
+      fixed across all releases, so our Debian-based images never ship or
+      build untgz. Upstream also disputes CVE validity:
       https://github.com/madler/zlib/issues/1148
+      No fix version is expected (disputed), so the expiry is a yearly
+      re-review backstop rather than a patch-tracking date.
+      Removal owner: issue #2202.
 
   - id: CVE-2026-25210
     purls:
       - "pkg:deb/debian/libexpat1?distro=debian-13"
-    expired_at: "2026-06-24T00:00:00Z"
+    expired_at: "2026-09-24T00:00:00Z"
     statement: >-
       libexpat integer overflow in doContent buffer reallocation (fixed in
-      2.7.4, sandbox has 2.7.1-2). No Debian Trixie fix available yet.
-      Risk accepted: sandbox is ephemeral, network-isolated via iptables,
-      runs as non-root (UID 10001), and the local-access attack vector is
-      inherent to the sandbox's purpose (executing untrusted code).
-      Revisit when python:3.14-slim ships libexpat >= 2.7.4.
+      expat 2.7.4). Re-triaged against the Debian security tracker on
+      2026-06-03: trixie still ships 2.7.1-2 and marks this <no-dsa> (Minor
+      issue); the fix is only in unstable (2.7.4-1). Risk accepted: sandbox
+      is ephemeral, network-isolated via iptables, runs as non-root (UID
+      10001), and the local-access attack vector is inherent to the
+      sandbox's purpose (executing untrusted code). Quarterly re-review
+      cadence; remove when python:3.14-slim's trixie base ships libexpat
+      >= 2.7.4. Removal owner: issue #2202.
 
   - id: CVE-2025-69720
     purls:
       - "pkg:deb/debian/ncurses?distro=debian-13"
-    expired_at: "2026-06-24T00:00:00Z"
+    expired_at: "2026-09-24T00:00:00Z"
     statement: >-
       Stack buffer overflow in ncurses infocmp -i (analyze_string in
-      progs/infocmp.c). Only triggers when running infocmp -i on crafted
-      terminfo entry. Sandbox never invokes infocmp -- ncurses is a
-      transitive dep of Python/git. Fixed in ncurses 6.5 patch 20251213
-      but Debian Trixie ships 6.5+20250216-2. Trivy rates CRITICAL but
-      EPSS < 0.1% and Debian marks unimportant. Risk accepted: sandbox
-      is ephemeral, network-isolated via iptables, runs as non-root
-      (UID 10001).
+      progs/infocmp.c), only triggered by running infocmp -i on a crafted
+      terminfo entry. The sandbox never invokes infocmp; ncurses is a
+      transitive dep of Python/git. Re-triaged against the Debian security
+      tracker on 2026-06-03: trixie still ships 6.5+20250216-2 and marks
+      this <no-dsa> (Minor issue); the fix (6.6+20251231-1) is only in
+      forky/sid. Trivy rates CRITICAL but EPSS < 0.1%. Risk accepted:
+      sandbox is ephemeral, network-isolated via iptables, runs as non-root
+      (UID 10001). Quarterly re-review cadence; remove when trixie ships
+      the ncurses fix. Removal owner: issue #2202.

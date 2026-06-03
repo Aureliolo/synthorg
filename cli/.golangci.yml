@@ -25,6 +25,9 @@ linters:
     - gocognit
     - nestif
     - revive
+    # Security scanner for the Docker-orchestrating CLI: subprocess
+    # construction, file permissions, path handling, secret marshalling.
+    - gosec
   settings:
     gocyclo:
       min-complexity: 10
@@ -43,16 +46,34 @@ linters:
         - name: cognitive-complexity
           arguments: [15]
   exclusions:
-    # Table tests and OS-conditional branches in test files are excluded
-    # from all five complexity rules: the signal lives in production
-    # code, not in test data enumeration. This matches the industry
-    # standard (golangci-lint docs explicitly recommend this set; the
-    # same exclusion is shipped by kubernetes, docker, prometheus,
-    # hashicorp, etc.). Production code, in contrast, has zero
-    # path-scoped exclusions.
+    # Complexity rules (gocyclo/funlen/gocognit/nestif/revive): table tests
+    # and OS-conditional branches in test files are excluded. The signal
+    # lives in production code, not in test data enumeration. This matches
+    # the industry standard (golangci-lint docs explicitly recommend this
+    # set; the same exclusion is shipped by kubernetes, docker, prometheus,
+    # hashicorp, etc.). Production code has zero path-scoped complexity
+    # exclusions. This exclusion is intended-permanent, not a temporary
+    # suppression.
+    #
+    # gosec on test files: also excluded. Fixtures legitimately embed fake
+    # credentials (G101) and use world-readable perms (G301/G304/G306) on
+    # throwaway temp files; the production-code security signal is what
+    # matters. G103 (unsafe-pointer audit) is excluded only for the Windows
+    # disk-free syscall, where unsafe.Pointer is mandated by the Win32 API.
     rules:
       - path: '_test\.go$'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
+        linters: [gocyclo, funlen, gocognit, nestif, revive, gosec]
+      - path: 'internal/diagnostics/disk_windows\.go$'
+        linters: [gosec]
+        text: 'G103'
+      # completion/install.go installs shell completion scripts and rc
+      # snippets into the user's own home directory. These are non-secret
+      # files at fixed home-relative paths that must be shell-readable
+      # (0644 files, 0755 dirs); the perm (G301/G302/G306) and fixed-path
+      # read (G304) findings are inherent to that purpose, not a weakness.
+      - path: 'internal/completion/install\.go$'
+        linters: [gosec]
+        text: 'G30[1246]'
 
 formatters:
   enable:

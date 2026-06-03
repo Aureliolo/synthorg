@@ -38,11 +38,11 @@ func openBrowser(ctx context.Context, rawURL string) error {
 	var c *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		c = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", normalizedURL)
+		c = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", normalizedURL) //nolint:gosec // G204: launcher is a constant; only the scheme+host-validated, re-serialised localhost URL is variable
 	case "darwin":
-		c = exec.CommandContext(ctx, "open", normalizedURL)
+		c = exec.CommandContext(ctx, "open", normalizedURL) //nolint:gosec // G204: launcher is a constant; only the scheme+host-validated, re-serialised localhost URL is variable
 	default:
-		c = exec.CommandContext(ctx, "xdg-open", normalizedURL)
+		c = exec.CommandContext(ctx, "xdg-open", normalizedURL) //nolint:gosec // G204: launcher is a constant; only the scheme+host-validated, re-serialised localhost URL is variable
 	}
 	if err := c.Start(); err != nil {
 		return fmt.Errorf("starting browser: %w", err)
