@@ -32,6 +32,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import structlog.testing
+from typeguard import suppress_type_checks
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.agent import AgentIdentity
@@ -350,7 +351,11 @@ class TestNoServiceFallbackEvents:
 
         handlers = build_handler_map()
         handler = handlers[tool_name]
-        with structlog.testing.capture_logs() as events:
+        # The memory-service accessor is annotated -> MemoryService, so the
+        # WARN-level runtime checker rejects this lightweight stub before its
+        # MemoryBackendUnsupportedError can reach the handler's catch. Suppress
+        # the structural check so the genuine error-routing path is exercised.
+        with structlog.testing.capture_logs() as events, suppress_type_checks():
             raw = await handler(
                 app_state=fake_app_state,
                 arguments=dict(_BLAST_ARGS),

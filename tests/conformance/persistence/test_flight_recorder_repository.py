@@ -164,7 +164,7 @@ class TestFlightRecorderFrameRepository:
     async def test_purge_before_rejects_naive(
         self, backend: PersistenceBackend
     ) -> None:
-        with pytest.raises((ValueError, QueryError)):
+        with pytest.raises(QueryError):
             await backend.flight_recorder_frames.purge_before(
                 datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
             )

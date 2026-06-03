@@ -149,5 +149,9 @@ class CodeExecutionRecordRepository(
 
     @override
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete records with ``executed_at < threshold``. Returns rows removed."""
+        """Delete records with ``executed_at < threshold``. Returns rows removed.
+
+        ``threshold`` should be timezone-aware; a naive value is normalised to
+        UTC via the shared persistence rule ("store UTC everywhere").
+        """
         ...

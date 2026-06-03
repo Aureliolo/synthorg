@@ -134,7 +134,7 @@ INSERT INTO lifecycle_events (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         clauses: list[str] = []
         params: list[str | int] = []
@@ -145,6 +145,9 @@ INSERT INTO lifecycle_events (
             clauses.append("event_type = ?")
             params.append(event_type.value)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("timestamp >= ?")
             params.append(since.isoformat())
 
@@ -278,7 +281,8 @@ INSERT INTO task_metrics (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` or ``until`` is naive, or the database
+                query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
@@ -289,9 +293,15 @@ INSERT INTO task_metrics (
             clauses.append("agent_id = ?")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at >= ?")
             params.append(since.isoformat())
         if until is not None:
+            if until.tzinfo is None:
+                msg = "until must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at <= ?")
             params.append(until.isoformat())
 
@@ -418,7 +428,7 @@ INSERT INTO collaboration_metrics (
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
@@ -429,6 +439,9 @@ INSERT INTO collaboration_metrics (
             clauses.append("agent_id = ?")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("recorded_at >= ?")
             params.append(since.isoformat())
 

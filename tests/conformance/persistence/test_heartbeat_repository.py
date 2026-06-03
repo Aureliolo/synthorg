@@ -73,7 +73,7 @@ class TestHeartbeatRepository:
         assert "fresh" not in ids
 
     async def test_get_stale_rejects_naive(self, backend: PersistenceBackend) -> None:
-        with pytest.raises((ValueError, QueryError)):
+        with pytest.raises(QueryError):
             await backend.heartbeats.get_stale(
                 threshold=datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
             )

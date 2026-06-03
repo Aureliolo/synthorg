@@ -13400,7 +13400,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 125,
+      "loc": 128,
       "loc_cap": null,
       "module": "src/synthorg/persistence/code_execution_protocol.py",
       "owning_feature": "persistence"
@@ -13596,7 +13596,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 95,
+      "loc": 98,
       "loc_cap": null,
       "module": "src/synthorg/persistence/knowledge_usage_protocol.py",
       "owning_feature": "persistence"
@@ -13932,7 +13932,7 @@
     },
     {
       "kind": "code",
-      "loc": 409,
+      "loc": 422,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/hr_repositories.py",
       "owning_feature": "persistence"
@@ -14639,7 +14639,7 @@
     },
     {
       "kind": "code",
-      "loc": 400,
+      "loc": 413,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/hr_repositories.py",
       "owning_feature": "persistence"
@@ -14863,7 +14863,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 762,
+      "loc": 763,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/subworkflow_repo.py",
       "owning_feature": "persistence"

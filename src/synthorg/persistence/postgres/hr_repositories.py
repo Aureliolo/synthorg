@@ -138,7 +138,7 @@ class PostgresLifecycleEventRepository:
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         clauses: list[str] = []
         params: list[object] = []
@@ -149,6 +149,9 @@ class PostgresLifecycleEventRepository:
             clauses.append("event_type = %s")
             params.append(event_type.value)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("timestamp >= %s")
             params.append(since)
 
@@ -283,7 +286,8 @@ class PostgresTaskMetricRepository:
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` or ``until`` is naive, or the database
+                query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
@@ -294,9 +298,15 @@ class PostgresTaskMetricRepository:
             clauses.append("agent_id = %s")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at >= %s")
             params.append(since)
         if until is not None:
+            if until.tzinfo is None:
+                msg = "until must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("completed_at <= %s")
             params.append(until)
 
@@ -421,7 +431,7 @@ class PostgresCollaborationMetricRepository:
             The matching entities.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``since`` is naive, or the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED
@@ -432,6 +442,9 @@ class PostgresCollaborationMetricRepository:
             clauses.append("agent_id = %s")
             params.append(agent_id)
         if since is not None:
+            if since.tzinfo is None:
+                msg = "since must be timezone-aware; a naive datetime is rejected"
+                raise QueryError(msg)
             clauses.append("recorded_at >= %s")
             params.append(since)
 

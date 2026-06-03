@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from synthorg.core.enums import Complexity, TaskType
+from synthorg.core.persistence_errors import QueryError
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -132,6 +133,16 @@ class TestLifecycleEventRepository:
 
         limited = await repo.list_events(limit=2)
         assert len(limited) <= 2
+
+    async def test_list_events_rejects_naive_since(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """A naive ``since`` is rejected so the cut-off cannot drift."""
+        with pytest.raises(QueryError):
+            await backend.lifecycle_events.list_events(
+                since=datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )
 
 
 @pytest.mark.integration
@@ -265,6 +276,17 @@ class TestTaskMetricRepository:
 
         assert len(records) >= 1
 
+    async def test_query_rejects_naive_bounds(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """Both ``since`` and ``until`` must be timezone-aware."""
+        naive = datetime(2025, 1, 1)  # noqa: DTZ001 -- naive on purpose
+        with pytest.raises(QueryError):
+            await backend.task_metrics.query(since=naive)
+        with pytest.raises(QueryError):
+            await backend.task_metrics.query(until=naive)
+
 
 @pytest.mark.integration
 class TestCollaborationMetricRepository:
@@ -378,3 +400,13 @@ class TestCollaborationMetricRepository:
         records = await repo.query(since=past)
 
         assert len(records) >= 1
+
+    async def test_query_rejects_naive_since(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        """A naive ``since`` is rejected so the cut-off cannot drift."""
+        with pytest.raises(QueryError):
+            await backend.collaboration_metrics.query(
+                since=datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )

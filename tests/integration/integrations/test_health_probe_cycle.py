@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 
 import pytest
+from typeguard import suppress_type_checks
 
 from synthorg.integrations.connections.models import (
     Connection,
@@ -124,11 +125,15 @@ class TestHealthProberCycle:
     ) -> None:
         conn = _make_connection("probe-1")
         catalog = _FakeCatalog((conn,))
-        svc = HealthProberService(
-            catalog=catalog,  # type: ignore[arg-type]
-            degraded_threshold=1,
-            unhealthy_threshold=2,
-        )
+        # _FakeCatalog is duck-typed to the catalog surface the prober uses;
+        # the WARN-level checker rejects it against the concrete
+        # ConnectionCatalog, so suppress the structural check at construction.
+        with suppress_type_checks():
+            svc = HealthProberService(
+                catalog=catalog,  # type: ignore[arg-type]
+                degraded_threshold=1,
+                unhealthy_threshold=2,
+            )
         checker = _ScriptedChecker(
             {
                 "probe-1": [
@@ -161,11 +166,12 @@ class TestHealthProberCycle:
         """Regression: HEALTHY path must not access ``count`` undefined."""
         conn = _make_connection("probe-healthy")
         catalog = _FakeCatalog((conn,))
-        svc = HealthProberService(
-            catalog=catalog,  # type: ignore[arg-type]
-            degraded_threshold=1,
-            unhealthy_threshold=3,
-        )
+        with suppress_type_checks():
+            svc = HealthProberService(
+                catalog=catalog,  # type: ignore[arg-type]
+                degraded_threshold=1,
+                unhealthy_threshold=3,
+            )
         checker = _ScriptedChecker({"probe-healthy": [ConnectionStatus.HEALTHY]})
         monkeypatch.setattr(prober_mod, "get_health_checker", lambda _: checker)
         await svc._probe_all()

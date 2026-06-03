@@ -46,6 +46,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence._shared.datetime_marshaller import format_iso_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
 from synthorg.persistence.sqlite._shared import WriteContext
 
@@ -291,8 +292,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         nodes_json,
                         edges_json,
                         entity.created_by,
-                        entity.created_at.astimezone(UTC).isoformat(),
-                        entity.updated_at.astimezone(UTC).isoformat(),
+                        format_iso_utc(entity.created_at),
+                        format_iso_utc(entity.updated_at),
                     ),
                 )
                 await self._db.commit()

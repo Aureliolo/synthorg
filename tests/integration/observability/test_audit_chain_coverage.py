@@ -154,7 +154,7 @@ def audit_sink(tmp_path: Path) -> Iterator[AuditChainSink]:
         root.removeHandler(sink)
 
 
-def _connection_state() -> dict[str, Any]:
+def _connection_state() -> Any:
     """Build a controller state with a stubbed ConnectionCatalog.
 
     The catalog is spec'd to ``ConnectionCatalog`` so its methods are
@@ -166,6 +166,8 @@ def _connection_state() -> dict[str, Any]:
     :class:`IntegrationsStateSlice` so controllers reach it via
     ``app_state.slice(IntegrationsStateSlice).connection_catalog``.
     """
+    from litestar.datastructures import State
+
     from tests._shared import make_app_state
 
     catalog = MagicMock(spec=ConnectionCatalog)
@@ -174,7 +176,7 @@ def _connection_state() -> dict[str, Any]:
     catalog.delete.return_value = None
     catalog.get_credentials.return_value = {"client_secret": "real-secret-value"}
     app_state = make_app_state(connection_catalog=catalog)
-    return {"app_state": app_state}
+    return State({"app_state": app_state})
 
 
 def _tamper_previous_hash(snapshot: HashChain) -> None:
