@@ -1612,7 +1612,7 @@
     },
     {
       "kind": "code",
-      "loc": 286,
+      "loc": 288,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -6015,7 +6015,7 @@
     },
     {
       "kind": "code",
-      "loc": 699,
+      "loc": 697,
       "loc_cap": 500,
       "module": "src/synthorg/engine/review_gate.py",
       "owning_feature": "engine"

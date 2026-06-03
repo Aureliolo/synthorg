@@ -628,7 +628,8 @@ class TestPublishRedTeamRuntime:
 
         assert state.slice(SecurityStateSlice).red_team_reports is None
 
-    def test_disabled_skips_gate_attach(self) -> None:
+    def test_disabled_clears_gate(self) -> None:
+        """An enabled -> disabled reinit must detach the previous gate, not leave it."""
         review_gate = mock_of[ReviewGateService]()
         state = _make_state()
 
@@ -636,4 +637,18 @@ class TestPublishRedTeamRuntime:
             state, red_team_runtime=None, review_gate_service=review_gate
         )
 
-        review_gate.set_red_team_gate.assert_not_called()
+        review_gate.set_red_team_gate.assert_called_once_with(None)
+
+    def test_no_review_gate_is_a_noop_for_the_gate(self) -> None:
+        """With no review gate wired, the store is still published, gate untouched."""
+        repo = InMemoryRedTeamReportRepository()
+        runtime = mock_of[RedTeamRuntime](
+            report_repo=repo, gate=mock_of[RedTeamGateService]()
+        )
+        state = _make_state()
+
+        _publish_red_team_runtime(
+            state, red_team_runtime=runtime, review_gate_service=None
+        )
+
+        assert state.slice(SecurityStateSlice).red_team_reports is repo
