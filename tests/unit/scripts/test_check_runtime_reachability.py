@@ -102,6 +102,27 @@ def test_nested_argument_call_counts_as_edge(tmp_path: Path) -> None:
     assert _MODULE._run(tmp_path) == 0
 
 
+def test_call_in_nested_def_does_not_count_as_edge(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A call buried in a nested ``def`` is not an edge of the outer fn.
+
+    Only the outer function's own scope counts; an inner closure that
+    happens to call ``inner`` must not manufacture a spurious edge.
+    """
+    _seed(
+        tmp_path,
+        manifest="src/synthorg/m.py outer inner #1 -- must be a direct call\n",
+        files={
+            "src/synthorg/m.py": (
+                "def outer():\n    def helper():\n        inner()\n    return helper\n"
+            ),
+        },
+    )
+    assert _MODULE._run(tmp_path) == 1
+    assert "outer no longer calls inner" in capsys.readouterr().out
+
+
 def test_severed_edge_fails_loudly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

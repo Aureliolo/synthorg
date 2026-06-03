@@ -111,17 +111,40 @@ def _functions_named(tree: ast.AST, name: str) -> list[_FuncDef]:
     ]
 
 
-def _body_calls(func: _FuncDef, callee: str) -> bool:
-    """Return ``True`` when *func*'s subtree calls *callee* by name.
+def _direct_calls(func: _FuncDef) -> list[ast.Call]:
+    """Collect calls made directly in *func*, not in a nested scope.
 
-    Walks the entire function subtree (not just top-level statements) so a
-    call nested as an argument -- ``spawn(self.complete_review(...))`` --
-    counts as the edge being present.
+    Walks *func*'s body but does not descend into nested ``def`` / ``async
+    def`` / ``class`` / ``lambda`` scopes: a call that only fires inside an
+    inner closure or a sibling method is not an edge of *func* itself.
+    Argument-nested calls -- ``spawn(self.complete_review(...))`` -- are still
+    collected because the argument expression belongs to *func*'s own scope.
     """
-    return any(
-        isinstance(node, ast.Call) and _callee_name(node) == callee
-        for node in ast.walk(func)
-    )
+    calls: list[ast.Call] = []
+
+    def _visit(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(
+                child,
+                ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda,
+            ):
+                continue
+            if isinstance(child, ast.Call):
+                calls.append(child)
+            _visit(child)
+
+    _visit(func)
+    return calls
+
+
+def _body_calls(func: _FuncDef, callee: str) -> bool:
+    """Return ``True`` when *func*'s own body calls *callee* by name.
+
+    Only calls in *func*'s own scope count; calls buried in a nested ``def`` /
+    ``class`` / ``lambda`` do not, so an edge cannot be manufactured by an
+    unrelated inner helper that happens to call *callee*.
+    """
+    return any(_callee_name(node) == callee for node in _direct_calls(func))
 
 
 def _check_edge(repo_root: Path, edge: RequiredEdge) -> str | None:

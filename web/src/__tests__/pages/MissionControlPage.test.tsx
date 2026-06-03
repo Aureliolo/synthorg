@@ -27,8 +27,11 @@ afterEach(() => {
     framesExecutionId: null,
     framesLoading: false,
     framesError: null,
+    framesNextCursor: null,
+    framesHasMore: false,
     seekView: null,
     redTeamReport: null,
+    redTeamReportError: null,
   })
   useSteeringStore.setState({
     directives: [],
@@ -99,6 +102,14 @@ describe('MissionControlPage', () => {
     fireEvent.click(replay)
     // The recorder tab is now active and auto-loaded the run; the
     // playback control proves frames loaded for exec-1.
+    expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  it('opens directly on the recorder tab when the URL carries an execution id', async () => {
+    renderPage(['/?executionId=exec-1'])
+    // No Replay click: a URL execution id makes the recorder the initial tab
+    // (not the live tab), so the recorder auto-loads the run and the playback
+    // control appears straight away.
     expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 

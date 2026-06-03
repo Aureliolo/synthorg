@@ -17,13 +17,18 @@ when learning is disabled. See ``tests/unit/evals/`` for the curve experiment.
 
 import asyncio
 import hashlib
+import shutil
 import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Final
 from uuid import UUID
 
-from evals.errors import BriefExecutionError, CompanyConfigInvalidError
+from evals.errors import (
+    BriefExecutionError,
+    CassettePlaybackUnavailableError,
+    CompanyConfigInvalidError,
+)
 from evals.history import ScorecardHistory
 from evals.loader.anchors import AnchorSet, load_anchor_set
 from evals.loader.briefs import load_brief_suite
@@ -130,6 +135,29 @@ def _provider_descriptor(
     if cassette is not None:
         return f"cassette:{cassette.name}"
     return f"scripted:{_resolve_provider_name(provider)}"
+
+
+def _reject_unplayable_cassette(
+    cassette: Path | None, provider: CompletionProvider | None
+) -> None:
+    """Refuse a cassette label without a provider that actually replays it.
+
+    A cassette is a determinism-source label only; nothing in the runner
+    loads it. Without an injected provider that replays it, the default
+    ``ScriptedDriver`` would run while the scorecard stamps a
+    ``cassette:<name>`` provenance it never honoured.
+
+    Raises:
+        CassettePlaybackUnavailableError: ``cassette`` is set but no
+            ``provider`` was injected to replay it.
+    """
+    if cassette is not None and provider is None:
+        msg = (
+            f"cassette {cassette.name!r} was supplied without a provider that "
+            "replays it; inject the cassette-backed provider via `provider=` "
+            "so the scorecard's determinism source is honest"
+        )
+        raise CassettePlaybackUnavailableError(msg)
 
 
 def _build_default_judge(anchor_sets: tuple[AnchorSet, ...]) -> ScriptedJudge:
@@ -284,8 +312,16 @@ def _materialise_executable_brief(
     if checks is None:
         msg = f"executable brief {brief.brief_id!r} is missing its checks block"
         raise BriefExecutionError(msg)
-    work_dir = base_dir / "work" / brief.brief_id
-    work_dir.mkdir(parents=True, exist_ok=True)
+    work_root = (base_dir / "work").resolve()
+    work_dir = (work_root / brief.brief_id).resolve()
+    if not work_dir.is_relative_to(work_root):
+        msg = f"brief {brief.brief_id!r} work directory escapes the benchmark work root"
+        raise BriefExecutionError(msg)
+    # Recreate from scratch so a prior run's artifacts for the same brief id
+    # cannot bleed into this grading pass.
+    if work_dir.exists():
+        shutil.rmtree(work_dir)
+    work_dir.mkdir(parents=True)
     content = deliverable_text or ""
     for artifact in brief.expected_artifacts:
         if artifact.kind != "file":
@@ -444,7 +480,11 @@ async def run_benchmark_async(  # noqa: PLR0913
 
     Raises:
         CompanyConfigInvalidError: The company YAML failed validation.
+        CassettePlaybackUnavailableError: A cassette was supplied without an
+            injected provider to replay it.
     """
+    _reject_unplayable_cassette(cassette, provider)
+
     try:
         root_config = load_config(company_config)
     except Exception as exc:

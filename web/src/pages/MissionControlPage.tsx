@@ -39,10 +39,12 @@ function CockpitTabPanel({
 }
 
 export default function MissionControlPage() {
-  const [tab, setTab] = useState<CockpitTab>('live')
   const [searchParams] = useSearchParams()
   const urlExecutionId = searchParams.get('executionId') ?? searchParams.get('taskId')
   const initialProjectId = searchParams.get('project')
+  // A deep link carrying an execution id lands on the recorder tab (the same
+  // surface handleReplay switches to), not the default live tab.
+  const [tab, setTab] = useState<CockpitTab>(urlExecutionId ? 'recorder' : 'live')
   const [replayExecutionId, setReplayExecutionId] = useState<string | null>(
     urlExecutionId,
   )

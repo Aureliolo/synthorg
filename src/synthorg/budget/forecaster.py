@@ -294,9 +294,17 @@ class CostForecaster:
             else _DEFAULT_TURNS_PER_ROLE
         )
         roles = tuple(signal.role_skeleton)
+        # Match compute_brief_hash: assignment keys are normalised, so resolve
+        # each role's tier against a normalised map. A raw lookup would miss a
+        # case- or whitespace-divergent assignment key and silently fall back
+        # to the medium tier, producing a forecast that disagrees with the hash.
+        normalized_assignments = {
+            normalize_identifier(role): model_id
+            for role, model_id in signal.model_assignments.items()
+        }
         tiers: list[str] = []
         for role_id in roles:
-            model_id = signal.model_assignments.get(role_id, "")
+            model_id = normalized_assignments.get(normalize_identifier(role_id), "")
             tier = tier_from_model_id(model_id) if model_id else "medium"
             tiers.append(tier if tier is not None else "medium")
 

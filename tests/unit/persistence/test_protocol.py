@@ -70,6 +70,9 @@ from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.red_team_report_protocol import (
+    RedTeamReportArchiveRepository,
+)
 from synthorg.persistence.research_protocol import ResearchRunRepository
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
@@ -1548,6 +1551,17 @@ class TestProtocolCompliance:
         assert isinstance(backend.flight_recorder_frames, FlightRecorderFrameRepository)
         assert isinstance(
             _FakeFlightRecorderRepository(), FlightRecorderFrameRepository
+        )
+
+    def test_fake_red_team_report_repo_is_archive_repository(self) -> None:
+        # Backend-routed assertion mirrors the flight-recorder pattern above:
+        # a regression that swaps the property to ``None`` or removes
+        # ``red_team_reports`` from ``_FakeBackend`` fails here, not only on
+        # the standalone-class check.
+        backend = _FakeBackend()
+        assert isinstance(backend.red_team_reports, RedTeamReportArchiveRepository)
+        assert isinstance(
+            _FakeRedTeamReportArchiveRepository(), RedTeamReportArchiveRepository
         )
 
     def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:

@@ -332,6 +332,9 @@ async def test_dispatch_completion_backgrounds_gated_approval() -> None:
         decided_by="bob",
     )
     assert dispatched is True
+    # The blocking gate runs in the background task, not inline: no rework
+    # transition is submitted until the registry drains.
+    assert task_engine.submit.call_count == 0
     await registry.drain()
 
     call = task_engine.submit.call_args[0][0]

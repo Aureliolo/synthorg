@@ -41,6 +41,10 @@ interface MissionControlState {
   // Durable red-team verdict for the loaded run (read; null when no gate
   // ran for the execution or the archive is unwired).
   redTeamReport: RedTeamReportRecord | null
+  // Set when the verdict fetch itself failed, so the UI can distinguish a
+  // genuine "no verdict recorded" (report null, error null) from a failed
+  // read (report null, error set) rather than collapsing both to "none".
+  redTeamReportError: string | null
 
   fetchSnapshot: () => Promise<void>
   fetchFrames: (executionId: string) => Promise<void>
@@ -75,6 +79,7 @@ async function fetchFramesImpl(
     frames: [],
     seekView: null,
     redTeamReport: null,
+    redTeamReportError: null,
     framesLoading: true,
     framesError: null,
     framesExecutionId: executionId,
@@ -112,16 +117,17 @@ async function fetchRedTeamReportImpl(
   requestExecutionId: string,
 ): Promise<void> {
   // Best-effort audit-trail read: a missing verdict is a normal "no
-  // red-team review recorded" state, and an error must not mask the
-  // frames the operator came to see, so failures leave the report null.
+  // red-team review recorded" state, and an error must not mask the frames
+  // the operator came to see, so a failure leaves the frames intact and
+  // surfaces redTeamReportError instead of masquerading as "no verdict".
   try {
     const report = await getRedTeamReport(requestExecutionId)
     if (get().framesExecutionId !== requestExecutionId) return
-    set({ redTeamReport: report })
+    set({ redTeamReport: report, redTeamReportError: null })
   } catch (err) {
     if (get().framesExecutionId !== requestExecutionId) return
     log.warn('red_team_report_fetch_failed', { error: sanitizeForLog(err) })
-    set({ redTeamReport: null })
+    set({ redTeamReport: null, redTeamReportError: getErrorMessage(err) })
   }
 }
 
@@ -188,6 +194,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
   framesHasMore: false,
   seekView: null,
   redTeamReport: null,
+  redTeamReportError: null,
 
   fetchSnapshot: () => fetchSnapshotImpl(set),
   fetchFrames: (executionId) => fetchFramesImpl(set, get, executionId),

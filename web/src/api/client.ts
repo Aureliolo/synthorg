@@ -282,6 +282,12 @@ export function unwrapNullable<T>(
       'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
+  // Distinguish an explicit `data: null` (a valid "no resource" response)
+  // from a success envelope that omits `data` entirely (malformed); the
+  // latter is a server contract violation, not a null resource.
+  if (!('data' in body)) {
+    throw new ApiRequestError('Malformed API response: success envelope missing data')
+  }
   return body.data ?? null
 }
 

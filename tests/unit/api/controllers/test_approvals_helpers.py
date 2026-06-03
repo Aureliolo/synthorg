@@ -34,6 +34,7 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.workers.execution_service import WorkerExecutionService
 from tests._shared import make_app_state, mock_of
 
@@ -189,8 +190,7 @@ class TestSignalResumeIntent:
         mock_worker = mock_of[WorkerExecutionService](
             dispatch_resume=AsyncMock(),
         )
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=mock_gate,
@@ -227,8 +227,7 @@ class TestSignalResumeIntent:
         mock_worker = mock_of[WorkerExecutionService](
             dispatch_resume=AsyncMock(),
         )
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=mock_gate,
@@ -272,8 +271,7 @@ class TestSignalResumeIntent:
         mock_gate.has_parked_context = AsyncMock(
             side_effect=RuntimeError("db error"),
         )
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=mock_gate,
@@ -306,8 +304,7 @@ class TestSignalResumeIntent:
                 side_effect=RuntimeError("runtime not configured"),
             ),
         )
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=mock_of[ApprovalGate](),
@@ -346,8 +343,7 @@ class TestSignalResumeIntent:
                 ),
             ),
         )
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=mock_of[ApprovalGate](),
@@ -372,8 +368,7 @@ class TestSignalResumeIntent:
 
     async def test_flow2_review_gate_called_with_task_id(self) -> None:
         """When no approval_gate and task_id provided, review gate runs."""
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=None,
@@ -401,8 +396,7 @@ class TestSignalResumeIntent:
 
     async def test_flow2_skipped_when_no_task_id(self) -> None:
         """When task_id is None, review gate is not called."""
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock()
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
 
         app_state = _app_state(
             gate=None,
@@ -431,9 +425,10 @@ class TestSignalResumeIntent:
         -> 404, TaskVersionConflictError -> 409).  Everything else
         propagates to the caller as an unhandled error.
         """
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock(
-            side_effect=RuntimeError("transition failed"),
+        mock_review = mock_of[ReviewGateService](
+            dispatch_completion=AsyncMock(
+                side_effect=RuntimeError("transition failed"),
+            ),
         )
 
         app_state = _app_state(
@@ -490,9 +485,10 @@ class TestSignalResumeIntent:
         self, error_cls: type[BaseException]
     ) -> None:
         """MemoryError/RecursionError from review gate propagates."""
-        mock_review = MagicMock()
-        mock_review.dispatch_completion = AsyncMock(
-            side_effect=error_cls("fatal"),
+        mock_review = mock_of[ReviewGateService](
+            dispatch_completion=AsyncMock(
+                side_effect=error_cls("fatal"),
+            ),
         )
 
         app_state = _app_state(

@@ -30,11 +30,12 @@ from synthorg.budget.forecast_roles import (
 )
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.core.persistence_errors import ConstraintViolationError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVAL_REQUIRED,
     BUDGET_FORECAST_REJECTED,
     BUDGET_FORECAST_SUPERSEDED,
+    BUDGET_PREFLIGHT_ERROR,
 )
 from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 
@@ -201,7 +202,16 @@ class ForecastGate:
         """
         if self._role_skeleton_provider is None:
             return DEFAULT_ROLE_SKELETON
-        skeleton = await self._role_skeleton_provider()
+        try:
+            skeleton = await self._role_skeleton_provider()
+        except Exception as exc:
+            logger.error(
+                BUDGET_PREFLIGHT_ERROR,
+                reason="role_skeleton_provider_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         return skeleton if skeleton.roles else DEFAULT_ROLE_SKELETON
 
     async def _forecast_for_brief(

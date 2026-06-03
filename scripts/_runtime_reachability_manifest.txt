@@ -28,3 +28,7 @@
 src/synthorg/api/controllers/_approval_review_gate.py try_review_gate_transition dispatch_completion #1986 -- entry edge: the approvals controller dispatches the review completion
 src/synthorg/engine/review_gate.py dispatch_completion complete_review #1986 -- dispatch routes (inline and background) to complete_review
 src/synthorg/engine/review_gate.py complete_review run_completion_gates #1986 -- the shared completion-gate chain runs before the COMPLETED transition
+src/synthorg/engine/_review_completion_gates.py run_completion_gates apply_red_team_gate #1986 -- the chain applies the red-team gate before the COMPLETED transition
+src/synthorg/engine/_review_completion_gates.py run_completion_gates apply_vision_gate #1986 -- the chain applies the vision gate before the COMPLETED transition
+src/synthorg/engine/_review_completion_gates.py apply_red_team_gate evaluate #1986 -- the red-team gate application actually evaluates the gate
+src/synthorg/engine/_review_completion_gates.py apply_vision_gate evaluate #1986 -- the vision gate application actually evaluates the gate

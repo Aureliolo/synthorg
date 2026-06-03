@@ -1,3 +1,4 @@
+# module-kind: code
 """Convert heuristic grounding claims into red-team findings.
 
 Pure, side-effect-free helpers split out of :mod:`gate` so the gate
@@ -43,7 +44,11 @@ def evidence_excerpt(
     """
     if len(claim.excerpt) <= max_chars:
         return claim.excerpt
-    return f"{claim.excerpt[: max_chars - _ELLIPSIS_OVERHEAD]}{_ELLIPSIS}"
+    # Clamp the kept-prefix length: a max_chars at or below the ellipsis
+    # overhead would otherwise produce a negative slice index that grabs the
+    # tail of the excerpt instead of truncating it.
+    keep = max(0, max_chars - _ELLIPSIS_OVERHEAD)
+    return f"{claim.excerpt[:keep]}{_ELLIPSIS}"
 
 
 def claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:

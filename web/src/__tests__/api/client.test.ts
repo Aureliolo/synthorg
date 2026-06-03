@@ -185,6 +185,15 @@ describe('unwrapNullable', () => {
     const response = mockResponse<ApiResponse<unknown>>(null)
     expect(() => unwrapNullable(response)).toThrow('Unknown API error')
   })
+
+  it('throws for success:true with the data key absent (malformed)', () => {
+    const response = mockResponse<ApiResponse<{ id: string } | null>>({
+      error: null,
+      error_detail: null,
+      success: true,
+    } as ApiResponse<{ id: string } | null>)
+    expect(() => unwrapNullable(response)).toThrow('success envelope missing data')
+  })
 })
 
 describe('unwrapVoid', () => {
