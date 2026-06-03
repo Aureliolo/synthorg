@@ -15,7 +15,6 @@ from synthorg.tools.network_validator import (
     extract_hostname,
     is_allowed_http_scheme,
     is_blocked_ip,
-    is_cloud_metadata_host,
     resolve_and_check,
     resolve_dns,
     validate_url_host,
@@ -110,57 +109,6 @@ class TestIsBlockedIp:
     @pytest.mark.unit
     def test_unparseable_ip_blocked(self) -> None:
         assert is_blocked_ip("not-an-ip") is True
-
-
-# ── is_cloud_metadata_host ─────────────────────────────────────
-
-
-class TestIsCloudMetadataHost:
-    @pytest.mark.unit
-    @pytest.mark.parametrize(
-        "host",
-        [
-            "169.254.169.254",
-            "169.254.0.1",
-            "metadata.google.internal",
-            "METADATA.GOOGLE.INTERNAL",
-            "fe80::1",
-            "::ffff:169.254.169.254",
-        ],
-        ids=[
-            "imds_ip",
-            "link_local_ip",
-            "gcp_host",
-            "gcp_host_upper",
-            "ipv6_ll",
-            "v4mapped_imds",
-        ],
-    )
-    def test_metadata_and_link_local_flagged(self, host: str) -> None:
-        assert is_cloud_metadata_host(host) is True
-
-    @pytest.mark.unit
-    @pytest.mark.parametrize(
-        "host",
-        [
-            "127.0.0.1",  # loopback: the app-under-test stays reachable
-            "localhost",
-            "10.0.0.5",  # private docker-network address
-            "192.168.1.10",
-            "8.8.8.8",  # public
-            "example.test",
-        ],
-        ids=[
-            "loopback",
-            "localhost",
-            "private_10",
-            "private_192",
-            "public",
-            "hostname",
-        ],
-    )
-    def test_loopback_private_and_public_not_flagged(self, host: str) -> None:
-        assert is_cloud_metadata_host(host) is False
 
 
 # ── extract_hostname ───────────────────────────────────────────

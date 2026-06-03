@@ -17460,7 +17460,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 1070,
+      "loc": 1067,
       "loc_cap": 1100,
       "module": "src/synthorg/tools/browser/browser_tool.py",
       "owning_feature": "tools"
@@ -18125,7 +18125,14 @@
     },
     {
       "kind": "code",
-      "loc": 452,
+      "loc": 42,
+      "loc_cap": 500,
+      "module": "src/synthorg/tools/network_metadata.py",
+      "owning_feature": "tools"
+    },
+    {
+      "kind": "code",
+      "loc": 395,
       "loc_cap": 500,
       "module": "src/synthorg/tools/network_validator.py",
       "owning_feature": "tools"

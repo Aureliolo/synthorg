@@ -96,11 +96,8 @@ from synthorg.tools.browser.errors import (
     BrowserScreenshotError,
     BrowserStartCommandError,
 )
-from synthorg.tools.network_validator import (
-    extract_hostname,
-    is_allowed_http_scheme,
-    is_cloud_metadata_host,
-)
+from synthorg.tools.network_metadata import is_cloud_metadata_host
+from synthorg.tools.network_validator import extract_hostname, is_allowed_http_scheme
 
 if TYPE_CHECKING:
     from synthorg.tools.browser._protocols import ScreenshotDiffer

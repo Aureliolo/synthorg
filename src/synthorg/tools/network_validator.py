@@ -183,48 +183,6 @@ def is_blocked_ip(addr: str) -> bool:
     return any(ip in network for network in BLOCKED_NETWORKS)
 
 
-# ── Cloud-metadata / link-local endpoints ──────────────────────
-
-_METADATA_HOSTNAMES: Final[frozenset[str]] = frozenset({"metadata.google.internal"})
-"""Hostnames that resolve to a cloud instance-metadata service."""
-
-_LINK_LOCAL_NETWORKS: Final[
-    tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]
-] = (
-    ipaddress.IPv4Network("169.254.0.0/16"),  # incl. the 169.254.169.254 IMDS
-    ipaddress.IPv6Network("fe80::/10"),
-)
-
-
-def is_cloud_metadata_host(host: str) -> bool:
-    """Check whether *host* is a link-local or cloud-metadata endpoint.
-
-    Deliberately narrower than :func:`is_blocked_ip`: loopback and
-    private ranges are NOT flagged, so a sandboxed tool can still reach
-    an app-under-test on ``localhost`` or a docker-network address while
-    link-local metadata endpoints (``169.254.169.254``, ``fe80::``,
-    ``metadata.google.internal``) are refused. Link-local space is never
-    a legitimate app target, so blocking the whole ``169.254.0.0/16`` /
-    ``fe80::/10`` range also covers the metadata IP without a brittle
-    single-address allowlist.
-
-    Args:
-        host: Hostname or IP literal extracted from a URL.
-
-    Returns:
-        ``True`` when *host* is a metadata hostname or a link-local IP.
-    """
-    if host.lower() in _METADATA_HOSTNAMES:
-        return True
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return any(ip in network for network in _LINK_LOCAL_NETWORKS)
-
-
 # ── Hostname extraction ────────────────────────────────────────
 
 
@@ -441,22 +399,48 @@ def _ok(
     )
 
 
-def _resolve_url_port(url: str, normalized: str, *, is_https: bool) -> int | str:
-    """Resolve the explicit or scheme-default port for a URL.
+async def validate_url_host(
+    url: str,
+    policy: NetworkPolicy,
+) -> str | DnsValidationOk:
+    """Validate that a URL host is not private or internal.
+
+    Performs DNS resolution to detect hosts resolving to private IPs
+    (DNS rebinding prevention).  **All** resolved addresses must be
+    public for the URL to be allowed.  Fails closed on DNS errors.
+
+    On success, returns a ``DnsValidationOk`` carrying the resolved
+    IPs so the caller can apply TOCTOU mitigation.
 
     Args:
-        url: URL string being validated.
-        normalized: Lowercased hostname (for diagnostic events).
-        is_https: Whether the URL uses HTTPS transport.
+        url: URL string to validate.
+        policy: Network policy controlling allowlist and blocking.
 
     Returns:
-        The resolved port integer, or an error message string when the
-        port is malformed or non-positive.
+        An error message string if the host is blocked, or a
+        ``DnsValidationOk`` on success.
     """
+    hostname = extract_hostname(url)
+    if not hostname:
+        logger.warning(
+            WEB_SSRF_BLOCKED,
+            url=url,
+            reason="hostname_extraction_failed",
+        )
+        return f"Could not extract hostname from URL: {url!r}"
+
+    normalized = hostname.lower()
+    is_https = compare_ci(urlparse(url).scheme, "https")
+
+    port: int | None = None
     try:
         raw_port = urlparse(url).port
     except ValueError:
-        logger.warning(WEB_SSRF_BLOCKED, hostname=normalized, reason="malformed_port")
+        logger.warning(
+            WEB_SSRF_BLOCKED,
+            hostname=normalized,
+            reason="malformed_port",
+        )
         return f"Invalid port in URL: {url!r}"
     if raw_port is not None and raw_port <= 0:
         logger.warning(
@@ -467,29 +451,12 @@ def _resolve_url_port(url: str, normalized: str, *, is_https: bool) -> int | str
         )
         return f"Invalid port in URL: {raw_port!r}"
     if raw_port is not None:
-        return raw_port
-    return 443 if is_https else 80
+        port = raw_port
+    elif is_https:
+        port = 443
+    else:
+        port = 80
 
-
-async def _check_host_against_policy(
-    normalized: str,
-    port: int,
-    *,
-    is_https: bool,
-    policy: NetworkPolicy,
-) -> str | DnsValidationOk:
-    """Apply the SSRF policy to an already-extracted hostname.
-
-    Args:
-        normalized: Lowercased hostname.
-        port: Resolved port.
-        is_https: Whether the URL uses HTTPS transport.
-        policy: Network policy controlling allowlist and blocking.
-
-    Returns:
-        An error message string if the host is blocked, or a
-        ``DnsValidationOk`` on success.
-    """
     # Allowlist bypass -- still resolve DNS for IP pinning.
     if normalized in policy.hostname_allowlist:
         result = await resolve_and_check(normalized, policy.dns_resolution_timeout)
@@ -534,43 +501,3 @@ async def _check_host_against_policy(
         return result
 
     return _ok(normalized, port, is_https=is_https, resolved_ips=result)
-
-
-async def validate_url_host(
-    url: str,
-    policy: NetworkPolicy,
-) -> str | DnsValidationOk:
-    """Validate that a URL host is not private or internal.
-
-    Performs DNS resolution to detect hosts resolving to private IPs
-    (DNS rebinding prevention).  **All** resolved addresses must be
-    public for the URL to be allowed.  Fails closed on DNS errors.
-
-    On success, returns a ``DnsValidationOk`` carrying the resolved
-    IPs so the caller can apply TOCTOU mitigation.
-
-    Args:
-        url: URL string to validate.
-        policy: Network policy controlling allowlist and blocking.
-
-    Returns:
-        An error message string if the host is blocked, or a
-        ``DnsValidationOk`` on success.
-    """
-    hostname = extract_hostname(url)
-    if not hostname:
-        logger.warning(
-            WEB_SSRF_BLOCKED,
-            url=url,
-            reason="hostname_extraction_failed",
-        )
-        return f"Could not extract hostname from URL: {url!r}"
-
-    normalized = hostname.lower()
-    is_https = compare_ci(urlparse(url).scheme, "https")
-    port = _resolve_url_port(url, normalized, is_https=is_https)
-    if isinstance(port, str):
-        return port
-    return await _check_host_against_policy(
-        normalized, port, is_https=is_https, policy=policy
-    )
