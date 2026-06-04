@@ -91,8 +91,17 @@ class TestScoreRecordFromScorecard:
         # score; the projection raises rather than fabricating a 0.0 that
         # would read as a real measurement. ``Scorecard`` enforces
         # ``min_length=1`` on briefs, so the degenerate state is built via
-        # ``model_construct`` to exercise the guard directly.
-        empty = Scorecard.model_construct(briefs=())
+        # ``model_construct`` (all fields supplied for the typed signature;
+        # ``briefs=()`` is the field under test) to exercise the guard.
+        empty = Scorecard.model_construct(
+            generated_at=_NOW,
+            company_config_path=NotBlankStr("evals/benchmark_scores/single_agent.yaml"),
+            cassette_path=NotBlankStr("cassette:none.json"),
+            cassette_sha256=NotBlankStr("a" * 64),
+            suite_version=NotBlankStr("sha256:suite01"),
+            briefs=(),
+            process_facts=AggregatedProcessFacts(total_events=0, events_by_class={}),
+        )
         with pytest.raises(ValueError, match="max_total == 0"):
             score_record_from_scorecard(
                 empty,
