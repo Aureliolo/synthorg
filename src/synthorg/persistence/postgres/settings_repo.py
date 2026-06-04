@@ -27,7 +27,15 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
-from synthorg.persistence.postgres import _settings_cas
+from synthorg.persistence.postgres._settings_cas import (
+    parse_setting_iso,
+)
+from synthorg.persistence.postgres._settings_cas import (
+    set_if_unchanged as cas_set_if_unchanged,
+)
+from synthorg.persistence.postgres._settings_cas import (
+    set_many as cas_set_many,
+)
 from synthorg.persistence.settings_protocol import (
     SettingRow,
     SettingRowKey,
@@ -62,7 +70,7 @@ class PostgresSettingsRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        updated_at_dt = _settings_cas.parse_setting_iso(
+        updated_at_dt = parse_setting_iso(
             entity.updated_at, entity.namespace, entity.key
         )
         try:
@@ -286,9 +294,7 @@ class PostgresSettingsRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        return await _settings_cas.set_if_unchanged(
-            self._pool, entity, expected_updated_at
-        )
+        return await cas_set_if_unchanged(self._pool, entity, expected_updated_at)
 
     async def set_many(
         self,
@@ -308,7 +314,7 @@ class PostgresSettingsRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        return await _settings_cas.set_many(
+        return await cas_set_many(
             self._pool, items, expected_updated_at_map=expected_updated_at_map
         )
 

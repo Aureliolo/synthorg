@@ -107,8 +107,8 @@ would otherwise duplicate (modules: ``audit.py``, ``custom_rule.py``,
 ``datetime_marshaller.py`` exposing the strict ISO 8601 pair
 ``parse_iso_utc`` / ``format_iso_utc`` plus the shared ``normalize_utc``
 helper exported from ``__init__.py``, ``pagination.py``, the ``RowLike``
-row protocol in ``rows.py``, and per-aggregate row<->model marshallers
-``charter_marshalling.py`` / ``cost_forecast_marshalling.py`` /
+row protocol in ``rows.py``, and per-aggregate row<->model marshalling
+modules ``charter_marshalling.py`` / ``cost_forecast_marshalling.py`` /
 ``org_fact_marshalling.py`` / ``workflow_definition_marshalling.py`` /
 ``workflow_execution_marshalling.py``).  Backend repos
 pass driver-specific bits (SQL
