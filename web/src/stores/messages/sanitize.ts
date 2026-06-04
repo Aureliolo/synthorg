@@ -68,24 +68,24 @@ function isPartsShape(value: unknown): boolean {
 function sanitizeTextPart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'text',
-    text: sanitizeWsString(part.text as string, 4096) ?? '',
+    text: sanitizeWsString(part.text, 4096) ?? '',
   }
 }
 
 function sanitizeFilePart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'file',
-    uri: sanitizeWsString(part.uri as string, 2048) ?? '',
+    uri: sanitizeWsString(part.uri, 2048) ?? '',
     mime_type: part.mime_type === null
       ? null
-      : sanitizeWsString(part.mime_type as string, 128) ?? '',
+      : sanitizeWsString(part.mime_type, 128) ?? '',
   }
 }
 
 function sanitizeUriPart(part: Record<string, unknown>): WireMessagePart {
   return {
     type: 'uri',
-    uri: sanitizeWsString(part.uri as string, 2048) ?? '',
+    uri: sanitizeWsString(part.uri, 2048) ?? '',
   }
 }
 

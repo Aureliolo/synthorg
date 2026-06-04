@@ -83,7 +83,7 @@ export function createListActions(set: McpCatalogSet) {
               const page = await searchMcpCatalog(trimmed, { limit: 100 })
               if (generation !== currentSearchGeneration()) return
               set({
-                searchResults: page.data as readonly McpCatalogEntry[],
+                searchResults: page.data,
                 searchLoading: false,
               })
             } catch (err) {

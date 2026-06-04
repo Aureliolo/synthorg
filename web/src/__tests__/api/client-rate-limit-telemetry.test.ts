@@ -68,7 +68,7 @@ describe('apiClient 429 retry telemetry', () => {
       headers: {},
       statusText: 'OK',
       config: {} as AxiosResponse['config'],
-    } as AxiosResponse)
+    })
   })
 
   afterEach(() => {

@@ -70,8 +70,8 @@ describe('ApprovalTimeline', () => {
     const items = screen.getAllByRole('listitem')
     // Check that timestamps appear by verifying the list items contain date content
     // The timestamps are formatted by the component -- just verify the listitems have text beyond the step label
-    expect(items[0]!.textContent!.length).toBeGreaterThan('Submitted'.length)
-    expect(items[2]!.textContent!.length).toBeGreaterThan('Decided'.length)
+    expect(items[0]!.textContent.length).toBeGreaterThan('Submitted'.length)
+    expect(items[2]!.textContent.length).toBeGreaterThan('Decided'.length)
   })
 
   it('has correct ARIA attributes (role="list", role="listitem")', () => {

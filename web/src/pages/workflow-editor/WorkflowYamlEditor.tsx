@@ -148,8 +148,8 @@ function applyParsedResultToStore(
   const mappedNodes: Node[] = parsedNodes.map((n) => ({
     ...n,
     data: {
-      ...((n.data ?? {}) as Record<string, unknown>),
-      label: ((n.data as Record<string, unknown>)?.label as string) ?? n.id,
+      ...((n.data ?? {})),
+      label: ((n.data)?.label as string) ?? n.id,
     },
   }))
   const snapshot = {

@@ -197,9 +197,8 @@ export function paginatedEnvelopeFor<
     hasMore?: boolean
   } = {},
 ): PaginatedResponse<PaginatedItem<AwaitedReturn<Fn>>> {
-  type Item = PaginatedItem<AwaitedReturn<Fn>>
   return {
-    data: items.slice() as Item[],
+    data: items.slice(),
     error: null,
     error_detail: null,
     pagination: {

@@ -126,7 +126,7 @@ describe('createTelemetryArtifact', () => {
       ageMs: 5,
       mode: 'fail',
       ...overrides,
-    } as LeakRecord
+    }
   }
 
   it('counts every record in totalLeaks but excludes allowlisted ones from unallowedLeaks', () => {

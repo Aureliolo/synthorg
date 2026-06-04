@@ -191,8 +191,8 @@ async function duplicateWorkflow(navigate: ReturnType<typeof useNavigate>): Prom
     inputs: (state.definition.inputs ?? []).map(toIORequest),
     outputs: (state.definition.outputs ?? []).map(toIORequest),
     is_subworkflow: false,
-    nodes: nodeData as readonly Record<string, unknown>[],
-    edges: edgeData as readonly Record<string, unknown>[],
+    nodes: nodeData,
+    edges: edgeData,
   })
   if (!created) return
   void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

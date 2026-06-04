@@ -21,7 +21,7 @@ export default tseslint.config(
   // unfixable issues there.
   { ignores: ['dist/**', '**/*.gen.ts', '**/*.gen.tsx'] },
   js.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
   eslintReact.configs['recommended-type-checked'],
   pluginSecurity.configs.recommended,
   {
@@ -50,6 +50,87 @@ export default tseslint.config(
       // Retire the @eslint-react port now that the canonical rule is live: keeping
       // both would double-report and collide with the existing disable directives.
       '@eslint-react/exhaustive-deps': 'off',
+
+      // react-hooks/lints (the recommended-latest React-Compiler bundle),
+      // reconciled per rule. This project does NOT run the React Compiler, so
+      // rules are split into genuine-runtime-correctness (error) and
+      // compiler-migration-only constraints flagged on intentional patterns
+      // (off, with the reason inline).
+      //
+      // Genuine runtime correctness -- all clean today, kept as ratchets:
+      'react-hooks/set-state-in-render': 'error',
+      'react-hooks/purity': 'error',
+      'react-hooks/error-boundaries': 'error',
+      'react-hooks/void-use-memo': 'error',
+      'react-hooks/preserve-manual-memoization': 'error',
+      'react-hooks/static-components': 'error',
+      // Flags a non-inline function passed to useMemo (a real misuse the
+      // compiler would also reject); kept at error.
+      'react-hooks/use-memo': 'error',
+      //
+      // Compiler-migration-only / redundant -- off with the reason:
+      // ``refs`` flags reads/writes of ``ref.current`` during render. Every
+      // hit is the sanctioned stable-ref pattern (``usePolling`` family), the
+      // React-documented render-phase ``prevRef`` prop-sync idiom, or
+      // ``ctrl``-object taint false positives -- zero runtime bugs. It is also
+      // mutually exclusive with ``set-state-in-effect``: the codebase satisfies
+      // that rule by using the very render-phase prev-ref idiom ``refs`` forbids.
+      'react-hooks/refs': 'off',
+      // Both hits are false positives (a DOM ``scrollTop`` write and a
+      // TDZ-safe ``usePolling`` closure), not React-state mutation.
+      'react-hooks/immutability': 'off',
+      // The react-hooks variant uniquely flags valid async data-fetch effects
+      // (``void reload()``) that the already-enabled, clean
+      // ``@eslint-react/set-state-in-effect`` correctly ignores. Keep the
+      // @eslint-react port (below) as the single source of truth; leave this
+      // off to avoid double-reporting on legitimate prop-sync sites.
+      'react-hooks/set-state-in-effect': 'off',
+      // React-Compiler config validators -- no-ops without the compiler.
+      'react-hooks/config': 'off',
+      'react-hooks/gating': 'off',
+      // Compiler-only concerns (libraries / syntax the compiler cannot model);
+      // no runtime meaning here.
+      'react-hooks/incompatible-library': 'off',
+      'react-hooks/unsupported-syntax': 'off',
+      // Redundant with the already-enabled ``@eslint-react/globals`` (error).
+      'react-hooks/globals': 'off',
+    },
+  },
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      // -- #2212 strict adoption: deferred high-churn rules --
+      // ``strictTypeChecked`` is adopted wholesale (above) for its full safety
+      // surface, but three broad, near-cosmetic rules carry the bulk of the
+      // live violation volume with low bug-yield. They are a DELIBERATE,
+      // documented scope deferral for #2212 (not a dodge of a promoted rule),
+      // tracked for a follow-up hardening pass.
+      // 788 violations / 300 files; purely stylistic (wrap ``() => fn()``).
+      '@typescript-eslint/no-confusing-void-expression': 'off',
+      // 677 violations / 143 files; replace ``x!`` with a real guard.
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      // strictTypeChecked tightens this to forbid number/boolean/nullish
+      // interpolation (390 violations / 169 files of pure churn). Relax back to
+      // the permissive options so the rule still catches the genuine
+      // ``${object}``/``${any}`` -> "[object Object]" bug (0 violations here)
+      // without the numeric-template churn.
+      '@typescript-eslint/restrict-template-expressions': [
+        'error',
+        { allowNumber: true, allowBoolean: true, allowNullish: true },
+      ],
+      // Enabled in PR-2 of this series (#2212); fixing its 193 violations needs
+      // boundary type-honesty work that warrants its own focused review.
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+
+      // -- #2212 curated rules genuinely absent from strictTypeChecked --
+      // ``== null`` / ``!= null`` is the deliberate nullish-check idiom across
+      // the codebase; ``{ null: 'ignore' }`` permits it while still forbidding
+      // every other loose comparison.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      // Forbid raw ``style="..."`` string props (must be an object).
+      '@eslint-react/dom-no-string-style-prop': 'error',
+      // Require an explicit ``sandbox`` on <iframe> (security).
+      '@eslint-react/dom-no-missing-iframe-sandbox': 'error',
     },
   },
   {

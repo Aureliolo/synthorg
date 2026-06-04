@@ -101,7 +101,7 @@ describe('MetricCard', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 100 }),
-        fc.constantFrom('up', 'down') as fc.Arbitrary<'up' | 'down'>,
+        fc.constantFrom('up', 'down'),
         (value, direction) => {
           const { unmount } = render(
             <MetricCard label="Test" value={0} change={{ value, direction }} />,

@@ -52,7 +52,7 @@ function CeremonyOverrideBody({
   saving,
 }: CeremonyOverrideBodyProps) {
   const fields = policyFieldsFromOverride(policy, strategy)
-  const strategyConfig = (policy?.strategy_config ?? {}) as Record<string, unknown>
+  const strategyConfig = (policy?.strategy_config ?? {})
   return (
     <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
       <StrategyPicker value={strategy} onChange={onStrategyChange} disabled={saving} />
@@ -121,7 +121,7 @@ const CeremonyRow = memo(function CeremonyRow({
         <span className="flex-1 text-sm font-medium font-mono">{name}</span>
         <span className="text-xs text-text-muted">
           {hasOverride
-            ? CEREMONY_STRATEGY_LABELS[strategy as CeremonyStrategyType]
+            ? CEREMONY_STRATEGY_LABELS[strategy]
             : 'Inherit'}
         </span>
       </button>
@@ -139,7 +139,7 @@ const CeremonyRow = memo(function CeremonyRow({
             <CeremonyOverrideBody
               name={name}
               policy={policy}
-              strategy={strategy as CeremonyStrategyType}
+              strategy={strategy}
               onOverrideChange={onOverrideChange}
               onStrategyChange={handleStrategyChange}
               saving={saving}

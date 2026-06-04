@@ -16,7 +16,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
-import type { WsChannel } from '@/api/types/websocket'
 
 function resetStores() {
   sessionStorage.clear()
@@ -209,7 +208,7 @@ describe('useWebSocket registration rollback', () => {
 
           const throwIdx = throwIdxRaw % channels.length
           const bindings = channels.map((channel) => ({
-            channel: channel as WsChannel,
+            channel,
             handler: vi.fn(),
           }))
 

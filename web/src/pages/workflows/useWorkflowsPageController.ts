@@ -139,8 +139,8 @@ async function duplicateWorkflow(
     inputs: [],
     outputs: [],
     is_subworkflow: false,
-    nodes: source.nodes.map((n) => ({ ...n })) as readonly Record<string, unknown>[],
-    edges: source.edges.map((e) => ({ ...e })) as readonly Record<string, unknown>[],
+    nodes: source.nodes.map((n) => ({ ...n })),
+    edges: source.edges.map((e) => ({ ...e })),
   })
   if (!created) return
   void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

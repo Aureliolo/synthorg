@@ -292,7 +292,7 @@ function ItemsByContentType({ items }: ItemsByContentTypeProps) {
       {items.map(([contentType, count]) => (
         <div key={contentType} className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {CONTENT_TYPE_LABELS[contentType as TrainingContentType] ?? contentType}
+            {CONTENT_TYPE_LABELS[contentType] ?? contentType}
           </span>
           <span className="font-mono text-foreground">{count}</span>
         </div>

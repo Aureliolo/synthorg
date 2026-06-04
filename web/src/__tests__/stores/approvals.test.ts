@@ -392,7 +392,7 @@ describe('handleWsEvent', () => {
   it('ignores approval with missing required fields', () => {
     useApprovalsStore.setState({ approvals: [] })
 
-    const event = makeWsEvent({ id: 'x' } as Partial<ApprovalResponse>)
+    const event = makeWsEvent({ id: 'x' })
     useApprovalsStore.getState().handleWsEvent(event)
 
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
@@ -448,7 +448,7 @@ describe('handleWsEvent', () => {
     // the missing field to 'review_gate' (misstated provenance).
     const noSource: Record<string, unknown> = { ...makeApproval('no-source') }
     delete noSource.source
-    const event = makeWsEvent(noSource as Partial<ApprovalResponse>)
+    const event = makeWsEvent(noSource)
     useApprovalsStore.getState().handleWsEvent(event)
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
     errorSpy.mockRestore()
@@ -547,7 +547,7 @@ describe('handleWsEvent', () => {
           task_id: null,
           risk_level: 'medium',
           // Non-string value violates the string-string map guard.
-          metadata: { count: 42 as unknown as string },
+          metadata: { count: 42 },
           signature_threshold: 1,
           signatures: [],
           is_fully_signed: false,

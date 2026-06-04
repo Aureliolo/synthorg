@@ -263,7 +263,7 @@ export function connectStartAndEnd(
         source: startId,
         target: id,
         type: 'sequential',
-        data: { edgeType: 'sequential' as WorkflowEdgeType },
+        data: { edgeType: 'sequential' },
       })
     }
   }
@@ -275,7 +275,7 @@ export function connectStartAndEnd(
         source: id,
         target: endId,
         type: 'sequential',
-        data: { edgeType: 'sequential' as WorkflowEdgeType },
+        data: { edgeType: 'sequential' },
       })
     }
   }

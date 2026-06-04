@@ -87,7 +87,7 @@ function parseSingleComparison(str: string): ConditionComparison | null {
   if (!match) return null
 
   return createComparison(
-    match[1]!,
+    match[1],
     match[2] as ComparisonOperator,
     match[3]!.trim(),
   )
@@ -252,7 +252,7 @@ export function parseForBuilderState(str: string): BuilderState | null {
   const groupRows = partitionGroupChildren(expr.conditions)
   if (!groupRows) return null
   if (groupRows.comparisons.length === 0 && groupRows.subGroups.length === 0) return null
-  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator) as 'AND' | 'OR'
+  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator)
   return {
     comparisons: groupRows.comparisons,
     logicalOperator: op,

@@ -91,14 +91,15 @@ export function createTelemetryArtifact(
   // Use the first record's ``testFile`` / ``testName`` directly rather
   // than decomposing the bucket key: vitest test descriptions may
   // legitimately contain ``::`` and a split would truncate them.
-  const byTest = [...buckets.values()].map(bucket => {
-    const first = bucket[0]!
-    return {
+  const byTest = [...buckets.values()].flatMap(bucket => {
+    const first = bucket[0]
+    if (first === undefined) return []
+    return [{
       testName: first.testName,
       testFile: first.testFile,
       leakCount: bucket.length,
       types: [...new Set(bucket.map(r => r.type))],
-    }
+    }]
   })
   return {
     schemaVersion: 1,

@@ -34,7 +34,7 @@ function ensureKeyframe() {
 }
 
 function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
-  const { volume = 1, frequency = 1, maxVolume = 1 } = (props.data ?? {}) as CommunicationEdgeData
+  const { volume, frequency, maxVolume } = (props.data ?? {}) as CommunicationEdgeData
 
   const [edgePath] = getBezierPath({
     sourceX: props.sourceX,

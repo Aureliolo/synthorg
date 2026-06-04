@@ -90,8 +90,8 @@ describe('ErrorBanner', () => {
         (severity, variant) => {
           const { unmount } = render(
             <ErrorBanner
-              severity={severity as 'error' | 'warning' | 'info'}
-              variant={variant as 'inline' | 'section' | 'offline'}
+              severity={severity}
+              variant={variant}
               title="Prop-test"
             />,
           )

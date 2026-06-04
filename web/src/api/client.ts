@@ -255,7 +255,7 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success || body.data === null || body.data === undefined) {
-    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    const detail = 'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   return body.data
@@ -279,7 +279,7 @@ export function unwrapNullable<T>(
   }
   if (!body.success) {
     const detail =
-      'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+      'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   // Distinguish an explicit `data: null` (a valid "no resource" response)
@@ -303,7 +303,7 @@ export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
-    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    const detail = 'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
 }
@@ -337,7 +337,7 @@ export function unwrapPaginated<T>(
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
-    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    const detail = 'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   if (!body.pagination || !Array.isArray(body.data)) {

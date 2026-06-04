@@ -191,7 +191,7 @@ describe('unwrapNullable', () => {
       error: null,
       error_detail: null,
       success: true,
-    } as ApiResponse<{ id: string } | null>)
+    })
     expect(() => unwrapNullable(response)).toThrow('success envelope missing data')
   })
 })

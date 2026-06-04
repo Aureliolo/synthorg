@@ -52,7 +52,7 @@ describe('SettingRow: read_only_post_init', () => {
       />,
     )
 
-    const input = screen.getByDisplayValue('127.0.0.1') as HTMLInputElement
+    const input = screen.getByDisplayValue<HTMLInputElement>('127.0.0.1')
     expect(input.disabled).toBe(true)
   })
 
@@ -83,8 +83,6 @@ describe('SettingRow: read_only_post_init', () => {
       read_only_post_init: true,
       restart_required: true,
       source: 'env',
-    } as Partial<SettingEntry['definition']> & {
-      source?: SettingEntry['source']
     })
 
     render(

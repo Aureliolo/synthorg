@@ -45,7 +45,7 @@ describe('useThemeStore teardown', () => {
         dispatchEvent: () => false,
       }
       return mql as unknown as MediaQueryList
-    }) as unknown as typeof window.matchMedia
+    })
   })
 
   afterEach(() => {

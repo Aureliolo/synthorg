@@ -68,7 +68,7 @@ function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
         target: task.id,
         markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
         style: { stroke: 'var(--so-border-bright)', strokeWidth: 'var(--so-stroke-thin)' },
-        label: `${getTaskStatusLabel(depTask.status)}`,
+        label: getTaskStatusLabel(depTask.status),
         labelStyle: { fontSize: 'var(--so-text-micro)', fill: 'var(--so-text-muted)' },
       })
     }

@@ -11,7 +11,6 @@ import {
   getPhaseLabel,
   getProtocolLabel,
   totalTokensUsed,
-  type MeetingPageFilters,
 } from '@/utils/meetings'
 import type { MeetingPhase, MeetingProtocolType, MeetingStatus } from '@/api/types/meetings'
 import { makeMeeting } from '@/__tests__/helpers/factories'
@@ -199,7 +198,7 @@ describe('filterMeetings', () => {
   })
 
   it('combines multiple filters with AND', () => {
-    const result = filterMeetings(meetings, { status: 'completed', meetingType: 'sprint_planning' } as MeetingPageFilters)
+    const result = filterMeetings(meetings, { status: 'completed', meetingType: 'sprint_planning' })
     expect(result.map((m) => m.meeting_id)).toEqual(['3'])
   })
 })

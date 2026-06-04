@@ -6,7 +6,7 @@ import { CollaborationPanel } from '@/pages/agents/CollaborationPanel'
 
 // Permission gating reads useAuth().userRole; vary it per test through a
 // hoisted holder so the clear action can be shown or hidden.
-const authMock = vi.hoisted(() => ({ userRole: 'ceo' as string | null }))
+const authMock = vi.hoisted(() => ({ userRole: 'ceo' }))
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ userRole: authMock.userRole }),
 }))

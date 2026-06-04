@@ -291,7 +291,7 @@ describe('messagesStore', () => {
       event_type: 'message.sent',
       channel: 'messages',
       timestamp: new Date().toISOString(),
-      payload: { message: message as WsEvent['payload']['message'] },
+      payload: { message: message },
     })
 
     it('prepends message to active channel list', () => {

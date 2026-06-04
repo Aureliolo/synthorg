@@ -87,7 +87,7 @@ describe('TaskCreateDialog', () => {
     await user.click(screen.getByText('Create Task'))
     expect(onCreate).toHaveBeenCalled()
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
-    expect((screen.getByPlaceholderText('Task title') as HTMLInputElement).value).toBe('My task')
+    expect(screen.getByPlaceholderText<HTMLInputElement>('Task title').value).toBe('My task')
   })
 
   it('calls onOpenChange(false) on successful creation', async () => {

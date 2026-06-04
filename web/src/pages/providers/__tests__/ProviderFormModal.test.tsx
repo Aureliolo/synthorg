@@ -68,9 +68,9 @@ describe('ProviderFormModal: initialPreset prop', () => {
 
     // Provider Name field is pre-filled with the preset name after the
     // render-phase state sync commits.
-    const nameInput = (await screen.findByLabelText(
+    const nameInput = await screen.findByLabelText<HTMLInputElement>(
       /Provider Name/i,
-    )) as HTMLInputElement
+    )
     expect(nameInput.value).toBe('anthropic')
 
     // The "Or pick a preset" custom-mode dropdown is NOT shown (a
@@ -109,15 +109,15 @@ describe('ProviderFormModal: Anthropic subscription billing banner', () => {
       />,
     )
 
-    const select = (await screen.findByLabelText(
+    const select = await screen.findByLabelText<HTMLSelectElement>(
       /Authentication/i,
-    )) as HTMLSelectElement
+    )
     fireEvent.change(select, { target: { value: 'subscription' } })
 
     expect(
       await screen.findByText(/Counts against your subscription credits/i),
     ).toBeInTheDocument()
-    const link = screen.getByRole('link', { name: /View pricing/i }) as HTMLAnchorElement
+    const link = screen.getByRole<HTMLAnchorElement>('link', { name: /View pricing/i })
     expect(link.href).toContain('anthropic.com/pricing')
   })
 

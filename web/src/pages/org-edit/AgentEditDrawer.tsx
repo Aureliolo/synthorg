@@ -101,7 +101,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     const result = await onUpdate(agent.name, {
       name: trimmedName,
       role: form.role.trim() || undefined,
-      department: form.department as UpdateAgentOrgRequest['department'],
+      department: form.department,
       level: form.level,
     })
     // Store owns the error toast; the drawer only decides whether to close.

@@ -17,7 +17,7 @@ function MockMotionDiv({ children, ref, ...allProps }: React.ComponentProps<'div
   const domProps = Object.fromEntries(
     Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
   ) as React.HTMLAttributes<HTMLDivElement>
-  return <div ref={ref} {...domProps}>{children as React.ReactNode}</div>
+  return <div ref={ref} {...domProps}>{children}</div>
 }
 
 vi.mock('motion/react', async () => {

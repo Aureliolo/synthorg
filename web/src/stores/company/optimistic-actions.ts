@@ -15,7 +15,7 @@ function reorderDepartmentsImpl(
   const prevOrder = prev.departments.map((d) => d.name)
   const deptMap = new Map(prev.departments.map((d) => [d.name, d]))
   const reordered = orderedNames
-    .map((n) => deptMap.get(n as Department['name']))
+    .map((n) => deptMap.get(n))
     .filter((d): d is Department => d !== undefined)
   set({ config: { ...prev, departments: reordered } })
   // Targeted rollback: restore only department ordering, not entire config.
@@ -26,7 +26,7 @@ function reorderDepartmentsImpl(
     const prevSet = new Set(prevOrder)
     // Restore previous ordering, then append any departments added concurrently.
     const restored = prevOrder
-      .map((n) => currentMap.get(n as Department['name']))
+      .map((n) => currentMap.get(n))
       .filter((d): d is Department => d !== undefined)
     const added = current.departments.filter((d) => !prevSet.has(d.name))
     set({

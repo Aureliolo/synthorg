@@ -1,9 +1,8 @@
 import fc from 'fast-check'
-import type { TaskStatus } from '@/api/types/enums'
 import { TASK_STATUS_ORDER, VALID_TRANSITIONS, TERMINAL_STATUSES } from '@/utils/constants'
 
 describe('constants property tests', () => {
-  const allStatuses = TASK_STATUS_ORDER as readonly TaskStatus[]
+  const allStatuses = TASK_STATUS_ORDER
   const statusArb = fc.constantFrom(...allStatuses)
 
   it('every status in TASK_STATUS_ORDER exists in VALID_TRANSITIONS', () => {

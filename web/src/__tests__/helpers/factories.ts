@@ -89,7 +89,7 @@ export function makeAgent(name: string, overrides?: Partial<DashboardAgentConfig
 /** Intentionally accepts `string` for test flexibility (non-enum dept names). */
 export function makeDepartment(name: string, overrides?: Partial<DashboardDepartment>): DashboardDepartment {
   return {
-    name: name as DashboardDepartment['name'],
+    name: name,
     display_name: name.charAt(0).toUpperCase() + name.slice(1),
     autonomy_level: null,
     budget_percent: 0,
@@ -128,7 +128,7 @@ export function makeCompanyConfig(overrides?: Partial<CompanyConfig>): CompanyCo
 
 export function makeDepartmentHealth(name: string, overrides?: Partial<DepartmentHealth>): DepartmentHealth {
   return {
-    department_name: name as DepartmentHealth['department_name'],
+    department_name: name,
     agent_count: 3,
     active_agent_count: 2,
     currency: 'EUR',

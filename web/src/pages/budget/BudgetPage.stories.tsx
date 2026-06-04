@@ -12,7 +12,7 @@ import BudgetPage from '@/pages/BudgetPage'
 
 const mockOverview: OverviewMetrics = {
   total_tasks: 42,
-  tasks_by_status: {} as Record<string, number>,
+  tasks_by_status: {},
   total_agents: 8,
   total_cost: 42.17,
   budget_remaining: 57.83,

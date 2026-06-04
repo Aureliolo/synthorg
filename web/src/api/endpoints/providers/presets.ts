@@ -1,7 +1,6 @@
 import { apiClient, ApiRequestError, unwrap, unwrapVoid } from '../../client'
 import type {
   ApiResponse,
-  ErrorDetail,
   PresetOverride,
   PresetOverrideUpdateRequest,
 } from '@/api/types'
@@ -22,7 +21,7 @@ export async function getPresetOverride(presetName: string): Promise<PresetOverr
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
-    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    const detail = 'error_detail' in body ? body.error_detail : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   // Distinguish "absent override" (``data: null``, intentional) from a

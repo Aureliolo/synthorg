@@ -27,7 +27,7 @@ type PreviewMode =
 export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactContentPreviewProps) {
   // Exclude SVG: it is an XML document with JavaScript execution capability (XSS risk).
   const isImage =
-    artifact.content_type?.startsWith('image/') === true &&
+    artifact.content_type?.startsWith('image/') &&
     artifact.content_type !== 'image/svg+xml'
   const { imageSrc, imageError } = useArtifactImagePreview(artifact, isImage)
 

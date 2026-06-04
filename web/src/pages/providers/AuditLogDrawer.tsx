@@ -174,7 +174,7 @@ function AuditErrorBanner({
       onRetry={
         providerName
           ? () => {
-              void onRetry(providerName)
+              onRetry(providerName)
             }
           : undefined
       }
@@ -240,7 +240,7 @@ function AuditLoadMore({
     <Button
       variant="secondary"
       onClick={() => {
-        void onLoadMore()
+        onLoadMore()
       }}
       disabled={loadingMore}
     >

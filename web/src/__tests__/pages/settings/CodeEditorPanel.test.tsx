@@ -105,7 +105,7 @@ describe('CodeEditorPanel', () => {
 
   it('displays entries as serialized JSON in the editor', () => {
     renderPanel()
-    const editor = screen.getByTestId('mock-editor') as HTMLTextAreaElement
+    const editor = screen.getByTestId<HTMLTextAreaElement>('mock-editor')
     const parsed = JSON.parse(editor.value)
     expect(parsed).toEqual({ api: { max_retries: '3', timeout: '30' } })
   })
@@ -172,7 +172,7 @@ describe('CodeEditorPanel', () => {
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     expect(defaultOnSave).toHaveBeenCalledOnce()
-    const changesArg = defaultOnSave.mock.calls[0]![0] as Map<string, string>
+    const changesArg = defaultOnSave.mock.calls[0]![0]
     expect(changesArg.get('api/max_retries')).toBe('5')
     expect(changesArg.size).toBe(1)
   })

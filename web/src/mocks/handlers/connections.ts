@@ -113,8 +113,8 @@ export const connectionsList = [
       successFor<typeof createConnection>(
         buildConnection({
           id: `conn-${String(body.name)}`,
-          name: body.name as string,
-          connection_type: (body.connection_type ?? 'github') as ConnectionType,
+          name: body.name,
+          connection_type: (body.connection_type ?? 'github'),
         }),
       ),
       { status: 201 },

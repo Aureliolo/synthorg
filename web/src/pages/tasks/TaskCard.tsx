@@ -122,7 +122,7 @@ function TaskCardFooter({ task, currency }: TaskCardFooterProps) {
         )}
         {showCost && (
           <span className="text-[10px] font-mono">
-            {formatCurrency(task.cost!, displayCurrency)}
+            {formatCurrency(task.cost, displayCurrency)}
           </span>
         )}
         {task.deadline && (
