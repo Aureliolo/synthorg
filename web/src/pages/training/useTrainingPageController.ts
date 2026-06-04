@@ -118,6 +118,7 @@ function hydrateAgentsInBatches(
   let cancelled = false
   void (async () => {
     for (let i = 0; i < agents.length; i += HYDRATE_BATCH_SIZE) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup between batches; CFA cannot see the closure mutation
       if (cancelled) return
       const batch = agents.slice(i, i + HYDRATE_BATCH_SIZE)
       await Promise.all(batch.map((agent) => hydrateForAgent(agent.name)))

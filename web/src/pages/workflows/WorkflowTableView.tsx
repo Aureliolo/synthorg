@@ -153,7 +153,7 @@ function WorkflowTableRow({
       </td>
       <td className="px-4 py-2.5">
         <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-          {workflow.workflow_type ? workflow.workflow_type.replace(/_/g, ' ') : 'Unknown'}
+          {workflow.workflow_type.replace(/_/g, ' ')}
         </span>
       </td>
       <td className="px-4 py-2.5 text-right text-muted-foreground">{workflow.nodes.length}</td>

@@ -61,7 +61,7 @@ type PolicyAttempt = { kind: 'ok'; minLength: number } | { kind: 'error'; messag
 async function attemptPolicyFetch(timers: Set<number>): Promise<PolicyAttempt> {
   try {
     const status = await withTimeout(getSetupStatus(), timers, POLICY_TIMEOUT_MS)
-    return { kind: 'ok', minLength: status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH }
+    return { kind: 'ok', minLength: status.min_password_length }
   } catch (err) {
     return { kind: 'error', message: getErrorMessage(err) }
   }
@@ -116,6 +116,7 @@ function usePasswordPolicy(): PasswordPolicy {
         // Small backoff so a transient back-pressure response is not
         // hammered into a second failure inside the same event tick.
         await sleepTracked(timers, POLICY_BACKOFF_MS)
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the ref mutation
         if (cancelledRef.current) return
       }
     }

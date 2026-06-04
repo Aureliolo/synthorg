@@ -88,7 +88,7 @@ function buildUpdatePayload(
   edges: readonly Edge[],
 ) {
   return {
-    workflow_type: (definition.workflow_type ?? 'sequential_pipeline'),
+    workflow_type: definition.workflow_type,
     nodes: nodes.map((n) => ({
       id: n.id,
       type: n.type!,

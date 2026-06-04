@@ -128,7 +128,7 @@ describe('ErrorBanner', () => {
       const button = screen.getByRole('button', {
         name: /01J7CK5D9SXKZ0HFAQK4E8RBQX/,
       })
-      const visibleText = button.textContent ?? ''
+      const visibleText = button.textContent
       expect(visibleText.length).toBeLessThan('01J7CK5D9SXKZ0HFAQK4E8RBQX'.length)
     })
 

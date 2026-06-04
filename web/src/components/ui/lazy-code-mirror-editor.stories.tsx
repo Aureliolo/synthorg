@@ -45,7 +45,7 @@ export const ReadOnly: Story = {
 export const Editable: Story = {
   render: (args) => {
     const Wrapper = () => {
-      const [value, setValue] = useState(args.value ?? '')
+      const [value, setValue] = useState(args.value)
       return (
         <div className="space-y-3">
           <LazyCodeMirrorEditor

@@ -247,7 +247,7 @@ describe('end-to-end: fail-mode catches deliberate leaks', () => {
         timeout: 60_000,
       },
     )
-    const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`
+    const combined = `${result.stdout}\n${result.stderr}`
 
     // The child run must FAIL: every fixture test deliberately leaks
     // a tracked handle, and fail-mode throws in afterEach.

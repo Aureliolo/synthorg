@@ -111,6 +111,7 @@ async function updateSettingImpl(
         mutationToken,
       })
     })
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- set inside the synchronous zustand set() updater; CFA cannot see the closure mutation
     if (!applied) return null
     useToastStore.getState().add({
       variant: 'success',

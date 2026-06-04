@@ -345,7 +345,7 @@ function sanitizeTaskEnums(c: DashboardTask) {
       maxLen: 64,
       field: 'task.priority',
     }),
-    source: c.source === undefined || c.source === null
+    source: c.source === null
       ? c.source
       : sanitizeWsEnum(c.source, TASK_SOURCE_VALUES, 'internal', {
           maxLen: 64,
@@ -371,7 +371,7 @@ function sanitizeTaskCollections(c: DashboardTask) {
     })),
     acceptance_criteria: c.acceptance_criteria.map((ac) => ({
       description: sanitizeWsString(ac.description, 512) ?? '',
-      met: ac.met ?? false,
+      met: ac.met,
     })),
     metadata: sanitizeMetadata(c.metadata),
   }

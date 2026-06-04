@@ -85,7 +85,7 @@ function GraphSummary({ nodes, edges }: GraphSummaryProps) {
 }
 
 function extractNodeLabel(node: Node): string {
-  if (node.data && typeof node.data === 'object' && 'label' in node.data) {
+  if (typeof node.data === 'object' && 'label' in node.data) {
     const label = (node.data as { label?: unknown }).label
     if (typeof label === 'string' && label !== '') return label
   }

@@ -96,14 +96,12 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
       wsStore.subscribe(uniqueChannels, filters)
       subscribed = true
-      if (cancelled) return
 
       // Push to the ledger AFTER the call succeeds so a throw from
       // ``onChannelEvent`` naturally aborts the loop without leaving
       // the failed binding in the rollback ledger. The outer
       // ``setup().catch()`` records the failure in setupError.
       for (const binding of bindings) {
-        if (cancelled) return
         wsStore.onChannelEvent(binding.channel, binding.handler)
         registered.push(binding)
       }

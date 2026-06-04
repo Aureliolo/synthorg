@@ -118,10 +118,6 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true, allowNullish: true },
       ],
-      // Enabled in PR-2 of this series (#2212); fixing its 193 violations needs
-      // boundary type-honesty work that warrants its own focused review.
-      '@typescript-eslint/no-unnecessary-condition': 'off',
-
       // -- #2212 curated rules genuinely absent from strictTypeChecked --
       // ``== null`` / ``!= null`` is the deliberate nullish-check idiom across
       // the codebase; ``{ null: 'ignore' }`` permits it while still forbidding

@@ -51,7 +51,7 @@ export function Slot({ children, ref, ...slotProps }: SlotProps) {
   }
 
   const child = children
-  const childProps = child.props ?? {}
+  const childProps = child.props
   const merged = mergeProps(slotProps as Record<string, unknown>, childProps)
 
   // Compose the Slot's own ref with any ref the child element carries so

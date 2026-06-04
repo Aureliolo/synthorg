@@ -32,7 +32,7 @@ function RunRow({ run }: { run: FineTuneRun }) {
       <td className="py-2 pr-4">
         <span className="inline-flex items-center gap-1.5">
           <StatusBadge
-            status={STAGE_STATUS_MAP[run.stage] ?? 'idle'}
+            status={STAGE_STATUS_MAP[run.stage]}
           />
           <span className="text-xs">{formatStage(run.stage)}</span>
         </span>
@@ -102,5 +102,5 @@ const STAGE_LABELS: Record<FineTuneStage, string> = {
 }
 
 function formatStage(stage: FineTuneStage): string {
-  return STAGE_LABELS[stage] ?? stage
+  return STAGE_LABELS[stage]
 }

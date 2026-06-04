@@ -119,7 +119,7 @@ const SENIORITY_RANK: Record<SeniorityLevel, number> = {
 }
 
 function seniorityOf(level: SeniorityLevel): number {
-  return SENIORITY_RANK[level] ?? -1
+  return SENIORITY_RANK[level]
 }
 
 // ── Owner / admin input ─────────────────────────────────────

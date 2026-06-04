@@ -49,7 +49,10 @@ export async function listCostRecords(
   params?: PaginationParams & { agent_id?: string; task_id?: string },
 ): Promise<CostRecordListResult> {
   const response = await apiClient.get<CostRecordListResponseBody>('/budget/records', { params })
-  const body = response.data
+  // Axios types ``response.data`` as the declared envelope, but the server
+  // can return a malformed / empty body at runtime; widen the boundary so the
+  // optional-chain guards below are real, not dead.
+  const body = response.data as CostRecordListResponseBody | null | undefined
   if (!body?.success) {
     throw new ApiRequestError(body?.error ?? 'Unknown API error', body?.error_detail ?? null)
   }

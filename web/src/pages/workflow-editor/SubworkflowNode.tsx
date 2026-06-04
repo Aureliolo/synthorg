@@ -18,9 +18,9 @@ interface SubworkflowFields {
 }
 
 function extractSubworkflowFields(data: SubworkflowNodeData): SubworkflowFields {
-  const rawId = data.config?.subworkflow_id
+  const rawId = data.config.subworkflow_id
   const subworkflowId = typeof rawId === 'string' && rawId ? rawId : undefined
-  const rawVersion = data.config?.version
+  const rawVersion = data.config.version
   const version = typeof rawVersion === 'string' && rawVersion ? rawVersion : undefined
   return { subworkflowId, version }
 }

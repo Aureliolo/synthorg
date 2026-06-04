@@ -40,6 +40,7 @@ export function useMetaAnalyticsData(): MetaAnalyticsData {
         getSignals(),
         listProposals(),
       ])
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
       if (ctrl.cancelled) return
       handleSignalsResult(signalsRes, setSignals, setSignalsError)
       handleProposalsResult(proposalsRes, setProposals, setProposalsError)

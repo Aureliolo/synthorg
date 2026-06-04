@@ -92,20 +92,20 @@ function buildValidationPayload(
 ) {
   return {
     name: definition.name,
-    // Preserve draft metadata; only fall back to defaults when the
-    // draft genuinely lacks a value. Hardcoded overwrites here would
-    // mean the validator sees a different shape than the editor
-    // shows (e.g. a true is_subworkflow gets reported invalid).
-    description: definition.description ?? '',
-    version: definition.version ?? '1.0.0',
-    workflow_type: definition.workflow_type ?? 'sequential_pipeline',
-    inputs: (definition.inputs ?? []).map(
+    // Preserve draft metadata verbatim. These fields are always present
+    // on a WorkflowDefinition, so a hardcoded fallback would only risk the
+    // validator seeing a different shape than the editor shows (e.g. a
+    // true is_subworkflow getting reported invalid).
+    description: definition.description,
+    version: definition.version,
+    workflow_type: definition.workflow_type,
+    inputs: definition.inputs.map(
       (d) => ({ ...d, default: d.default ?? null }),
     ),
-    outputs: (definition.outputs ?? []).map(
+    outputs: definition.outputs.map(
       (d) => ({ ...d, default: d.default ?? null }),
     ),
-    is_subworkflow: definition.is_subworkflow ?? false,
+    is_subworkflow: definition.is_subworkflow,
     nodes: mapValidationNodes(nodes),
     edges: mapValidationEdges(edges),
   }

@@ -61,7 +61,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     if (department !== prevDepartmentRef.current) {
       prevDepartmentRef.current = department
       if (department) {
-        setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
+        setBudgetPercent(String(department.budget_percent))
         setCeremonyPolicy(department.ceremony_policy ?? null)
         setSubmitError(null)
       }
@@ -74,7 +74,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     if (!config) return 0
     return config.departments
       .filter((d) => d.name !== department?.name)
-      .reduce((sum, d) => sum + (d.budget_percent ?? 0), 0)
+      .reduce((sum, d) => sum + d.budget_percent, 0)
   }, [config, department?.name])
 
   const projectedTotal = otherDeptsBudget + (Number(budgetPercent) || 0)

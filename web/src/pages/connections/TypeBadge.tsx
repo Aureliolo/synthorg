@@ -9,7 +9,7 @@ interface TypeBadgeProps {
 
 export function TypeBadge({ type, className }: TypeBadgeProps) {
   const spec = CONNECTION_TYPE_FIELDS[type]
-  const label = spec?.label ?? type.replaceAll('_', ' ')
+  const label = spec.label
   return (
     <span
       className={cn(

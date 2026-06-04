@@ -396,6 +396,7 @@ async function doConnect(
 
   const ticket = await fetchTicketOrReconnect(set, get)
   if (ticket === null) return
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- set false by disconnect() during the await; CFA cannot see the cross-function mutation
   if (!shouldBeConnected || generation !== connectGeneration) return
 
   const url = getWsUrl()

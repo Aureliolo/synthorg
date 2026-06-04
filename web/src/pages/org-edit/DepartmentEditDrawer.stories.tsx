@@ -61,9 +61,9 @@ const meta = {
     onDelete: () => Promise.resolve(true),
     onCreateTeam: (_d, data) =>
       Promise.resolve({
-        name: data.name ?? 'New Team',
-        lead: data.lead ?? 'Unassigned',
-        members: data.members ?? [data.lead ?? 'Unassigned'],
+        name: data.name,
+        lead: data.lead,
+        members: data.members,
       }),
     onUpdateTeam: (_d, _t, data) =>
       Promise.resolve({

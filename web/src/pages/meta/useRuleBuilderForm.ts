@@ -119,10 +119,9 @@ export function useRuleBuilderForm({
     const data = buildPayload(form)
     setSubmitting(true)
     try {
-      const result =
-        isEdit && editRule
-          ? await updateRule(editRule.id, data)
-          : await createRule(data)
+      const result = isEdit
+        ? await updateRule(editRule.id, data)
+        : await createRule(data)
       if (result) onClose()
     } finally {
       setSubmitting(false)

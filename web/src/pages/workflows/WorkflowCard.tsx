@@ -116,7 +116,7 @@ function WorkflowCardBody({ workflow }: WorkflowCardBodyProps) {
             instances below for Nodes/Edges and with ArtifactCard's type label)
             instead of a hand-rolled inline pill that drifts from the design
             tokens. */}
-        <StatPill value={formatLabel(workflow.workflow_type ?? 'unknown')} />
+        <StatPill value={formatLabel(workflow.workflow_type)} />
       </div>
       {workflow.description && (
         <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">

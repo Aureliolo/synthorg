@@ -16,7 +16,10 @@ export async function getPresetOverride(presetName: string): Promise<PresetOverr
   // here, not an error. Inspect the envelope directly and pass null
   // through; otherwise the ``| null`` half of the return type would be
   // unreachable.
-  const body = response.data
+  // Axios types ``response.data`` as the declared envelope, but the server
+  // can return a malformed / empty body at runtime; widen the boundary so the
+  // guards below are real, not dead.
+  const body = response.data as ApiResponse<PresetOverride | null> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }

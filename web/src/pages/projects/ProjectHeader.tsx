@@ -12,11 +12,11 @@ function buildProjectMetadata(project: Project) {
   return [
     {
       label: 'Status',
-      value: <ProjectStatusBadge status={project.status ?? 'planning'} showLabel />,
+      value: <ProjectStatusBadge status={project.status} showLabel />,
     },
     {
       label: 'Budget',
-      value: project.budget != null ? formatCurrency(project.budget) : '--',
+      value: formatCurrency(project.budget),
       valueClassName: 'font-mono text-xs',
     },
     {
@@ -25,12 +25,12 @@ function buildProjectMetadata(project: Project) {
     },
     {
       label: 'Tasks',
-      value: String(project.task_ids?.length ?? 0),
+      value: String(project.task_ids.length),
       valueClassName: 'font-mono text-xs',
     },
     {
       label: 'Team Size',
-      value: String(project.team?.length ?? 0),
+      value: String(project.team.length),
       valueClassName: 'font-mono text-xs',
     },
     {

@@ -111,7 +111,7 @@ function BudgetSpendRow() {
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
-  const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
+  const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status.in_review)
   const costDisplay = totalCost != null ? formatCurrency(totalCost, currency) : '--'
   const budgetDisplay = budgetPercent != null ? `${Math.round(budgetPercent)}%` : '--%'
   return (

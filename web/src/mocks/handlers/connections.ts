@@ -134,7 +134,7 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
         connection_name: conn.name,
-        status: conn.health_status ?? 'unknown',
+        status: conn.health_status,
         latency_ms: conn.health_status === 'healthy' ? 42 : null,
         error_detail: conn.health_status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,

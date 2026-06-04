@@ -11,7 +11,7 @@ describe('cn', () => {
   })
 
   it('handles conditional and falsy values', () => {
-    const isHidden = false
+    const isHidden = false as boolean
     expect(cn('base', isHidden && 'hidden', undefined, null, 'end')).toBe('base end')
   })
 })

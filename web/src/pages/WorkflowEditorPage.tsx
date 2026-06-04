@@ -96,7 +96,7 @@ function getSelectedNodeDetails(
   if (!selectedNodeId) return null
   const node = nodes.find((n) => n.id === selectedNodeId)
   if (!node) return null
-  const data = (node.data ?? {}) as { label?: unknown; config?: unknown }
+  const data = node.data as { label?: unknown; config?: unknown }
   return {
     node,
     type: resolveSupportedNodeType(node.type),

@@ -59,7 +59,7 @@ describe('WizardProgress', () => {
       />,
     )
     const buttons = screen.getAllByRole('button')
-    const companyButton = buttons.find((b) => b.textContent?.includes('Company'))
+    const companyButton = buttons.find((b) => b.textContent.includes('Company'))
     expect(companyButton).toHaveAttribute('aria-current', 'step')
   })
 
@@ -77,7 +77,7 @@ describe('WizardProgress', () => {
       />,
     )
     const buttons = screen.getAllByRole('button')
-    const templateButton = buttons.find((b) => b.textContent?.includes('Template'))!
+    const templateButton = buttons.find((b) => b.textContent.includes('Template'))!
     expect(templateButton).toBeInTheDocument()
     await user.click(templateButton)
     expect(handleClick).toHaveBeenCalledWith('template')
@@ -96,7 +96,7 @@ describe('WizardProgress', () => {
       />,
     )
     const buttons = screen.getAllByRole('button')
-    const companyButton = buttons.find((b) => b.textContent?.includes('Company'))
+    const companyButton = buttons.find((b) => b.textContent.includes('Company'))
     expect(companyButton).toBeDisabled()
   })
 
@@ -113,7 +113,7 @@ describe('WizardProgress', () => {
     )
     // Template step should have a checkmark (Check icon renders as svg)
     const buttons = screen.getAllByRole('button')
-    const templateButton = buttons.find((b) => b.textContent?.includes('Template'))!
+    const templateButton = buttons.find((b) => b.textContent.includes('Template'))!
     expect(templateButton).toBeInTheDocument()
     expect(templateButton.querySelector('svg')).toBeInTheDocument()
   })
@@ -130,7 +130,7 @@ describe('WizardProgress', () => {
       />,
     )
     const buttons = screen.getAllByRole('button')
-    const agentsButton = buttons.find((b) => b.textContent?.includes('Agents'))!
+    const agentsButton = buttons.find((b) => b.textContent.includes('Agents'))!
     // The sr-only revalidation hint is referenced via aria-describedby.
     expect(agentsButton).toHaveAttribute('aria-describedby', 'agents-needs-revalidation')
     expect(screen.getByText(/Needs review/i)).toBeInTheDocument()
@@ -148,7 +148,7 @@ describe('WizardProgress', () => {
       />,
     )
     const buttons = screen.getAllByRole('button')
-    const agentsButton = buttons.find((b) => b.textContent?.includes('Agents'))!
+    const agentsButton = buttons.find((b) => b.textContent.includes('Agents'))!
     expect(agentsButton).not.toHaveAttribute('aria-describedby')
   })
 

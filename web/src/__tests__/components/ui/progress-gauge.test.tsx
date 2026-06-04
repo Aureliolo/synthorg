@@ -98,7 +98,7 @@ describe.each<['circular' | 'linear']>([
           )
           const matches = screen.getAllByText(/%$/)
           expect(matches.length).toBeGreaterThan(0)
-          const percentage = parseInt(matches[0]!.textContent ?? '0')
+          const percentage = parseInt(matches[0]!.textContent)
           expect(percentage).toBeGreaterThanOrEqual(0)
           expect(percentage).toBeLessThanOrEqual(100)
           unmount()

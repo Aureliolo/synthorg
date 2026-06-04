@@ -60,7 +60,7 @@ function useLoginMode(): LoginMode {
         if (cancelled) return
         if (status.needs_admin) {
           setMode('setup')
-          setMinPasswordLength(status.min_password_length ?? MIN_PASSWORD_LENGTH)
+          setMinPasswordLength(status.min_password_length)
         } else {
           setMode('login')
         }

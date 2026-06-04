@@ -105,24 +105,25 @@ function taskStatusChanged(p: WsPayload): EnqueueParams | null {
   if (status === 'unknown') return null
   const taskId = sanitizeWsString(p.task_id)
   const title = sanitizeWsString(p.title)
-  if (status === 'failed') {
-    return {
-      category: 'tasks.failed',
-      title: 'Task failed',
-      description: title,
-      entityId: taskId,
-      href: taskId ? `/tasks` : undefined,
-    }
+  switch (status) {
+    case 'failed':
+      return {
+        category: 'tasks.failed',
+        title: 'Task failed',
+        description: title,
+        entityId: taskId,
+        href: taskId ? `/tasks` : undefined,
+      }
+    case 'blocked':
+      return {
+        category: 'tasks.blocked',
+        title: 'Task blocked',
+        description: title,
+        entityId: taskId,
+      }
+    default:
+      return null
   }
-  if (status === 'blocked') {
-    return {
-      category: 'tasks.blocked',
-      title: 'Task blocked',
-      description: title,
-      entityId: taskId,
-    }
-  }
-  return null
 }
 
 const WS_ROUTERS: Readonly<Record<string, WsEnqueueRouter>> = {

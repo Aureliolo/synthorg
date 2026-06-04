@@ -156,6 +156,9 @@ function _parseRetryAfterValue(trimmed: string): number | null {
  * want the literal wait duration even when it exceeds the budget.
  */
 function readRetryAfterHeaderMs(error: AxiosError): number | null {
+  // ``AxiosResponse.headers`` is typed non-null, but coerced / faked error
+  // objects can omit it; keep the optional chain.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- headers may be absent on non-standard error objects
   const raw: unknown = error.response?.headers?.['retry-after']
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()
@@ -363,7 +366,7 @@ function _formatStandardErrorMessage(error: Error): string {
   }
   log.warn(
     'Error message suppressed (JSON-shaped)',
-    sanitizeForLog({ preview: msg?.slice(0, 300) }),
+    sanitizeForLog({ preview: msg.slice(0, 300) }),
   )
   return GENERIC_FALLBACK_MESSAGE
 }

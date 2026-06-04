@@ -74,7 +74,7 @@ describe('Avatar', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (name) => {
         const { container, unmount } = render(<Avatar name={name} />)
-        const text = container.textContent ?? ''
+        const text = container.textContent
         expect(text.length).toBeLessThanOrEqual(2)
         unmount()
       }),

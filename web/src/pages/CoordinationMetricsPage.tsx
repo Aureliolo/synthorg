@@ -37,9 +37,11 @@ export default function CoordinationMetricsPage() {
       setError(null)
       try {
         const result = await getOverviewMetrics()
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         setData(result)
       } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         const message = getErrorMessage(err)
         // SEC-1: sanitize before structured logging; UI keeps the raw
@@ -48,6 +50,7 @@ export default function CoordinationMetricsPage() {
         log.error('getOverviewMetrics failed', { error: sanitizeForLog(message) })
         setError(message)
       } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (!cancelled) setLoading(false)
       }
     })

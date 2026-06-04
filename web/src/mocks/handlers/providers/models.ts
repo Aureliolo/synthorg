@@ -56,7 +56,7 @@ export const modelsHandlers = [
         currency: DEFAULT_CURRENCY,
         max_context: 0,
         estimated_latency_ms: null,
-        local_params: body.local_params ?? null,
+        local_params: body.local_params,
         supports_tools: false,
         supports_vision: false,
         supports_streaming: false,

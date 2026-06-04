@@ -92,7 +92,11 @@ export function createTelemetryArtifact(
   // than decomposing the bucket key: vitest test descriptions may
   // legitimately contain ``::`` and a split would truncate them.
   const byTest = [...buckets.values()].flatMap(bucket => {
+    // ``bucket[0]`` can be undefined for an empty bucket at runtime; the
+    // test-infra tsconfig (tsconfig.node) lacks ``noUncheckedIndexedAccess`` so
+    // the element type hides that, making this real guard look redundant.
     const first = bucket[0]
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime empty-bucket guard the lax test-infra tsconfig types away
     if (first === undefined) return []
     return [{
       testName: first.testName,
@@ -239,7 +243,7 @@ export default class ActiveHandleReporter implements Reporter {
       )
       out.write(`      first user frame: ${r.userFrame ?? '<none>'}\n`)
       if (r.allowlisted) {
-        out.write(`      allowlisted: ${r.allowlistReason ?? '<no reason>'}\n`)
+        out.write(`      allowlisted: ${r.allowlistReason}\n`)
       }
     }
   }

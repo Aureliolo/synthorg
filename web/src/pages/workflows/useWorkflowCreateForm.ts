@@ -148,7 +148,7 @@ async function submitWorkflow(
   if (!isWorkflowType(form.workflowType)) return null
   return useWorkflowsStore.getState().createWorkflow({
     name: form.name.trim(),
-    description: form.description.trim() ?? '',
+    description: form.description.trim(),
     version: '1.0.0',
     workflow_type: form.workflowType,
     inputs: [],

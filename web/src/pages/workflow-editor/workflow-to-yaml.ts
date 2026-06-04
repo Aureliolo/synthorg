@@ -116,7 +116,7 @@ function buildNodeContext(nodes: Node[], edges: Edge[]): NodeContext {
 }
 
 function buildStepData(node: Node, ctx: NodeContext): StepData {
-  const config = (node.data)?.config as
+  const config = node.data.config as
     | Record<string, unknown>
     | undefined
   const step: StepData = { id: node.id, type: node.type ?? 'task' }

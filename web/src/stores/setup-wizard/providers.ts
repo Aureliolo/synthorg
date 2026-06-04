@@ -41,16 +41,8 @@ interface ProbeOutcome {
 async function runProbeLocal(label: string): Promise<ProbeOutcome | null> {
   try {
     const response = await probeLocal()
-    const results = Object.fromEntries(
-      Object.entries(response.results ?? {}).filter(
-        (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
-      ),
-    )
-    const errors = Object.fromEntries(
-      Object.entries(response.errors ?? {}).filter(
-        (entry): entry is [string, string] => entry[1] !== undefined,
-      ),
-    )
+    const results = Object.fromEntries(Object.entries(response.results))
+    const errors = Object.fromEntries(Object.entries(response.errors))
     if (Object.keys(errors).length > 0) {
       log.warn('runProbeLocal reported per-preset errors', {
         label,

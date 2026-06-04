@@ -51,13 +51,14 @@ export function entriesToObject(entries: SettingEntry[]): ParsedSettings {
 
 export function serializeEntries(entries: SettingEntry[], format: CodeFormat): string {
   const obj = entriesToObject(entries)
-  if (format === 'json') {
-    return JSON.stringify(obj, null, 2)
+  switch (format) {
+    case 'json':
+      return JSON.stringify(obj, null, 2)
+    case 'yaml':
+      return YAML.dump(obj, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false })
+    default:
+      throw new Error(`Unsupported format: ${String(format)}`)
   }
-  if (format === 'yaml') {
-    return YAML.dump(obj, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false })
-  }
-  throw new Error(`Unsupported format: ${String(format)}`)
 }
 
 /** Find keys present in original but absent in parsed. */
@@ -125,14 +126,17 @@ export function buildChanges(
 }
 
 function parseRawDocument(text: string, format: CodeFormat): unknown {
-  if (format === 'json') return JSON.parse(text)
-  if (format === 'yaml') {
-    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
-    // tags that could execute arbitrary code. Do not change to
-    // DEFAULT_SCHEMA.
-    return YAML.load(text, { schema: YAML.CORE_SCHEMA })
+  switch (format) {
+    case 'json':
+      return JSON.parse(text)
+    case 'yaml':
+      // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
+      // tags that could execute arbitrary code. Do not change to
+      // DEFAULT_SCHEMA.
+      return YAML.load(text, { schema: YAML.CORE_SCHEMA })
+    default:
+      throw new Error(`Unsupported format: ${String(format)}`)
   }
-  throw new Error(`Unsupported format: ${String(format)}`)
 }
 
 function assertNamespaceObjects(raw: Record<string, unknown>): void {

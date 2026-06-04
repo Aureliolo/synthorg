@@ -133,9 +133,9 @@ async function duplicateWorkflow(
   if (!source) return
   const created = await useWorkflowsStore.getState().createWorkflow({
     name: `${source.name} (Copy)`,
-    description: source.description ?? '',
+    description: source.description,
     version: '1.0.0',
-    workflow_type: source.workflow_type ?? 'sequential_pipeline',
+    workflow_type: source.workflow_type,
     inputs: [],
     outputs: [],
     is_subworkflow: false,

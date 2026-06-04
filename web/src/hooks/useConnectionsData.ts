@@ -30,7 +30,7 @@ function _effectiveHealth(
   conn: Connection,
   healthMap: Record<string, HealthReport>,
 ): ConnectionHealthStatus {
-  return healthMap[conn.name]?.status ?? conn.health_status ?? 'unknown'
+  return healthMap[conn.name]?.status ?? conn.health_status
 }
 
 type ConnComparator = (
@@ -47,7 +47,7 @@ type ConnComparator = (
 const CONN_COMPARATORS = {
   name: (a, b) => a.name.localeCompare(b.name),
   type: (a, b) => a.connection_type.localeCompare(b.connection_type),
-  created_at: (a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  created_at: (a, b) => a.created_at.localeCompare(b.created_at),
   health: (a, b, h) =>
     HEALTH_ORDER[_effectiveHealth(a, h)] - HEALTH_ORDER[_effectiveHealth(b, h)],
 } as const satisfies Record<ConnectionSortKey, ConnComparator>

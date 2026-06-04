@@ -343,7 +343,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
 // Vite dead-code-eliminates this branch; under any non-Vite bundler
 // `import.meta.hot` is `undefined` and the `typeof` guard skips the
 // call safely.
-if (typeof import.meta.hot !== 'undefined' && import.meta.hot) {
+if (typeof import.meta.hot !== 'undefined') {
   import.meta.hot.dispose(() => {
     useThemeStore.getState().teardown()
   })

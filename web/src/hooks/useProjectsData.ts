@@ -71,7 +71,7 @@ export function useProjectsData(): UseProjectsDataReturn {
       result = result.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          (p.description ?? '').toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q) ||
           p.id.toLowerCase().includes(q),
       )
     }

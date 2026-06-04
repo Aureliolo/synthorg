@@ -65,14 +65,12 @@ export const useToastStore = create<ToastState>((set, get) => ({
       toasts: [...state.toasts, { ...toast, id }],
     }))
 
-    // Schedule auto-dismiss (null duration means persistent)
-    if (duration !== null) {
-      const timer = setTimeout(() => {
-        timers.delete(id)
-        get().dismiss(id)
-      }, duration)
-      timers.set(id, timer)
-    }
+    // Schedule auto-dismiss after the resolved duration.
+    const timer = setTimeout(() => {
+      timers.delete(id)
+      get().dismiss(id)
+    }, duration)
+    timers.set(id, timer)
 
     return id
   },

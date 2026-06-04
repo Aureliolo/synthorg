@@ -19,7 +19,7 @@ export const createClipboardSlice: SliceCreator<ClipboardSlice> = (set, get) => 
     const newNodes = [...nodes.map((n) => ({ ...n, selected: false })), ...pasted.nodes]
     const newEdges = [...edges, ...pasted.edges]
     const yamlPreview = definition
-      ? generateYamlPreview(newNodes, newEdges, definition.name, definition.workflow_type ?? 'sequential_pipeline')
+      ? generateYamlPreview(newNodes, newEdges, definition.name, definition.workflow_type)
       : ''
     set({
       nodes: newNodes,

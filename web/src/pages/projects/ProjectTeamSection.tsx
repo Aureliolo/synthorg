@@ -28,7 +28,7 @@ function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }
 }
 
 export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
-  const team = project.team ?? []
+  const team = project.team
   if (team.length === 0) {
     return (
       <SectionCard title="Team" icon={Users}>

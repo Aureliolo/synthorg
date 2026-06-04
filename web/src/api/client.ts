@@ -131,10 +131,13 @@ function _isReplayableRequest(config: RetriableConfig): boolean {
 }
 
 function _parseRetryAfter(error: ApiAxiosError): number {
-  return parseRetryAfterMs(
-    error.response?.headers?.['retry-after'] as string | undefined,
-    error.response?.data?.error_detail ?? null,
-  )
+  // ``AxiosResponse.headers`` / ``.data`` are typed non-null, but coerced or
+  // faked error objects can omit them; keep the optional chains.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- headers may be absent on non-standard error objects
+  const retryAfter = error.response?.headers?.['retry-after'] as string | undefined
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- data may be absent on non-standard error objects
+  const detail = error.response?.data?.error_detail ?? null
+  return parseRetryAfterMs(retryAfter, detail)
 }
 
 async function _performRateLimitRetry(
@@ -153,7 +156,7 @@ async function _performRateLimitRetry(
     status: 429,
   })
   const nextHeaders: Record<string, string> = {
-    ...((config.headers ?? {}) as Record<string, string>),
+    ...(config.headers as Record<string, string>),
   }
   nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
   const retryConfig: AxiosRequestConfig = { ...config, headers: nextHeaders }
@@ -252,7 +255,10 @@ export class ApiRequestError extends Error {
  * Throws if the response indicates an error.
  */
 export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
-  const body = response.data
+  // Axios types ``response.data`` as the declared envelope, but the server
+  // can return a malformed / empty body at runtime; annotate the boundary
+  // honestly so the guards below are real, not dead.
+  const body = response.data as ApiResponse<T> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }
@@ -275,7 +281,7 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
 export function unwrapNullable<T>(
   response: AxiosResponse<ApiResponse<T | null>>,
 ): T | null {
-  const body = response.data
+  const body = response.data as ApiResponse<T | null> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }
@@ -300,7 +306,7 @@ export function unwrapNullable<T>(
 export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
   // 204 No Content: empty body is expected and valid
   if (response.status === 204) return
-  const body = response.data
+  const body = response.data as ApiResponse<null> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }
@@ -334,7 +340,7 @@ export interface PaginatedResult<T> {
 export function unwrapPaginated<T>(
   response: AxiosResponse<PaginatedResponse<T>>,
 ): PaginatedResult<T> {
-  const body = response.data
+  const body = response.data as PaginatedResponse<T> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }
@@ -342,6 +348,9 @@ export function unwrapPaginated<T>(
     const detail = 'error_detail' in body ? (body.error_detail) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
+  // The success-branch type declares ``pagination`` always present, but a
+  // malformed backend envelope could omit it; validate before dereferencing.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime boundary guard against malformed envelope
   if (!body.pagination || !Array.isArray(body.data)) {
     throw new ApiRequestError('Unexpected API response format')
   }

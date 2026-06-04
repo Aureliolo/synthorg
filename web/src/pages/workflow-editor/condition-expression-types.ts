@@ -284,7 +284,7 @@ function partitionGroupChildren(
       comparisons.push(child)
       continue
     }
-    if (child.kind === 'group' && child.logicalOperator !== 'NOT') {
+    if (child.logicalOperator !== 'NOT') {
       const sub = collectFlatSubGroup(child)
       if (!sub) return null
       subGroups.push(sub)

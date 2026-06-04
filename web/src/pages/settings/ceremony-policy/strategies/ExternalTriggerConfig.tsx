@@ -9,7 +9,8 @@ export interface ExternalTriggerConfigProps {
 }
 
 export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTriggerConfigProps) {
-  const transitionEvent = (config.transition_event as string) ?? ''
+  const transitionEvent =
+    typeof config.transition_event === 'string' ? config.transition_event : ''
   const [rawJson, setRawJson] = useState(() => JSON.stringify(config.sources ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 

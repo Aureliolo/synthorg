@@ -27,7 +27,7 @@ function _coerceCap(maxLen: number): number {
  */
 function _extractRawString(value: unknown): string {
   if (value instanceof Error) {
-    return value.stack ?? value.message ?? String(value)
+    return value.stack ?? value.message
   }
   try {
     return String(value)

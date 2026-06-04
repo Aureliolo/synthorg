@@ -51,16 +51,8 @@ function useProviderProbe(presetsLength: number): ProviderProbe {
       // and per-preset errors are disjoint and both meaningful for the
       // detected-list UI. Dropping ``response.errors`` would silently
       // hide unreachable local providers from the operator.
-      const results = Object.fromEntries(
-        Object.entries(response.results ?? {}).filter(
-          (entry): entry is [string, ProbePresetResponse] => entry[1] !== undefined,
-        ),
-      )
-      const errors = Object.fromEntries(
-        Object.entries(response.errors ?? {}).filter(
-          (entry): entry is [string, string] => entry[1] !== undefined,
-        ),
-      )
+      const results = Object.fromEntries(Object.entries(response.results))
+      const errors = Object.fromEntries(Object.entries(response.errors))
       setProbeResults(results)
       setProbeErrors(errors)
     } catch (err) {

@@ -203,7 +203,7 @@ export function computeCategoryBreakdown(
 
   for (const r of records) {
     const cat = r.call_category ?? 'uncategorized'
-    const bucket = buckets[cat] ?? buckets.uncategorized
+    const bucket = buckets[cat]
     bucket.cost += r.cost
     bucket.count += 1
     totalCost += r.cost
@@ -392,7 +392,7 @@ export function computeBudgetMetricCards(
     overview,
     budgetConfig,
     forecast,
-    currency: overview.currency ?? budgetConfig?.currency,
+    currency: overview.currency,
   }
   return [
     _buildSpendCard(ctx),

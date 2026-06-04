@@ -24,7 +24,7 @@ function agent(overrides: Partial<SetupAgentSummary>): SetupAgentSummary {
  */
 function getTitles(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('title')).map(
-    (t) => t.textContent ?? '',
+    (t) => t.textContent,
   )
 }
 
@@ -44,7 +44,7 @@ describe('MiniOrgChart', () => {
       />,
     )
     const texts = Array.from(container.querySelectorAll('text')).map(
-      (el) => el.textContent ?? '',
+      (el) => el.textContent,
     )
     expect(texts).toContain('Quality Assurance')
     expect(texts).toContain('Creative Marketing')
@@ -113,7 +113,7 @@ describe('MiniOrgChart', () => {
       <MiniOrgChart agents={[agent({ name: 'Orphan One', department: '' })]} />,
     )
     const labels = Array.from(container.querySelectorAll('text')).map(
-      (el) => el.textContent ?? '',
+      (el) => el.textContent,
     )
     expect(labels).toContain('Unassigned')
   })

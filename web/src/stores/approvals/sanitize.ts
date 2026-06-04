@@ -277,7 +277,7 @@ function sanitizeEvidencePackage(
     ...sanitizeEvidenceStrings(pkg),
     reasoning_trace: sanitizeReasoningTrace(pkg.reasoning_trace),
     recommended_actions: sanitizeRecommendedActions(pkg.recommended_actions),
-    metadata: sanitizeStringMap(pkg.metadata ?? {}, 64, 512),
+    metadata: sanitizeStringMap(pkg.metadata, 64, 512),
     signature_threshold: pkg.signature_threshold,
     signatures: sanitizeSignatures(pkg.signatures),
     is_fully_signed: pkg.is_fully_signed,

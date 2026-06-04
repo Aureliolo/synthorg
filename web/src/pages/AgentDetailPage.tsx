@@ -104,7 +104,7 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
   const { agent, performanceCards, insights, agentTasks, activity, activityTotal, careerHistory, fetchMoreActivity } =
     ctrl.data
   if (!agent) return null
-  const allowedTools = extractAllowedTools(agent.tools?.['allowed'])
+  const allowedTools = extractAllowedTools(agent.tools['allowed'])
 
   return (
     <>

@@ -173,7 +173,7 @@ export function validateSchema(
       if (diag) diagnostics.push(diag)
       continue
     }
-    if (!keys || typeof keys !== 'object') continue
+    if (typeof keys !== 'object') continue
     const knownKeys = schema.namespaceKeys.get(ns)
     if (!knownKeys) continue
     diagnostics.push(...unknownKeyDiagnostics(ns, keys, knownKeys, findKey, text))

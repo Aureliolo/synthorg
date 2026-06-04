@@ -196,7 +196,7 @@ function useTaskBoardDnd(
   )
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      const task = (event.active.data.current as { task?: Task })?.task
+      const task = (event.active.data.current as { task?: Task } | undefined)?.task
       if (task) setActiveTask(task)
     },
     [setActiveTask],

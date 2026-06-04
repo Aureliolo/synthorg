@@ -69,13 +69,13 @@ function emptyFormState(): FormState {
 
 function ruleFormFromRule(rule: CustomRule): FormState {
   return {
-    name: rule.name ?? '',
-    description: rule.description ?? '',
-    metricPath: rule.metric_path ?? '',
-    comparator: rule.comparator ?? 'gt',
+    name: rule.name,
+    description: rule.description,
+    metricPath: rule.metric_path,
+    comparator: rule.comparator,
     threshold: formatThreshold(rule.threshold),
-    severity: rule.severity ?? 'warning',
-    altitudes: new Set<ProposalAltitude>(rule.target_altitudes ?? []),
+    severity: rule.severity,
+    altitudes: new Set<ProposalAltitude>(rule.target_altitudes),
   }
 }
 

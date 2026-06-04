@@ -124,7 +124,7 @@ function useNotificationNavigateBridge(): void {
   const navigate = useNavigate()
   useEffect(() => {
     function handleNav(e: Event) {
-      const detail = (e as CustomEvent<{ href: string }>).detail
+      const detail = (e as Event & { detail?: { href?: string } }).detail
       const href = detail?.href
       if (typeof href === 'string' && href.startsWith('/') && !href.startsWith('//')) {
         void navigate(href)

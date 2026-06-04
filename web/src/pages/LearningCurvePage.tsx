@@ -63,14 +63,17 @@ export default function LearningCurvePage() {
       setError(null)
       try {
         const result = await getLearningCurve()
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         setCurve(result)
       } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (cancelled) return
         const message = getErrorMessage(err)
         log.error('getLearningCurve failed', { error: sanitizeForLog(message) })
         setError(message)
       } finally {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- flipped by effect cleanup during the await; CFA cannot see the closure mutation
         if (!cancelled) setLoading(false)
       }
     })
