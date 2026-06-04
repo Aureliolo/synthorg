@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
+from synthorg.budget.model_tier import ModelTierMap
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -25,7 +26,6 @@ from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreReposito
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.benchmark_models import BenchmarkScoreRecord
-    from synthorg.budget.model_tier import ModelTierMap
 
 logger = get_logger(__name__)
 

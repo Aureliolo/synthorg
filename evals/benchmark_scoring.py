@@ -75,11 +75,18 @@ def score_record_from_scorecard(
     Returns:
         The derived record. ``score`` is the normalised suite mean and
         the confidence band is the 95 percent interval for that mean.
+
+    Raises:
+        ValueError: When the scorecard's ``max_total`` is zero (an empty
+            or unloaded brief suite). A measured score cannot be derived
+            from no briefs, so this fails fast rather than fabricating a
+            0.0 that would read as a real measurement.
     """
     per_brief = [b.score / MAX_PER_BRIEF * 100.0 for b in scorecard.briefs]
-    # An empty brief suite (no executable briefs loaded) yields a zero
-    # max_total; treat its normalised mean as 0 rather than dividing by zero.
-    mean = scorecard.total / scorecard.max_total * 100.0 if scorecard.max_total else 0.0
+    if not scorecard.max_total:
+        msg = "empty/invalid benchmark suite: max_total == 0"
+        raise ValueError(msg)
+    mean = scorecard.total / scorecard.max_total * 100.0
     if len(per_brief) > 1:
         standard_error = statistics.stdev(per_brief) / (len(per_brief) ** 0.5)
     else:

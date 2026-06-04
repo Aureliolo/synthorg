@@ -86,6 +86,20 @@ class TestScoreRecordFromScorecard:
         assert record.confidence_lower == pytest.approx(73.0)
         assert record.confidence_upper == pytest.approx(73.0)
 
+    def test_empty_suite_fails_fast(self) -> None:
+        # A zero ``max_total`` (empty/unloaded suite) cannot yield a measured
+        # score; the projection raises rather than fabricating a 0.0 that
+        # would read as a real measurement. ``Scorecard`` enforces
+        # ``min_length=1`` on briefs, so the degenerate state is built via
+        # ``model_construct`` to exercise the guard directly.
+        empty = Scorecard.model_construct(briefs=())
+        with pytest.raises(ValueError, match="max_total == 0"):
+            score_record_from_scorecard(
+                empty,
+                model_id=NotBlankStr("example-large-001"),
+                generated_at=_NOW,
+            )
+
 
 class TestSeedSerialisation:
     def test_round_trips_through_load_seed_records(self, tmp_path: Path) -> None:
