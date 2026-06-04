@@ -21,7 +21,6 @@ Like an automated burndown chart monitor.
   (default: False).
 """
 
-import math
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
@@ -31,11 +30,25 @@ from synthorg.engine.workflow.ceremony_policy import (
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
+from synthorg.engine.workflow.strategies._throughput_adaptive_config import (
+    _DEFAULT_DROP_THRESHOLD_PCT,
+    _DEFAULT_SPIKE_THRESHOLD_PCT,
+    _DEFAULT_TRANSITION_THRESHOLD,
+    _DEFAULT_WINDOW_SIZE,
+    _KEY_VELOCITY_DROP_THRESHOLD_PCT,
+    _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
+    _KNOWN_CONFIG_KEYS,
+    _MIN_WINDOW_SIZE,
+    resolve_bool,
+    resolve_threshold,
+    resolve_window_size,
+    validate_threshold_key,
+    validate_window_key,
+)
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
-    SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET,
     SPRINT_CEREMONY_THROUGHPUT_COLD_START,
     SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
@@ -55,35 +68,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# -- Config keys ---------------------------------------------------------------
-
-_KEY_VELOCITY_DROP_THRESHOLD_PCT: str = "velocity_drop_threshold_pct"
-_KEY_VELOCITY_SPIKE_THRESHOLD_PCT: str = "velocity_spike_threshold_pct"
-_KEY_MEASUREMENT_WINDOW_TASKS: str = "measurement_window_tasks"
+# Per-ceremony keys (read via get_ceremony_config, not sprint-level config).
 _KEY_ON_DROP: str = "on_drop"
 _KEY_ON_SPIKE: str = "on_spike"
-
-_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
-    {
-        _KEY_VELOCITY_DROP_THRESHOLD_PCT,
-        _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
-        _KEY_MEASUREMENT_WINDOW_TASKS,
-    }
-)
-
-# Per-ceremony keys (read via get_ceremony_config, not sprint-level config).
 _KNOWN_CEREMONY_KEYS: frozenset[str] = frozenset({_KEY_ON_DROP, _KEY_ON_SPIKE})
-
-# -- Defaults ------------------------------------------------------------------
-
-_DEFAULT_DROP_THRESHOLD_PCT: float = 30.0
-_DEFAULT_SPIKE_THRESHOLD_PCT: float = 50.0
-_DEFAULT_WINDOW_SIZE: int = 10
-_MIN_WINDOW_SIZE: int = 2
-_MAX_WINDOW_SIZE: int = 100
-_MIN_THRESHOLD_PCT: float = 1.0
-_MAX_THRESHOLD_PCT: float = 100.0
-_DEFAULT_TRANSITION_THRESHOLD: float = 1.0
 
 
 class ThroughputAdaptiveStrategy:
@@ -145,8 +133,8 @@ class ThroughputAdaptiveStrategy:
             ``True`` if the ceremony should fire.
         """
         config = get_ceremony_config(ceremony)
-        on_drop = self._resolve_bool(config, _KEY_ON_DROP, default=True)
-        on_spike = self._resolve_bool(config, _KEY_ON_SPIKE, default=False)
+        on_drop = resolve_bool(config, _KEY_ON_DROP, default=True)
+        on_spike = resolve_bool(config, _KEY_ON_SPIKE, default=False)
 
         if not on_drop and not on_spike:
             return False
@@ -324,17 +312,17 @@ class ThroughputAdaptiveStrategy:
             else {}
         )
 
-        self._drop_threshold_pct = self._resolve_threshold(
+        self._drop_threshold_pct = resolve_threshold(
             strategy_config,
             _KEY_VELOCITY_DROP_THRESHOLD_PCT,
             _DEFAULT_DROP_THRESHOLD_PCT,
         )
-        self._spike_threshold_pct = self._resolve_threshold(
+        self._spike_threshold_pct = resolve_threshold(
             strategy_config,
             _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
             _DEFAULT_SPIKE_THRESHOLD_PCT,
         )
-        self._window_size = self._resolve_window_size(strategy_config)
+        self._window_size = resolve_window_size(strategy_config)
         self._completion_timestamps = deque(maxlen=self._window_size)
         self._baseline_rate = None
         self._blocked_count = 0
@@ -448,9 +436,9 @@ class ThroughputAdaptiveStrategy:
             raise ValueError(msg)
 
         try:
-            self._validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
-            self._validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
-            self._validate_window_key(config)
+            validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
+            validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
+            validate_window_key(config)
         except TypeError as exc:
             raise ValueError(str(exc)) from exc
 
@@ -482,206 +470,3 @@ class ThroughputAdaptiveStrategy:
             time_span_seconds=round(time_span, 2),
             strategy="throughput_adaptive",
         )
-
-    @staticmethod
-    def _resolve_bool(
-        config: Mapping[str, Any],
-        key: str,
-        *,
-        default: bool,
-    ) -> bool:
-        """Resolve a boolean config value with lenient fallback.
-
-        Returns:
-            The configured bool when present and well-typed; otherwise
-            ``default`` (with a warning log).
-        """
-        value = config.get(key)
-        if value is None:
-            return default
-        if isinstance(value, bool):
-            return value
-        logger.warning(
-            SPRINT_CEREMONY_SKIPPED,
-            reason="invalid_bool_config",
-            key=key,
-            value=value,
-            fallback=default,
-            strategy="throughput_adaptive",
-        )
-        return default
-
-    @staticmethod
-    def _resolve_threshold(
-        config: Mapping[str, Any],
-        key: str,
-        default: float,
-    ) -> float:
-        """Resolve a percentage threshold with lenient validation.
-
-        Returns:
-            The configured threshold when present, numeric, finite,
-            and inside ``[_MIN_THRESHOLD_PCT, _MAX_THRESHOLD_PCT]``;
-            otherwise ``default`` (with a warning log).
-        """
-        value = config.get(key)
-        if value is None:
-            return default
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_threshold",
-                key=key,
-                value=value,
-                fallback=default,
-                strategy="throughput_adaptive",
-            )
-            return default
-        if not math.isfinite(value) or not (
-            _MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT
-        ):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="threshold_out_of_range",
-                key=key,
-                value=value,
-                fallback=default,
-                strategy="throughput_adaptive",
-            )
-            return default
-        result: float = float(value)
-        return result
-
-    @staticmethod
-    def _resolve_window_size(config: Mapping[str, Any]) -> int:
-        """Resolve the measurement window size with lenient validation.
-
-        Returns:
-            The configured window size when present, an integer, and
-            within ``[_MIN_WINDOW_SIZE, _MAX_WINDOW_SIZE]``; otherwise
-            :data:`_DEFAULT_WINDOW_SIZE` (with a warning log).
-        """
-        value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
-        if value is None:
-            return _DEFAULT_WINDOW_SIZE
-        if isinstance(value, bool) or not isinstance(value, int):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_window_size",
-                value=value,
-                fallback=_DEFAULT_WINDOW_SIZE,
-                strategy="throughput_adaptive",
-            )
-            return _DEFAULT_WINDOW_SIZE
-        if not (_MIN_WINDOW_SIZE <= value <= _MAX_WINDOW_SIZE):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="window_size_out_of_range",
-                value=value,
-                fallback=_DEFAULT_WINDOW_SIZE,
-                strategy="throughput_adaptive",
-            )
-            return _DEFAULT_WINDOW_SIZE
-        result: int = value
-        return result
-
-    @staticmethod
-    def _validate_threshold_key(
-        config: Mapping[str, Any],
-        key: str,
-    ) -> None:
-        """Validate a percentage threshold key (strict).
-
-        Raises:
-            TypeError: When ``config[key]`` is present but not a
-                non-bool int / float.
-            ValueError: When the numeric value is non-finite or outside
-                ``[_MIN_THRESHOLD_PCT, _MAX_THRESHOLD_PCT]``.
-        """
-        value = config.get(key)
-        if value is None:
-            return
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            msg = f"'{key}' must be numeric, got {type(value).__name__}"
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="throughput_adaptive",
-                key=key,
-                value=value,
-            )
-            raise TypeError(msg)
-        if not math.isfinite(value) or not (
-            _MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT
-        ):
-            msg = (
-                f"'{key}' must be between "
-                f"{_MIN_THRESHOLD_PCT} and {_MAX_THRESHOLD_PCT}, "
-                f"got {value}"
-            )
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="throughput_adaptive",
-                key=key,
-                value=value,
-            )
-            raise ValueError(msg)
-
-    @staticmethod
-    def _validate_window_key(config: Mapping[str, Any]) -> None:
-        """Validate measurement_window_tasks key (strict).
-
-        Raises:
-            TypeError: When the key is present but not a non-bool int.
-            ValueError: When the integer is outside the allowed window
-                range.
-        """
-        value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
-        if value is None:
-            return
-        if isinstance(value, bool) or not isinstance(value, int):
-            msg = (
-                f"'{_KEY_MEASUREMENT_WINDOW_TASKS}' must be an integer, "
-                f"got {type(value).__name__}"
-            )
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="throughput_adaptive",
-                key=_KEY_MEASUREMENT_WINDOW_TASKS,
-                value=value,
-            )
-            raise TypeError(msg)
-        if not (_MIN_WINDOW_SIZE <= value <= _MAX_WINDOW_SIZE):
-            msg = (
-                f"'{_KEY_MEASUREMENT_WINDOW_TASKS}' must be between "
-                f"{_MIN_WINDOW_SIZE} and {_MAX_WINDOW_SIZE}, got {value}"
-            )
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="throughput_adaptive",
-                key=_KEY_MEASUREMENT_WINDOW_TASKS,
-                value=value,
-            )
-            raise ValueError(msg)
-
-    @staticmethod
-    def _validate_bool_key(
-        config: Mapping[str, Any],
-        key: str,
-    ) -> None:
-        """Validate a boolean config key (strict).
-
-        Raises:
-            TypeError: When ``config[key]`` is present but not a bool.
-        """
-        value = config.get(key)
-        if value is None:
-            return
-        if not isinstance(value, bool):
-            msg = f"'{key}' must be a boolean, got {type(value).__name__}"
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="throughput_adaptive",
-                key=key,
-                value=value,
-            )
-            raise TypeError(msg)

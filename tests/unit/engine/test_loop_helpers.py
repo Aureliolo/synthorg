@@ -8,13 +8,15 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_control_helpers import (
+    check_budget,
+    check_shutdown,
+    check_stagnation,
+)
 from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
-    check_budget,
     check_response_errors,
-    check_shutdown,
-    check_stagnation,
     get_tool_definitions,
     make_turn_record,
     response_to_message,

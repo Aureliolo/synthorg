@@ -82,7 +82,7 @@ class TestRubricGraderPromptContract:
         import json
 
         from synthorg.engine.quality.graders import (
-            llm as _grader_module,
+            _llm_prompt as _grader_module,
         )
 
         # Compose a deterministic, human-auditable surface payload

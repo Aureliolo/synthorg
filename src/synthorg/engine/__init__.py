@@ -206,12 +206,10 @@ from synthorg.engine.shutdown import (
     ShutdownResult,
     ShutdownStrategy,
 )
-from synthorg.engine.shutdown_strategies import (
-    CheckpointAndStopStrategy,
-    FinishCurrentToolStrategy,
-    ImmediateCancelStrategy,
-    build_shutdown_strategy,
-)
+from synthorg.engine.shutdown_checkpoint import CheckpointAndStopStrategy
+from synthorg.engine.shutdown_finish_tool import FinishCurrentToolStrategy
+from synthorg.engine.shutdown_immediate import ImmediateCancelStrategy
+from synthorg.engine.shutdown_strategies import build_shutdown_strategy
 from synthorg.engine.stagnation import (
     StagnationConfig,
     StagnationDetector,

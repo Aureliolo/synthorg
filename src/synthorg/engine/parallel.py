@@ -11,14 +11,19 @@ execution), extended with fail-fast, progress tracking, and
 """
 
 import asyncio
-import dataclasses
 from collections.abc import Callable
 from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
+from synthorg.engine.errors import ParallelExecutionError
+from synthorg.engine.parallel_locks import (
+    acquire_all_locks,
+    release_all_locks,
+    resolve_lock,
+    validate_resource_claims,
+)
 from synthorg.engine.parallel_models import (
     AgentAssignment,
     AgentOutcome,
@@ -26,7 +31,8 @@ from synthorg.engine.parallel_models import (
     ParallelExecutionResult,
     ParallelProgress,
 )
-from synthorg.engine.resource_lock import InMemoryResourceLock, ResourceLock
+from synthorg.engine.parallel_progress import _ProgressState
+from synthorg.engine.resource_lock import ResourceLock
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.parallel import (
     PARALLEL_AGENT_CANCELLED,
@@ -38,7 +44,6 @@ from synthorg.observability.events.parallel import (
     PARALLEL_GROUP_SUPPRESSED,
     PARALLEL_LOCK_RELEASE_ERROR,
     PARALLEL_PROGRESS_UPDATE,
-    PARALLEL_VALIDATION_ERROR,
 )
 
 if TYPE_CHECKING:
@@ -54,34 +59,6 @@ ProgressCallback = Callable[[ParallelProgress], None]
 Called directly (not awaited) from the executor's event loop;
 must not block.  Async functions will produce un-awaited coroutines.
 """
-
-
-@dataclasses.dataclass
-class _ProgressState:
-    """Mutable progress tracking -- internal to ``execute_group()`` scope."""
-
-    group_id: str
-    total: int
-    completed: int = 0
-    in_progress: int = 0
-    succeeded: int = 0
-    failed: int = 0
-
-    def snapshot(self) -> ParallelProgress:
-        """Create a frozen progress snapshot.
-
-        Returns:
-            A :class:`ParallelProgress` immutable snapshot of the
-            current counters.
-        """
-        return ParallelProgress(
-            group_id=self.group_id,
-            total=self.total,
-            completed=self.completed,
-            in_progress=self.in_progress,
-            succeeded=self.succeeded,
-            failed=self.failed,
-        )
 
 
 class ParallelExecutor:
@@ -143,8 +120,8 @@ class ParallelExecutor:
             fail_fast=group.fail_fast,
         )
 
-        lock = self._resolve_lock(group)
-        self._validate_resource_claims(group)
+        lock = resolve_lock(group, self._resource_lock)
+        validate_resource_claims(group)
 
         outcomes: dict[str, AgentOutcome] = {}
         fatal_errors: list[Exception] = []
@@ -157,7 +134,7 @@ class ParallelExecutor:
         release_error: Exception | None = None
         try:
             if lock is not None:
-                await self._acquire_all_locks(group, lock)
+                await acquire_all_locks(group, lock)
             await self._run_task_group(
                 group,
                 outcomes,
@@ -169,7 +146,7 @@ class ParallelExecutor:
         finally:
             if lock is not None:
                 try:
-                    await self._release_all_locks(group, lock)
+                    await release_all_locks(group, lock)
                 except Exception as release_exc:
                     reraise_critical(release_exc)
                     logger.warning(
@@ -519,92 +496,6 @@ class ParallelExecutor:
             ),
             total_duration_seconds=duration,
         )
-
-    def _resolve_lock(
-        self,
-        group: ParallelExecutionGroup,
-    ) -> ResourceLock | None:
-        """Return the resource lock to use, or ``None`` if not needed.
-
-        When no assignments declare resource claims, returns ``None``
-        (no locking needed).  When claims exist, falls back to
-        a shared ``InMemoryResourceLock()`` if no lock was injected.
-        """
-        has_claims = any(a.resource_claims for a in group.assignments)
-        if not has_claims:
-            return None
-        if self._resource_lock is not None:
-            return self._resource_lock
-        return InMemoryResourceLock()
-
-    def _validate_resource_claims(
-        self,
-        group: ParallelExecutionGroup,
-    ) -> None:
-        """Check for overlapping resource claims between assignments.
-
-        Raises:
-            ResourceConflictError: If two assignments claim the same
-                resource.
-        """
-        seen: dict[str, str] = {}
-        for assignment in group.assignments:
-            for resource in assignment.resource_claims:
-                if resource in seen:
-                    other = seen[resource]
-                    msg = (
-                        f"Resource conflict: {resource!r} claimed by "
-                        f"both agent {other!r} and {assignment.agent_id!r}"
-                    )
-                    logger.warning(
-                        PARALLEL_VALIDATION_ERROR,
-                        group_id=group.group_id,
-                        error=msg,
-                    )
-                    raise ResourceConflictError(msg)
-                seen[resource] = assignment.agent_id
-
-    async def _acquire_all_locks(
-        self,
-        group: ParallelExecutionGroup,
-        lock: ResourceLock,
-    ) -> None:
-        """Acquire resource locks for all assignments.
-
-        Raises:
-            ResourceConflictError: If any lock cannot be acquired; the
-                acquired locks are released before re-raising.
-        """
-        for assignment in group.assignments:
-            holder_id = f"{group.group_id}:{assignment.task_id}"
-            for resource in assignment.resource_claims:
-                acquired = await lock.acquire(
-                    resource,
-                    holder_id,
-                )
-                if not acquired:
-                    current_holder = lock.holder_of(resource)
-                    msg = (
-                        f"Failed to acquire lock on {resource!r}: "
-                        f"held by {current_holder!r}"
-                    )
-                    logger.warning(
-                        PARALLEL_VALIDATION_ERROR,
-                        group_id=group.group_id,
-                        error=msg,
-                    )
-                    await self._release_all_locks(group, lock)
-                    raise ResourceConflictError(msg)
-
-    async def _release_all_locks(
-        self,
-        group: ParallelExecutionGroup,
-        lock: ResourceLock,
-    ) -> None:
-        """Release all resource locks for all assignments."""
-        for assignment in group.assignments:
-            holder_id = f"{group.group_id}:{assignment.task_id}"
-            await lock.release_all(holder_id)
 
     def _emit_progress(self, state: _ProgressState) -> None:
         """Emit a progress update via the callback, if configured."""

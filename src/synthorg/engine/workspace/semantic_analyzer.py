@@ -13,6 +13,8 @@ from synthorg.engine.workspace.semantic_checks import (
     check_duplicate_definitions,
     check_import_conflicts,
     check_removed_references,
+)
+from synthorg.engine.workspace.semantic_checks_signatures import (
     check_signature_changes,
 )
 from synthorg.observability import get_logger, safe_error_description

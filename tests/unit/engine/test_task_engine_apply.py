@@ -642,7 +642,7 @@ class TestRecordTaskRunWiring:
             patch(
                 "synthorg.engine.task_engine_apply.record_task_run",
             ) as mock_record,
-            patch("synthorg.engine.task_engine_apply.datetime") as mock_dt,
+            patch("synthorg.engine.task_engine_apply_helpers.datetime") as mock_dt,
         ):
             mock_dt.now.return_value = frozen_now
             await apply_transition(
@@ -718,7 +718,7 @@ class TestRecordTaskRunWiring:
             patch(
                 "synthorg.engine.task_engine_apply.record_task_run",
             ) as mock_record,
-            patch("synthorg.engine.task_engine_apply.datetime") as mock_dt,
+            patch("synthorg.engine.task_engine_apply_helpers.datetime") as mock_dt,
         ):
             mock_dt.now.return_value = frozen_now
             await apply_cancel(

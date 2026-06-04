@@ -913,7 +913,7 @@ class TestCatchAllExceptionWrapping:
             msg = "simulated failure"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr(prompt_module, "_render_with_trimming", _broken_render)
+        monkeypatch.setattr(prompt_module, "render_with_trimming", _broken_render)
 
         with pytest.raises(PromptBuildError, match="Unexpected error") as exc_info:
             build_system_prompt(agent=sample_agent_with_personality)

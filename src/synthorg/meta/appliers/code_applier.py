@@ -15,6 +15,16 @@ from typing import TYPE_CHECKING, ClassVar
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
+from synthorg.meta.appliers._code_io import (
+    _apply_single_change,
+    _is_within,
+    _revert_single_change,
+)
+from synthorg.meta.appliers._code_validation import (
+    _build_pr_body,
+    _check_proposal_shape,
+    _validate_change_preconditions,
+)
 from synthorg.meta.models import (
     ApplyResult,
     CIValidationResult,
@@ -30,12 +40,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
-    META_APPLY_CREATE_TARGET_EXISTS,
-    META_APPLY_DELETE_CONTENT_DRIFT,
-    META_APPLY_DELETE_TARGET_MISSING,
     META_APPLY_FAILED,
-    META_APPLY_MODIFY_CONTENT_DRIFT,
-    META_APPLY_MODIFY_TARGET_MISSING,
     META_APPLY_PATH_ESCAPE,
     META_CI_VALIDATION_FAILED,
     META_CODE_FILE_WRITTEN,
@@ -539,215 +544,3 @@ class CodeApplier:
                     reason="local_revert_failed",
                     file_path=change.file_path,
                 )
-
-
-def _apply_single_change(change: CodeChange, file_path: Path) -> None:
-    """Write a single code change to disk with precondition checks.
-
-    Validates filesystem state before mutating to avoid clobbering
-    files that changed since proposal generation.
-
-    Args:
-        change: The code change descriptor.
-        file_path: Absolute path to write.
-
-    Raises:
-        RuntimeError: If preconditions are violated.
-    """
-    if change.operation == CodeOperation.CREATE:
-        if file_path.exists():
-            logger.error(
-                META_APPLY_CREATE_TARGET_EXISTS,
-                file_path=change.file_path,
-            )
-            msg = f"CREATE target already exists: {change.file_path}"
-            raise RuntimeError(msg)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(change.new_content, encoding="utf-8")
-    elif change.operation == CodeOperation.MODIFY:
-        if not file_path.exists():
-            logger.error(
-                META_APPLY_MODIFY_TARGET_MISSING,
-                file_path=change.file_path,
-            )
-            msg = f"MODIFY target does not exist: {change.file_path}"
-            raise RuntimeError(msg)
-        current = file_path.read_text(encoding="utf-8")
-        if current != change.old_content:
-            logger.error(
-                META_APPLY_MODIFY_CONTENT_DRIFT,
-                file_path=change.file_path,
-            )
-            msg = f"MODIFY target changed since proposal generation: {change.file_path}"
-            raise RuntimeError(msg)
-        file_path.write_text(change.new_content, encoding="utf-8")
-    elif change.operation == CodeOperation.DELETE:
-        if not file_path.exists():
-            logger.error(
-                META_APPLY_DELETE_TARGET_MISSING,
-                file_path=change.file_path,
-            )
-            msg = f"DELETE target does not exist: {change.file_path}"
-            raise RuntimeError(msg)
-        current = file_path.read_text(encoding="utf-8")
-        if current != change.old_content:
-            logger.error(
-                META_APPLY_DELETE_CONTENT_DRIFT,
-                file_path=change.file_path,
-            )
-            msg = f"DELETE target changed since proposal generation: {change.file_path}"
-            raise RuntimeError(msg)
-        file_path.unlink()
-
-
-def _check_proposal_shape(
-    proposal: ImprovementProposal,
-) -> ApplyResult | None:
-    """Reject proposals with wrong altitude or no changes.
-
-    Args:
-        proposal: The proposal to validate.
-
-    Returns:
-        A failure ApplyResult if invalid, or None if OK.
-    """
-    if proposal.altitude != ProposalAltitude.CODE_MODIFICATION:
-        return ApplyResult(
-            success=False,
-            error_message=(
-                f"Expected CODE_MODIFICATION altitude, got {proposal.altitude.value}"
-            ),
-            changes_applied=0,
-        )
-    if not proposal.code_changes:
-        return ApplyResult(
-            success=False,
-            error_message="Proposal has no code changes",
-            changes_applied=0,
-        )
-    return None
-
-
-def _validate_change_preconditions(
-    change: CodeChange,
-    file_path: Path,
-    errors: list[str],
-) -> None:
-    """Check filesystem preconditions for a single code change.
-
-    Args:
-        change: The code change to validate.
-        file_path: Resolved absolute path.
-        errors: Mutable list to append error descriptions to.
-    """
-    if change.operation == CodeOperation.MODIFY:
-        if not file_path.exists():
-            errors.append(
-                f"MODIFY target does not exist: {change.file_path}",
-            )
-        else:
-            current = file_path.read_text(encoding="utf-8")
-            if current != change.old_content:
-                errors.append(
-                    f"MODIFY target changed since proposal: {change.file_path}",
-                )
-    elif change.operation == CodeOperation.DELETE:
-        if not file_path.exists():
-            errors.append(
-                f"DELETE target does not exist: {change.file_path}",
-            )
-        else:
-            current = file_path.read_text(encoding="utf-8")
-            if current != change.old_content:
-                errors.append(
-                    f"DELETE target changed since proposal: {change.file_path}",
-                )
-    elif change.operation == CodeOperation.CREATE and file_path.exists():
-        errors.append(
-            f"CREATE target already exists: {change.file_path}",
-        )
-
-
-def _is_within(candidate: Path, root: Path) -> bool:
-    """Check that candidate resolves to a path inside root.
-
-    Args:
-        candidate: Path to validate.
-        root: Already-resolved project root.
-
-    Returns:
-        True if candidate is a descendant of root.
-    """
-    try:
-        candidate.resolve().relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _revert_single_change(
-    change: CodeChange,
-    path: Path,
-    *,
-    defensive: bool,
-) -> None:
-    """Revert a single local file change.
-
-    Args:
-        change: The code change to undo.
-        path: Absolute file path.
-        defensive: Skip revert if file state doesn't indicate the
-            change was applied (prevents overwriting untouched files).
-    """
-    if change.operation == CodeOperation.CREATE:
-        if defensive:
-            # Only delete if the file's current contents match what
-            # ``_apply_single_change`` would have written. Without this
-            # check, defensive revert of a CREATE proposal whose target
-            # accidentally pre-existed (caused the precondition failure
-            # in ``_apply_single_change``) would clobber the operator's
-            # pre-existing file.
-            if not path.exists():
-                return
-            current = path.read_text(encoding="utf-8")
-            if current != change.new_content:
-                return
-        path.unlink(missing_ok=True)
-    elif change.operation == CodeOperation.MODIFY:
-        if defensive:
-            if not path.exists():
-                return
-            # Only revert if content matches new_content (was applied).
-            current = path.read_text(encoding="utf-8")
-            if current != change.new_content:
-                return
-        path.write_text(change.old_content, encoding="utf-8")
-    elif change.operation == CodeOperation.DELETE:
-        if defensive and path.exists():
-            return
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(change.old_content, encoding="utf-8")
-
-
-def _build_pr_body(proposal: ImprovementProposal) -> str:
-    """Build the PR body from a proposal.
-
-    Args:
-        proposal: The proposal to describe.
-
-    Returns:
-        Markdown-formatted PR body.
-    """
-    return (
-        f"## Meta-Loop Code Modification\n\n"
-        f"**Proposal ID**: {proposal.id}\n"
-        f"**Source Rule**: {proposal.source_rule}\n"
-        f"**Confidence**: {proposal.confidence:.0%}\n\n"
-        f"### Rationale\n\n"
-        f"{proposal.rationale.signal_summary}\n\n"
-        f"### Changes\n\n"
-        f"{proposal.description}\n\n"
-        f"---\n"
-        f"*Auto-generated by the self-improvement meta-loop. "
-        f"Human review required before merge.*"
-    )
