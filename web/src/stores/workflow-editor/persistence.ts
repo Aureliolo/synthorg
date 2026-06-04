@@ -353,10 +353,12 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (
     createDefinitionImpl(set, name, workflowType),
   saveDefinition: () => saveDefinitionImpl(set, get),
 
-  exportYaml: async () => {
+  exportYaml: () => {
     const { definition, yamlPreview } = get()
-    if (!definition) throw new Error('Cannot export: no workflow loaded')
-    return yamlPreview
+    if (!definition) {
+      return Promise.reject(new Error('Cannot export: no workflow loaded'))
+    }
+    return Promise.resolve(yamlPreview)
   },
 
   reset: () => resetPersistenceImpl(set),

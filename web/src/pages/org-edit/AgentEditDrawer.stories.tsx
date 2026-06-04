@@ -62,8 +62,8 @@ const meta = {
     onClose: () => {},
     agent: mockAgent,
     departments: mockDepartments,
-    onUpdate: async () => mockAgent,
-    onDelete: async () => true,
+    onUpdate: () => Promise.resolve(mockAgent),
+    onDelete: () => Promise.resolve(true),
     saving: false,
   },
 } satisfies Meta<typeof AgentEditDrawer>

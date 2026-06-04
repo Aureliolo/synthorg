@@ -11,30 +11,30 @@ function makeClient(
   override?: Partial<VersionHistoryClient<SamplePayload>>,
 ): VersionHistoryClient<SamplePayload> {
   return {
-    list: async () => ({
-      data: [],
-      total: 0,
-      offset: 0,
-      limit: 50,
-      nextCursor: null,
-      hasMore: false,
-      pagination: {
+    list: () =>
+      Promise.resolve({
+        data: [],
         total: 0,
         offset: 0,
         limit: 50,
-        next_cursor: null,
-        has_more: false,
-      },
-    }),
-    get: async () =>
-      ({}) as VersionSnapshot<SamplePayload>,
-    diff: async () => ({
-      from_version: 1,
-      to_version: 2,
-      entries: [],
-    }),
-    rollback: async () =>
-      ({}) as VersionSnapshot<SamplePayload>,
+        nextCursor: null,
+        hasMore: false,
+        pagination: {
+          total: 0,
+          offset: 0,
+          limit: 50,
+          next_cursor: null,
+          has_more: false,
+        },
+      }),
+    get: () => Promise.resolve({} as VersionSnapshot<SamplePayload>),
+    diff: () =>
+      Promise.resolve({
+        from_version: 1,
+        to_version: 2,
+        entries: [],
+      }),
+    rollback: () => Promise.resolve({} as VersionSnapshot<SamplePayload>),
     ...override,
   }
 }

@@ -47,10 +47,10 @@ function makeOverrides(): ProviderFormOverrides {
     onFetchPresets: vi.fn(),
     onCreateFromPreset: vi.fn<
       (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
-    >(async () => null),
+    >(() => Promise.resolve(null)),
     onCreateProvider: vi.fn<
       (data: CreateProviderRequest) => Promise<ProviderConfig | null>
-    >(async () => null),
+    >(() => Promise.resolve(null)),
   }
 }
 

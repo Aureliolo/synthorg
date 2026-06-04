@@ -59,7 +59,7 @@ const meta = {
       { ...baseDept, name: 'engineering', display_name: 'Engineering', teams: [] },
       { ...baseDept, name: 'product', display_name: 'Product', teams: [] },
     ],
-    onCreate: async () => stubAgent,
+    onCreate: () => Promise.resolve(stubAgent),
   },
 } satisfies Meta<typeof AgentCreateDialog>
 

@@ -90,23 +90,25 @@ const meta = {
     config: mockConfig,
     departmentHealths: mockHealths,
     saving: false,
-    onCreateDepartment: async () => mockConfig.departments[0]!,
-    onUpdateDepartment: async () => mockConfig.departments[0]!,
-    onDeleteDepartment: async () => true,
-    onReorderDepartments: async () => true,
+    onCreateDepartment: () => Promise.resolve(mockConfig.departments[0]!),
+    onUpdateDepartment: () => Promise.resolve(mockConfig.departments[0]!),
+    onDeleteDepartment: () => Promise.resolve(true),
+    onReorderDepartments: () => Promise.resolve(true),
     optimisticReorderDepartments: () => () => {},
-    onCreateTeam: async (_d, data) => ({
-      name: data.name ?? 'New Team',
-      lead: data.lead ?? 'Unassigned',
-      members: data.members ?? [data.lead ?? 'Unassigned'],
-    }),
-    onUpdateTeam: async (_d, _t, data) => ({
-      name: data.name ?? _t,
-      lead: data.lead ?? 'Unassigned',
-      members: data.members ?? [data.lead ?? 'Unassigned'],
-    }),
-    onDeleteTeam: async () => true,
-    onReorderTeams: async () => true,
+    onCreateTeam: (_d, data) =>
+      Promise.resolve({
+        name: data.name ?? 'New Team',
+        lead: data.lead ?? 'Unassigned',
+        members: data.members ?? [data.lead ?? 'Unassigned'],
+      }),
+    onUpdateTeam: (_d, _t, data) =>
+      Promise.resolve({
+        name: data.name ?? _t,
+        lead: data.lead ?? 'Unassigned',
+        members: data.members ?? [data.lead ?? 'Unassigned'],
+      }),
+    onDeleteTeam: () => Promise.resolve(true),
+    onReorderTeams: () => Promise.resolve(true),
   },
 } satisfies Meta<typeof DepartmentsTab>
 

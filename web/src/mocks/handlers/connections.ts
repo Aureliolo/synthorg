@@ -120,7 +120,7 @@ export const connectionsList = [
       { status: 201 },
     )
   }),
-  http.patch('/api/v1/connections/:name', async ({ params }) => {
+  http.patch('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params.name)
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(

@@ -343,7 +343,7 @@ describe('useProjectsStore', () => {
   })
 
   describe('updateFromWsEvent PROJECT_DELETED', () => {
-    it('removes the project identified by payload.project_id before the refetch lands', async () => {
+    it('removes the project identified by payload.project_id before the refetch lands', () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
       })

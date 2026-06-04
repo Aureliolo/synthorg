@@ -7,7 +7,7 @@ const meta = {
   component: TaskCancelDialog,
   args: {
     onOpenChange: fn(),
-    onConfirm: fn(async () => true),
+    onConfirm: fn(() => Promise.resolve(true)),
   },
 } satisfies Meta<typeof TaskCancelDialog>
 

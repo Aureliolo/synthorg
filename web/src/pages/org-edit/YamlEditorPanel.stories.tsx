@@ -65,7 +65,7 @@ const meta = {
   },
   args: {
     config: mockConfig,
-    onSave: async () => true,
+    onSave: () => Promise.resolve(true),
     saving: false,
   },
 } satisfies Meta<typeof YamlEditorPanel>

@@ -31,7 +31,7 @@ const meta = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreate: async () => MOCK_DEPARTMENT,
+    onCreate: () => Promise.resolve(MOCK_DEPARTMENT),
   },
 } satisfies Meta<typeof DepartmentCreateDialog>
 

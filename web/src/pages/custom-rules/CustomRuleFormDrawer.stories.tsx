@@ -28,8 +28,8 @@ const meta = {
     (Story) => {
       useCustomRulesStore.setState({
         submitting: false,
-        createRule: async () => sampleRule,
-        updateRule: async () => sampleRule,
+        createRule: () => Promise.resolve(sampleRule),
+        updateRule: () => Promise.resolve(sampleRule),
       })
       return <Story />
     },

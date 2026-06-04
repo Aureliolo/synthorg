@@ -58,10 +58,10 @@ const meta = {
         detailLoading: false,
         detailError: null,
         submitting: false,
-        fetchEscalationDetail: async () => {},
+        fetchEscalationDetail: () => Promise.resolve(),
         clearDetail: () => {},
-        submitDecision: async () => sampleDetail,
-        cancelEscalation: async () => sampleDetail,
+        submitDecision: () => Promise.resolve(sampleDetail),
+        cancelEscalation: () => Promise.resolve(sampleDetail),
       })
       return <Story />
     },

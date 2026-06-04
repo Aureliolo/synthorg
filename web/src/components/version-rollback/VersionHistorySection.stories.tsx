@@ -25,7 +25,7 @@ function makeStubClient(
   hasMore = false,
 ): VersionHistoryClient<Record<string, unknown>> {
   return {
-    list: async (): Promise<PaginatedResult<Snapshot>> => ({
+    list: (): Promise<PaginatedResult<Snapshot>> => Promise.resolve({
       data: versions.map(buildSnapshot),
       limit: 25,
       nextCursor: hasMore ? 'next-cursor' : null,
@@ -36,8 +36,8 @@ function makeStubClient(
         has_more: hasMore,
       },
     }),
-    get: async (version: number) => buildSnapshot(version),
-    diff: async (from: number, to: number): Promise<VersionDiffResponse> => ({
+    get: (version: number) => Promise.resolve(buildSnapshot(version)),
+    diff: (from: number, to: number): Promise<VersionDiffResponse> => Promise.resolve({
       from_version: from,
       to_version: to,
       entries: [
@@ -45,7 +45,7 @@ function makeStubClient(
         { path: 'name', before: `state-v${from}`, after: `state-v${to}` },
       ],
     }),
-    rollback: async () => buildSnapshot(versions[0] ?? 1),
+    rollback: () => Promise.resolve(buildSnapshot(versions[0] ?? 1)),
   }
 }
 

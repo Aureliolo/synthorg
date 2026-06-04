@@ -16,8 +16,8 @@ const meta = {
         rateLimits: { requests_per_minute: 60, concurrent_requests: 10 },
         rateLimitsLoading: false,
         rateLimitsError: null,
-        fetchRateLimits: async () => {},
-        updateRateLimits: async () => ({
+        fetchRateLimits: () => Promise.resolve(),
+        updateRateLimits: () => Promise.resolve({
           requests_per_minute: 60,
           concurrent_requests: 10,
         }),

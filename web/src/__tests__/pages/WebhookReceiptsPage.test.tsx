@@ -16,7 +16,7 @@ vi.mock('@/hooks/useConnectionsData', () => ({
 
 vi.mock('@/api/endpoints/webhooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/endpoints/webhooks')>()),
-  retryWebhookReceipt: vi.fn(async () => ({
+  retryWebhookReceipt: vi.fn(() => Promise.resolve({
     status: 'accepted',
     event_type: 'workflow.executed',
     receipt_id: 'whr-000000000002',

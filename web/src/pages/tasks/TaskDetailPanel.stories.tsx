@@ -40,8 +40,8 @@ const mockTask: DashboardTask = {
   updated_at: '2026-03-27T14:30:00.000Z',
 }
 
-const noop = async () => {}
-const noopSentinel = async () => true
+const noop = () => Promise.resolve()
+const noopSentinel = () => Promise.resolve(true)
 
 const meta = {
   title: 'Tasks/TaskDetailPanel',

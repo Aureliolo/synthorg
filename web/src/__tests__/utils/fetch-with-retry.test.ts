@@ -14,7 +14,7 @@ function makeResponse(
 
 describe('fetchWithRetryAfter', () => {
   it('returns the response on first 200 without retrying', async () => {
-    const fetchImpl = vi.fn(async () => makeResponse(200))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(200)))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter('/x', undefined, {
       fetchImpl,
@@ -42,7 +42,7 @@ describe('fetchWithRetryAfter', () => {
   })
 
   it('does NOT retry POST without idempotent opt-in or Idempotency-Key', async () => {
-    const fetchImpl = vi.fn(async () => makeResponse(429, '1'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '1')))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -87,7 +87,7 @@ describe('fetchWithRetryAfter', () => {
 
   it('surfaces the 429 when Retry-After exceeds the budget', async () => {
     // 99 seconds is well above the 5_000ms ceiling.
-    const fetchImpl = vi.fn(async () => makeResponse(429, '99'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '99')))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -100,7 +100,7 @@ describe('fetchWithRetryAfter', () => {
   })
 
   it('exhausts retry budget after MAX_RATE_LIMIT_RETRIES attempts', async () => {
-    const fetchImpl = vi.fn(async () => makeResponse(429, '0'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '0')))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -129,7 +129,7 @@ describe('fetchWithRetryAfter', () => {
   })
 
   it('does not retry on non-429 error responses', async () => {
-    const fetchImpl = vi.fn(async () => makeResponse(500))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(500)))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -154,7 +154,7 @@ describe('fetchWithRetryAfter', () => {
               .fn()
               .mockResolvedValueOnce(makeResponse(429, '0'))
               .mockResolvedValueOnce(makeResponse(200))
-          : vi.fn(async () => makeResponse(429, '0'))
+          : vi.fn(() => Promise.resolve(makeResponse(429, '0')))
       const sleep = vi.fn(async () => {})
       const opts = idempotent === undefined ? { fetchImpl, sleep } : { fetchImpl, sleep, idempotent }
       const resp = await fetchWithRetryAfter('/x', { method }, opts)
@@ -171,8 +171,9 @@ describe('fetchWithRetryAfter', () => {
       .mockResolvedValueOnce(makeResponse(200))
     // Abort while we're "sleeping" for the Retry-After window so the
     // helper observes the cancellation before issuing the next fetch.
-    const sleep = vi.fn(async () => {
+    const sleep = vi.fn(() => {
       controller.abort()
+      return Promise.resolve()
     })
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -189,7 +190,7 @@ describe('fetchWithRetryAfter', () => {
   it('short-circuits when AbortSignal is already aborted before sleep', async () => {
     const controller = new AbortController()
     controller.abort()
-    const fetchImpl = vi.fn(async () => makeResponse(429, '1'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '1')))
     const sleep = vi.fn(async () => {})
     const resp = await fetchWithRetryAfter(
       '/x',
@@ -230,7 +231,7 @@ describe('fetchWithRetryAfter', () => {
     // A Request whose method is POST must NOT retry by default.
     // Earlier the method was read off ``init`` only, so a Request POST
     // with no ``init`` was misclassified as GET and retried unsafely.
-    const fetchImpl = vi.fn(async () => makeResponse(429, '0'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '0')))
     const sleep = vi.fn(async () => {})
     const request = new Request('http://example.test/x', { method: 'POST' })
     const resp = await fetchWithRetryAfter(request, undefined, {
@@ -247,7 +248,7 @@ describe('fetchWithRetryAfter', () => {
     // verify that aborting during the timer interval short-circuits
     // the retry without waiting out the full Retry-After budget.
     const controller = new AbortController()
-    const fetchImpl = vi.fn(async () => makeResponse(429, '1'))
+    const fetchImpl = vi.fn(() => Promise.resolve(makeResponse(429, '1')))
     const start = performance.now()
     const promise = fetchWithRetryAfter(
       'http://example.test/x',

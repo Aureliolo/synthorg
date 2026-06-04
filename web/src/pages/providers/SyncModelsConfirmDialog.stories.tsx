@@ -13,7 +13,7 @@ const meta = {
   decorators: [
     (Story) => {
       useProvidersStore.setState({
-        syncProviderModels: async () => ({
+        syncProviderModels: () => Promise.resolve({
           added: ['example-large-001', 'example-medium-001'],
           removed: [],
           updated: ['example-small-001'],

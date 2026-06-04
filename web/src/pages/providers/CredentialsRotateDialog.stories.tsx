@@ -61,7 +61,7 @@ const meta = {
   decorators: [
     (Story) => {
       useProvidersStore.setState({
-        rotateCredentials: async () => apiKeyProvider,
+        rotateCredentials: () => Promise.resolve(apiKeyProvider),
       })
       return <Story />
     },

@@ -13,7 +13,7 @@ const meta = {
   decorators: [
     (Story) => {
       useProvidersStore.setState({
-        addProviderModel: async () => ({
+        addProviderModel: () => Promise.resolve({
           name: null,
           driver: 'litellm',
           litellm_provider: null,

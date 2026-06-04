@@ -76,7 +76,7 @@ export const Tablet768NotTriggered: Story = {
       },
     },
   },
-  play: async ({ canvasElement }) => {
+  play: ({ canvasElement }) => {
     const canvas = within(canvasElement)
     void expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
   },
@@ -100,7 +100,7 @@ export const Tablet1023NotTriggered: Story = {
       },
     },
   },
-  play: async ({ canvasElement }) => {
+  play: ({ canvasElement }) => {
     const canvas = within(canvasElement)
     void expect(canvas.queryByRole('alert')).not.toBeInTheDocument()
   },

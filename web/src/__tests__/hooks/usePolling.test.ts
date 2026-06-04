@@ -239,7 +239,7 @@ describe('usePolling', () => {
     expect(result.current.isRefetching).toBe(false)
 
     // Drain the next scheduled tick so the active-handle gate sees no leak.
-    await act(async () => {
+    act(() => {
       result.current.stop()
     })
   })
@@ -268,7 +268,7 @@ describe('usePolling', () => {
     })
     expect(fn).toHaveBeenCalledTimes(1)
 
-    await act(async () => {
+    act(() => {
       result.current.stop()
     })
   })
@@ -294,7 +294,7 @@ describe('usePolling', () => {
       })
       expect(fn).toHaveBeenCalledTimes(0)
 
-      await act(async () => {
+      act(() => {
         result.current.stop()
       })
     } finally {

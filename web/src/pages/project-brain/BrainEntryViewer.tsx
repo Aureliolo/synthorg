@@ -62,15 +62,19 @@ interface PayloadFieldsProps {
   payload: BrainEntry['payload']
 }
 
-function renderValue(value: unknown): string {
-  if (value === null || value === undefined) return EMPTY_VALUE
-  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : EMPTY_VALUE
-  if (typeof value === 'object') return JSON.stringify(value)
-  if (typeof value === 'string') return value
+function coerceScalar(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
   }
   return EMPTY_VALUE
+}
+
+function renderValue(value: unknown): string {
+  if (value === null || value === undefined) return EMPTY_VALUE
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : EMPTY_VALUE
+  if (typeof value === 'object') return JSON.stringify(value)
+  return coerceScalar(value)
 }
 
 function PayloadFields({ payload }: PayloadFieldsProps) {

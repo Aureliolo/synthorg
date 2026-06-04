@@ -51,10 +51,10 @@ const defaultState: RulesStoreState = {
   submitting: false,
   fetchRules: vi.fn(async () => {}),
   fetchMetrics: vi.fn(async () => {}),
-  deleteRule: vi.fn(async () => true),
+  deleteRule: vi.fn(() => Promise.resolve(true)),
   toggleRule: vi.fn(async () => {}),
-  createRule: vi.fn(async () => null),
-  updateRule: vi.fn(async () => null),
+  createRule: vi.fn(() => Promise.resolve(null)),
+  updateRule: vi.fn(() => Promise.resolve(null)),
 }
 
 function renderPage() {

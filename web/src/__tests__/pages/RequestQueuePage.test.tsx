@@ -22,9 +22,9 @@ vi.mock('@/hooks/useCapabilities', () => ({
 
 vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
-  scopeRequest: vi.fn(async () => undefined),
-  approveRequest: vi.fn(async () => undefined),
-  rejectRequest: vi.fn(async () => undefined),
+  scopeRequest: vi.fn(() => Promise.resolve(undefined)),
+  approveRequest: vi.fn(() => Promise.resolve(undefined)),
+  rejectRequest: vi.fn(() => Promise.resolve(undefined)),
 }))
 
 const { default: RequestQueuePage } = await import('@/pages/RequestQueuePage')

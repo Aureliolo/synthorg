@@ -20,7 +20,7 @@ vi.mock('@/hooks/useClientsData', () => ({
 
 vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
-  deleteClient: vi.fn(async () => undefined),
+  deleteClient: vi.fn(() => Promise.resolve(undefined)),
 }))
 
 const { default: ClientListPage } = await import('@/pages/ClientListPage')

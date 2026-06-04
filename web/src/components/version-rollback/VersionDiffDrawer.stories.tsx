@@ -29,26 +29,25 @@ function makeClient(
   override?: Partial<VersionHistoryClient<SamplePayload>>,
 ): VersionHistoryClient<SamplePayload> {
   return {
-    list: async () => ({
-      data: [],
-      total: 0,
-      offset: 0,
-      limit: 50,
-      nextCursor: null,
-      hasMore: false,
-      pagination: {
+    list: () =>
+      Promise.resolve({
+        data: [],
         total: 0,
         offset: 0,
         limit: 50,
-        next_cursor: null,
-        has_more: false,
-      },
-    }),
-    get: async () =>
-      ({}) as VersionSnapshot<SamplePayload>,
-    diff: async () => sampleDiff,
-    rollback: async () =>
-      ({}) as VersionSnapshot<SamplePayload>,
+        nextCursor: null,
+        hasMore: false,
+        pagination: {
+          total: 0,
+          offset: 0,
+          limit: 50,
+          next_cursor: null,
+          has_more: false,
+        },
+      }),
+    get: () => Promise.resolve({} as VersionSnapshot<SamplePayload>),
+    diff: () => Promise.resolve(sampleDiff),
+    rollback: () => Promise.resolve({} as VersionSnapshot<SamplePayload>),
     ...override,
   }
 }
@@ -73,11 +72,12 @@ export const Default: Story = {}
 export const NoChanges: Story = {
   args: {
     client: makeClient({
-      diff: async () => ({
-        from_version: 1,
-        to_version: 2,
-        entries: [],
-      }),
+      diff: () =>
+        Promise.resolve({
+          from_version: 1,
+          to_version: 2,
+          entries: [],
+        }),
     }),
   },
 }
@@ -85,9 +85,7 @@ export const NoChanges: Story = {
 export const ErrorState: Story = {
   args: {
     client: makeClient({
-      diff: async () => {
-        throw new Error('Backend unreachable')
-      },
+      diff: () => Promise.reject(new Error('Backend unreachable')),
     }),
   },
 }
