@@ -6,7 +6,7 @@ with no network, and a benchmark gate that requires the golden-scorecard
 no-regression check.
 """
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -40,6 +40,11 @@ class ToolValidationConfig(BaseModel):
         min_score_margin: Minimum ``candidate - baseline`` scorecard margin
             required to pass (0 = no regression allowed).
         brief_pass_score: Minimum per-tool acceptance brief score to pass.
+        golden_scorecard_provider: Which golden-scorecard provider to wire.
+            ``none`` (the default) wires no provider, so a
+            ``require_golden_delta`` gate fails closed; ``eval`` wires the
+            eval-backed :class:`EvalGoldenScorecardProvider` so the gate
+            runs the golden suite end-to-end.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -47,6 +52,7 @@ class ToolValidationConfig(BaseModel):
     require_golden_delta: bool = True
     min_score_margin: int = Field(default=0, ge=0)
     brief_pass_score: int = Field(default=70, ge=0, le=100)
+    golden_scorecard_provider: Literal["none", "eval"] = "none"
 
 
 class ToolsmithConfig(BaseModel):

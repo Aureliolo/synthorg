@@ -101,6 +101,7 @@ _CONSTRUCTION_KWARGS: Final[dict[str, dict[str, Any]]] = {
 # value is still distinct from the registered default.
 _ENV_VALUE_OVERRIDES: Final[dict[tuple[str, str], str]] = {
     ("BudgetConfig", "currency"): "GBP",
+    ("BudgetConfig", "benchmark_provider"): "measured",
     ("CompanyMemoryConfig", "backend"): "inmemory",
 }
 
@@ -272,6 +273,8 @@ def _choose_env_value(
         return '{"__mirror_regression__":[7,11]}'
     if parser_name == "parse_json_int_dict":
         return '{"__mirror_regression__":7}'
+    if parser_name == "parse_json_str_dict":
+        return '{"__mirror_regression__":"large"}'
     if parser is None:
         # Identity-parse mirror: registered as STRING or ENUM.
         if definition.type == SettingType.ENUM:

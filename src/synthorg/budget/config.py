@@ -6,11 +6,13 @@ and risk budget configuration.
 """
 
 from collections import Counter
+from collections.abc import Mapping
 from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.budget.model_tier import TierName
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
@@ -20,6 +22,7 @@ from synthorg.settings.mirrors import (
     parse_bool,
     parse_float,
     parse_int,
+    parse_json_str_dict,
 )
 
 
@@ -330,6 +333,17 @@ class BudgetConfig(BaseModel):
             key="forecast_shrinkage_prior_weight",
             parse=parse_float,
         ),
+        MirrorField(
+            field="benchmark_provider",
+            namespace=SettingNamespace.BUDGET,
+            key="benchmark_provider",
+        ),
+        MirrorField(
+            field="model_tier_overrides",
+            namespace=SettingNamespace.BUDGET,
+            key="model_tier_overrides",
+            parse=parse_json_str_dict,
+        ),
     )
 
     total_monthly: float = Field(
@@ -429,6 +443,25 @@ class BudgetConfig(BaseModel):
         default=5.0,
         ge=0.0,
         description="Prior pseudo-count for the Bayesian shrinkage blend",
+    )
+    benchmark_provider: Literal["stub", "measured"] = Field(
+        default="stub",
+        description=(
+            "Source of per-model benchmark scores for the Pareto frontier"
+            " and stakes-routing floors: `stub` (calibrated per-tier"
+            " constants, the safe default) or `measured` (repository-backed"
+            " measured scores with stub fallback)"
+        ),
+    )
+    model_tier_overrides: Mapping[NotBlankStr, TierName] = Field(
+        default_factory=dict,
+        description=(
+            "Operator map of model id to quality tier, consulted by the"
+            " Pareto downgrade traversal and the stub fallback before the"
+            " built-in archetype heuristic. Values are typed against the"
+            " canonical tiers, so a non-canonical tier is rejected at"
+            " config construction rather than slipping through to wiring."
+        ),
     )
 
     @model_validator(mode="before")

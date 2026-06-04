@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 313,
+      "loc": 325,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -215,6 +215,13 @@
       "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/api/_approval_expiration.py",
+      "owning_feature": "api_core"
+    },
+    {
+      "kind": "code",
+      "loc": 162,
+      "loc_cap": 500,
+      "module": "src/synthorg/api/_benchmark_wiring.py",
       "owning_feature": "api_core"
     },
     {
@@ -1619,7 +1626,7 @@
     },
     {
       "kind": "code",
-      "loc": 376,
+      "loc": 378,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/startup_steps.py",
       "owning_feature": "api_core"
@@ -1633,7 +1640,7 @@
     },
     {
       "kind": "code",
-      "loc": 171,
+      "loc": 252,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
       "owning_feature": "api_core"
@@ -2214,6 +2221,20 @@
     },
     {
       "kind": "code",
+      "loc": 71,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/benchmark_measured.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
+      "loc": 87,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/benchmark_models.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 83,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_protocol.py",
@@ -2221,7 +2242,14 @@
     },
     {
       "kind": "code",
-      "loc": 85,
+      "loc": 76,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/benchmark_seed.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
+      "loc": 91,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_stub.py",
       "owning_feature": "budget"
@@ -2277,7 +2305,7 @@
     },
     {
       "kind": "code",
-      "loc": 434,
+      "loc": 467,
       "loc_cap": 500,
       "module": "src/synthorg/budget/config.py",
       "owning_feature": "budget"
@@ -2354,14 +2382,14 @@
     },
     {
       "kind": "code",
-      "loc": 303,
+      "loc": 320,
       "loc_cap": 500,
       "module": "src/synthorg/budget/errors.py",
       "owning_feature": "budget"
     },
     {
       "kind": "feature",
-      "loc": 57,
+      "loc": 60,
       "loc_cap": 100,
       "module": "src/synthorg/budget/feature.py",
       "owning_feature": "budget"
@@ -2403,6 +2431,13 @@
     },
     {
       "kind": "code",
+      "loc": 85,
+      "loc_cap": 500,
+      "module": "src/synthorg/budget/model_tier.py",
+      "owning_feature": "budget"
+    },
+    {
+      "kind": "code",
       "loc": 679,
       "loc_cap": 500,
       "module": "src/synthorg/budget/optimizer.py",
@@ -2417,7 +2452,7 @@
     },
     {
       "kind": "code",
-      "loc": 271,
+      "loc": 265,
       "loc_cap": 500,
       "module": "src/synthorg/budget/pareto.py",
       "owning_feature": "budget"
@@ -2536,7 +2571,7 @@
     },
     {
       "kind": "code",
-      "loc": 42,
+      "loc": 46,
       "loc_cap": 500,
       "module": "src/synthorg/budget/state.py",
       "owning_feature": "budget"
@@ -11608,7 +11643,7 @@
     },
     {
       "kind": "code",
-      "loc": 86,
+      "loc": 92,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/config.py",
       "owning_feature": "toolsmith"
@@ -11622,7 +11657,7 @@
     },
     {
       "kind": "code",
-      "loc": 34,
+      "loc": 42,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/errors.py",
       "owning_feature": "toolsmith"
@@ -11636,7 +11671,7 @@
     },
     {
       "kind": "feature",
-      "loc": 28,
+      "loc": 29,
       "loc_cap": 100,
       "module": "src/synthorg/meta/toolsmith/feature.py",
       "owning_feature": "toolsmith"
@@ -11646,6 +11681,13 @@
       "loc": 133,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/gap_store.py",
+      "owning_feature": "toolsmith"
+    },
+    {
+      "kind": "code",
+      "loc": 56,
+      "loc_cap": 500,
+      "module": "src/synthorg/meta/toolsmith/golden_scorecard.py",
       "owning_feature": "toolsmith"
     },
     {
@@ -12035,7 +12077,7 @@
     },
     {
       "kind": "code",
-      "loc": 64,
+      "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/budget.py",
       "owning_feature": "observability"
@@ -12266,7 +12308,7 @@
     },
     {
       "kind": "code",
-      "loc": 14,
+      "loc": 15,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/evals.py",
       "owning_feature": "observability"
@@ -13406,6 +13448,13 @@
       "owning_feature": "persistence"
     },
     {
+      "kind": "declarative",
+      "loc": 68,
+      "loc_cap": null,
+      "module": "src/synthorg/persistence/benchmark_score_protocol.py",
+      "owning_feature": "persistence"
+    },
+    {
       "kind": "code",
       "loc": 111,
       "loc_cap": 500,
@@ -13781,6 +13830,13 @@
       "loc": 365,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/backup_utils.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "repository",
+      "loc": 226,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/benchmark_score_repo.py",
       "owning_feature": "persistence"
     },
     {
@@ -14502,6 +14558,13 @@
       "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/backup_utils.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "repository",
+      "loc": 255,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/benchmark_score_repo.py",
       "owning_feature": "persistence"
     },
     {
@@ -16767,7 +16830,7 @@
     },
     {
       "kind": "code",
-      "loc": 327,
+      "loc": 379,
       "loc_cap": 500,
       "module": "src/synthorg/settings/definitions/budget.py",
       "owning_feature": "settings"
@@ -16991,7 +17054,7 @@
     },
     {
       "kind": "code",
-      "loc": 190,
+      "loc": 208,
       "loc_cap": 500,
       "module": "src/synthorg/settings/mirrors.py",
       "owning_feature": "settings"

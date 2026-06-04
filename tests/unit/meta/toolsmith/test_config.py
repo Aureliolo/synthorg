@@ -54,3 +54,16 @@ class TestToolsmithConfig:
         # surfaces at boot rather than as 'tool never authored'.
         with pytest.raises(ValidationError):
             ToolsmithConfig(enabled=True, allowed_capabilities=())
+
+
+class TestGoldenScorecardProviderDiscriminator:
+    def test_defaults_to_none(self) -> None:
+        assert ToolValidationConfig().golden_scorecard_provider == "none"
+
+    def test_accepts_eval(self) -> None:
+        config = ToolValidationConfig(golden_scorecard_provider="eval")
+        assert config.golden_scorecard_provider == "eval"
+
+    def test_rejects_unknown_arm(self) -> None:
+        with pytest.raises(ValidationError):
+            ToolValidationConfig(golden_scorecard_provider="bogus")  # type: ignore[arg-type]

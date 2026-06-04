@@ -101,23 +101,48 @@ interface SourceBadgeProps {
   source: string
 }
 
+type BadgeKind = 'measured' | 'estimated' | 'mixed'
+
+const BADGE_CLASS = {
+  measured: 'border border-success/30 bg-success/10 text-success',
+  estimated: 'border border-warning/30 bg-warning/10 text-warning',
+  mixed: 'border border-warning/30 bg-warning/10 text-warning',
+} as const satisfies Record<BadgeKind, string>
+
+const BADGE_LABEL = {
+  measured: 'measured',
+  estimated: 'estimated',
+  mixed: 'mixed',
+} as const satisfies Record<BadgeKind, string>
+
+const BADGE_TITLE = {
+  measured: 'Measured per-model benchmark scores',
+  estimated: 'Stub benchmark data; awaiting measured scores',
+  mixed: 'Mixed provenance: some roles measured, some stub',
+} as const satisfies Record<BadgeKind, string>
+
+// The frontier source joins each point's provenance, and a point blends
+// its current/candidate scores, so a single string can carry both
+// 'benchmark:' (measured) and 'stub:' tokens. A measured-current /
+// stub-candidate mix must not read as fully measured.
+function badgeKind(source: string): BadgeKind {
+  const hasStub = source.includes('stub:')
+  const hasMeasured = source.includes('benchmark:')
+  if (hasStub && hasMeasured) return 'mixed'
+  return hasStub ? 'estimated' : 'measured'
+}
+
 function SourceBadge({ source }: SourceBadgeProps) {
-  const isStub = source.startsWith('stub:')
+  const kind = badgeKind(source)
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium',
-        isStub
-          ? 'border border-warning/30 bg-warning/10 text-warning'
-          : 'border border-success/30 bg-success/10 text-success',
+        BADGE_CLASS[kind],
       )}
-      title={
-        isStub
-          ? 'Stub benchmark data; awaiting calibrated scores'
-          : 'Calibrated benchmark scores'
-      }
+      title={BADGE_TITLE[kind]}
     >
-      {isStub ? 'estimated' : 'measured'}
+      {BADGE_LABEL[kind]}
     </span>
   )
 }

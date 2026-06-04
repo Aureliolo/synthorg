@@ -260,11 +260,33 @@ budget:
 `ParetoAnalyzer` answers "90% of the quality at 40% of the cost if you downgrade these
 roles". It walks the current per-role model assignments and observed costs, looks up a
 downgrade candidate per role, and pairs the `cost_saving_pct` with the `quality_delta_pct`
-drawn from a `BenchmarkScoreProvider`. The `StubBenchmarkScoreProvider` supplies
-calibrated per-tier constants pending a measured benchmark integration; every
-`ParetoPoint` and the frontier carry a `source` field that the dashboard surfaces
-verbatim so stub data is never mistaken for measured data. The frontier is advisory:
-downgrade callouts link to the agent settings surface rather than mutating models inline.
+drawn from a `BenchmarkScoreProvider`. Each model id resolves to a quality tier through a
+shared resolver (`budget/model_tier.py`): the built-in heuristic handles the
+`example-{large,medium,small}` / `local-small` ids, and an additive `ModelTierMap` lets an
+operator map arbitrary deployment ids onto a canonical tier without re-keying the
+candidate construction.
+
+Two providers back the quality axis, selected by the `budget.benchmark_provider` setting
+(`stub` by default; an unknown value fails loudly at wiring):
+
+- `StubBenchmarkScoreProvider` (`stub`) supplies calibrated per-tier constants, badged
+  `source="stub:calibrated-v1"`, as the safe default and cold-start fallback.
+- `MeasuredBenchmarkScoreProvider` (`measured`) reads measured per-model scores from the
+  `BenchmarkScoreRepository` and falls back to the stub for any unmeasured model, so the
+  frontier mixes measured and stub rows honestly rather than fabricating a number.
+
+Measured scores are genuinely measured, never fitted: `make record-benchmark-scores`
+(driving `scripts/record_benchmark_scores.py`) replays a recorded per-model cassette
+through the eval spine and derives each score from the resulting `Scorecard` (mean
+normalised brief score plus a 95% confidence band), writing the committed seed artifact
+`src/synthorg/budget/benchmark_seed.json`. The repository is boot-seeded from that artifact
+when empty, so a fresh operator database carries the measured scores without a recording
+run. Every `ParetoPoint` and the frontier carry a `source` field (the per-point provenance,
+joined with ` | ` when a point's current and candidate scores differ in provenance, and
+comma-joined across the frontier). The dashboard derives a provenance badge from it: a
+`source` carrying both a `benchmark:` and a `stub:` token renders the badge as "mixed",
+never "measured", so stub data is never mistaken for measured data. The frontier is advisory: downgrade callouts
+link to the agent settings surface rather than mutating models inline.
 
 ## Quota Degradation
 

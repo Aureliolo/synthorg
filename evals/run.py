@@ -88,8 +88,19 @@ _SUITE_VERSION_DIGEST_LEN: Final[int] = 16
 _INTERPRETER_PLACEHOLDER: Final[str] = "{python}"
 
 
-def _default_identity(provider_name: str) -> AgentIdentity:
+def _default_identity(
+    provider_name: str,
+    *,
+    model_id: str = _DEFAULT_MODEL_ID,
+) -> AgentIdentity:
     """Build the stable benchmark agent identity bound to *provider_name*.
+
+    Args:
+        provider_name: Provider label the agent's model binds to.
+        model_id: Model the agent runs. Per-model benchmark scoring pins
+            this to the measured model so the recorded cassette and the
+            replay key on the same model; the default keeps the generic
+            benchmark model for the reference/broken pair.
 
     Returns:
         The benchmark agent identity (stable id across rounds).
@@ -99,7 +110,7 @@ def _default_identity(provider_name: str) -> AgentIdentity:
         name="Benchmark Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider=provider_name, model_id=_DEFAULT_MODEL_ID),
+        model=ModelConfig(provider=provider_name, model_id=model_id),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -453,6 +464,7 @@ async def run_benchmark_async(  # noqa: PLR0913
     procedural_config: ProceduralMemoryConfig | None = None,
     history_dir: Path | None = None,
     strategy_profile: BenchmarkStrategyProfile = BenchmarkStrategyProfile.COMPETENT,
+    model_id: str | None = None,
 ) -> Scorecard:
     """Run the brief suite against the company config and return the scorecard.
 
@@ -477,6 +489,9 @@ async def run_benchmark_async(  # noqa: PLR0913
         history_dir: When set, the scorecard is also appended to this
             scorecard-history directory so the learning curve can be assembled
             across runs.
+        model_id: Pins the benchmark agent's model. Per-model scoring sets
+            this to the measured model so the recorded cassette and replay
+            key on the same model; defaults to the generic benchmark model.
 
     Returns:
         The assembled, schema-versioned scorecard.
@@ -500,7 +515,10 @@ async def run_benchmark_async(  # noqa: PLR0913
     briefs = load_brief_suite(brief_suite)
     resolved_anchors = _resolve_anchors_dir(brief_suite, anchors_dir)
     active_provider, quality_strategy = _select_provider(provider, strategy_profile)
-    identity = _default_identity(_resolve_provider_name(active_provider))
+    identity = _default_identity(
+        _resolve_provider_name(active_provider),
+        model_id=model_id if model_id is not None else _DEFAULT_MODEL_ID,
+    )
 
     active_judge: JudgeProtocol
     if judge is not None:

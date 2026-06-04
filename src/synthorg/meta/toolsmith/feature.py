@@ -23,6 +23,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "RingBufferCapabilityGapStore",
         "LLMToolBlueprintGenerator",
         "BenchmarkToolValidationGate",
+        "EvalGoldenScorecardProvider",
         "SandboxBriefRunner",
         "ToolCreationApplier",
         "DynamicToolRegistry",

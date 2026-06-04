@@ -1,3 +1,4 @@
+# module-kind: code
 """Stub benchmark-score provider for the Pareto view.
 
 Implements :class:`BenchmarkScoreProvider` using calibrated per-tier
@@ -14,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
+from synthorg.budget.model_tier import ModelTierMap, resolve_tier
 from synthorg.core.types import NotBlankStr
 
 # Per-tier calibrated stub scores. The values mirror the rough public
@@ -52,33 +54,31 @@ _TIER_SCORES: Final[Mapping[str, BenchmarkScore]] = {
 }
 
 
-def _tier_from_model_id(model_id: str) -> str | None:
-    """Map ``example-<tier>-<rev>`` to its tier label.
-
-    Returns:
-        The resulting ``str``, or ``None`` when unavailable.
-    """
-    parts = model_id.split("-")
-    if len(parts) < 2:  # noqa: PLR2004
-        return None
-    if "local" in parts and "small" in parts:
-        return "local-small"
-    candidate = parts[-2].lower()
-    if candidate in {"large", "medium", "small"}:
-        return candidate
-    return None
-
-
 class StubBenchmarkScoreProvider:
     """Calibrated-constant :class:`BenchmarkScoreProvider`.
 
     Returns the same :class:`BenchmarkScore` for every model that
-    matches a known tier (``large``/``medium``/``small``/``local-small``);
+    resolves a known tier (``large``/``medium``/``small``/``local-small``);
     unknown models return ``None`` so the Pareto analyzer skips them.
+
+    Resolution honours the operator's :class:`ModelTierMap` overrides
+    before the built-in archetype heuristic, so a custom operator id that
+    is mapped only through ``budget.model_tier_overrides`` still resolves
+    its calibrated cold-start score instead of falling through to ``None``.
 
     The source identifier is fixed at ``"stub:calibrated-v1"`` so the
     dashboard can distinguish stub data from a real benchmark feed.
+
+    Args:
+        tier_map: Operator model-id-to-tier overrides consulted before the
+            heuristic. ``None`` (the default) leaves resolution entirely to
+            the archetype heuristic.
     """
+
+    __slots__ = ("_tier_map",)
+
+    def __init__(self, *, tier_map: ModelTierMap | None = None) -> None:
+        self._tier_map = tier_map
 
     async def get_score(self, model_id: NotBlankStr) -> BenchmarkScore | None:
         """Return the stub score for ``model_id``, or ``None`` for unknown.
@@ -86,7 +86,7 @@ class StubBenchmarkScoreProvider:
         Returns:
             The matching ``BenchmarkScore``, or ``None`` when no match is found.
         """
-        tier = _tier_from_model_id(model_id)
+        tier = resolve_tier(model_id, self._tier_map)
         if tier is None:
             return None
         return _TIER_SCORES[tier]
@@ -97,12 +97,20 @@ class StubBenchmarkScoreProvider:
         The protocol contract keys scores by canonical model id; the
         stub maps each tier to its representative ``example-<tier>-001``
         sample model so callers receive model-id-indexed scores rather
-        than bare tier labels.
+        than bare tier labels. Operator override ids are surfaced under
+        their own id so an override-only model is not absent from merged
+        listings.
 
         Returns:
             Result of type ``Mapping[NotBlankStr, BenchmarkScore]``.
         """
-        return {f"example-{tier}-001": score for tier, score in _TIER_SCORES.items()}
+        scores: dict[NotBlankStr, BenchmarkScore] = {
+            f"example-{tier}-001": score for tier, score in _TIER_SCORES.items()
+        }
+        if self._tier_map is not None:
+            for model_id, tier in self._tier_map.overrides.items():
+                scores[model_id] = _TIER_SCORES[tier]
+        return scores
 
 
 __all__ = ["StubBenchmarkScoreProvider"]

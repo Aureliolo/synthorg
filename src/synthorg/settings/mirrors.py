@@ -157,6 +157,28 @@ def parse_json_int_dict(raw: str) -> dict[str, int] | None:
     return parsed
 
 
+def parse_json_str_dict(raw: str) -> dict[str, str] | None:
+    """Parse a JSON ``{key: str}`` env token.
+
+    The owning Pydantic config validates the values (e.g. against a
+    canonical set), so this parser only enforces top-level JSON shape (an
+    object with string keys and string values).
+
+    Returns:
+        The raw ``dict[str, str]`` from ``json.loads``, or ``None`` when
+        *raw* is not a JSON object keyed and valued by strings.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()):
+        return None
+    return parsed
+
+
 @dataclass(frozen=True)
 class MirrorField:
     """Declaration of one settings-mirror Pydantic field.

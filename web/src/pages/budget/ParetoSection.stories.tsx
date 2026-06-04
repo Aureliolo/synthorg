@@ -38,6 +38,17 @@ const measuredFrontier: ParetoFrontier = {
   })),
 }
 
+// A frontier blending measured and stub rows: the aggregate source
+// carries both tokens, so the badge resolves to 'mixed'.
+const mixedFrontier: ParetoFrontier = {
+  ...stubFrontier,
+  source: 'benchmark:1980-v1, stub:calibrated-v1',
+  points: stubFrontier.points.map((point, index) => ({
+    ...point,
+    source: index === 0 ? 'benchmark:1980-v1' : 'stub:calibrated-v1',
+  })),
+}
+
 const meta = {
   title: 'Pages/Budget/ParetoSection',
   component: ParetoSection,
@@ -53,6 +64,10 @@ export const StubData: Story = {
 
 export const MeasuredData: Story = {
   args: { frontier: measuredFrontier },
+}
+
+export const MixedData: Story = {
+  args: { frontier: mixedFrontier },
 }
 
 export const EmptyState: Story = {

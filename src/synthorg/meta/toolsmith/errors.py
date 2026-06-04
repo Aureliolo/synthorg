@@ -45,10 +45,24 @@ class ToolRegistrationError(ToolsmithError):
     default_message: ClassVar[str] = "Authored tool could not be registered"
 
 
+class UnknownGoldenScorecardProviderError(ToolsmithError):
+    """Raised when the golden-scorecard discriminator names an unknown arm."""
+
+    default_message: ClassVar[str] = "Unknown golden-scorecard provider strategy"
+
+
+class GoldenScorecardUnavailableError(ToolsmithError):
+    """Raised when the eval-backed golden scorecard cannot locate the harness."""
+
+    default_message: ClassVar[str] = "Golden-company eval harness is unavailable"
+
+
 __all__ = [
+    "GoldenScorecardUnavailableError",
     "ToolAuthoringError",
     "ToolCapabilityNotAllowedError",
     "ToolRegistrationError",
     "ToolValidationFailedError",
     "ToolsmithError",
+    "UnknownGoldenScorecardProviderError",
 ]

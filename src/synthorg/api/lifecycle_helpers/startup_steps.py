@@ -15,6 +15,7 @@ from synthorg.api._app_wiring import (
     _try_wire_cost_dial,
     _wire_environment_service,
 )
+from synthorg.api._benchmark_wiring import seed_benchmark_scores
 from synthorg.api.app_helpers import resolve_agent_workspace_root_env
 from synthorg.api.middleware import set_docs_csp_origins
 from synthorg.api.state import AppState
@@ -141,6 +142,9 @@ async def install_runtime_services(
     # tree per project under the workspace base. Persistence-less
     # boots (test fixtures, dev apps with no DB) skip wiring.
     _try_wire_cost_dial(app_state)
+    # Seed the measured benchmark-score repo from the committed artifact
+    # (idempotent; measured arm only) now the cost-dial repo is wired.
+    await seed_benchmark_scores(app_state)
     _try_wire_cockpit(app_state)
 
     # service is optional and gates on ``has_project_workspace_service``.

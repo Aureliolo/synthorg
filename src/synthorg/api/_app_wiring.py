@@ -13,6 +13,10 @@ funnels through :func:`reraise_critical` then logs and swallows).
 
 from typing import TYPE_CHECKING
 
+from synthorg.api._benchmark_wiring import (
+    build_benchmark_score_repo,
+    select_benchmark_provider,
+)
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -28,17 +32,17 @@ logger = get_logger(__name__)
 def _wire_cost_dial_services(app_state: AppState) -> None:
     """Wire the cost-dial services onto AppState behind a persistence guard.
 
-    Builds the BudgetConfig, StubBenchmarkScoreProvider, the per-backend
-    CostForecastRepository, the CostForecaster, and the ParetoAnalyzer
-    then hot-swaps them onto AppState through the lock-protected
-    ``swap_*`` methods so an in-flight controller read cannot race the
-    boot wiring.
+    Builds the BudgetConfig, the per-backend CostForecastRepository +
+    BenchmarkScoreRepository, the benchmark-score provider selected by the
+    ``budget.benchmark_provider`` discriminator (stub by default, measured
+    behind the repo with a stub fallback), the CostForecaster, and the
+    ParetoAnalyzer then hot-swaps them onto AppState through the
+    lock-protected ``swap_*`` methods so an in-flight controller read
+    cannot race the boot wiring.
     """
-    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
-        StubBenchmarkScoreProvider,
-    )
     from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
     from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
+    from synthorg.budget.model_tier import ModelTierMap  # noqa: PLC0415
     from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
     from synthorg.persistence.db_handle import (  # noqa: PLC0415
@@ -51,7 +55,6 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     from synthorg.persistence.state import persistence_of  # noqa: PLC0415
 
     budget_config = BudgetConfig()
-    benchmark_provider = StubBenchmarkScoreProvider()
     backend_name = persistence_of(app_state).backend_name
     if backend_name == "sqlite":
         forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
@@ -68,6 +71,14 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
             postgres_pool(persistence_of(app_state)),
             currency_getter=lambda: budget_config.currency,
         )
+
+    benchmark_score_repo = build_benchmark_score_repo(app_state)
+    model_tier_map = ModelTierMap(overrides=budget_config.model_tier_overrides)
+    benchmark_provider = select_benchmark_provider(
+        budget_config.benchmark_provider,
+        repo=benchmark_score_repo,
+        tier_map=model_tier_map,
+    )
     from synthorg.budget.forecast_history import (  # noqa: PLC0415
         CostTrackerHistoryLookup,
     )
@@ -106,11 +117,13 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
         assignment_lookup=assignment_lookup,
+        model_tier_map=model_tier_map,
     )
     app_state.wire(
         BudgetStateSlice,
         budget_config=budget_config,
         benchmark_provider=benchmark_provider,
+        benchmark_score_repo=benchmark_score_repo,
         cost_forecast_repo=forecast_repo,
         cost_forecaster=forecaster,
         pareto_analyzer=analyzer,

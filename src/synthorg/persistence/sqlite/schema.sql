@@ -2182,3 +2182,29 @@ CREATE INDEX idx_code_execution_task
 ON code_execution_record (task_id);
 CREATE INDEX idx_code_execution_project
 ON code_execution_record (project_id, executed_at DESC);
+
+-- Measured per-model benchmark scores.
+-- One row per model, keyed by ``model_id``. Each row is a quality
+-- score (0..100) with a 95 percent confidence band, measured offline
+-- from a recorded eval run and re-recorded by the scoring entry-point.
+-- ``source`` provenance (``benchmark:...``) flips the dashboard badge
+-- from illustrative to measured; ``suite_version`` / ``cassette_sha256``
+-- pin the measurement to a specific brief suite and recorded run.
+CREATE TABLE benchmark_scores (
+    model_id TEXT NOT NULL PRIMARY KEY
+    CHECK (LENGTH(TRIM(model_id)) > 0),
+    score REAL NOT NULL CHECK (score >= 0 AND score <= 100),
+    confidence_lower REAL NOT NULL
+    CHECK (confidence_lower >= 0 AND confidence_lower <= 100),
+    confidence_upper REAL NOT NULL
+    CHECK (confidence_upper >= 0 AND confidence_upper <= 100),
+    source TEXT NOT NULL CHECK (LENGTH(TRIM(source)) > 0),
+    suite_version TEXT NOT NULL CHECK (LENGTH(TRIM(suite_version)) > 0),
+    cassette_sha256 TEXT NOT NULL CHECK (LENGTH(TRIM(cassette_sha256)) > 0),
+    last_updated TEXT NOT NULL CHECK (
+        last_updated LIKE '%+00:00' OR last_updated LIKE '%Z'
+    ),
+    CONSTRAINT chk_bs_score_within_band CHECK (
+        confidence_lower <= score AND score <= confidence_upper
+    )
+);

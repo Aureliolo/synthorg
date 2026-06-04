@@ -174,6 +174,60 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
+        key="benchmark_provider",
+        type=SettingType.STRING,
+        default="stub",
+        description=(
+            "Source of per-model benchmark scores for the cost/quality"
+            " Pareto frontier and stakes-routing quality floors."
+            " ``stub`` uses calibrated per-tier constants (the safe"
+            " default; honestly badged as illustrative)."
+            " ``measured`` reads measured per-model scores from the"
+            " benchmark-score repository, seeded at boot from the"
+            " committed recording artifact, falling back to the stub for"
+            " any unmeasured model. Sourced from the"
+            " SYNTHORG_BUDGET_BENCHMARK_PROVIDER env var > default at"
+            " API-process start; the provider is wired once at startup,"
+            " so a change requires a restart."
+        ),
+        group="Cost Dial",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_BUDGET_BENCHMARK_PROVIDER",
+        validator_pattern=r"^(stub|measured)$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="model_tier_overrides",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Operator-configured JSON map of model id to quality tier"
+            " (``large`` / ``medium`` / ``small`` / ``local-small``),"
+            " consulted by the cost/quality Pareto downgrade traversal"
+            " before the built-in ``example-<tier>-<rev>`` heuristic."
+            " Empty (the default) leaves resolution entirely to the"
+            " heuristic, so a normal boot is unchanged. Lets an operator"
+            " running arbitrary model ids map them onto a tier so their"
+            " measured scores are queried. Sourced from the"
+            " SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES env var > default at"
+            " API-process start; wired once, so a change needs a restart."
+        ),
+        group="Cost Dial",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+        read_only_post_init=True,
+        env_var_override="SYNTHORG_BUDGET_MODEL_TIER_OVERRIDES",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
         key="forecast_required",
         type=SettingType.BOOLEAN,
         default="true",
