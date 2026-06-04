@@ -13,9 +13,14 @@ from synthorg.security.redteam.routing import (
     AUTONOMY_LEVELS_THAT_BLOCK_MEDIUM,
     HEURISTIC_GROUNDING_MAX_SEVERITY,
     SEVERITY_ALWAYS_BLOCK_FROM,
+    SUBSTRATE_DROP_FLOOR,
     SUBSTRATE_GROUNDING_MAX_SEVERITY,
+    SUBSTRATE_HIGH_CONFIDENCE_FLOOR,
+    SUBSTRATE_LOW_CONFIDENCE_FLOOR,
+    SUBSTRATE_MEDIUM_CONFIDENCE_FLOOR,
     compute_red_team_verdict,
     should_block,
+    substrate_severity_for_confidence,
 )
 
 
@@ -152,3 +157,43 @@ class TestRoutingConstants:
 
     def test_substrate_grounding_ceiling_is_high(self) -> None:
         assert SUBSTRATE_GROUNDING_MAX_SEVERITY is RedTeamSeverity.HIGH
+
+    def test_substrate_confidence_floors_are_ordered(self) -> None:
+        assert (
+            SUBSTRATE_LOW_CONFIDENCE_FLOOR
+            < SUBSTRATE_MEDIUM_CONFIDENCE_FLOOR
+            < SUBSTRATE_HIGH_CONFIDENCE_FLOOR
+        )
+        assert SUBSTRATE_DROP_FLOOR == SUBSTRATE_LOW_CONFIDENCE_FLOOR
+
+
+@pytest.mark.unit
+class TestSubstrateSeverityForConfidence:
+    """Banded confidence -> severity mapping for substrate claims."""
+
+    @pytest.mark.parametrize(
+        ("confidence", "expected"),
+        [
+            (1.0, RedTeamSeverity.HIGH),
+            (0.85, RedTeamSeverity.HIGH),
+            (0.84, RedTeamSeverity.MEDIUM),
+            (0.65, RedTeamSeverity.MEDIUM),
+            (0.64, RedTeamSeverity.LOW),
+            (0.45, RedTeamSeverity.LOW),
+            (0.44, None),
+            (0.0, None),
+        ],
+    )
+    def test_band_boundaries(
+        self,
+        confidence: float,
+        expected: RedTeamSeverity | None,
+    ) -> None:
+        assert substrate_severity_for_confidence(confidence) is expected
+
+    def test_high_band_returns_the_cap(self) -> None:
+        # The HIGH band returns the cap constant directly, so the cap is
+        # the single source of truth and never exceeded (no CRITICAL).
+        assert (
+            substrate_severity_for_confidence(0.99) is SUBSTRATE_GROUNDING_MAX_SEVERITY
+        )

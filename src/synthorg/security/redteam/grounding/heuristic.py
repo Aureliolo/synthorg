@@ -128,8 +128,12 @@ class HeuristicGroundingChecker:
         *,
         deliverable_content: NotBlankStr,
         execution_id: NotBlankStr,  # noqa: ARG002 -- reserved for cache key
+        project_id: NotBlankStr | None = None,  # noqa: ARG002 -- corpus-only
     ) -> tuple[UngroundedClaim, ...]:
         """Scan ``deliverable_content`` for assertive claims without citations.
+
+        ``project_id`` is accepted for protocol compatibility but ignored:
+        the heuristic is a pure-text regex pass with no corpus to scope.
 
         Returns:
             The ungrounded claims found (at most one per sentence,
