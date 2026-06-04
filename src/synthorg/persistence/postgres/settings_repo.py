@@ -1,9 +1,12 @@
+# module-kind: repository
 """Postgres implementation of the SettingsRepository protocol.
 
 Postgres stores ``updated_at`` as a native ``TIMESTAMPTZ`` column
 (SQLite stores ISO 8601 strings).  The repository converts to and
 from ISO strings at the boundary so the protocol surface
-(SettingRow instances) is identical for both backends.
+(SettingRow instances) is identical for both backends. The
+optimistic-concurrency write paths live in
+:mod:`synthorg.persistence.postgres._settings_cas`.
 """
 
 from collections.abc import Mapping, Sequence
@@ -13,13 +16,8 @@ import psycopg
 from psycopg.rows import dict_row
 from pydantic import ValidationError
 
-from synthorg.core.types import NotBlankStr
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from psycopg_pool import AsyncConnectionPool
 from synthorg.core.persistence_errors import QueryError
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_DELETE_FAILED,
@@ -28,27 +26,19 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    format_iso_utc,
-    parse_iso_utc,
-    validate_pagination_args,
-)
+from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence.postgres import _settings_cas
 from synthorg.persistence.settings_protocol import (
     SettingRow,
     SettingRowKey,
 )
 
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from psycopg_pool import AsyncConnectionPool
+
 logger = get_logger(__name__)
-
-
-class _CASConflictError(
-    Exception,
-):  # lint-allow: domain-error-hierarchy -- internal CAS-miss sentinel
-    """Internal sentinel -- raised inside transactions to signal CAS miss.
-
-    Caught immediately by ``set_many`` to convert the exception into a
-    ``False`` return.  Never escapes the repository.
-    """
 
 
 class PostgresSettingsRepository:
@@ -72,7 +62,7 @@ class PostgresSettingsRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        updated_at_dt = self._safe_parse_iso(
+        updated_at_dt = _settings_cas.parse_setting_iso(
             entity.updated_at, entity.namespace, entity.key
         )
         try:
@@ -286,119 +276,19 @@ class PostgresSettingsRepository:
     ) -> bool:
         """Upsert a setting with optional compare-and-swap (bespoke per D7).
 
-        Args:
-            entity: The setting to upsert.
-            expected_updated_at: When provided, enforces atomic CAS -- the
-                row is only updated if the current ``updated_at`` matches.
-                Empty string ``""`` signals "only insert if no row exists".
+        Delegates to
+        :func:`synthorg.persistence.postgres._settings_cas.set_if_unchanged`.
 
         Returns:
-            ``True`` if the write succeeded, ``False`` if the CAS condition
-            was not met.
+            ``True`` if the write succeeded, ``False`` if the CAS
+            condition was not met.
 
         Raises:
             QueryError: If the database query fails.
         """
-        updated_at_dt = self._safe_parse_iso(
-            entity.updated_at, entity.namespace, entity.key
+        return await _settings_cas.set_if_unchanged(
+            self._pool, entity, expected_updated_at
         )
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                if expected_updated_at is not None:
-                    if expected_updated_at == "":
-                        await cur.execute(
-                            "INSERT INTO settings "
-                            "(namespace, key, value, updated_at) "
-                            "VALUES (%s, %s, %s, %s) "
-                            "ON CONFLICT (namespace, key) DO NOTHING",
-                            (entity.namespace, entity.key, entity.value, updated_at_dt),
-                        )
-                    else:
-                        expected_dt = self._safe_parse_iso(
-                            expected_updated_at,
-                            entity.namespace,
-                            entity.key,
-                        )
-                        await cur.execute(
-                            "UPDATE settings "
-                            "SET value = %s, updated_at = %s "
-                            "WHERE namespace = %s AND key = %s "
-                            "AND updated_at = %s",
-                            (
-                                entity.value,
-                                updated_at_dt,
-                                entity.namespace,
-                                entity.key,
-                                expected_dt,
-                            ),
-                        )
-                    if cur.rowcount == 0:
-                        await conn.commit()
-                        return False
-                else:
-                    await cur.execute(
-                        "INSERT INTO settings "
-                        "(namespace, key, value, updated_at) "
-                        "VALUES (%s, %s, %s, %s) "
-                        "ON CONFLICT (namespace, key) DO UPDATE SET "
-                        "value = EXCLUDED.value, "
-                        "updated_at = EXCLUDED.updated_at",
-                        (entity.namespace, entity.key, entity.value, updated_at_dt),
-                    )
-                await conn.commit()
-        except psycopg.Error as exc:
-            msg = f"Failed to set setting {entity.namespace}/{entity.key}"
-            logger.warning(
-                SETTINGS_SET_FAILED,
-                namespace=entity.namespace,
-                key=entity.key,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        logger.debug(
-            SETTINGS_VALUE_SET,
-            namespace=entity.namespace,
-            key=entity.key,
-        )
-        return True
-
-    @staticmethod
-    def _safe_parse_iso(
-        value: str,
-        namespace: str,
-        key: str,
-    ) -> datetime:
-        """Parse ISO timestamp, logging + raising QueryError on bad input.
-
-        Emits a structured WARNING with ``namespace`` / ``key`` /
-        ``value`` / ``error_type`` so an operator triaging a
-        bad-timestamp incident has the full call-site context
-        without having to grep for the raised :class:`QueryError`.
-        The raw exception text is redacted via
-        :func:`safe_error_description` so secret-log invariants hold
-        even if the underlying ``ValueError`` carried a payload
-        snippet.
-
-        Returns:
-            Result of type ``datetime``.
-
-        Raises:
-            QueryError: If ``value`` cannot be parsed as an ISO-8601 UTC timestamp.
-        """
-        try:
-            return parse_iso_utc(value)
-        except ValueError as exc:
-            msg = f"Invalid timestamp for {namespace}/{key}: {value!r}"
-            logger.warning(
-                SETTINGS_SET_FAILED,
-                namespace=namespace,
-                key=key,
-                value=value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
 
     async def set_many(
         self,
@@ -408,99 +298,19 @@ class PostgresSettingsRepository:
     ) -> bool:
         """Atomically upsert multiple settings.
 
+        Delegates to
+        :func:`synthorg.persistence.postgres._settings_cas.set_many`.
+
         Returns:
-            True when all rows were upserted, False when a CAS conflict caused
-            the transaction to roll back.
+            True when all rows were upserted, False when a CAS conflict
+            caused the transaction to roll back.
 
         Raises:
             QueryError: If the database query fails.
-        """  # noqa: DOC501 -- _CASConflictError is caught locally and converted to a False return
-        if not items:
-            return True
-        cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}
-        try:
-            async with self._pool.connection() as conn:
-                try:
-                    async with conn.transaction(), conn.cursor() as cur:
-                        for entity in items:
-                            updated_at_dt = self._safe_parse_iso(
-                                entity.updated_at,
-                                entity.namespace,
-                                entity.key,
-                            )
-                            expected = cas_map.get((entity.namespace, entity.key))
-                            if expected is None:
-                                await cur.execute(
-                                    "INSERT INTO settings "
-                                    "(namespace, key, value, updated_at) "
-                                    "VALUES (%s, %s, %s, %s) "
-                                    "ON CONFLICT (namespace, key) "
-                                    "DO UPDATE SET "
-                                    "value = EXCLUDED.value, "
-                                    "updated_at = EXCLUDED.updated_at",
-                                    (
-                                        entity.namespace,
-                                        entity.key,
-                                        entity.value,
-                                        updated_at_dt,
-                                    ),
-                                )
-                                continue
-                            if expected == "":
-                                await cur.execute(
-                                    "INSERT INTO settings "
-                                    "(namespace, key, value, updated_at) "
-                                    "VALUES (%s, %s, %s, %s) "
-                                    "ON CONFLICT (namespace, key) "
-                                    "DO NOTHING",
-                                    (
-                                        entity.namespace,
-                                        entity.key,
-                                        entity.value,
-                                        updated_at_dt,
-                                    ),
-                                )
-                                if cur.rowcount == 0:
-                                    raise _CASConflictError  # noqa: TRY301
-                                continue
-                            expected_dt = self._safe_parse_iso(
-                                expected,
-                                entity.namespace,
-                                entity.key,
-                            )
-                            await cur.execute(
-                                "UPDATE settings "
-                                "SET value = %s, updated_at = %s "
-                                "WHERE namespace = %s AND key = %s "
-                                "AND updated_at = %s",
-                                (
-                                    entity.value,
-                                    updated_at_dt,
-                                    entity.namespace,
-                                    entity.key,
-                                    expected_dt,
-                                ),
-                            )
-                            if cur.rowcount == 0:
-                                raise _CASConflictError  # noqa: TRY301
-                except _CASConflictError:
-                    return False
-        except psycopg.Error as exc:
-            msg = "Failed to set_many settings"
-            logger.warning(
-                SETTINGS_SET_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-                item_count=len(items),
-            )
-            raise QueryError(msg) from exc
-        for entity in items:
-            logger.debug(
-                SETTINGS_VALUE_SET,
-                namespace=entity.namespace,
-                key=entity.key,
-            )
-        return True
+        """
+        return await _settings_cas.set_many(
+            self._pool, items, expected_updated_at_map=expected_updated_at_map
+        )
 
     async def delete(self, entity_id: SettingRowKey) -> bool:
         """Delete a setting by composite key.
@@ -595,3 +405,6 @@ class PostgresSettingsRepository:
             )
             raise QueryError(msg) from exc
         return tuple(NotBlankStr(row[0]) for row in rows)
+
+
+__all__ = ["PostgresSettingsRepository"]

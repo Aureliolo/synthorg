@@ -13386,6 +13386,20 @@
     },
     {
       "kind": "code",
+      "loc": 248,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/charter_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 177,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/cost_forecast_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 118,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/custom_rule.py",
@@ -13400,9 +13414,37 @@
     },
     {
       "kind": "code",
+      "loc": 172,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/org_fact_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 198,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/pagination.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 13,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/rows.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 149,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/workflow_definition_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 138,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/_shared/workflow_execution_marshalling.py",
       "owning_feature": "persistence"
     },
     {
@@ -13722,7 +13764,14 @@
     },
     {
       "kind": "code",
-      "loc": 665,
+      "loc": 303,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/migration_helpers.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 413,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/migrations.py",
       "owning_feature": "persistence"
@@ -13763,6 +13812,20 @@
       "owning_feature": "persistence"
     },
     {
+      "kind": "code",
+      "loc": 130,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/_escalation_notify.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "declarative",
+      "loc": 50,
+      "loc_cap": null,
+      "module": "src/synthorg/persistence/postgres/_org_fact_sql.py",
+      "owning_feature": "persistence"
+    },
+    {
       "kind": "complex_service",
       "loc": 358,
       "loc_cap": 1100,
@@ -13778,6 +13841,13 @@
     },
     {
       "kind": "code",
+      "loc": 222,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/_settings_cas.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
       "loc": 264,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/agent_state_repo.py",
@@ -13785,9 +13855,44 @@
     },
     {
       "kind": "code",
-      "loc": 652,
+      "loc": 28,
       "loc_cap": 500,
-      "module": "src/synthorg/persistence/postgres/approval_repo.py",
+      "module": "src/synthorg/persistence/postgres/approval_repo/__init__.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 12,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/approval_repo/_base.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 115,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/approval_repo/_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 228,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/approval_repo/_read.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "declarative",
+      "loc": 28,
+      "loc_cap": null,
+      "module": "src/synthorg/persistence/postgres/approval_repo/_sql.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 264,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/approval_repo/_write.py",
       "owning_feature": "persistence"
     },
     {
@@ -13847,8 +13952,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 551,
+      "kind": "repository",
+      "loc": 346,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/charter_repo.py",
       "owning_feature": "persistence"
@@ -13924,8 +14029,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 518,
+      "kind": "repository",
+      "loc": 374,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/cost_forecast_repo.py",
       "owning_feature": "persistence"
@@ -14001,8 +14106,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 567,
+      "kind": "repository",
+      "loc": 467,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/escalation_repo.py",
       "owning_feature": "persistence"
@@ -14120,8 +14225,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 677,
+      "kind": "repository",
+      "loc": 487,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -14246,8 +14351,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 545,
+      "kind": "repository",
+      "loc": 361,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/settings_repo.py",
       "owning_feature": "persistence"
@@ -14261,9 +14366,37 @@
     },
     {
       "kind": "code",
-      "loc": 655,
+      "loc": 25,
       "loc_cap": 500,
-      "module": "src/synthorg/persistence/postgres/subworkflow_repo.py",
+      "module": "src/synthorg/persistence/postgres/subworkflow_repo/__init__.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 12,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/subworkflow_repo/_base.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 318,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/subworkflow_repo/_crud.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 192,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/subworkflow_repo/_marshalling.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 173,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/postgres/subworkflow_repo/_references.py",
       "owning_feature": "persistence"
     },
     {
@@ -14323,15 +14456,15 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 548,
+      "kind": "repository",
+      "loc": 481,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/workflow_definition_repo.py",
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 541,
+      "kind": "repository",
+      "loc": 469,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/workflow_execution_repo.py",
       "owning_feature": "persistence"
@@ -14505,6 +14638,13 @@
       "owning_feature": "persistence"
     },
     {
+      "kind": "declarative",
+      "loc": 53,
+      "loc_cap": null,
+      "module": "src/synthorg/persistence/sqlite/_org_fact_sql.py",
+      "owning_feature": "persistence"
+    },
+    {
       "kind": "complex_service",
       "loc": 575,
       "loc_cap": 1100,
@@ -14516,6 +14656,13 @@
       "loc": 44,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/_shared.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "declarative",
+      "loc": 37,
+      "loc_cap": null,
+      "module": "src/synthorg/persistence/sqlite/_workflow_definition_sql.py",
       "owning_feature": "persistence"
     },
     {
@@ -14575,8 +14722,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 577,
+      "kind": "repository",
+      "loc": 375,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/charter_repo.py",
       "owning_feature": "persistence"
@@ -14639,9 +14786,30 @@
     },
     {
       "kind": "code",
-      "loc": 530,
+      "loc": 18,
       "loc_cap": 500,
-      "module": "src/synthorg/persistence/sqlite/conversation_repo.py",
+      "module": "src/synthorg/persistence/sqlite/conversation_repo/__init__.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 32,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/conversation_repo/_base.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 267,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/conversation_repo/_header.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 240,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/conversation_repo/_turns.py",
       "owning_feature": "persistence"
     },
     {
@@ -14652,8 +14820,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 552,
+      "kind": "repository",
+      "loc": 409,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/cost_forecast_repo.py",
       "owning_feature": "persistence"
@@ -14737,9 +14905,23 @@
     },
     {
       "kind": "code",
-      "loc": 670,
+      "loc": 13,
       "loc_cap": 500,
-      "module": "src/synthorg/persistence/sqlite/fine_tune_repo.py",
+      "module": "src/synthorg/persistence/sqlite/fine_tune_repo/__init__.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 332,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/fine_tune_repo/_checkpoint.py",
+      "owning_feature": "persistence"
+    },
+    {
+      "kind": "code",
+      "loc": 348,
+      "loc_cap": 500,
+      "module": "src/synthorg/persistence/sqlite/fine_tune_repo/_run.py",
       "owning_feature": "persistence"
     },
     {
@@ -14848,8 +15030,8 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 667,
+      "kind": "repository",
+      "loc": 478,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -15051,15 +15233,15 @@
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 576,
+      "kind": "repository",
+      "loc": 474,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/workflow_definition_repo.py",
       "owning_feature": "persistence"
     },
     {
-      "kind": "code",
-      "loc": 573,
+      "kind": "repository",
+      "loc": 492,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/workflow_execution_repo.py",
       "owning_feature": "persistence"

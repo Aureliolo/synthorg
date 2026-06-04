@@ -13,7 +13,7 @@ import pytest
 from pydantic import SecretStr
 
 from synthorg.core.persistence_errors import MigrationError
-from synthorg.persistence import migrations
+from synthorg.persistence import migration_helpers, migrations
 from synthorg.persistence.config import PostgresConfig
 
 pytestmark = pytest.mark.unit
@@ -108,7 +108,7 @@ def test_to_postgres_url_includes_application_name_and_sslmode() -> None:
 
 def test_redact_url_strips_credentials_and_path() -> None:
     """Only the scheme prefix should leak into logs."""
-    redacted = migrations._redact_url(
+    redacted = migration_helpers._redact_url(
         "postgresql+psycopg://svc:hunter2@db.example.com:5432/synthorg"
     )
     assert redacted == "postgresql+psycopg://..."
@@ -118,7 +118,7 @@ def test_redact_url_strips_credentials_and_path() -> None:
 
 def test_redact_url_handles_unparseable_input() -> None:
     """A URL without ``://`` is fully redacted."""
-    assert migrations._redact_url("not-a-url") == "REDACTED"
+    assert migration_helpers._redact_url("not-a-url") == "REDACTED"
 
 
 # ── Revisions discovery ─────────────────────────────────────────
@@ -162,7 +162,7 @@ def test_discover_filters_package_init(tmp_path: Path) -> None:
     (rev_dir / "20260101000000_first.sql").write_text(
         "CREATE TABLE t (id INTEGER PRIMARY KEY);"
     )
-    discovered = migrations._discover(rev_dir)
+    discovered = migration_helpers._discover(rev_dir)
     ids = [m.id for m in discovered]
     assert "__init__" not in ids
     assert "20260101000000_first" in ids

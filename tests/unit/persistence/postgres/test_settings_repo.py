@@ -1,4 +1,4 @@
-"""Unit tests for ``PostgresSettingsRepository`` static helpers."""
+"""Unit tests for the Postgres settings CAS helpers."""
 
 from datetime import UTC, datetime
 
@@ -7,15 +7,15 @@ import structlog
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability.events.settings import SETTINGS_SET_FAILED
-from synthorg.persistence.postgres.settings_repo import PostgresSettingsRepository
+from synthorg.persistence.postgres._settings_cas import parse_setting_iso
 
 
 @pytest.mark.unit
 class TestSafeParseIso:
-    """``_safe_parse_iso`` parses ISO timestamps + logs/raises on bad input."""
+    """``parse_setting_iso`` parses ISO timestamps + logs/raises on bad input."""
 
     def test_aware_iso_string_round_trips(self) -> None:
-        result = PostgresSettingsRepository._safe_parse_iso(
+        result = parse_setting_iso(
             "2026-04-26T13:00:00+01:00",
             "ns",
             "key",
@@ -28,7 +28,7 @@ class TestSafeParseIso:
             structlog.testing.capture_logs() as cap,
             pytest.raises(QueryError) as raised,
         ):
-            PostgresSettingsRepository._safe_parse_iso(
+            parse_setting_iso(
                 "2026-04-26T12:00:00",
                 "system",
                 "default_provider",
@@ -59,7 +59,7 @@ class TestSafeParseIso:
             structlog.testing.capture_logs() as cap,
             pytest.raises(QueryError),
         ):
-            PostgresSettingsRepository._safe_parse_iso(
+            parse_setting_iso(
                 "not-a-date",
                 "ns",
                 "key",
@@ -77,7 +77,7 @@ class TestSafeParseIso:
             structlog.testing.capture_logs() as cap,
             pytest.raises(QueryError),
         ):
-            PostgresSettingsRepository._safe_parse_iso(
+            parse_setting_iso(
                 "2026-04-26T12:00:00 Europe/Zurich",
                 "ns",
                 "key",
