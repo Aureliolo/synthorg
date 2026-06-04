@@ -31,12 +31,15 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 - `normalize_utc(datetime) -> datetime`: relaxed coercer (treats naive as UTC, calls `astimezone(UTC)` on aware). Used internally by `coerce_row_timestamp`'s datetime branch. Call directly only when the input is statically known to be a `datetime` (e.g. when the caller has already produced a `datetime.now(UTC)` and just needs to defend against a future code change introducing a non-UTC offset).
 - `audit.py`: shared `AuditEntry` row<->payload helpers (`audit_entry_to_payload`, `row_to_audit_entry`, `classify_audit_save_error`).
 - `custom_rule.py`: shared custom-rule deserialisation (`row_to_custom_rule`, `serialize_altitudes`).
+- `rows.py`: the `RowLike` `@runtime_checkable` protocol (a string-key `__getitem__`). Both `aiosqlite.Row` and psycopg `dict_row` mappings satisfy it, so a single `RowLike`-typed marshaller serves both backends without importing a driver.
+- `pagination.py`: shared pagination-argument validation (`validate_pagination_args`).
+- Per-entity row<->model marshallers, one module per aggregate, each shared by the SQLite and Postgres repositories: `charter_marshalling.py`, `cost_forecast_marshalling.py`, `org_fact_marshalling.py`, `workflow_definition_marshalling.py`, `workflow_execution_marshalling.py`. Each exposes the column list, a `row_to_*` deserialiser (consuming `RowLike`, normalising the JSONB-vs-TEXT and `TIMESTAMPTZ`-vs-ISO divergence), and a `build_*_where` clause builder taking the backend's placeholder token. JSON wrapping on the write path (`json.dumps` vs psycopg `Jsonb`) stays in the backend repos so these modules never import a driver.
 
 When to use which: the strict pair (`parse_iso_utc` / `format_iso_utc`) sits at the boundary where ISO strings cross the persistence layer (settings DTOs, JSON envelopes, SQLite TEXT writes); `coerce_row_timestamp` sits inside `_row_to_*` deserializers where the driver shape is uncertain; `normalize_utc` is the lowest-level primitive and is rarely called directly by repository code.
 
-The new helper is covered by `tests/unit/persistence/_shared/test_datetime_marshaller.py` (unit suite, dedicated `TestCoerceRowTimestamp` class) and exercised end-to-end by every backend conformance test that round-trips a timestamped entity (`test_audit_repository.py`, `test_custom_rule_repo.py`, `test_settings_repo.py`, etc.).
+Each shared helper carries a dedicated unit suite under `tests/unit/persistence/_shared/` (e.g. `test_datetime_marshaller.py`, `test_rows.py`, `test_<entity>_marshalling.py`) and is exercised end-to-end by every backend conformance test that round-trips the relevant entity (`test_audit_repository.py`, `test_custom_rule_repo.py`, `test_settings_repo.py`, `test_charter_repository.py`, etc.).
 
-Adding a new shared helper: extract the duplicated logic into `_shared/`, add a `test_*_helpers.py` unit suite alongside it, and add a conformance test that runs against both backends.
+Adding a new shared helper: extract the duplicated logic into `_shared/`, add a dedicated unit suite alongside it (`test_<helper>.py`), and add a conformance test that runs against both backends.
 
 ## In-memory invariant pins (interim, schema-deferred)
 

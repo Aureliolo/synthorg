@@ -102,6 +102,10 @@ class SQLiteConversationTurnRepository:
         """
         current = event
         async with self._write_context():
+            # See docs/reference/retry-patterns.md: Pattern C/CAS. This is a
+            # constraint-branch resequence on the (conversation_id, sequence)
+            # uniqueness race, not a transient-I/O backoff; it stays in the
+            # repository and must not move to GeneralRetryHandler.
             for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
                 params = (
                     current.id,

@@ -130,11 +130,11 @@ class _ReferencesMixin(_SubworkflowRepoBase):
                 )
                 # The reference scan walks JSON node arrays in both
                 # ``workflow_definitions`` and ``subworkflows``; true
-                # SQL-level pagination needs a normalized references
-                # table (a schema change tracked separately). Paging in
-                # memory is acceptable here because referential-
-                # integrity callers MUST drain every page anyway, so
-                # bounding per-page DB cost would yield no real saving.
+                # SQL-level pagination would require a normalised
+                # references table. Paging in memory is acceptable here
+                # because referential-integrity callers MUST drain every
+                # page anyway, so bounding per-page DB cost would yield
+                # no real saving.
                 ordered = sorted(
                     refs,
                     key=lambda r: (

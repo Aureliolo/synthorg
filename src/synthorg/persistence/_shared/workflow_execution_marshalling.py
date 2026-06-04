@@ -6,7 +6,7 @@ same ``workflow_executions`` columns into the same
 SQLite stores ``node_executions`` as a TEXT JSON string, Postgres as
 native JSONB (a Python ``list``). :func:`deserialize_node_executions`
 absorbs both. Timestamps likewise differ (TEXT ISO vs ``TIMESTAMPTZ``)
-and are normalised by :func:`~...coerce_row_timestamp`. The JSON-wrapping
+and are normalised by :func:`coerce_row_timestamp`. The JSON-wrapping
 on the write path (``json.dumps`` vs ``psycopg`` ``Jsonb``) stays in the
 backend repos so this module never imports a driver.
 """
@@ -54,7 +54,9 @@ def deserialize_node_executions(raw: object) -> tuple[WorkflowNodeExecution, ...
         Tuple of deserialised ``WorkflowNodeExecution`` instances.
 
     Raises:
-        TypeError: If the column does not decode to a list.
+        TypeError: If the column does not decode to a list, or if any
+            entry is not a JSON object (corrupt entries surface as an
+            error rather than being silently dropped).
     """
     if raw is None:
         items: object = []
@@ -65,17 +67,21 @@ def deserialize_node_executions(raw: object) -> tuple[WorkflowNodeExecution, ...
     if not isinstance(items, list):
         msg = "node_executions must decode to a list"
         raise TypeError(msg)
-    return tuple(
-        WorkflowNodeExecution(
-            node_id=item["node_id"],
-            node_type=WorkflowNodeType(item["node_type"]),
-            status=WorkflowNodeExecutionStatus(item["status"]),
-            task_id=item.get("task_id"),
-            skipped_reason=item.get("skipped_reason"),
+    result: list[WorkflowNodeExecution] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            msg = "node_executions entries must be JSON objects"
+            raise TypeError(msg)
+        result.append(
+            WorkflowNodeExecution(
+                node_id=item["node_id"],
+                node_type=WorkflowNodeType(item["node_type"]),
+                status=WorkflowNodeExecutionStatus(item["status"]),
+                task_id=item.get("task_id"),
+                skipped_reason=item.get("skipped_reason"),
+            )
         )
-        for item in items
-        if isinstance(item, Mapping)
-    )
+    return tuple(result)
 
 
 def node_execution_payloads(execution: WorkflowExecution) -> list[object]:
@@ -104,6 +110,7 @@ def row_to_workflow_execution(
     Raises:
         QueryError: If deserialisation fails.
     """
+    data = dict(data)
     try:
         data["status"] = WorkflowExecutionStatus(str(data["status"]))
         data["node_executions"] = deserialize_node_executions(

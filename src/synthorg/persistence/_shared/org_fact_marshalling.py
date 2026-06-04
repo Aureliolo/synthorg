@@ -5,7 +5,7 @@ The SQLite and Postgres org-fact repositories deserialise the same
 domain models. Tags are stored as a JSON array (TEXT on SQLite, JSONB on
 Postgres), so :func:`tags_from_json` accepts a JSON string or an
 already-decoded list. Timestamps (TEXT ISO vs ``TIMESTAMPTZ``) are
-normalised by :func:`~...coerce_row_timestamp`. The per-backend MVCC SQL
+normalised by :func:`coerce_row_timestamp`. The per-backend MVCC SQL
 (notably the divergent ``snapshot_at`` query) stays in the backend
 modules; only the row <-> model marshalling lives here.
 """

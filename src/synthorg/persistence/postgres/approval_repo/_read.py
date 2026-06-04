@@ -1,6 +1,6 @@
 """Read-path mixin for the Postgres approval repository."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, LiteralString
 
 import psycopg
 from psycopg.rows import dict_row
@@ -10,6 +10,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
+    API_APPROVAL_REPO_FAILED,
     API_APPROVAL_REPO_FETCHED,
     API_APPROVAL_REPO_LISTED,
 )
@@ -28,14 +29,19 @@ logger = get_logger(__name__)
 _MAX_PAGE_LIMIT: int = 1_000
 
 
-def _filter_clauses(filter_spec: ApprovalFilterSpec) -> tuple[str, list[object]]:
+def _filter_clauses(
+    filter_spec: ApprovalFilterSpec,
+) -> tuple[LiteralString, list[object]]:
     """Build the WHERE predicate + params from an approval filter spec.
 
     Returns:
         ``(where_sql, params)`` where ``where_sql`` is ``"TRUE"`` when no
-        filter applies.
+        filter applies. The predicate is ``LiteralString`` (only literal
+        column fragments are ever appended; every value goes through the
+        params list), so callers can interpolate it without weakening the
+        SQL-injection guarantee.
     """
-    clauses: list[str] = []
+    clauses: list[LiteralString] = []
     params: list[object] = []
     if filter_spec.status is not None:
         clauses.append("status = %s")
@@ -73,7 +79,7 @@ class _ReadMixin(_ApprovalRepoBase):
         except psycopg.Error as exc:
             msg = f"Failed to fetch approval {approval_id!r}"
             logger.warning(
-                API_APPROVAL_REPO_FETCHED,
+                API_APPROVAL_REPO_FAILED,
                 approval_id=approval_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -111,7 +117,7 @@ class _ReadMixin(_ApprovalRepoBase):
         except psycopg.Error as exc:
             msg = f"Failed to batch-fetch approvals (size={len(ids)})"
             logger.warning(
-                API_APPROVAL_REPO_LISTED,
+                API_APPROVAL_REPO_FAILED,
                 batch_size=len(ids),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -142,7 +148,7 @@ class _ReadMixin(_ApprovalRepoBase):
                 are invalid.
         """
         effective_limit = validate_pagination_args(
-            limit, offset, event=API_APPROVAL_REPO_LISTED
+            limit, offset, event=API_APPROVAL_REPO_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         try:
@@ -161,7 +167,7 @@ class _ReadMixin(_ApprovalRepoBase):
         except psycopg.Error as exc:
             msg = "Failed to list approvals"
             logger.warning(
-                API_APPROVAL_REPO_LISTED,
+                API_APPROVAL_REPO_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -194,7 +200,7 @@ class _ReadMixin(_ApprovalRepoBase):
                 are invalid.
         """
         effective_limit = validate_pagination_args(
-            limit, offset, event=API_APPROVAL_REPO_LISTED
+            limit, offset, event=API_APPROVAL_REPO_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         where_sql, params = _filter_clauses(filter_spec)
@@ -215,7 +221,7 @@ class _ReadMixin(_ApprovalRepoBase):
         except psycopg.Error as exc:
             msg = "Failed to query approvals"
             logger.warning(
-                API_APPROVAL_REPO_LISTED,
+                API_APPROVAL_REPO_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -252,7 +258,7 @@ class _ReadMixin(_ApprovalRepoBase):
         except psycopg.Error as exc:
             msg = "Failed to count approvals"
             logger.warning(
-                API_APPROVAL_REPO_LISTED,
+                API_APPROVAL_REPO_FAILED,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

@@ -13435,14 +13435,14 @@
     },
     {
       "kind": "code",
-      "loc": 149,
+      "loc": 150,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/workflow_definition_marshalling.py",
       "owning_feature": "persistence"
     },
     {
       "kind": "code",
-      "loc": 138,
+      "loc": 145,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/workflow_execution_marshalling.py",
       "owning_feature": "persistence"
@@ -13876,7 +13876,7 @@
     },
     {
       "kind": "code",
-      "loc": 228,
+      "loc": 234,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/approval_repo/_read.py",
       "owning_feature": "persistence"

@@ -87,6 +87,15 @@ class TestDeserializeNodeExecutions:
     def test_none_is_empty(self) -> None:
         assert deserialize_node_executions(None) == ()
 
+    def test_non_list_json_raises(self) -> None:
+        with pytest.raises(TypeError):
+            deserialize_node_executions('{"not": "a list"}')
+
+    def test_non_mapping_item_raises(self) -> None:
+        # Corrupt entries surface as an error rather than being dropped.
+        with pytest.raises(TypeError):
+            deserialize_node_executions('["not-an-object"]')
+
 
 @pytest.mark.unit
 class TestRowToWorkflowExecution:
@@ -115,6 +124,36 @@ class TestRowToWorkflowExecution:
 
         with pytest.raises(QueryError):
             row_to_workflow_execution(data, "ctx")
+
+    def test_non_list_node_executions_raises(self) -> None:
+        data = _sqlite_data(_execution())
+        data["node_executions"] = '{"not": "a list"}'
+
+        with pytest.raises(QueryError):
+            row_to_workflow_execution(data, "ctx")
+
+    def test_completed_at_sqlite_iso(self) -> None:
+        data = _sqlite_data(_execution())
+        data["status"] = WorkflowExecutionStatus.COMPLETED.value
+        data["completed_at"] = _NOW.isoformat()
+
+        result = row_to_workflow_execution(data, "wfexec-abc123def456")
+
+        assert result.status is WorkflowExecutionStatus.COMPLETED
+        assert result.completed_at == _NOW
+
+    def test_completed_at_postgres_native(self) -> None:
+        data = _sqlite_data(_execution())
+        data["status"] = WorkflowExecutionStatus.COMPLETED.value
+        data["completed_at"] = _NOW
+        data["node_executions"] = node_execution_payloads(_execution())
+        data["created_at"] = _NOW
+        data["updated_at"] = _NOW
+
+        result = row_to_workflow_execution(data, "wfexec-abc123def456")
+
+        assert result.status is WorkflowExecutionStatus.COMPLETED
+        assert result.completed_at == _NOW
 
 
 @pytest.mark.unit

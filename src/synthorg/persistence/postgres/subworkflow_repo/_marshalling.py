@@ -1,7 +1,7 @@
 """Marshalling + reference-scanning helpers for Postgres subworkflows."""
 
 from collections.abc import Iterable
-from typing import Literal
+from typing import Literal, LiteralString
 
 from packaging.version import InvalidVersion, Version
 from psycopg.rows import DictRow
@@ -28,7 +28,7 @@ from synthorg.observability.events.persistence import (
 
 logger = get_logger(__name__)
 
-SUBWORKFLOW_COLUMNS = """\
+SUBWORKFLOW_COLUMNS: LiteralString = """\
 subworkflow_id, semver, name, description, workflow_type,
 inputs, outputs, nodes, edges, created_by, created_at, updated_at"""
 

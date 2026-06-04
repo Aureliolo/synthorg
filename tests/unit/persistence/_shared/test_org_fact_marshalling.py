@@ -153,3 +153,35 @@ class TestOperationLogMarshalling:
         assert snap.retracted_at == _NOW
         # created_at falls back to the operation timestamp when absent.
         assert snap.created_at == _NOW
+
+    def test_operation_log_corrupt_category_raises(self) -> None:
+        row: dict[str, object] = {
+            "operation_id": "op-1",
+            "fact_id": "fact-1",
+            "operation_type": "PUBLISH",
+            "content": "body",
+            "category": "not-a-category",
+            "tags": tags_to_json((NotBlankStr("x"),)),
+            "author_agent_id": "agent-1",
+            "author_seniority": SeniorityLevel.LEAD.value,
+            "author_is_human": 0,
+            "author_autonomy_level": AutonomyLevel.FULL.value,
+            "timestamp": _NOW.isoformat(),
+            "version": 3,
+        }
+        with pytest.raises(OrgMemoryQueryError):
+            row_to_operation_log_entry(row)
+
+    def test_snapshot_corrupt_category_raises(self) -> None:
+        row: dict[str, object] = {
+            "fact_id": "fact-1",
+            "operation_type": "PUBLISH",
+            "content": "body",
+            "category": "not-a-category",
+            "tags": tags_to_json((NotBlankStr("x"),)),
+            "version": 1,
+            "timestamp": _NOW.isoformat(),
+            "created_at": _NOW.isoformat(),
+        }
+        with pytest.raises(OrgMemoryQueryError):
+            row_to_snapshot(row)

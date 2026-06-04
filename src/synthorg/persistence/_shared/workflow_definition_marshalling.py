@@ -73,6 +73,7 @@ def row_to_workflow_definition(
     Raises:
         QueryError: If deserialisation fails.
     """
+    data = dict(data)
     try:
         data["workflow_type"] = WorkflowType(str(data["workflow_type"]))
         data["nodes"] = tuple(
