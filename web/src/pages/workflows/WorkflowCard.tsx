@@ -11,6 +11,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
   /** Returning ``false`` keeps the confirm dialog open so the user can retry. */
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   /** Export the persisted definition as YAML. */

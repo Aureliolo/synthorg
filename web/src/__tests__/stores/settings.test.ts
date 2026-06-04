@@ -56,7 +56,7 @@ interface Deferred<T> {
   reject: (reason?: unknown) => void
 }
 
-function deferred<T>(): Deferred<T> {
+function deferred<T = void>(): Deferred<T> {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void
   const promise = new Promise<T>((res, rej) => {
@@ -183,7 +183,7 @@ describe('useSettingsStore', () => {
         entries: [seededEntry],
         entriesGeneration: 5,
       })
-      const gate = deferred<void>()
+      const gate = deferred()
       server.use(
         http.get('/api/v1/settings', async () => {
           await gate.promise
@@ -299,7 +299,7 @@ describe('useSettingsStore', () => {
       // already landed; when the older finally returns, the store
       // must drop it (token < lastApplied) and leave entries pinned
       // to the newer value.
-      const olderGate = deferred<void>()
+      const olderGate = deferred()
       let callCount = 0
       server.use(
         http.put('/api/v1/settings/api/host', async ({ request }) => {
@@ -354,8 +354,8 @@ describe('useSettingsStore', () => {
       // Two concurrent saves on api/host. While both are in flight,
       // savingKeys.get('api/host') === 2. After the first resolves,
       // it must still equal 1 (not 0). After both resolve, 0.
-      const firstGate = deferred<void>()
-      const secondGate = deferred<void>()
+      const firstGate = deferred()
+      const secondGate = deferred()
       let call = 0
       server.use(
         http.put('/api/v1/settings/api/host', async ({ request }) => {
@@ -435,8 +435,8 @@ describe('useSettingsStore', () => {
         definition: { namespace: 'api', key: 'host' },
       })
       useSettingsStore.setState({ entries: [seededEntry], entriesGeneration: 0 })
-      const refetchEnteredGate = deferred<void>()
-      const refetchReleaseGate = deferred<void>()
+      const refetchEnteredGate = deferred()
+      const refetchReleaseGate = deferred()
       server.use(
         http.delete('/api/v1/settings/api/host', () =>
           HttpResponse.json(voidSuccess()),

@@ -97,8 +97,8 @@ export interface ApprovalDecision {
   isPending: boolean
   riskColor: string
   confidenceLabel: string | null
-  handleApprove: () => Promise<boolean | void>
-  handleReject: () => Promise<boolean | void>
+  handleApprove: () => Promise<boolean | undefined>
+  handleReject: () => Promise<boolean | undefined>
 }
 
 function confidenceLabelFor(approval: ApprovalResponse | null): string | null {
@@ -115,7 +115,7 @@ interface ApproveDeps {
   setComment: (value: string) => void
 }
 
-async function approveDecision(deps: ApproveDeps): Promise<boolean | void> {
+async function approveDecision(deps: ApproveDeps): Promise<boolean | undefined> {
   const { approval } = deps
   if (!approval || approval.status !== 'pending') return
   deps.setSubmitting(true)
@@ -141,7 +141,7 @@ interface RejectDeps {
   setReasonError: (value: string | null) => void
 }
 
-async function rejectDecision(deps: RejectDeps): Promise<boolean | void> {
+async function rejectDecision(deps: RejectDeps): Promise<boolean | undefined> {
   const { approval } = deps
   if (!approval || approval.status !== 'pending') return
   if (!deps.reason.trim()) {

@@ -11,7 +11,7 @@ interface TriggerMeetingDialogProps {
    * closes it -- matches the ``ConfirmDialog.onConfirm`` sentinel
    * contract.
    */
-  onConfirm: (eventName: string) => Promise<boolean | void>
+  onConfirm: (eventName: string) => Promise<boolean | undefined>
   loading?: boolean
 }
 
@@ -24,7 +24,7 @@ export function TriggerMeetingDialog({
   const [eventName, setEventName] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const handleConfirm = async (): Promise<boolean | void> => {
+  const handleConfirm = async (): Promise<boolean | undefined> => {
     const trimmed = eventName.trim()
     if (!trimmed) {
       setValidationError('Event name is required.')

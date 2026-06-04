@@ -10,6 +10,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>

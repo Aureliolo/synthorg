@@ -33,6 +33,7 @@ export interface EntityCardProps {
    * Returning ``false`` (the store's failure sentinel) keeps the
    * confirmation dialog open so the user can retry.
    */
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onDelete?: (name: string) => boolean | void | Promise<boolean | void>
 }
 
