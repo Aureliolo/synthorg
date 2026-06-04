@@ -107,7 +107,7 @@ describe('CodeEditorPanel', () => {
   it('displays entries as serialized JSON in the editor', () => {
     renderPanel()
     const editor = screen.getByTestId<HTMLTextAreaElement>('mock-editor')
-    const parsed = JSON.parse(editor.value)
+    const parsed: unknown = JSON.parse(editor.value)
     expect(parsed).toEqual({ api: { max_retries: '3', timeout: '30' } })
   })
 

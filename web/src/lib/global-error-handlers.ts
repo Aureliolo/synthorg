@@ -51,7 +51,7 @@ export function installGlobalErrorHandlers(): void {
   installed = true
 
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
-    const reason = event.reason
+    const reason: unknown = event.reason
     const formatted = formatReason(reason)
     if (isBenignError(reason)) {
       log.debug('Benign promise rejection ignored', {

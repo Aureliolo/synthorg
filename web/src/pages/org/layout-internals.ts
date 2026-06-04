@@ -47,6 +47,7 @@ export function runDagreOnLeaves(
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- @dagrejs/dagre types Graph with `any` generics; g is the valid dagre Graph constructed above
   layout(g)
 
   // Map positioned leaf nodes (dagre returns center coords; RF uses top-left).

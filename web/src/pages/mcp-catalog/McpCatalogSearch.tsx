@@ -11,7 +11,9 @@ export function McpCatalogSearch() {
         label="Search"
         placeholder="Search MCP catalog..."
         value={searchQuery}
-        onValueChange={(v) => void setSearchQuery(v)}
+        onValueChange={(v) => {
+          setSearchQuery(v)
+        }}
       />
     </div>
   )

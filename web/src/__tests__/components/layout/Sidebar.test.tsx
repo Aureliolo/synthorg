@@ -28,14 +28,14 @@ vi.mock('motion/react', async () => {
     motion: new Proxy(actual.motion as object, {
       get(target, prop, receiver) {
         if (prop === 'div') return MockMotionDiv
-        return Reflect.get(target, prop, receiver)
+        return Reflect.get(target, prop, receiver) as unknown
       },
     }) as typeof actual.motion,
   }
 })
 
 // Mock useBreakpoint so we can control breakpoint per-test
-const getBreakpoint = vi.fn()
+const getBreakpoint = vi.fn<() => ReturnType<typeof import('@/hooks/useBreakpoint').useBreakpoint>>()
 vi.mock('@/hooks/useBreakpoint', () => ({
 
   useBreakpoint: () => getBreakpoint(),
@@ -46,7 +46,7 @@ const originalLocation = window.location
 beforeAll(() => {
   Object.defineProperty(window, 'location', {
     writable: true,
-    value: { ...originalLocation, href: '', pathname: '/' },
+    value: { ...(originalLocation as unknown as Record<string, unknown>), href: '', pathname: '/' },
   })
 })
 afterAll(() => {

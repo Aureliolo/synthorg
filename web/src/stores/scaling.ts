@@ -53,7 +53,7 @@ async function fetchAllImpl(set: ScSet): Promise<void> {
     ])
     const errors = [strategiesR, decisionsR, signalsR]
       .filter((r) => r.status === 'rejected')
-      .map((r) => (r).reason)
+      .map((r) => r.reason as unknown)
     const errorMsg = errors.length > 0
       ? errors.map((e) => getErrorMessage(e)).join('; ')
       : null

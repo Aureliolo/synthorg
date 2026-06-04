@@ -48,8 +48,8 @@ describe('sanitizeWsString', () => {
     // Pin exact content so a mid-codepoint truncation that drops a
     // surrogate half cannot pass the test (the spread silently drops
     // unpaired surrogates).
-    expect(sanitized).toBe([...emoji].slice(0, 5).join(''))
-    expect([...(sanitized ?? '')]).toHaveLength(5)
+    expect(sanitized).toBe(Array.from(emoji).slice(0, 5).join(''))
+    expect(Array.from(sanitized ?? '')).toHaveLength(5)
   })
 })
 

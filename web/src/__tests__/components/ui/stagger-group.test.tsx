@@ -8,8 +8,7 @@ vi.mock('motion/react', async () => {
   return {
     ...actual,
     AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-    motion: {
-      ...actual.motion,
+    motion: Object.assign({}, actual.motion, {
       div: ({
         children,
         className,
@@ -20,7 +19,7 @@ vi.mock('motion/react', async () => {
           {children}
         </div>
       ),
-    },
+    }),
   }
 })
 

@@ -156,7 +156,7 @@ function _parseRetryAfterValue(trimmed: string): number | null {
  * want the literal wait duration even when it exceeds the budget.
  */
 function readRetryAfterHeaderMs(error: AxiosError): number | null {
-  const raw = error.response?.headers?.['retry-after']
+  const raw: unknown = error.response?.headers?.['retry-after']
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()
   if (trimmed === '') return null

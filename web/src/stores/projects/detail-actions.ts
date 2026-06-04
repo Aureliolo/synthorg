@@ -44,7 +44,7 @@ function applyDetailResults(
     ? results.projectResult.value
     : null
   if (!project) {
-    const reason = results.projectResult.status === 'rejected'
+    const reason: unknown = results.projectResult.status === 'rejected'
       ? results.projectResult.reason
       : null
     set({

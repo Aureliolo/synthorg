@@ -8,7 +8,7 @@ import type { WsEvent } from '@/api/types/websocket'
 
 // Mock the useWebSocket hook so we can control connection state and capture
 // the bindings that useGlobalNotifications subscribes with.
-const mockUseWebSocket = vi.fn()
+const mockUseWebSocket = vi.fn<(...args: unknown[]) => unknown>()
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: (...args: unknown[]) => mockUseWebSocket(...args),
 }))

@@ -20,7 +20,7 @@ export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneD
     const milestones = Array.isArray(config.milestones) ? config.milestones : []
     const incoming = JSON.stringify(milestones, null, 2)
     try {
-      const currentParsed = JSON.parse(rawJson)
+      const currentParsed: unknown = JSON.parse(rawJson)
       const incomingParsed = milestones
       if (JSON.stringify(currentParsed) !== JSON.stringify(incomingParsed)) {
         // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync

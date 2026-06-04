@@ -152,7 +152,9 @@ async function _performRateLimitRetry(
     method: (config.method ?? '').toLowerCase(),
     status: 429,
   })
-  const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
+  const nextHeaders: Record<string, string> = {
+    ...((config.headers ?? {}) as Record<string, string>),
+  }
   nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
   const retryConfig: AxiosRequestConfig = { ...config, headers: nextHeaders }
   if (waitMs > 0) await sleep(waitMs)

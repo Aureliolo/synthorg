@@ -21,7 +21,7 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
     // Only update if the semantic value differs to avoid cursor jumps
     // while the user is actively editing
     try {
-      const currentParsed = JSON.parse(rawJson)
+      const currentParsed: unknown = JSON.parse(rawJson)
       const incomingParsed = config.sources ?? []
       if (JSON.stringify(currentParsed) !== JSON.stringify(incomingParsed)) {
         // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync

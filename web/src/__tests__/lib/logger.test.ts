@@ -1,8 +1,9 @@
+import type { MockInstance } from 'vitest'
 import { createLogger } from '@/lib/logger'
 
 describe('createLogger', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>
-  let errorSpy: ReturnType<typeof vi.spyOn>
+  let warnSpy: MockInstance<typeof console.warn>
+  let errorSpy: MockInstance<typeof console.error>
 
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -38,7 +39,7 @@ describe('createLogger', () => {
     const log = createLogger('m')
     const err = new Error('boom')
     log.error('failed', err)
-    const sanitized = errorSpy.mock.calls[0]?.[2]
+    const sanitized: unknown = errorSpy.mock.calls[0]?.[2]
     expect(typeof sanitized).toBe('string')
     expect(sanitized).toContain('boom')
   })

@@ -53,7 +53,7 @@ export async function updateDepartmentCeremonyPolicy(
 export async function clearDepartmentCeremonyPolicy(
   name: string,
 ): Promise<void> {
-  const response = await apiClient.delete(
+  const response = await apiClient.delete<ApiResponse<null>>(
     `/departments/${encodeURIComponent(name)}/ceremony-policy`,
   )
   unwrapVoid(response)

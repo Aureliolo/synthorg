@@ -176,7 +176,7 @@ describe('handleWsEvent payload sanitization', () => {
     const description = items[0]!.description
     expect(description).toBeDefined()
     // Must contain exactly 128 whole emojis -- no more, no fewer, no lone surrogates.
-    expect([...description!]).toHaveLength(128)
-    expect([...description!].every((c) => c === '\u{1F31F}')).toBe(true)
+    expect(Array.from(description!)).toHaveLength(128)
+    expect(Array.from(description!).every((c) => c === '\u{1F31F}')).toBe(true)
   })
 })
