@@ -30,6 +30,6 @@ const STATUS_BG: Readonly<Partial<Record<TaskStatus, string>>> = {
 }
 
 /** Tailwind background-color token for a task / frame status. */
-export function statusBgClass(status: TaskStatus | string): string {
+export function statusBgClass(status: string): string {
   return STATUS_BG[status as TaskStatus] ?? 'bg-text-secondary'
 }

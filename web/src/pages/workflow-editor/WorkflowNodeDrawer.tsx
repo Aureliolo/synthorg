@@ -147,7 +147,10 @@ export function WorkflowNodeDrawer({
   const resolveFieldValue = useCallback(
     (key: string): string => {
       if (key in drafts) return drafts[key]!
-      return String(config[key] ?? '')
+      const raw = config[key]
+      if (typeof raw === 'string') return raw
+      if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+      return ''
     },
     [drafts, config],
   )

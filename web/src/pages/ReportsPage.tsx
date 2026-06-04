@@ -355,7 +355,7 @@ function GeneratedReportCard({ report }: { report: GeneratedReportState | null }
             value: (
               <ul className="list-disc pl-4">
                 {REPORT_CHECKLIST_FIELDS.map(({ key, label }) => (
-                  <ChecklistItem key={key} label={label} present={Boolean(report.response[key])} />
+                  <ChecklistItem key={key} label={label} present={report.response[key]} />
                 ))}
               </ul>
             ),

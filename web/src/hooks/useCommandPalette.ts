@@ -16,7 +16,7 @@ export interface CommandItem {
    * without hand-wrapping them in a `() => { ... }`.  The return value
    * is discarded -- the palette only cares about success vs rejection.
    */
-  action: () => unknown | Promise<unknown>
+  action: () => unknown
   /** Group heading in the palette. */
   group: string
   /** Additional search terms. */

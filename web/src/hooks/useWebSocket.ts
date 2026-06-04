@@ -109,7 +109,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
       }
     }
 
-    setup().catch((err) => {
+    setup().catch((err: unknown) => {
       if (!cancelled) {
         setSetupError('WebSocket setup failed.')
       }

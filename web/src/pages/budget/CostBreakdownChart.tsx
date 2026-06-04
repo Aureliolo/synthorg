@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { PieChart, Pie, ResponsiveContainer, Tooltip } from 'recharts'
 import { SectionCard } from '@/components/ui/section-card'
 import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -55,17 +55,13 @@ function CostDonut({ breakdown, legendSlices, currency }: CostDonutProps) {
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
           <PieChart>
             <Pie
-              data={[...breakdown]}
+              data={breakdown.map((slice) => ({ ...slice, fill: slice.color }))}
               dataKey="cost"
               nameKey="label"
               innerRadius={50}
               outerRadius={80}
               paddingAngle={1}
-            >
-              {breakdown.map((slice) => (
-                <Cell key={slice.key} fill={slice.color} />
-              ))}
-            </Pie>
+            />
             <Tooltip content={<DonutTooltipContent currency={currency} />} />
           </PieChart>
         </ResponsiveContainer>

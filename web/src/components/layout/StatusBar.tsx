@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
-import { getHealth } from '@/api/endpoints/health'
+import { getReadiness } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { LiveRegion } from '@/components/ui/live-region'
@@ -152,7 +152,7 @@ function HealthStatusButton() {
   // they don't carry a readiness verdict.
   const pollHealth = useCallback(async () => {
     try {
-      const health: HealthStatus = await getHealth()
+      const health: HealthStatus = await getReadiness()
       setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 503) {

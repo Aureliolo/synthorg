@@ -31,7 +31,7 @@ export function createListActions(set: ConnectionsSet, get: ConnectionsGet) {
           listConnections(),
           paginateAll<HealthReport>((cursor) =>
             listIntegrationHealth({ cursor, limit: 200 }),
-          ).catch((err) => {
+          ).catch((err: unknown) => {
             log.warn('Health aggregate fetch failed:', getErrorMessage(err))
             return null
           }),

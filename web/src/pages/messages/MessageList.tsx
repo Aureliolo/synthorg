@@ -88,7 +88,7 @@ export function MessageList({
 
 function useAutoScrollOnNewMessages(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  wasAtBottomRef: React.MutableRefObject<boolean>,
+  wasAtBottomRef: React.RefObject<boolean>,
   messageCount: number,
 ): void {
   const prevLengthRef = useRef(messageCount)

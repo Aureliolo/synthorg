@@ -190,7 +190,7 @@ function useResetOnAgentChange(
 
 async function runFetchOverride(
   agentId: string,
-  activeAgentRef: React.MutableRefObject<string>,
+  activeAgentRef: React.RefObject<string>,
   fetchState: FetchState,
 ): Promise<void> {
   fetchState.setLoading(true)
@@ -208,7 +208,7 @@ async function runFetchOverride(
 
 interface SubmitOverrideArgs {
   agentId: string
-  activeAgentRef: React.MutableRefObject<string>
+  activeAgentRef: React.RefObject<string>
   score: number
   reason: string
   expiresInDays: number | null
@@ -248,7 +248,7 @@ async function submitOverride(args: SubmitOverrideArgs): Promise<void> {
 
 interface ClearOverrideArgs {
   agentId: string
-  activeAgentRef: React.MutableRefObject<string>
+  activeAgentRef: React.RefObject<string>
   setClearing: (v: boolean) => void
   setOverride: (v: OverrideResponse | null) => void
   setClearDialogOpen: (v: boolean) => void

@@ -60,7 +60,7 @@ function _shouldSkipIfFresh(
   const gate = refs.skipIfFreshRef.current
   if (!gate) return false
   try {
-    return Boolean(gate())
+    return gate()
   } catch (err) {
     setError(getErrorMessage(err))
     log.error('Polling freshness gate threw:', err)

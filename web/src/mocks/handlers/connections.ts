@@ -112,7 +112,7 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof createConnection>(
         buildConnection({
-          id: `conn-${String(body.name)}`,
+          id: `conn-${body.name}`,
           name: body.name,
           connection_type: (body.connection_type ?? 'github'),
         }),

@@ -110,17 +110,25 @@ function parseDependsOnEntry(
   return null
 }
 
+function scalarToString(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return ''
+}
+
 function parseObjectDependsOnEntry(
   stepId: string,
   rawDep: Record<string, unknown>,
   acc: ParseAccumulator,
 ): ParsedDep | null {
-  const depId = String(rawDep.id ?? '').trim()
+  const depId = scalarToString(rawDep.id).trim()
   if (!depId) {
     acc.errors.push(`Step '${stepId}' has empty dependency`)
     return null
   }
-  const branch = rawDep.branch !== undefined ? String(rawDep.branch) : undefined
+  const branch = rawDep.branch !== undefined ? scalarToString(rawDep.branch) : undefined
   if (branch === 'true' || branch === 'false') {
     return { depId, explicitBranch: branch }
   }

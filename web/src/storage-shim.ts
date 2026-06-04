@@ -59,21 +59,21 @@ export function installStorageShim(): void {
     key: string,
     value: string,
   ): void {
-    bucket(this).set(String(key), String(value))
+    bucket(this).set(key, value)
   }
 
   Storage.prototype.getItem = function getItem(
     this: Storage,
     key: string,
   ): string | null {
-    return bucket(this).get(String(key)) ?? null
+    return bucket(this).get(key) ?? null
   }
 
   Storage.prototype.removeItem = function removeItem(
     this: Storage,
     key: string,
   ): void {
-    bucket(this).delete(String(key))
+    bucket(this).delete(key)
   }
 
   Storage.prototype.clear = function clear(this: Storage): void {
@@ -88,7 +88,7 @@ export function installStorageShim(): void {
     // Match the Web Storage spec: ``key(index)`` coerces ``index``
     // to ``unsigned long``, so non-integer numbers truncate toward
     // zero and NaN / negative / out-of-range values return null.
-    const i = Math.trunc(Number(index))
+    const i = Math.trunc(index)
     if (!Number.isFinite(i) || i < 0 || i >= map.size) return null
     let cursor = 0
     for (const k of map.keys()) {

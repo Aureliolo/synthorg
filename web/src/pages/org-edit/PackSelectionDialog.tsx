@@ -218,7 +218,7 @@ function usePackSelection(open: boolean, onOpenChange: (open: boolean) => void):
       .then((data) => {
         if (!cancelled) setPacks(data)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (!cancelled) setError(getErrorMessage(err))
       })
       .finally(() => {

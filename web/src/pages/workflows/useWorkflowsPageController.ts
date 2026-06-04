@@ -14,7 +14,7 @@ export interface WorkflowsPageController {
   selectedCount: number
   bulkDeleteOpen: boolean
   bulkDeleting: boolean
-  searchInputRef: React.MutableRefObject<HTMLInputElement | null>
+  searchInputRef: React.RefObject<HTMLInputElement | null>
   setCreateOpen: (open: boolean) => void
   setViewMode: (mode: WorkflowsViewMode) => void
   setBulkDeleteOpen: (open: boolean) => void

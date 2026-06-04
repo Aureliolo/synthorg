@@ -261,7 +261,7 @@ async function confirmDelete(
 }
 
 async function runPresetsRefresh(
-  refreshIdRef: React.MutableRefObject<number>,
+  refreshIdRef: React.RefObject<number>,
   setPresets: (rows: readonly PresetSummaryResponse[]) => void,
   setError: (msg: string | null) => void,
   setLoading: (v: boolean) => void,

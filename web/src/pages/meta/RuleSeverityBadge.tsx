@@ -15,7 +15,7 @@ const SEVERITY_LABELS = {
 type Severity = keyof typeof SEVERITY_STYLES
 
 interface RuleSeverityBadgeProps {
-  severity: Severity | string
+  severity: string
   className?: string
 }
 

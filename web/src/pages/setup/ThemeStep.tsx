@@ -25,7 +25,7 @@ function OptionGroup<K extends keyof ThemeSettings>({
       <div className="space-y-1">
         {options.map((opt) => (
           <label
-            key={String(opt.value)}
+            key={opt.value}
             className={cn(
               'flex cursor-pointer items-start gap-3 rounded-md border p-2.5 transition-colors',
               current === opt.value
@@ -36,7 +36,7 @@ function OptionGroup<K extends keyof ThemeSettings>({
             <input
               type="radio"
               name={settingKey}
-              value={String(opt.value)}
+              value={opt.value}
               checked={current === opt.value}
               onChange={() => onChange(settingKey, opt.value)}
               className="mt-0.5 accent-accent"

@@ -101,8 +101,6 @@ function useBeforeUnloadGuard({ when }: UseBeforeUnloadGuardArgs): void {
     if (!when) return
     const handler = (event: BeforeUnloadEvent): void => {
       event.preventDefault()
-      // Chrome requires returnValue to be set (legacy).
-      event.returnValue = ''
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)

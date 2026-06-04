@@ -163,7 +163,7 @@ function scheduleReconnect(set: WsSet, get: WsGet): void {
   reconnectAttempts++
   reconnectTimer = setTimeout(() => {
     if (shouldBeConnected) {
-      void connectImpl(set, get).catch((err) => {
+      void connectImpl(set, get).catch((err: unknown) => {
         log.error('Reconnect failed:', err)
       })
     }

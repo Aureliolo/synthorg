@@ -88,7 +88,10 @@ function ApprovalMetaGrid({
 function metadataValue(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'object' && value !== null) return JSON.stringify(value)
-  return String(value ?? '')
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return ''
 }
 
 function ApprovalExtraSections({ approval }: { approval: ApprovalResponse }) {

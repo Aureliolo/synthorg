@@ -33,7 +33,7 @@ function isEditable(el: Element | null): boolean {
 interface ShortcutDeps {
   readonly itemCount: number
   readonly selectedIndex: number | null
-  readonly lastGRef: React.MutableRefObject<number>
+  readonly lastGRef: React.RefObject<number>
   readonly setSelectedIndex: React.Dispatch<React.SetStateAction<number | null>>
   readonly onOpen?: (index: number) => void
   readonly onEdit?: (index: number) => void

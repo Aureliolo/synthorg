@@ -148,7 +148,7 @@ function handleWsEventImpl(get: NotificationsGet, event: WsEvent): void {
   // step instead of an unsafe ``as`` followed by a manual typeof.
   if (!isObject(event.payload)) {
     log.warn('Notification WS event has invalid payload', {
-      eventType: sanitizeForLog(String(event.event_type)),
+      eventType: sanitizeForLog(event.event_type),
     })
     return
   }

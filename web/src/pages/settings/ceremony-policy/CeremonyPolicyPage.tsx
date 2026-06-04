@@ -82,7 +82,7 @@ function PolicySaveErrors({
           Save failed: {saveError ?? storeSaveError}
         </div>
       )}
-      {Boolean(configParseError || overridesParseError) && (
+      {(configParseError || overridesParseError) && (
         <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           Cannot save -- stored JSON is corrupt. Fix the raw values in the settings code editor before saving.
         </div>
@@ -104,7 +104,7 @@ function PolicySaveRow({
 }) {
   return (
     <div className="flex items-center justify-end gap-3 pt-2">
-      {Boolean(isDirty && !saving) && <span className="text-xs text-text-muted">Unsaved changes</span>}
+      {isDirty && !saving && <span className="text-xs text-text-muted">Unsaved changes</span>}
       <Button onClick={onSave} disabled={disabled}>
         {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
         Save Policy
@@ -179,7 +179,7 @@ function CeremonyPolicyBody({ ctrl }: { ctrl: CeremonyPolicyController }) {
       <ProjectPolicyCard ctrl={ctrl} />
 
       {ctrl.deptLoading && <SkeletonCard />}
-      {Boolean(!ctrl.deptLoading && ctrl.departments.length > 0) && (
+      {!ctrl.deptLoading && ctrl.departments.length > 0 && (
         <DepartmentOverridesPanel departments={ctrl.departments} />
       )}
 
