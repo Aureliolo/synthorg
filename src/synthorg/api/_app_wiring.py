@@ -73,9 +73,11 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         )
 
     benchmark_score_repo = build_benchmark_score_repo(app_state)
+    model_tier_map = ModelTierMap(overrides=budget_config.model_tier_overrides)
     benchmark_provider = select_benchmark_provider(
         budget_config.benchmark_provider,
         repo=benchmark_score_repo,
+        tier_map=model_tier_map,
     )
     from synthorg.budget.forecast_history import (  # noqa: PLC0415
         CostTrackerHistoryLookup,
@@ -115,7 +117,7 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
         benchmark_provider=benchmark_provider,
         budget_config=budget_config,
         assignment_lookup=assignment_lookup,
-        model_tier_map=ModelTierMap(overrides=budget_config.model_tier_overrides),
+        model_tier_map=model_tier_map,
     )
     app_state.wire(
         BudgetStateSlice,

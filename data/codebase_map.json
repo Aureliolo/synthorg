@@ -205,7 +205,7 @@
     },
     {
       "kind": "code",
-      "loc": 323,
+      "loc": 325,
       "loc_cap": 500,
       "module": "src/synthorg/api/_app_wiring.py",
       "owning_feature": "api_core"
@@ -219,7 +219,7 @@
     },
     {
       "kind": "code",
-      "loc": 143,
+      "loc": 162,
       "loc_cap": 500,
       "module": "src/synthorg/api/_benchmark_wiring.py",
       "owning_feature": "api_core"
@@ -2242,14 +2242,14 @@
     },
     {
       "kind": "code",
-      "loc": 58,
+      "loc": 76,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_seed.py",
       "owning_feature": "budget"
     },
     {
       "kind": "code",
-      "loc": 72,
+      "loc": 91,
       "loc_cap": 500,
       "module": "src/synthorg/budget/benchmark_stub.py",
       "owning_feature": "budget"
@@ -2305,7 +2305,7 @@
     },
     {
       "kind": "code",
-      "loc": 465,
+      "loc": 467,
       "loc_cap": 500,
       "module": "src/synthorg/budget/config.py",
       "owning_feature": "budget"
@@ -2431,7 +2431,7 @@
     },
     {
       "kind": "code",
-      "loc": 76,
+      "loc": 85,
       "loc_cap": 500,
       "module": "src/synthorg/budget/model_tier.py",
       "owning_feature": "budget"
@@ -12308,7 +12308,7 @@
     },
     {
       "kind": "code",
-      "loc": 14,
+      "loc": 15,
       "loc_cap": 500,
       "module": "src/synthorg/observability/events/evals.py",
       "owning_feature": "observability"

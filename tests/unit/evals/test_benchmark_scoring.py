@@ -137,3 +137,49 @@ class TestMissingCassetteRefusal:
                 provider_name="example-provider",
                 generated_at=_NOW,
             )
+
+
+class TestModelIdPropagation:
+    async def test_pinned_model_id_reaches_the_benchmark_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The pinned model_id is the core switch for per-model recording:
+        # it must reach the benchmark agent identity (and the resulting
+        # record), not be dropped before the run is configured.
+        captured: dict[str, object] = {}
+
+        async def _fake_run(**kwargs: object) -> Scorecard:
+            captured.update(kwargs)
+            return _scorecard((90, 80, 100))
+
+        class _FakeSession:
+            def __init__(self, **_: object) -> None: ...
+
+            async def flush(self) -> None: ...
+
+        class _FakeProvider:
+            def __init__(self, **_: object) -> None: ...
+
+        # Fake the cassette layer so the test exercises the model_id wiring
+        # without a recorded fixture (the real session validates + integrity-
+        # checks the cassette on construction).
+        monkeypatch.setattr("evals.benchmark_scoring.CassetteSession", _FakeSession)
+        monkeypatch.setattr(
+            "evals.benchmark_scoring.CassetteCompletionProvider", _FakeProvider
+        )
+        monkeypatch.setattr("evals.benchmark_scoring.run_benchmark_async", _fake_run)
+        cassette = tmp_path / "cassette.json"
+        cassette.write_text("{}", encoding="utf-8")
+
+        record = await score_model_from_cassette(
+            model_id=NotBlankStr("pinned-model-123"),
+            company_config=Path("evals/benchmark_scores/single_agent.yaml"),
+            brief_suite=Path("evals/briefs"),
+            cassette=cassette,
+            out_dir=tmp_path / "out",
+            provider_name="example-provider",
+            generated_at=_NOW,
+        )
+
+        assert captured["model_id"] == "pinned-model-123"
+        assert record.model_id == "pinned-model-123"

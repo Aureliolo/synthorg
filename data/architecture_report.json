@@ -248,8 +248,8 @@
     },
     "src/synthorg/budget/config.py": {
       "cap": 500,
-      "loc": 448,
-      "ratio": 0.896,
+      "loc": 467,
+      "ratio": 0.934,
       "tier": "code"
     },
     "src/synthorg/budget/coordination_metrics.py": {
@@ -1572,7 +1572,7 @@
     "synthorg.observability.events.workspace": 28,
     "synthorg.observability.metrics_hub": 28,
     "synthorg.ontology.models": 23,
-    "synthorg.persistence._generics": 178,
+    "synthorg.persistence._generics": 179,
     "synthorg.persistence._shared": 139,
     "synthorg.persistence._shared.pagination": 63,
     "synthorg.persistence.ontology_protocol": 20,

@@ -21,9 +21,16 @@ class TestHeuristicTier:
             ("example-small-001", "small"),
             ("example-large-002", "large"),
             ("example-local-small-001", "local-small"),
+            ("local-small", "local-small"),
             ("unknown", None),
             ("", None),
             ("acme-frontier-x", None),
+            # Tightened matching: a non-contiguous local+small id is not the
+            # `local-small` archetype, and a tier token that is not the
+            # leading `example-<tier>` segment is not silently classified.
+            ("foo-local-bar-small-baz", None),
+            ("acme-large-x", None),
+            ("company-large-v1", None),
         ],
     )
     def test_resolves_known_archetypes(

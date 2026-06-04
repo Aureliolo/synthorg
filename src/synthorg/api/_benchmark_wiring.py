@@ -25,6 +25,7 @@ from synthorg.persistence.benchmark_score_protocol import BenchmarkScoreReposito
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.budget.benchmark_models import BenchmarkScoreRecord
+    from synthorg.budget.model_tier import ModelTierMap
 
 logger = get_logger(__name__)
 
@@ -62,6 +63,7 @@ def select_benchmark_provider(
     strategy: str,
     *,
     repo: BenchmarkScoreRepository,
+    tier_map: ModelTierMap | None = None,
 ) -> BenchmarkScoreProvider:
     """Select the benchmark-score provider from the config discriminator.
 
@@ -69,6 +71,13 @@ def select_benchmark_provider(
     ``measured`` reads measured per-model scores from ``repo`` and falls
     back to the stub for any unmeasured model. An unknown discriminator
     fails loudly rather than silently degrading to the stub.
+
+    Args:
+        strategy: The ``budget.benchmark_provider`` discriminator value.
+        repo: The measured benchmark-score repository.
+        tier_map: Operator tier overrides threaded into the stub (both the
+            ``stub`` arm and the ``measured`` arm's fallback) so an
+            override-only model id resolves its cold-start score.
 
     Returns:
         The selected :class:`BenchmarkScoreProvider`.
@@ -85,11 +94,11 @@ def select_benchmark_provider(
     )
 
     if strategy == "stub":
-        return StubBenchmarkScoreProvider()
+        return StubBenchmarkScoreProvider(tier_map=tier_map)
     if strategy == "measured":
         return MeasuredBenchmarkScoreProvider(
             repo,
-            fallback=StubBenchmarkScoreProvider(),
+            fallback=StubBenchmarkScoreProvider(tier_map=tier_map),
         )
     from synthorg.budget.errors import (  # noqa: PLC0415
         UnknownBenchmarkProviderError,
@@ -105,11 +114,14 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
     """Seed the benchmark-score repo from the committed artifact when empty.
 
     Populates the measured per-model scores recorded offline so a fresh
-    operator database carries them without a recording run. Idempotent:
-    a non-empty table is left untouched so operator-recorded scores are
-    never clobbered. Only runs in the ``measured`` arm; the stub arm has
-    no repo to seed. Best-effort: a seeding failure logs and is swallowed
-    so it cannot poison startup.
+    operator database carries them without a recording run. Idempotent
+    and convergent: each committed seed row is written only when its
+    ``model_id`` is absent, so an operator-recorded score (even one that
+    re-measures a seed model) is never clobbered, and a seed left partial
+    by an interrupted or raced earlier boot is completed on the next boot
+    rather than skipped forever. Only runs in the ``measured`` arm; the
+    stub arm has no repo to seed. Best-effort: a seeding failure logs and
+    is swallowed so it cannot poison startup.
     """
     from synthorg.budget.benchmark_seed import load_seed_records  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
@@ -120,12 +132,20 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
     if repo is None or config is None or config.benchmark_provider != "measured":
         return
     records: tuple[BenchmarkScoreRecord, ...] = ()
+    seeded = 0
     try:
-        if await repo.list_items(limit=1):
-            return
         records = load_seed_records()
         for record in records:
+            # Per-row presence check rather than a single "table non-empty"
+            # short-circuit: the latter treats a partial seed (boot died
+            # mid-loop, or a concurrent boot lost a duplicate-key race) as
+            # complete and skips the remainder forever. Writing only absent
+            # rows converges to the full artifact across boots while leaving
+            # operator-recorded scores untouched.
+            if await repo.get(record.model_id) is not None:
+                continue
             await repo.save(record)
+            seeded += 1
     except (ValueError, ValidationError) as exc:
         # A malformed committed artifact never self-heals on the next
         # boot, so it is an operator-actionable defect (ERROR), not the
@@ -151,12 +171,18 @@ async def seed_benchmark_scores(app_state: AppState) -> None:
             error=safe_error_description(exc),
         )
         return
-    if records:
+    if seeded:
         logger.info(
             API_APP_STARTUP,
             service="benchmark_scores",
             note="seeded measured scores from committed artifact",
-            count=len(records),
+            count=seeded,
+        )
+    elif records:
+        logger.debug(
+            API_APP_STARTUP,
+            service="benchmark_scores",
+            note="measured scores already present; seed left untouched",
         )
     else:
         logger.debug(

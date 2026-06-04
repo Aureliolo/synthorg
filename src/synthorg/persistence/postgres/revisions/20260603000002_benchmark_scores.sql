@@ -20,9 +20,7 @@ CREATE TABLE benchmark_scores (
     source TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(source)) > 0),
     suite_version TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(suite_version)) > 0),
     cassette_sha256 TEXT NOT NULL CHECK (CHAR_LENGTH(TRIM(cassette_sha256)) > 0),
-    last_updated TEXT NOT NULL CHECK (
-        last_updated LIKE '%+00:00' OR last_updated LIKE '%Z'
-    ),
+    last_updated TIMESTAMPTZ NOT NULL,
     CONSTRAINT chk_bs_score_within_band CHECK (
         confidence_lower <= score AND score <= confidence_upper
     )

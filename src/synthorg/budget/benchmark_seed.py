@@ -14,8 +14,10 @@ cassettes live in).
 import json
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from synthorg.budget.benchmark_models import BenchmarkScoreRecord
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_BENCHMARK_SEED_ABSENT,
     BUDGET_BENCHMARK_SEED_MALFORMED,
@@ -41,6 +43,9 @@ def load_seed_records(path: Path | None = None) -> tuple[BenchmarkScoreRecord, .
         ValueError: When the artifact is present but malformed (a
             committed seed is expected to be valid, so a parse failure is
             surfaced rather than silently swallowed).
+        ValidationError: When a seed row fails schema validation; the
+            malformed-seed event is logged with the offending row index
+            before the error propagates.
     """
     seed_path = path if path is not None else _SEED_PATH
     if not seed_path.exists():
@@ -70,7 +75,25 @@ def load_seed_records(path: Path | None = None) -> tuple[BenchmarkScoreRecord, .
         )
         msg = f"benchmark seed artifact {seed_path} must be a JSON list of records"
         raise ValueError(msg)  # noqa: TRY004
-    return tuple(BenchmarkScoreRecord.model_validate(entry) for entry in payload)
+    records: list[BenchmarkScoreRecord] = []
+    for index, entry in enumerate(payload):
+        try:
+            records.append(BenchmarkScoreRecord.model_validate(entry))
+        except ValidationError as exc:
+            # Match the malformed-artifact event the JSON-decode and
+            # not-a-list paths already emit so a bad committed row keeps
+            # the artefact path + row context instead of raising a bare
+            # ValidationError with neither.
+            logger.warning(
+                BUDGET_BENCHMARK_SEED_MALFORMED,
+                path=str(seed_path),
+                reason="row failed validation",
+                row_index=index,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+    return tuple(records)
 
 
 __all__ = ["load_seed_records"]

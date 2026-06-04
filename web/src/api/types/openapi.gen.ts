@@ -8006,9 +8006,9 @@ export type components = {
              * @default 0.005
              */
             readonly forecast_static_prior_per_turn_small: number;
-            /** @description Operator map of model id to quality tier, consulted by the Pareto downgrade traversal before the built-in archetype heuristic. Values are validated against the canonical tiers when the ModelTierMap is built at wiring. */
+            /** @description Operator map of model id to quality tier, consulted by the Pareto downgrade traversal and the stub fallback before the built-in archetype heuristic. Values are typed against the canonical tiers, so a non-canonical tier is rejected at config construction rather than slipping through to wiring. */
             readonly model_tier_overrides: {
-                readonly [key: string]: string;
+                readonly [key: string]: "large" | "medium" | "small" | "local-small";
             };
             /**
              * @description Maximum cost per agent per day

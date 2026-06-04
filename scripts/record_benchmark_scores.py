@@ -35,7 +35,7 @@ from synthorg.budget.benchmark_models import BenchmarkScoreRecord
 from synthorg.config.loader import load_config
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_SUITE_RUN_COMPLETE
+from synthorg.observability.events.evals import EVALS_BENCHMARK_SCORE_RECORDED
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 
@@ -103,7 +103,7 @@ async def _run(args: argparse.Namespace) -> int:
         )
         records.append(record)
         logger.info(
-            EVALS_SUITE_RUN_COMPLETE,
+            EVALS_BENCHMARK_SCORE_RECORDED,
             model_id=record.model_id,
             score=record.score,
             source=record.source,

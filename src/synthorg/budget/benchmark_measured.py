@@ -80,11 +80,15 @@ class MeasuredBenchmarkScoreProvider:
         # lint-allow: long-running-loop-kill-switch -- bounded pagination drain
         while True:
             page = await self._repo.list_items(limit=DEFAULT_PAGE_SIZE, offset=offset)
+            if not page:
+                break
             for record in page:
                 merged[record.model_id] = record.to_score()
-            if len(page) < DEFAULT_PAGE_SIZE:
-                break
-            offset += DEFAULT_PAGE_SIZE
+            # Advance by the page's actual length and stop on an empty page
+            # rather than on a short one: a repository that caps the limit
+            # below DEFAULT_PAGE_SIZE would otherwise look "done" after the
+            # first capped page and silently drop later rows.
+            offset += len(page)
         return merged
 
 

@@ -11,33 +11,56 @@ resolve a tier (additive: the heuristic still applies to anything the
 map does not name).
 """
 
+import re
 from collections.abc import Mapping
-from typing import Final, Self
+from typing import Final, Literal, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
+#: A canonical quality-tier label. The single source of truth for the
+#: tier vocabulary: ``TIERS`` derives from it and config boundaries type
+#: their override values against it so a non-canonical tier is rejected
+#: at construction rather than at wiring.
+TierName = Literal["large", "medium", "small", "local-small"]
+
 #: The canonical quality tiers the cost-dial reasons about.
-TIERS: Final[frozenset[str]] = frozenset({"large", "medium", "small", "local-small"})
+TIERS: Final[frozenset[str]] = frozenset(get_args(TierName))
+
+#: A documented ``example-<tier>-<rev>`` archetype id. Anchored on the
+#: ``example-`` prefix so only the vendor-agnostic sample ids resolve a
+#: tier; arbitrary operator ids fall through to ``None`` (and an explicit
+#: :class:`ModelTierMap` override) rather than being silently classified.
+_EXAMPLE_TIER_RE: Final[re.Pattern[str]] = re.compile(
+    r"^example-(large|medium|small)(?:-.+)?$"
+)
+#: A contiguous ``local-small`` segment anywhere in the id. Contiguity
+#: matters: a non-adjacent ``...local...small...`` id is unrelated and
+#: must not classify as the ``local-small`` archetype.
+_LOCAL_SMALL_RE: Final[re.Pattern[str]] = re.compile(r"(?:^|-)local-small(?:-|$)")
 
 
 def heuristic_tier(model_id: str) -> str | None:
     """Map a vendor-agnostic ``example-<tier>-<rev>`` id to its tier.
+
+    Matching is restricted to the documented archetype shapes -- the
+    ``example-<tier>-<rev>`` sample ids and a contiguous ``local-small``
+    segment -- so an unrelated id (e.g. ``foo-local-bar-small-baz``) is
+    not silently classified; such ids resolve a tier only through an
+    explicit :class:`ModelTierMap` override.
 
     Returns:
         The tier label (``large`` / ``medium`` / ``small`` /
         ``local-small``), or ``None`` when the id matches no known
         archetype.
     """
-    parts = model_id.split("-")
-    if len(parts) < 2:  # noqa: PLR2004 -- a tier id needs at least <tier>-<rev>
-        return None
-    if "local" in parts and "small" in parts:
+    lowered = model_id.lower()
+    if _LOCAL_SMALL_RE.search(lowered):
         return "local-small"
-    candidate = parts[-2].lower()
-    if candidate in {"large", "medium", "small"}:
-        return candidate
+    match = _EXAMPLE_TIER_RE.match(lowered)
+    if match is not None:
+        return match.group(1)
     return None
 
 
@@ -97,4 +120,4 @@ def resolve_tier(
     return heuristic_tier(model_id)
 
 
-__all__ = ["TIERS", "ModelTierMap", "heuristic_tier", "resolve_tier"]
+__all__ = ["TIERS", "ModelTierMap", "TierName", "heuristic_tier", "resolve_tier"]

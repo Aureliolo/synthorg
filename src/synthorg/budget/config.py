@@ -12,6 +12,7 @@ from typing import Any, ClassVar, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.budget.model_tier import TierName
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace
@@ -452,13 +453,14 @@ class BudgetConfig(BaseModel):
             " measured scores with stub fallback)"
         ),
     )
-    model_tier_overrides: Mapping[NotBlankStr, str] = Field(
+    model_tier_overrides: Mapping[NotBlankStr, TierName] = Field(
         default_factory=dict,
         description=(
             "Operator map of model id to quality tier, consulted by the"
-            " Pareto downgrade traversal before the built-in archetype"
-            " heuristic. Values are validated against the canonical tiers"
-            " when the ModelTierMap is built at wiring."
+            " Pareto downgrade traversal and the stub fallback before the"
+            " built-in archetype heuristic. Values are typed against the"
+            " canonical tiers, so a non-canonical tier is rejected at"
+            " config construction rather than slipping through to wiring."
         ),
     )
 
