@@ -16,7 +16,7 @@ export interface VersionHistoryItemProps<T extends TimelineItem> {
   selectable?: boolean
 }
 
-function VersionItemContent<T extends TimelineItem>({ item }: { item: T }) {
+function VersionItemContent({ item }: { item: TimelineItem }) {
   return (
     <>
       <span className="font-mono text-sm text-foreground">v{item.version}</span>

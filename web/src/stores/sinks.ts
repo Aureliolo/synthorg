@@ -96,7 +96,7 @@ async function saveCustomSink(sink: SinkInfo): Promise<void> {
 
 async function deleteBuiltInSink(sink: SinkInfo): Promise<void> {
   const existingOverrides = await readNamespaceObjectEntry('sink_overrides')
-  delete existingOverrides[sink.identifier]
+  Reflect.deleteProperty(existingOverrides, sink.identifier)
   await updateSetting('observability', 'sink_overrides', {
     value: JSON.stringify(existingOverrides),
   })

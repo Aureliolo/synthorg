@@ -64,6 +64,7 @@ const { CodeEditorPanel } = await import('@/pages/settings/CodeEditorPanel')
 
 /** Set textarea value via native setter + fireEvent to bypass userEvent's keyboard parsing. */
 function setEditorValue(editor: HTMLElement, value: string) {
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- the setter is invoked via .call with an explicit receiver on the next line
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
     HTMLTextAreaElement.prototype, 'value',
   )!.set!

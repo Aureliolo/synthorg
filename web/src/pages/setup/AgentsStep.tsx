@@ -157,10 +157,12 @@ function useAgentsStepController(): AgentsStepController {
     fetchPersonalityPresets,
   ])
 
-  const handleNameChange = useCallback(updateAgentName, [updateAgentName])
-  const handleModelChange = useCallback(updateAgentModel, [updateAgentModel])
-  const handleRandomizeName = useCallback(randomizeAgentName, [randomizeAgentName])
-  const handlePersonalityChange = useCallback(updateAgentPersonality, [updateAgentPersonality])
+  // These are stable store actions; ``useCallback(fn, [fn])`` only re-wraps the
+  // same identity, so reference them directly.
+  const handleNameChange = updateAgentName
+  const handleModelChange = updateAgentModel
+  const handleRandomizeName = randomizeAgentName
+  const handlePersonalityChange = updateAgentPersonality
 
   const goToProvidersStep = useCallback(() => {
     void navigate('/setup/providers')

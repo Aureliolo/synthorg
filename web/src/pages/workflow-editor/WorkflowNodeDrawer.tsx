@@ -136,7 +136,7 @@ export function WorkflowNodeDrawer({
       setDrafts((prev) => {
         if (!(key in prev)) return prev
         const rest = { ...prev }
-        delete rest[key]
+        Reflect.deleteProperty(rest, key)
         return rest
       })
       onConfigChange({ ...config, [key]: next })

@@ -96,7 +96,7 @@ afterEach(() => {
   // through `document.cookie` (which would route through tough-cookie's
   // Promise wrapper, slowing the test).
   for (const name of Object.keys(cookieJar)) {
-    delete cookieJar[name]
+    Reflect.deleteProperty(cookieJar, name)
   }
   cookieJar.csrf_token = CSRF_SEED_VALUE
 })

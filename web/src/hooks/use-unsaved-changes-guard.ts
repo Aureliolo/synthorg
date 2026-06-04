@@ -46,12 +46,12 @@ export interface UseUnsavedChangesGuardResult<T = unknown> {
 
 const DEFAULT_MESSAGE = 'Discard unsaved changes?'
 
-function readDraft<T>(key: string | undefined): T | null {
+function readDraft(key: string | undefined): unknown {
   if (!key || typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(key)
     if (!raw) return null
-    return JSON.parse(raw) as T
+    return JSON.parse(raw) as unknown
   } catch (err) {
     log.warn('failed to read draft', { key: sanitizeForLog(key) }, err)
     return null
@@ -166,7 +166,7 @@ function useDraftPersistence<T>(args: UseDraftPersistenceArgs): DraftPersistence
   }, [when, draftKey, draftDebounceMs, draftTrigger])
 
   const restoreDraft = useCallback<() => T | null>(
-    () => readDraft<T>(draftKey),
+    () => readDraft(draftKey) as T | null,
     [draftKey],
   )
 

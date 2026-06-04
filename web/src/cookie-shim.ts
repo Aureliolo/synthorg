@@ -84,7 +84,7 @@ function _commitCookieWrite(raw: string): void {
   if (_isReservedCookieName(name)) return
   const value = pair.slice(eq + 1).trim()
   if (_attrsRequestDelete(segments.slice(1))) {
-    delete cookieJar[name]
+    Reflect.deleteProperty(cookieJar, name)
     return
   }
   cookieJar[name] = value

@@ -121,7 +121,7 @@ function consumeSplitChar(
   state: SplitState,
   tokenRegex: RegExp,
 ): 'ok' | 'unbalanced' {
-  const ch = str[state.i]
+  const ch = str[state.i] ?? ''
   if (ch === '(') {
     state.depth++
     state.current += '('

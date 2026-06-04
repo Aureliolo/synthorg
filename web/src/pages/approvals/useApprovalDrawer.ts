@@ -74,7 +74,7 @@ export function useFocusTrap(
 }
 
 /** Run `onChange` during render whenever `value`'s identity changes. */
-function useResetOnChange<T>(value: T, onChange: () => void): void {
+function useResetOnChange(value: unknown, onChange: () => void): void {
   const prevRef = useRef(value)
   if (value !== prevRef.current) {
     prevRef.current = value
