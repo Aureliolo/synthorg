@@ -420,7 +420,7 @@ Domains currently exposing constants (non-exhaustive; see
 `memory`, `persistence`, `mcp`, `telemetry`, `classification`,
 `verification`, `rollout`, `chief_of_staff`, `analytics`,
 `integrations`, `a2a`, `budget`, `coordination`, `security`,
-`audit_chain`.
+`red_team`, `audit_chain`.
 
 The `security` domain is special: every constant whose value starts
 with `security.` (or `tool.registry.integrity.`) is signed and

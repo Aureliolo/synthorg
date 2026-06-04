@@ -736,15 +736,21 @@ task to IN_PROGRESS with the structured critique as the rework brief.
 
 ### Grounding subsystem
 
-A small `GroundingChecker` protocol lets the substrate-backed
-implementation that EPIC E #1988 ships drop in without changing the
-gate. The current `HeuristicGroundingChecker` is deterministic
-regex-based: it flags assertive numeric / temporal claims with no
-citation marker. Heuristic-source findings are capped at LOW severity
-by `HEURISTIC_GROUNDING_MAX_SEVERITY` so the stub never blocks on its
-own; only the LLM agent's own findings (or, post-#1988, the
-substrate-backed checker) may escalate to HIGH/CRITICAL on the
-GROUNDING surface.
+A small `GroundingChecker` protocol is the swap point between two
+implementations, selected by `RedTeamConfig.grounding_checker_kind`
+without changing the gate. The default `HeuristicGroundingChecker` is
+deterministic regex-based: it flags assertive numeric / temporal claims
+with no citation marker. Heuristic-source findings are capped at LOW
+severity by `HEURISTIC_GROUNDING_MAX_SEVERITY` so the heuristic never
+blocks on its own. The `KnowledgeSubstrateGroundingChecker` resolves
+each claim against the project-scoped knowledge corpus via LLM
+claim-extraction plus semantic entailment, and escalates by confidence
+up to `SUBSTRATE_GROUNDING_MAX_SEVERITY` (HIGH) on the GROUNDING surface
+so a substrate finding can BLOCK and reroute to rework; it is capped at
+HIGH (never CRITICAL) because an authoritative grounding gap is a
+quality defect, not a security incident. It resolves the knowledge
+service lazily (the checker is built before the substrate wires) and
+degrades to the heuristic when the substrate is absent.
 
 ### Configuration
 
@@ -753,7 +759,13 @@ enabled, the boot path in `workers/runtime_builder.py` constructs the
 full subsystem via `security/redteam/builder.py::build_red_team_runtime`,
 which returns a `RedTeamRuntime` NamedTuple (gate, submit tool, repo,
 runner). Operators flip the flag once the review-gate integration
-point is wired in their deployment. The per-execution report repo is
+point is wired in their deployment. `grounding_checker_kind`
+(`"heuristic"` default, or `"knowledge_substrate"`) selects the
+grounding implementation; the substrate checker degrades to the
+heuristic when no provider or knowledge service is wired.
+`on_missing_deliverable` (`"block"` default, or `"skip"`) governs the
+fail-closed vs fail-skip posture when no reviewable deliverable can be
+built for a completing task. The per-execution report repo is
 also published on `SecurityStateSlice.red_team_reports` by the runtime
 wiring and read at receipt-build time, so a completed deliverable's
 `DeliverableReceipt.red_team` snapshots the run's findings; it degrades
@@ -772,8 +784,13 @@ human-facing receipt view.
   The gate fails OPEN with a synthetic INFO-severity finding;
   completion is not blocked by an agent fault, but the audit record
   shows the degraded review.
-- GROUNDING FAULTS: heuristic stub raises. The gate logs the failure
-  and proceeds without heuristic findings.
+- GROUNDING FAULTS: the configured grounding checker raises. The gate
+  logs the failure and proceeds without grounding findings (fail-OPEN).
+  The substrate checker additionally degrades internally: a missing
+  provider / knowledge service or a failed claim-extraction call falls
+  back to the heuristic, and a per-claim search or entailment failure
+  skips that claim (fail-soft), so a transient corpus or provider fault
+  never blocks a deliverable on no evidence.
 
 ## See Also
 

@@ -216,6 +216,19 @@ class TestRedTeamReviewInput:
             autonomy=AutonomyLevel.SEMI,
         )
         assert review_input.autonomy is AutonomyLevel.SEMI
+        assert review_input.project_id is None
+
+    def test_project_id_defaults_none_and_accepts_value(self) -> None:
+        scoped = RedTeamReviewInput(
+            task_id="task-1",
+            execution_id="exec-1",
+            deliverable_content="some artifact",
+            acceptance_criteria=("crit-1",),
+            assigned_agent_id="agent-1",
+            autonomy=AutonomyLevel.SEMI,
+            project_id="proj-7",
+        )
+        assert scoped.project_id == "proj-7"
 
     def test_empty_acceptance_criteria_rejected(self) -> None:
         with pytest.raises(ValidationError):

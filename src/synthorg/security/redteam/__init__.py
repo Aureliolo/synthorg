@@ -42,7 +42,11 @@ from synthorg.security.redteam.errors import (
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding import (
     GroundingChecker,
+    GroundingCheckerKind,
+    GroundingSubstrateContext,
+    GroundingSubstrateResolver,
     HeuristicGroundingChecker,
+    KnowledgeSubstrateGroundingChecker,
     UngroundedClaim,
     build_grounding_checker,
 )
@@ -74,8 +78,12 @@ __all__ = [
     "RED_TEAM_AGENT_NAME",
     "AgentRunner",
     "GroundingChecker",
+    "GroundingCheckerKind",
+    "GroundingSubstrateContext",
+    "GroundingSubstrateResolver",
     "HeuristicGroundingChecker",
     "InMemoryRedTeamReportRepository",
+    "KnowledgeSubstrateGroundingChecker",
     "RedTeamAttackSurface",
     "RedTeamDispatchError",
     "RedTeamError",

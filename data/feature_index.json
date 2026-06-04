@@ -1091,6 +1091,7 @@
         "SubmitRedTeamReportTool",
         "InMemoryRedTeamReportRepository",
         "HeuristicGroundingChecker",
+        "KnowledgeSubstrateGroundingChecker",
         "build_red_team_agent_identity",
         "build_vision_verifier_gate",
         "DeliverableReviewInputBuilder"
@@ -1225,6 +1226,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-03T17:17:02.337035Z",
+  "generated_at": "2026-06-03T23:26:49.721489Z",
   "schema_version": 1
 }

@@ -10,10 +10,12 @@ Drives one evaluation cycle for one deliverable:
    fail-OPEN with a synthetic INFO finding instead of breaking
    completion.
 3. Run the configured :class:`GroundingChecker` and convert its
-   :class:`UngroundedClaim` entries into ``source="heuristic"``
-   :class:`RedTeamFinding` entries on the GROUNDING attack surface,
-   capped at :data:`HEURISTIC_GROUNDING_MAX_SEVERITY`.
-4. Compute the verdict over the FULL set of findings (agent + heuristic)
+   :class:`UngroundedClaim` entries into :class:`RedTeamFinding` entries
+   on the GROUNDING attack surface. Heuristic-source claims are capped at
+   :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW); substrate-source claims
+   escalate by confidence up to :data:`SUBSTRATE_GROUNDING_MAX_SEVERITY`
+   (HIGH) and can BLOCK.
+4. Compute the verdict over the FULL set of findings (agent + grounding)
    under the deliverable's autonomy posture.
 5. Return a structured :class:`RedTeamGateResult`.
 """
@@ -130,7 +132,7 @@ class RedTeamGateService:
         """Run one gate cycle for ``review_input`` and return the verdict.
 
         Fail-OPEN policy: any single internal failure (agent did not
-        file a report, grounding stub raised) is logged at WARNING and
+        file a report, grounding checker raised) is logged at WARNING and
         the gate proceeds with whatever signal it has, surfacing an
         informational finding on the audit trail. The gate raises only
         when the input itself is malformed (caught by Pydantic at the
@@ -150,8 +152,12 @@ class RedTeamGateService:
         report = await self._invoke_agent(review_input)
         grounding_claims = await self._run_grounding(review_input)
 
-        heuristic_findings = tuple(claim_to_finding(c) for c in grounding_claims)
-        all_findings = report.findings + heuristic_findings
+        grounding_findings = tuple(
+            finding
+            for claim in grounding_claims
+            if (finding := claim_to_finding(claim)) is not None
+        )
+        all_findings = report.findings + grounding_findings
 
         verdict = compute_red_team_verdict(all_findings, review_input.autonomy)
         elapsed = max(self._clock.monotonic() - started_at, 0.0)
@@ -162,7 +168,7 @@ class RedTeamGateService:
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
                 findings=len(all_findings),
-                heuristic_findings=len(heuristic_findings),
+                grounding_findings=len(grounding_findings),
                 elapsed_seconds=elapsed,
             )
         else:
@@ -201,7 +207,7 @@ class RedTeamGateService:
 
         Args:
             review_input: The evaluated input (supplies the keys).
-            merged_report: The merged report (agent + heuristic findings).
+            merged_report: The merged report (agent + grounding findings).
             verdict: The aggregate verdict the gate computed.
 
         Raises:
@@ -340,8 +346,8 @@ class RedTeamGateService:
 
         Cancellation propagates: ``asyncio.CancelledError`` is re-raised so
         the awaiting parent task observes it. All other exceptions are
-        treated as fail-OPEN (heuristic stub is best-effort, substrate
-        implementations should not block the gate on transient corpus
+        treated as fail-OPEN (the grounding checker is best-effort and
+        should not block the gate on transient corpus or provider
         failures).
 
         Returns:
@@ -361,6 +367,7 @@ class RedTeamGateService:
             claims = await self._grounding_checker.check(
                 deliverable_content=review_input.deliverable_content,
                 execution_id=review_input.execution_id,
+                project_id=review_input.project_id,
             )
         except asyncio.CancelledError:
             raise

@@ -3,9 +3,8 @@
 :class:`UngroundedClaim` is the unit produced by any
 :class:`GroundingChecker` implementation. It carries enough context to
 become a :class:`synthorg.security.redteam.models.RedTeamFinding` in
-the gate, and enough metadata that a future substrate-backed checker
-can layer source-resolution data on top without breaking existing
-callers.
+the gate, and enough metadata for the substrate-backed checker to layer
+source-resolution data on top without breaking existing callers.
 """
 
 from typing import Final, Literal, Self
@@ -22,8 +21,11 @@ HEURISTIC_CONFIDENCE_CEILING: Final[float] = 0.7
 
 Capping below 1.0 enforces the design contract that heuristic flags
 never reach the gate's HIGH/CRITICAL routing tier on their own: only
-the agent's own findings (or, once a substrate-backed checker ships,
-substrate-backed claims) may escalate above the heuristic ceiling.
+the agent's own findings or substrate-backed claims may escalate above
+the heuristic ceiling. The ceiling (0.7) sits above the substrate MEDIUM
+floor by design, but the gate routes heuristic claims through
+:data:`HEURISTIC_GROUNDING_MAX_SEVERITY` regardless of confidence, so the
+overlap never escalates a heuristic claim.
 See :mod:`synthorg.security.redteam.routing`.
 """
 
@@ -42,14 +44,14 @@ class UngroundedClaim(BaseModel):
             :data:`HEURISTIC_CONFIDENCE_FLOOR` /
             :data:`HEURISTIC_CONFIDENCE_CEILING`; substrate-backed
             checkers may use the full range.
-        source: ``"heuristic"`` for stub-produced claims;
-            ``"knowledge_substrate"`` reserved for the
-            substrate-backed implementation.
-        expected_source_kind: When the substrate-backed checker knows
-            what kind of source the claim should have traced to
-            (e.g. ``"finance_report"``), it surfaces that here so the
-            assignee knows what citation is missing. ``None`` for
-            heuristic claims.
+        source: ``"heuristic"`` for heuristic-produced claims;
+            ``"knowledge_substrate"`` for claims from the
+            substrate-backed checker.
+        expected_source_kind: When a checker knows what kind of source
+            the claim should have traced to (e.g. ``"finance_report"``),
+            it surfaces that here so the assignee knows what citation is
+            missing. ``None`` when no specific source kind is known; both
+            the heuristic and the current substrate checker emit ``None``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -65,8 +67,8 @@ class UngroundedClaim(BaseModel):
         """Heuristic-source claims are bounded by floor / ceiling.
 
         Substrate-backed claims may use the full ``[0.0, 1.0]`` range
-        because they are authoritative; heuristic claims are stub-grade
-        and the gate's routing layer caps their severity, but enforcing
+        because they are authoritative; the gate's routing layer caps
+        heuristic-claim severity regardless, but enforcing
         the bound at construction prevents a buggy heuristic from
         accidentally smuggling a high-confidence flag past the cap.
 
