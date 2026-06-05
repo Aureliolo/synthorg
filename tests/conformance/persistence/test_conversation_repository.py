@@ -16,6 +16,7 @@ import aiosqlite
 import pytest
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
+from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.enums import ConversationKind
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
@@ -374,6 +375,19 @@ class TestConversationTurnRepository:
             ConversationTurnFilterSpec(conversation_id=NotBlankStr("c-purge"))
         )
         assert rows == ()
+
+    async def test_purge_before_rejects_naive_threshold(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # A naive threshold is rejected rather than silently coerced: on
+        # Postgres it would bind against the TIMESTAMPTZ column in the
+        # session timezone and shift the retention cut-off. Both backends
+        # must surface QueryError per the protocol contract.
+        repo = _turn_repo(backend)
+        with pytest.raises(QueryError):
+            await repo.purge_before(
+                datetime(2026, 1, 1),  # noqa: DTZ001 -- naive on purpose
+            )
 
     async def test_agent_role_turn_round_trips_with_attribution(
         self, backend: PersistenceBackend

@@ -55,11 +55,11 @@ class _ReferencesMixin(_SubworkflowRepoBase):
                 lock_key = (
                     int.from_bytes(
                         hashlib.sha256(f"{subworkflow_id}:{version}".encode()).digest()[
-                            :4
+                            :8
                         ],
                         "big",
                     )
-                    & 0x7FFFFFFF
+                    & 0x7FFFFFFFFFFFFFFF
                 )
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(%s)",

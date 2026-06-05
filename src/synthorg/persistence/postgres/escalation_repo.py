@@ -412,13 +412,28 @@ INSERT INTO conflict_escalations (
                 from_status=EscalationStatus.PENDING.value,
                 to_status=EscalationStatus.EXPIRED.value,
             )
-        await publish_notifies(self._pool, self._notify_channel, ids, "expired")
+        await self._publish_notifies(ids, "expired")
         return ids
 
     @override
     async def close(self) -> None:
         """No-op: the pool is owned by the persistence backend."""
         return
+
+    async def _publish_notifies(
+        self,
+        escalation_ids: tuple[str, ...],
+        status: str,
+    ) -> None:
+        """Publish one ``<id>:<status>`` NOTIFY per id over a single checkout.
+
+        Thin instance seam over the module-level
+        :func:`synthorg.persistence.postgres._escalation_notify.publish_notifies`,
+        binding the repository's pool and configured notify channel so the
+        terminal-transition and expiry paths share one publish call shape.
+        A ``None`` channel (single-worker default) disables publication.
+        """
+        await publish_notifies(self._pool, self._notify_channel, escalation_ids, status)
 
     async def _update_terminal(
         self,
@@ -496,9 +511,7 @@ INSERT INTO conflict_escalations (
             from_status=EscalationStatus.PENDING.value,
             to_status=new_status.value,
         )
-        await publish_notifies(
-            self._pool, self._notify_channel, (escalation_id,), new_status.value
-        )
+        await self._publish_notifies((escalation_id,), new_status.value)
         return _row_to_escalation(updated_row)
 
     @override

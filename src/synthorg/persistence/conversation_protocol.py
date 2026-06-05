@@ -178,7 +178,11 @@ class ConversationTurnRepository(
     async def purge_before(self, threshold: datetime) -> int:
         """Delete turns created before ``threshold``. Returns rows removed.
 
+        ``threshold`` must be timezone-aware; a naive datetime is rejected
+        (``QueryError``) rather than silently coerced, so the cut-off
+        cannot drift with the backend's session timezone.
+
         Raises:
-            QueryError: On database errors.
+            QueryError: If ``threshold`` is naive, or on database errors.
         """
         ...

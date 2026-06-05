@@ -256,8 +256,11 @@ class SQLiteConversationTurnRepository:
             Numeric result of the operation.
 
         Raises:
-            QueryError: On database errors.
+            QueryError: If ``threshold`` is naive, or on database errors.
         """
+        if threshold.tzinfo is None:
+            msg = "purge_before requires a timezone-aware threshold"
+            raise QueryError(msg)
         sql = "DELETE FROM conversation_turns WHERE created_at < ?"
         async with self._write_context():
             try:

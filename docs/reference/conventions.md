@@ -683,8 +683,8 @@ they live next to the domain they orchestrate (`backup/service.py`,
 
 `XRepository` types implement the per-backend persistence protocol
 and live under `persistence/<backend>/` (one module per repository per
-backend: a single `agent_identity_repository.py` file for smaller repos,
-or a same-named subpackage `agent_identity_repository/` when the
+backend: a single `agent_identity_repo.py` file for smaller repos,
+or a same-named subpackage `agent_identity_repo/` when the
 module-size policy requires decomposition, e.g.
 `persistence/postgres/approval_repo/__init__.py` assembling read/write
 mixins). The protocol
