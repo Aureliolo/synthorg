@@ -218,7 +218,7 @@ class ParallelExecutor:
         try:
             async with asyncio.TaskGroup() as tg:
                 for assignment in group.assignments:
-                    tg.create_task(
+                    _ = tg.create_task(
                         self._run_guarded(
                             assignment=assignment,
                             group=group,

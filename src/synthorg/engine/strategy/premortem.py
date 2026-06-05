@@ -267,7 +267,7 @@ class DefaultPremortemExecutor:
 
         async with asyncio.TaskGroup() as tg:
             for idx, pid in enumerate(active):
-                tg.create_task(_call_and_store(idx, pid))
+                _ = tg.create_task(_call_and_store(idx, pid))
 
         return [r for r in result_slots if r is not None]
 

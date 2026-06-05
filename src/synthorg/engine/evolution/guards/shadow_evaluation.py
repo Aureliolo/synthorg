@@ -294,8 +294,8 @@ class ShadowEvaluationGuard:
             )
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(_baseline())
-            tg.create_task(_adapted())
+            _ = tg.create_task(_baseline())
+            _ = tg.create_task(_adapted())
 
         return baseline_outcomes, adapted_outcomes
 

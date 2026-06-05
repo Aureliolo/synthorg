@@ -461,7 +461,7 @@ class ProviderHealthProber:
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config in eligible:
-                    tg.create_task(
+                    _ = tg.create_task(
                         self._safe_probe_one(name, config, ollama_port=ollama_port)
                     )
 

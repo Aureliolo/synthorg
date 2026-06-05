@@ -193,7 +193,7 @@ class KnowledgeSubstrateGroundingChecker:
 
         async with asyncio.TaskGroup() as task_group:
             for index, claim in enumerate(claims):
-                task_group.create_task(_evaluate_into(index, claim))
+                _ = task_group.create_task(_evaluate_into(index, claim))
         return tuple(claim for claim in flagged if claim is not None)
 
     def _resolve_context(

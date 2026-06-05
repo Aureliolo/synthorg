@@ -120,7 +120,7 @@ class ResumeDispatchMixin:
             decided_by=decided_by,
             has_reason=decision_reason is not None,
         )
-        self._resume_tasks.spawn(
+        _ = self._resume_tasks.spawn(
             self._resume_parked(
                 approval_id=approval_id,
                 approved=approved,

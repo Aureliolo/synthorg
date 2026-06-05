@@ -231,7 +231,7 @@ async def get_base_sources(
 
     async with asyncio.TaskGroup() as tg:
         for file_path in files:
-            tg.create_task(_fetch(file_path))
+            _ = tg.create_task(_fetch(file_path))
     return sources
 
 
@@ -448,7 +448,7 @@ async def _fetch_sources(
         )
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(_get_base())
-        tg.create_task(_get_merged())
+        _ = tg.create_task(_get_base())
+        _ = tg.create_task(_get_merged())
 
     return base, merged

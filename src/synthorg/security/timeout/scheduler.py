@@ -369,7 +369,7 @@ class ApprovalTimeoutScheduler:
                     escalate_to=action.escalate_to,
                     reason=action.reason,
                 )
-                self._background_tasks.spawn(
+                _ = self._background_tasks.spawn(
                     self._notify_escalation(item, action),
                     event=NOTIFICATION_ESCALATION_SEND,
                     approval_id=item.id,

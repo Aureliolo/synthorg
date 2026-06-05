@@ -388,7 +388,7 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
     try:
         async with asyncio.TaskGroup() as tg:
             for key in keys:
-                tg.create_task(_fetch(key))
+                _ = tg.create_task(_fetch(key))
     except* Exception as eg:
         for exc in eg.exceptions:
             if isinstance(exc, (MemoryError, RecursionError)):

@@ -523,7 +523,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 f"({cfg.alerts.hard_stop_at}% of "
                 f"{_fmt(cfg.total_monthly, _cur)})"
             )
-            self._background_tasks.spawn(
+            _ = self._background_tasks.spawn(
                 self._notify_budget_event(
                     "Monthly budget exhausted",
                     msg,
@@ -566,7 +566,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 f"{format_cost(daily_cost, cfg.currency)} >= "
                 f"{format_cost(cfg.per_agent_daily_limit, cfg.currency)}"
             )
-            self._background_tasks.spawn(
+            _ = self._background_tasks.spawn(
                 self._notify_budget_event(
                     "Daily agent limit exceeded",
                     msg,

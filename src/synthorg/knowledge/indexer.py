@@ -218,7 +218,7 @@ class KnowledgeIndexer:
         now = self._clock.now()
         async with asyncio.TaskGroup() as tg:
             for chunk in chunks:
-                tg.create_task(
+                _ = tg.create_task(
                     self._provenance.save(
                         ChunkProvenanceRow(
                             chunk_id=chunk.chunk_id,
@@ -234,7 +234,7 @@ class KnowledgeIndexer:
         try:
             async with asyncio.TaskGroup() as tg:
                 for chunk in chunks:
-                    tg.create_task(
+                    _ = tg.create_task(
                         self._backend.store(
                             SYSTEM_KNOWLEDGE_AGENT_ID,
                             _chunk_to_request(source=source, chunk=chunk),
@@ -253,7 +253,7 @@ class KnowledgeIndexer:
             # source forever, leaving orphaned provenance with no memory.
             async with asyncio.TaskGroup() as rollback_tg:
                 for chunk in chunks:
-                    rollback_tg.create_task(self._provenance.delete(chunk.chunk_id))
+                    _ = rollback_tg.create_task(self._provenance.delete(chunk.chunk_id))
             raise
 
     async def _purge_chunks(
@@ -274,7 +274,7 @@ class KnowledgeIndexer:
         source_tag = NotBlankStr(f"{KNOWLEDGE_SOURCE_TAG_PREFIX}{source_id}")
         async with asyncio.TaskGroup() as tg:
             for chunk_id in chunk_ids:
-                tg.create_task(
+                _ = tg.create_task(
                     self._purge_chunk_entries(source_tag=source_tag, chunk_id=chunk_id)
                 )
 
@@ -300,7 +300,9 @@ class KnowledgeIndexer:
             return
         async with asyncio.TaskGroup() as tg:
             for hit in hits:
-                tg.create_task(self._backend.delete(SYSTEM_KNOWLEDGE_AGENT_ID, hit.id))
+                _ = tg.create_task(
+                    self._backend.delete(SYSTEM_KNOWLEDGE_AGENT_ID, hit.id)
+                )
 
 
 def _chunk_tags(

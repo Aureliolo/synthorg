@@ -104,7 +104,7 @@ class ProactiveAlertService:
 
         async with asyncio.TaskGroup() as tg:
             for sink in self._sinks:
-                tg.create_task(_emit(sink))
+                _ = tg.create_task(_emit(sink))
         delivered = len(self._sinks) - len(failed_sinks)
         logger.info(
             COS_ALERT_EMITTED,

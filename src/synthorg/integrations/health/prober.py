@@ -194,7 +194,7 @@ class HealthProberService:
 
         async with asyncio.TaskGroup() as tg:
             for conn in eligible:
-                tg.create_task(self._probe_one(conn.name, conn.connection_type))
+                _ = tg.create_task(self._probe_one(conn.name, conn.connection_type))
 
     async def _probe_one(
         self,

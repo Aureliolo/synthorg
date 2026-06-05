@@ -319,7 +319,7 @@ class PositionPapersProtocol:
 
         async with asyncio.TaskGroup() as tg:
             for idx, pid in enumerate(participant_ids):
-                tg.create_task(
+                _ = tg.create_task(
                     _collect_paper(pid, idx, tokens_per_agent),
                 )
 
