@@ -14,15 +14,6 @@ vi.mock('@/hooks/useConnectionsData', () => ({
   useConnectionsData: () => ({ connections }),
 }))
 
-vi.mock('@/api/endpoints/webhooks', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/endpoints/webhooks')>()),
-  retryWebhookReceipt: vi.fn(() => Promise.resolve({
-    status: 'accepted',
-    event_type: 'workflow.executed',
-    receipt_id: 'whr-000000000002',
-  })),
-}))
-
 const { default: WebhookReceiptsPage } = await import('@/pages/WebhookReceiptsPage')
 
 function makeConnection(name: string): Connection {
@@ -75,15 +66,28 @@ describe('WebhookReceiptsPage', () => {
   })
 
   it('bulk-retries the selected failed receipt', async () => {
+    let retriedId: string | undefined
+    server.use(
+      http.post('/api/v1/webhooks/receipts/:id/retry', ({ params }) => {
+        retriedId = String(params.id)
+        return HttpResponse.json(
+          successFor<typeof retryWebhookReceipt>({
+            status: 'accepted',
+            event_type: 'workflow.executed',
+            receipt_id: 'whr-000000000002',
+          }),
+        )
+      }),
+    )
     connections = [makeConnection('slack-app')]
     renderPage()
     // The default activity handler returns one failed (retryable) receipt.
     const checkbox = await screen.findByLabelText('Select receipt whr-000000000002')
     fireEvent.click(checkbox)
     fireEvent.click(await screen.findByRole('button', { name: /Retry selected/ }))
-    await waitFor(() =>
-      expect(retryWebhookReceipt).toHaveBeenCalledWith('whr-000000000002'),
-    )
+    await waitFor(() => {
+      expect(retriedId).toBe('whr-000000000002')
+    })
   })
 
   it('shows the error banner when the activity fetch fails', async () => {

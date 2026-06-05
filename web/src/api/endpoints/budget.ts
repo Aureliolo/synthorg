@@ -45,6 +45,28 @@ export interface CostRecordListResponseBody {
   currency: string
 }
 
+/**
+ * Validate the nested shape of a ``success: true`` cost-record envelope. The
+ * server can return a malformed body at runtime, so the declared field types
+ * are a boundary lie; guard the fields ``listCostRecords`` dereferences below.
+ */
+function isCostRecordEnvelopeShaped(body: CostRecordListResponseBody): boolean {
+  const envelope = body as {
+    data?: unknown
+    pagination?: { limit?: unknown }
+    daily_summary?: unknown
+    period_summary?: unknown
+    currency?: unknown
+  }
+  return (
+    Array.isArray(envelope.data) &&
+    typeof envelope.pagination?.limit === 'number' &&
+    Array.isArray(envelope.daily_summary) &&
+    envelope.period_summary != null &&
+    typeof envelope.currency === 'string'
+  )
+}
+
 export async function listCostRecords(
   params?: PaginationParams & { agent_id?: string; task_id?: string },
 ): Promise<CostRecordListResult> {
@@ -55,6 +77,12 @@ export async function listCostRecords(
   const body = response.data as CostRecordListResponseBody | null | undefined
   if (!body?.success) {
     throw new ApiRequestError(body?.error ?? 'Unknown API error', body?.error_detail ?? null)
+  }
+  // A ``success: true`` envelope can still arrive with missing / malformed
+  // nested fields; validate the shape before dereferencing so a bad payload
+  // surfaces as ``ApiRequestError`` rather than a raw ``TypeError``.
+  if (!isCostRecordEnvelopeShaped(body)) {
+    throw new ApiRequestError('Unexpected API response format')
   }
   return {
     data: body.data,

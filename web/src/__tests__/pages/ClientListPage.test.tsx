@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { voidSuccess } from '@/mocks/handlers'
+import { server } from '@/test-setup'
 import type { ClientProfile } from '@/api/endpoints/clients'
-import { deleteClient } from '@/api/endpoints/clients'
 
 interface ClientsData {
   clients: readonly ClientProfile[]
@@ -16,11 +18,6 @@ let hookReturn: ClientsData
 
 vi.mock('@/hooks/useClientsData', () => ({
   useClientsData: () => hookReturn,
-}))
-
-vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
-  deleteClient: vi.fn(() => Promise.resolve(undefined)),
 }))
 
 const { default: ClientListPage } = await import('@/pages/ClientListPage')
@@ -112,6 +109,13 @@ describe('ClientListPage', () => {
   })
 
   it('bulk-deactivates a selected client through the confirm dialog', async () => {
+    let deletedId: string | undefined
+    server.use(
+      http.delete('/api/v1/clients/:id', ({ params }) => {
+        deletedId = String(params.id)
+        return HttpResponse.json(voidSuccess())
+      }),
+    )
     hookReturn = {
       ...defaultReturn,
       clients: [makeClient({ client_id: 'c-1', name: 'Acme Corp' })],
@@ -121,6 +125,8 @@ describe('ClientListPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Deactivate 1/ }))
     const dialog = await screen.findByRole('alertdialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate 1' }))
-    await waitFor(() => expect(deleteClient).toHaveBeenCalledWith('c-1'))
+    await waitFor(() => {
+      expect(deletedId).toBe('c-1')
+    })
   })
 })
