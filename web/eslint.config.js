@@ -99,11 +99,11 @@ export default tseslint.config(
   {
     files: ['**/*.ts', '**/*.tsx'],
     rules: {
-      // -- #2212 strict adoption: deferred high-churn rules --
+      // -- strict adoption: deferred high-churn rules --
       // ``strictTypeChecked`` is adopted wholesale (above) for its full safety
       // surface, but three broad, near-cosmetic rules carry the bulk of the
       // live violation volume with low bug-yield. They are a DELIBERATE,
-      // documented scope deferral for #2212 (not a dodge of a promoted rule),
+      // documented scope deferral (not a dodge of a promoted rule),
       // tracked for a follow-up hardening pass.
       // 788 violations / 300 files; purely stylistic (wrap ``() => fn()``).
       '@typescript-eslint/no-confusing-void-expression': 'off',
@@ -118,7 +118,7 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true, allowNullish: true },
       ],
-      // -- #2212 curated rules genuinely absent from strictTypeChecked --
+      // -- curated rules genuinely absent from strictTypeChecked --
       // ``== null`` / ``!= null`` is the deliberate nullish-check idiom across
       // the codebase; ``{ null: 'ignore' }`` permits it while still forbidding
       // every other loose comparison.

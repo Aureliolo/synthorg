@@ -75,6 +75,16 @@ describe('toast store', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
+  it('keeps warning/error toasts persistent (no default auto-dismiss)', () => {
+    useToastStore.getState().add({ variant: 'warning', title: 'Stays' })
+    useToastStore.getState().add({ variant: 'error', title: 'Stays too' })
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+
+    // Null-duration variants schedule no timer; advancing time must not remove them.
+    vi.advanceTimersByTime(60_000)
+    expect(useToastStore.getState().toasts).toHaveLength(2)
+  })
+
   it('auto-dismisses after custom duration', () => {
     useToastStore.getState().add({ variant: 'info', title: 'Quick', duration: 2000 })
     expect(useToastStore.getState().toasts).toHaveLength(1)
