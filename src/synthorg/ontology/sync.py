@@ -42,8 +42,8 @@ class OntologyOrgMemorySync:
     """Sync entity definitions to organizational memory.
 
     Publishes entity definitions as OrgFacts, using content hashing
-    to skip unchanged definitions.  System-level author (human
-    operator, C-suite seniority) ensures maximum write authority.
+    to skip unchanged definitions.  Authored at ``SeniorityLevel.SENIOR``
+    so definition writes carry senior write authority.
 
     Args:
         ontology: Ontology backend for entity retrieval.

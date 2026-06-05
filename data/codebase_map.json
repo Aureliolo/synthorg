@@ -13512,7 +13512,7 @@
     },
     {
       "kind": "code",
-      "loc": 178,
+      "loc": 180,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/decorator.py",
       "owning_feature": "ontology"

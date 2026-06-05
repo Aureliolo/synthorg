@@ -201,7 +201,9 @@ def ontology_entity(
         source: Entity origin source (default: AUTO).
 
     Returns:
-        The original class, unchanged.
+        When used without arguments, the original class (unchanged).
+        When called with keyword arguments, a single-argument decorator
+        that registers and returns the class it is applied to.
 
     Raises:
         OntologyDuplicateError: If an entity with the same name is

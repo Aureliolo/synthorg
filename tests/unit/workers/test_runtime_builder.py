@@ -391,11 +391,11 @@ class TestRuntimeCoordinatorResolveFailure:
 
         Drives ``_build_runtime_coordinator`` directly rather than the full
         ``build_runtime_services`` entry point: the resolve-failure
-        behaviour lives entirely in this TaskGroup wrapper, so building the
-        tool registry and the boot ``AgentEngine`` first is pure setup cost
-        the failure path never reaches. ``engine`` and ``provider`` are only
-        consumed AFTER the TaskGroup succeeds, so stub doubles suffice on the
-        failure path.
+        behaviour lives entirely in this TaskGroup wrapper. Bypassing the
+        entry point means no tool registry and no boot ``AgentEngine`` are
+        constructed at all (the failure path never reaches them anyway).
+        ``engine`` and ``provider`` are only consumed AFTER the TaskGroup
+        succeeds, so stub doubles suffice on the failure path.
         """
         registry = ProviderRegistry.from_config(
             {"test-provider": ProviderConfig(driver="scripted")}
