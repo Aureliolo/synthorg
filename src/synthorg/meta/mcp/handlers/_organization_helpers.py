@@ -77,7 +77,7 @@ def _require_str_list(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
     """Extract a required sequence of non-blank strings, or raise on error.
 
     Returns:
-        Tuple of the declared element types.
+        Tuple of the validated non-blank strings.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
@@ -101,7 +101,7 @@ def _require_uuid_list(
     reach the mutation service.
 
     Returns:
-        Tuple of the declared element types.
+        Tuple of the validated UUID-shaped strings.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.

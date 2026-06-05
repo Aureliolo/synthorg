@@ -1,8 +1,10 @@
 """Shared constants and helpers for the shutdown strategies.
 
-Holds the default grace/cleanup windows and the cooperative-exit
-counter used by ``FinishCurrentToolStrategy`` and
-``CheckpointAndStopStrategy``.
+``_DEFAULT_CLEANUP_SECONDS`` is the post-wait cancellation window used by
+all three strategies. ``_DEFAULT_GRACE_SECONDS`` is the cooperative grace
+window used only by ``CheckpointAndStopStrategy``. ``_count_cooperative_exits``
+tallies cooperative versus errored exits for ``FinishCurrentToolStrategy``
+and ``CheckpointAndStopStrategy``.
 """
 
 import asyncio

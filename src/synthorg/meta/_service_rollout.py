@@ -26,6 +26,10 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    # Deferred to break a genuine import cycle: synthorg.meta.config pulls in
+    # the config -> engine.coordination -> budget graph, which re-enters the
+    # service package that imports this mixin. PEP 649 keeps these resolvable
+    # for typing without the runtime import.
     from synthorg.meta.config import SelfImprovementConfig
     from synthorg.meta.protocol import ProposalApplier, RolloutStrategy
     from synthorg.meta.rollout.regression.composite import (
@@ -113,7 +117,7 @@ class SelfImprovementRolloutMixin:
         """Validate proposal status, applier, and strategy exist.
 
         Returns:
-            Tuple of the declared element types.
+            Tuple of the resolved (applier, rollout strategy) for the proposal.
 
         Raises:
             ValueError: Raised on the corresponding failure path.

@@ -2,8 +2,6 @@
 
 Each ``apply_*`` function takes the mutation, a persistence backend,
 and a :class:`VersionTracker`, returning a :class:`TaskMutationResult`.
-Extracted from ``task_engine.py`` to keep the main module focused on
-lifecycle, queue management, and the public API.
 """
 
 from datetime import UTC, datetime

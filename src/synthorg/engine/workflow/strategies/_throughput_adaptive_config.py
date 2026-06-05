@@ -220,26 +220,3 @@ def validate_window_key(config: Mapping[str, Any]) -> None:
             value=value,
         )
         raise ValueError(msg)
-
-
-def validate_bool_key(
-    config: Mapping[str, Any],
-    key: str,
-) -> None:
-    """Validate a boolean config key (strict).
-
-    Raises:
-        TypeError: When ``config[key]`` is present but not a bool.
-    """
-    value = config.get(key)
-    if value is None:
-        return
-    if not isinstance(value, bool):
-        msg = f"'{key}' must be a boolean, got {type(value).__name__}"
-        logger.warning(
-            SPRINT_STRATEGY_CONFIG_INVALID,
-            strategy="throughput_adaptive",
-            key=key,
-            value=value,
-        )
-        raise TypeError(msg)

@@ -81,9 +81,7 @@ class TestRubricGraderPromptContract:
         """
         import json
 
-        from synthorg.engine.quality.graders import (
-            _llm_prompt as _grader_module,
-        )
+        from synthorg.engine.quality.graders import _llm_prompt as _grader_module
 
         # Compose a deterministic, human-auditable surface payload
         # from the grader's pinned prompt + tool contract + config.

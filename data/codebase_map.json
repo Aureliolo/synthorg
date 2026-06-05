@@ -4307,7 +4307,7 @@
     },
     {
       "kind": "code",
-      "loc": 41,
+      "loc": 43,
       "loc_cap": 500,
       "module": "src/synthorg/engine/_shutdown_shared.py",
       "owning_feature": "engine"
@@ -6526,7 +6526,7 @@
     },
     {
       "kind": "code",
-      "loc": 442,
+      "loc": 440,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_apply.py",
       "owning_feature": "engine"
@@ -6883,7 +6883,7 @@
     },
     {
       "kind": "code",
-      "loc": 219,
+      "loc": 199,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/strategies/_throughput_adaptive_config.py",
       "owning_feature": "engine"
@@ -10264,7 +10264,7 @@
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 110,
       "loc_cap": 500,
       "module": "src/synthorg/meta/appliers/_code_validation.py",
       "owning_feature": "meta"
@@ -11069,7 +11069,7 @@
     },
     {
       "kind": "code",
-      "loc": 71,
+      "loc": 68,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/agents.py",
       "owning_feature": "meta"
@@ -11356,7 +11356,7 @@
     },
     {
       "kind": "code",
-      "loc": 57,
+      "loc": 54,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/memory.py",
       "owning_feature": "meta"

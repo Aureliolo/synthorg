@@ -21,7 +21,6 @@ the pipeline, including the internal model-swapping deploy stage),
 success.
 """
 
-import copy
 from collections.abc import Mapping
 from types import MappingProxyType
 
@@ -44,20 +43,18 @@ from synthorg.meta.mcp.handlers.memory_finetune import (
 )
 
 MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
-    copy.deepcopy(
-        {
-            "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
-            "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
-            "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
-            "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
-            "synthorg_memory_run_preflight": _memory_run_preflight,
-            "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
-            "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
-            "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
-            "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
-            "synthorg_memory_list_runs": _memory_list_runs,
-            "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
-            "synthorg_memory_delete_entry": _memory_delete_entry,
-        },
-    ),
+    {
+        "synthorg_memory_start_fine_tune": _memory_start_fine_tune,
+        "synthorg_memory_resume_fine_tune": _memory_resume_fine_tune,
+        "synthorg_memory_get_fine_tune_status": _memory_get_fine_tune_status,
+        "synthorg_memory_cancel_fine_tune": _memory_cancel_fine_tune,
+        "synthorg_memory_run_preflight": _memory_run_preflight,
+        "synthorg_memory_list_checkpoints": _memory_list_checkpoints,
+        "synthorg_memory_deploy_checkpoint": _memory_deploy_checkpoint,
+        "synthorg_memory_rollback_checkpoint": _memory_rollback_checkpoint,
+        "synthorg_memory_delete_checkpoint": _memory_delete_checkpoint,
+        "synthorg_memory_list_runs": _memory_list_runs,
+        "synthorg_memory_get_active_embedder": _memory_get_active_embedder,
+        "synthorg_memory_delete_entry": _memory_delete_entry,
+    }
 )

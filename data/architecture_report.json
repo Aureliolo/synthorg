@@ -536,8 +536,8 @@
     },
     "src/synthorg/engine/task_engine_apply.py": {
       "cap": 500,
-      "loc": 442,
-      "ratio": 0.884,
+      "loc": 440,
+      "ratio": 0.88,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/diff.py": {

@@ -5,7 +5,7 @@ description: Register a new MCP tool, define its typed args model, wire admin gu
 
 # Custom MCP Server Development
 
-SynthOrg's MCP surface exposes 200+ tools across 15 domain modules under `src/synthorg/meta/mcp/domains/`. Each tool is a `ToolHandler` with an optional `args_model` that drives the typed boundary. This guide shows how to register a hello-world tool, validate its arguments, and surface it to operators.
+SynthOrg's MCP surface exposes 200+ tools across 21 domain modules under `src/synthorg/meta/mcp/domains/`. Each tool is a `ToolHandler` with an optional `args_model` that drives the typed boundary. This guide shows how to register a hello-world tool, validate its arguments, and surface it to operators.
 
 ## Anatomy of a tool
 

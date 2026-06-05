@@ -31,6 +31,10 @@ from synthorg.observability.events.meta import (
 )
 
 if TYPE_CHECKING:
+    # Deferred to break a genuine import cycle: synthorg.meta.config pulls in
+    # the config -> engine.coordination -> budget graph, which re-enters the
+    # service package that imports this mixin. PEP 649 keeps these resolvable
+    # for typing without the runtime import.
     from synthorg.meta.chief_of_staff.outcome_store import (
         MemoryBackendOutcomeStore,
     )

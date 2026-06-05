@@ -8,6 +8,10 @@ plus the ``has_completion_gates`` query and the background-task drain.
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    # Deferred to break a genuine import cycle: these collaborators live in
+    # engine/security packages whose graph (via engine.coordination -> budget)
+    # re-enters the review-gate module that imports this mixin. PEP 649 keeps
+    # them resolvable for typing without the runtime import.
     from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam
     from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
     from synthorg.observability.background_tasks import BackgroundTaskRegistry

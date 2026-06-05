@@ -77,7 +77,7 @@ def _get_list_str(arguments: dict[str, Any], key: str) -> tuple[str, ...]:
     """Extract an optional sequence of strings; returns ``()`` when absent.
 
     Returns:
-        Tuple of the declared element types.
+        Tuple of the string values, or ``()`` when the key is absent.
 
     Raises:
         ArgumentValidationError: Raised on the corresponding failure path.
