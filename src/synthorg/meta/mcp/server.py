@@ -165,3 +165,8 @@ def reset_singletons() -> None:
     _invoker = None
     _dynamic_registry = None
     _gap_sink = None
+    from synthorg.meta.mcp.handlers.common import (  # noqa: PLC0415
+        _PENDING_GAP_TASKS,
+    )
+
+    _PENDING_GAP_TASKS.clear()

@@ -704,9 +704,16 @@ revalidation only.
 
 The red-team gate is an opt-in adversarial check that fires as the
 LAST step before a deliverable transitions IN_REVIEW -> COMPLETED,
-after the normal `ReviewPipeline` has returned PASS. It treats every
-about-to-ship artefact as untrusted input and attacks it along four
-locked surfaces:
+after the normal `ReviewPipeline` has returned PASS. It is also
+**stakes-gated**: it runs only when the task's `stakes` are at or above
+the configured `red_team_min_stakes` threshold (default `HIGH`), so the
+adversarial pass is reserved for consequential work and a low-stakes
+deliverable is not gated. A below-threshold task logs
+`RED_TEAM_GATE_SKIPPED` (reason `below_stakes_threshold`) and proceeds
+on the review pipeline's verdict. The `stakes` value is itself a
+documented heuristic signal (see [Stakes-aware routing](providers.md#stakes-aware-routing-orthogonal-layer)),
+not a security guarantee. It treats every about-to-ship artefact as
+untrusted input and attacks it along four locked surfaces:
 
 - CORRECTNESS: does the deliverable do what was asked.
 - SECURITY: input validation, secret handling, injection sinks, OWASP-style defects.
@@ -765,7 +772,12 @@ grounding implementation; the substrate checker degrades to the
 heuristic when no provider or knowledge service is wired.
 `on_missing_deliverable` (`"block"` default, or `"skip"`) governs the
 fail-closed vs fail-skip posture when no reviewable deliverable can be
-built for a completing task. The per-execution report repo is
+built for a completing task. `stakes_routing.red_team_min_stakes`
+(`HIGH` default) sets the stakes threshold at or above which the gate
+fires; the configured value is threaded onto `ReviewGateService` at
+startup (`set_red_team_min_stakes`) so a below-threshold completion
+skips the adversarial pass and logs `RED_TEAM_GATE_SKIPPED`. The
+per-execution report repo is
 also published on `SecurityStateSlice.red_team_reports` by the runtime
 wiring and read at receipt-build time, so a completed deliverable's
 `DeliverableReceipt.red_team` snapshots the run's findings; it degrades

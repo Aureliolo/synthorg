@@ -154,6 +154,16 @@ type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None
 """Async callback invoked when an agent's personality section is trimmed."""
 
 
+type BrainToolFactoryProvider = Callable[[], ProjectBrainToolFactory | None]
+"""Provider reading the live project-brain tool factory at per-task time.
+
+The memory-gated brain wires after the boot engine is built, so the engine
+resolves the factory through this provider (rather than capturing a ``None``
+at construction); it returns ``None`` until the brain is wired, or forever
+when it is disabled.
+"""
+
+
 class AgentEngine(
     AgentEngineChatActionMixin,
     AgentEngineContextMixin,
@@ -216,9 +226,7 @@ class AgentEngine(
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
-        brain_tool_factory_provider: (
-            Callable[[], ProjectBrainToolFactory | None] | None
-        ) = None,
+        brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,

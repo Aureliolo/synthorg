@@ -59,6 +59,7 @@ async def test_rejection_short_circuits_without_evaluating_gates() -> None:
         event="evt",
         approved=False,
         vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
     )
 
     assert (target, reason, event, approved) == (
@@ -91,6 +92,7 @@ async def test_gate_without_input_builder_is_inert() -> None:
         event=APPROVAL_GATE_REVIEW_COMPLETED,
         approved=True,
         vision_input=None,
+        red_team_min_stakes=Stakes.HIGH,
     )
 
     assert (target, approved) == (TaskStatus.COMPLETED, True)

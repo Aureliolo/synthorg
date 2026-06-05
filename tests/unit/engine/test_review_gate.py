@@ -1,6 +1,7 @@
 """Unit tests for ReviewGateService -- IN_REVIEW task transitions."""
 
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,8 +19,11 @@ from synthorg.engine.decisions import DecisionRecord
 from synthorg.engine.errors import SelfReviewError
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.review_gate_inputs import DeliverableReviewInputBuilder
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.redteam.models import (
     RedTeamGateResult,
     RedTeamReport,
@@ -29,6 +33,8 @@ from synthorg.security.redteam.models import (
 from synthorg.security.redteam.protocol import RedTeamGate
 from tests._shared import mock_of
 
+pytestmark = pytest.mark.unit
+
 
 def _make_mock_task_engine(
     return_value: TaskMutationResult | None = None,
@@ -36,17 +42,20 @@ def _make_mock_task_engine(
     task: Task | None = None,
 ) -> MagicMock:
     """Build a mock TaskEngine with configurable submit behavior."""
-    mock_te = MagicMock()
-    mock_te.submit = AsyncMock(
-        return_value=return_value
-        or TaskMutationResult(
-            request_id="test",
-            success=True,
-            version=1,
+    return cast(
+        MagicMock,
+        mock_of[TaskEngine](
+            submit=AsyncMock(
+                return_value=return_value
+                or TaskMutationResult(
+                    request_id="test",
+                    success=True,
+                    version=1,
+                ),
+            ),
+            get_task=AsyncMock(return_value=task),
         ),
     )
-    mock_te.get_task = AsyncMock(return_value=task)
-    return mock_te
 
 
 def _make_mock_decision_repo(
@@ -57,7 +66,6 @@ def _make_mock_decision_repo(
     ``append_with_next_version`` echoes the kwargs back as a record so
     tests can inspect the arguments the service passed in.
     """
-    repo = MagicMock()
 
     def _next_version_for(task_id: str) -> int:
         return (
@@ -83,29 +91,36 @@ def _make_mock_decision_repo(
             version=version,
         )
 
-    repo.append_with_next_version = AsyncMock(side_effect=_append)
-    repo.list_by_task = AsyncMock(return_value=existing)
-    repo.get = AsyncMock(return_value=None)
-    repo.list_by_agent = AsyncMock(return_value=())
-    return repo
+    return cast(
+        MagicMock,
+        mock_of[DecisionRepository](
+            append_with_next_version=AsyncMock(side_effect=_append),
+            list_by_task=AsyncMock(return_value=existing),
+            get=AsyncMock(return_value=None),
+            list_by_agent=AsyncMock(return_value=()),
+        ),
+    )
 
 
 def _make_mock_persistence(repo: MagicMock) -> MagicMock:
-    """Build a mock PersistenceBackend with a decision_records attribute.
+    """Build a mock PersistenceBackend exposing the decision/identity repos.
 
-    Each call builds a dedicated ``MagicMock`` instance and attaches
-    the repo directly to it.  Using ``type(persistence).decision_records
-    = PropertyMock(...)`` would mutate a class-level descriptor shared
+    Each call builds a dedicated autospec instance and attaches the repo
+    directly to it.  Using ``type(persistence).decision_records =
+    PropertyMock(...)`` would mutate a class-level descriptor shared
     across parallel tests and cause cross-test coupling under
     pytest-xdist; per-instance attribute assignment keeps each fake
     isolated.
     """
-    persistence = MagicMock()
-    persistence.decision_records = repo
     identity_versions = AsyncMock()
     identity_versions.get_latest_version.return_value = None
-    persistence.identity_versions = identity_versions
-    return persistence
+    return cast(
+        MagicMock,
+        mock_of[PersistenceBackend](
+            decision_records=repo,
+            identity_versions=identity_versions,
+        ),
+    )
 
 
 def _make_task(
@@ -132,7 +147,6 @@ def _make_task(
     )
 
 
-@pytest.mark.unit
 class TestReviewGateServiceApprove:
     """Tests for the approve flow."""
 
@@ -203,7 +217,6 @@ class TestReviewGateServiceApprove:
         assert "None" not in mutation.reason
 
 
-@pytest.mark.unit
 class TestReviewGateServiceSelfReview:
     """Tests for self-review prevention."""
 
@@ -333,7 +346,6 @@ class TestReviewGateServiceSelfReview:
         mock_te.submit.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestReviewGateServiceDecisionRecording:
     """Tests for decision record append on complete_review."""
 
@@ -591,7 +603,6 @@ class _RecordingReceiptSeam:
         return object()
 
 
-@pytest.mark.unit
 class TestReviewGateServiceReceiptSeam:
     """Tests for the deliverable-receipt build seam on completion."""
 
@@ -696,7 +707,6 @@ class TestReviewGateServiceReceiptSeam:
         assert len(seam.calls) == 1
 
 
-@pytest.mark.unit
 class TestDispatchCompletion:
     """Tests for ``dispatch_completion`` inline-vs-background routing."""
 
@@ -762,3 +772,37 @@ class TestDispatchCompletion:
         registry.spawn.assert_not_called()
         mock_te.submit.assert_awaited_once()
         assert mock_te.submit.call_args.args[0].target_status == TaskStatus.IN_PROGRESS
+
+    async def test_below_stakes_approve_runs_inline_despite_full_wiring(
+        self,
+    ) -> None:
+        """A below-threshold approve runs inline even with gate + registry.
+
+        The inline red-team evaluation only fires when the task's stakes
+        meet the configured ``red_team_min_stakes`` (default HIGH). A
+        NORMAL-stakes approve skips the gate, so backgrounding it would
+        defer a no-op; ``dispatch_completion`` instead runs it inline and
+        reports ``False`` rather than spawning a background task.
+        """
+        task = _make_task(stakes=Stakes.NORMAL)
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        registry = mock_of[BackgroundTaskRegistry](spawn=MagicMock())
+        service = ReviewGateService(
+            task_engine=mock_te,
+            persistence=_make_mock_persistence(repo),
+            red_team_gate=mock_of[RedTeamGate](evaluate=AsyncMock()),
+            background_tasks=registry,
+        )
+
+        dispatched = await service.dispatch_completion(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+
+        assert dispatched is False
+        registry.spawn.assert_not_called()
+        mock_te.submit.assert_awaited_once()
+        assert mock_te.submit.call_args.args[0].target_status == TaskStatus.COMPLETED

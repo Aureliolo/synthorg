@@ -72,6 +72,11 @@ class ToolsmithCycleScheduler:
                 f"interval_seconds must be >= {_MIN_INTERVAL_SECONDS} "
                 f"(got {interval_seconds})"
             )
+            logger.warning(
+                TOOLSMITH_CYCLE_SCHEDULER_FAILED,
+                error=msg,
+                note="invalid_config",
+            )
             raise ValueError(msg)
         self._service = service
         self._interval = interval_seconds

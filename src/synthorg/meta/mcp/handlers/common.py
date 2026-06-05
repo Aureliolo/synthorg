@@ -399,7 +399,30 @@ def _record_capability_gap(tool_name: str) -> None:
         sink.record_gap(NotBlankStr(tool_name), occurred_at=datetime.now(UTC)),
     )
     _PENDING_GAP_TASKS.add(task)
-    task.add_done_callback(_PENDING_GAP_TASKS.discard)
+    task.add_done_callback(_on_gap_task_done)
+
+
+def _on_gap_task_done(task: asyncio.Task[None]) -> None:
+    """Release the task reference and surface any failure safely.
+
+    The gap store swallows its own write errors today, but the
+    ``CapabilityGapSink`` protocol does not guarantee that, so an exception
+    must be retrieved here. Leaving it unretrieved lets asyncio log the task
+    with a full traceback whose frame-locals could serialise secrets; instead
+    it is logged via ``safe_error_description`` without a traceback so no
+    secret-bearing locals leak into the log.
+    """
+    _PENDING_GAP_TASKS.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(
+            MCP_HANDLER_CAPABILITY_GAP,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="gap_record_failed",
+        )
 
 
 def make_placeholder_handler(tool_name: str) -> ToolHandler:

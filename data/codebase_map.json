@@ -4328,7 +4328,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 650,
+      "loc": 655,
       "loc_cap": 700,
       "module": "src/synthorg/engine/agent_engine.py",
       "owning_feature": "engine"
@@ -11174,7 +11174,7 @@
     },
     {
       "kind": "code",
-      "loc": 362,
+      "loc": 382,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/common.py",
       "owning_feature": "meta"
@@ -11538,7 +11538,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/server.py",
       "owning_feature": "meta"
@@ -12021,7 +12021,7 @@
     },
     {
       "kind": "code",
-      "loc": 242,
+      "loc": 247,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/cycle_scheduler.py",
       "owning_feature": "toolsmith"
@@ -12105,7 +12105,7 @@
     },
     {
       "kind": "code",
-      "loc": 14,
+      "loc": 37,
       "loc_cap": 500,
       "module": "src/synthorg/meta/toolsmith/state.py",
       "owning_feature": "toolsmith"

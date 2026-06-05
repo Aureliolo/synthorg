@@ -62,7 +62,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     event: str,
     approved: bool,
     vision_input: VisionReviewInput | None,
-    red_team_min_stakes: Stakes = Stakes.HIGH,
+    red_team_min_stakes: Stakes,
 ) -> GateOutcome:
     """Run the red-team then vision gates before a COMPLETED transition.
 

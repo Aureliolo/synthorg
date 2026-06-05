@@ -298,7 +298,7 @@ class AgentEngineFactoriesMixin:
             if self._brain_tool_factory_provider is not None
             else None
         )
-        if brain_tool_factory is not None and project_id is not None:
+        if project_id is not None:
             from synthorg.project_brain.tool_registry import (  # noqa: PLC0415
                 registry_with_brain_tools,
             )

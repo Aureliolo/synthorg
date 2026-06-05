@@ -266,9 +266,12 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             # The inline red-team evaluation only runs when the task's stakes
             # meet the configured red_team_min_stakes; a below-threshold
             # approve skips the gate, so run it inline for an immediate
-            # transition rather than deferring a no-op to the background.
+            # transition rather than deferring a no-op to the background. A
+            # missing task also runs inline so complete_review re-fetches and
+            # raises TaskNotFoundError synchronously (the caller maps it to a
+            # 404) instead of swallowing it in a background task.
             task = await self._task_engine.get_task(task_id)
-            if task is not None and (
+            if task is None or (
                 compare_stakes(task.stakes, self._red_team_min_stakes) < 0
             ):
                 gated = False
