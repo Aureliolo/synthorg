@@ -42,6 +42,7 @@ class AgentEngineFactoriesMixin:
 
     _approval_store: Any
     _external_api_runtime: Any
+    _brain_tool_factory_provider: Any
     _parked_context_repo: Any
     _event_stream_hub: Any
     _interrupt_store: Any
@@ -260,14 +261,15 @@ class AgentEngineFactoriesMixin:
         identity: AgentIdentity,
         task_id: str | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
+        project_id: str | None = None,
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
 
         Returns:
             A :class:`ToolInvoker` wired with the registry (extended
-            with approval / external-API / memory tools when their
-            dependencies are wired); ``None`` when no tool registry
-            is configured.
+            with approval / external-API / project-brain / memory tools
+            when their dependencies are wired); ``None`` when no tool
+            registry is configured.
         """
         if self._tool_registry is None:
             return None
@@ -286,6 +288,27 @@ class AgentEngineFactoriesMixin:
             task_id=task_id,
             effective_autonomy=effective_autonomy,
         )
+        # The brain tool factory is wired late (memory-gated
+        # ``_wire_project_brain`` runs after the boot engine is built), so it
+        # is resolved through a provider at per-task time rather than captured
+        # at construction; ``None`` until the brain is wired (or forever when
+        # the brain is disabled), in which case no brain tools are added.
+        brain_tool_factory = (
+            self._brain_tool_factory_provider()
+            if self._brain_tool_factory_provider is not None
+            else None
+        )
+        if brain_tool_factory is not None and project_id is not None:
+            from synthorg.project_brain.tool_registry import (  # noqa: PLC0415
+                registry_with_brain_tools,
+            )
+
+            registry = registry_with_brain_tools(
+                registry,
+                brain_tool_factory,
+                project_id=project_id,
+                author_agent_id=str(identity.id),
+            )
         if self._memory_injection_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415
                 registry_with_memory_tools,

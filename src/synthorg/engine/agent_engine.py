@@ -113,6 +113,7 @@ if TYPE_CHECKING:
         ParkedContextRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
@@ -215,6 +216,9 @@ class AgentEngine(
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
+        brain_tool_factory_provider: (
+            Callable[[], ProjectBrainToolFactory | None] | None
+        ) = None,
         stakes_router: StakesRouter | None = None,
         flight_recorder_sink: FlightRecorderSink | None = None,
         clock: Clock | None = None,
@@ -238,6 +242,7 @@ class AgentEngine(
         self._model_resolver = model_resolver
         self._approval_store = approval_store
         self._external_api_runtime = external_api_runtime
+        self._brain_tool_factory_provider = brain_tool_factory_provider
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the
@@ -524,6 +529,7 @@ class AgentEngine(
                     identity,
                     task_id=task_id,
                     effective_autonomy=effective_autonomy,
+                    project_id=task.project,
                 )
                 ctx, system_prompt = await self._prepare_context(
                     identity=identity,

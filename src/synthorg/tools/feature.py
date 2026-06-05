@@ -26,6 +26,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "SSIMDiffer",
         "WorkspaceBaselineStore",
         "DesktopTool",
+        "ExternalApiTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy",

@@ -5,6 +5,7 @@ persistence-less dev boot (or an empty company) starts cleanly instead of
 crashing. They are threaded into ``_construct_agent_engine``.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from synthorg.engine.flight_recording import (
@@ -13,11 +14,13 @@ from synthorg.engine.flight_recording import (
 )
 from synthorg.engine.intervention import SteeringInbox, build_steering_inbox
 from synthorg.persistence.state import PersistenceStateSlice
+from synthorg.project_brain.state import ProjectBrainStateSlice
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.state import config_resolver_of
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 
 _COCKPIT_NS: str = SettingNamespace.COCKPIT.value
 _FR_ENABLED_KEY: str = "flight_recorder_enabled"
@@ -39,6 +42,28 @@ def boot_steering_inbox(app_state: AppState) -> SteeringInbox | None:
     if backend is None:
         return None
     return build_steering_inbox(backend.project_brain)
+
+
+def boot_brain_tool_factory_provider(
+    app_state: AppState,
+) -> Callable[[], ProjectBrainToolFactory | None]:
+    """Return a provider reading the live project-brain tool factory.
+
+    The memory-gated project brain wires after the boot ``AgentEngine`` is
+    built, so the engine resolves the factory through this provider at
+    per-task tool-invoker time rather than capturing a ``None`` at
+    construction. The provider returns ``None`` until the brain is wired (or
+    forever when it is disabled), in which case no brain tools are added.
+
+    Returns:
+        A zero-arg callable returning the current ``ProjectBrainToolFactory``
+        from app state, or ``None`` when the brain is not wired.
+    """
+
+    def _provider() -> ProjectBrainToolFactory | None:
+        return app_state.slice(ProjectBrainStateSlice).tool_factory
+
+    return _provider
 
 
 async def build_boot_flight_recorder_sink(app_state: AppState) -> FlightRecorderSink:

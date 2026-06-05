@@ -9,6 +9,7 @@ from synthorg.core.enums import (
     AutonomyLevel,
     DecisionOutcome,
     Priority,
+    Stakes,
     TaskStatus,
     TaskType,
 )
@@ -113,6 +114,7 @@ def _make_task(
     assigned_to: str | None = "alice",
     criteria: tuple[str, ...] = ("Login works", "Tests pass"),
     status: TaskStatus = TaskStatus.IN_REVIEW,
+    stakes: Stakes = Stakes.NORMAL,
 ) -> Task:
     """Build a Task with configurable fields."""
     return Task(
@@ -125,6 +127,7 @@ def _make_task(
         created_by="manager",
         assigned_to=assigned_to,
         status=status,
+        stakes=stakes,
         acceptance_criteria=tuple(AcceptanceCriterion(description=c) for c in criteria),
     )
 
@@ -388,7 +391,9 @@ class TestReviewGateServiceDecisionRecording:
         task-history transition. The decision reason must track the gate's
         block reason, matching what the pipeline path already records.
         """
-        task = _make_task()
+        # HIGH stakes so the stakes-gated red-team review fires (the gate is
+        # reserved for work at or above the configured red_team_min_stakes).
+        task = _make_task(stakes=Stakes.HIGH)
         mock_te = _make_mock_task_engine(task=task)
         repo = _make_mock_decision_repo()
         block_result = RedTeamGateResult(

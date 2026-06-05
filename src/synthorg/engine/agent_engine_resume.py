@@ -175,6 +175,7 @@ class AgentEngineResumeMixin:
             identity,
             task_id=task_id,
             effective_autonomy=effective_autonomy,
+            project_id=task.project,
         )
         currency = (
             self._budget_enforcer.currency

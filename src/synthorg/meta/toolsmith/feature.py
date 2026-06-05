@@ -28,6 +28,8 @@ FEATURE: FeatureModule = FeatureManifest(
         "ToolCreationApplier",
         "DynamicToolRegistry",
         "install_dynamic_tool_layer",
+        "install_capability_gap_sink",
+        "ToolsmithCycleScheduler",
     ),
     depends_on=(),
 )

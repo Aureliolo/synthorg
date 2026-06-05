@@ -217,6 +217,15 @@ async def _run_shutdown(  # noqa: PLR0913
             API_APP_SHUTDOWN,
             "Failed to stop tunnel provider",
         )
+    from synthorg.meta.toolsmith.state import ToolsmithStateSlice  # noqa: PLC0415
+
+    toolsmith = app_state.slice(ToolsmithStateSlice)
+    if toolsmith.cycle_scheduler is not None:
+        await _try_stop(
+            toolsmith.cycle_scheduler.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop toolsmith cycle scheduler",
+        )
     # Stop every cached rate-limit coordinator and clear the module-level
     # factory so background poll tasks and bus subscriptions cannot outlive the
     # app (matters for hot-reload / test teardown where ``create_app`` runs

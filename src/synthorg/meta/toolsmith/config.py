@@ -70,6 +70,9 @@ class ToolsmithConfig(BaseModel):
             recur within the window before a proposal is triggered.
         gap_window_hours: Sliding window for gap recurrence aggregation.
         gap_buffer_size: Ring-buffer capacity for raw gap observations.
+        cycle_interval_seconds: Cadence of the autonomous detection cycle;
+            the periodic scheduler polls for recurring gaps this often and
+            proposes new tools without waiting for a manual trigger.
         allowed_capabilities: Capability tags (``domain:action``) the org
             may author tools for; empty denies all.
         service_access_capabilities: Capability tags that require internal
@@ -88,6 +91,7 @@ class ToolsmithConfig(BaseModel):
     gap_recurrence_threshold: int = Field(default=3, ge=2)
     gap_window_hours: int = Field(default=24, ge=1)
     gap_buffer_size: int = Field(default=512, ge=16)
+    cycle_interval_seconds: float = Field(default=3600.0, ge=60.0)
     allowed_capabilities: tuple[NotBlankStr, ...] = ()
     service_access_capabilities: tuple[NotBlankStr, ...] = ()
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER

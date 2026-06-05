@@ -49,3 +49,9 @@ TOOLSMITH_SERVICE_WIRED: Final[str] = "toolsmith.service.wired"
 TOOLSMITH_SERVICE_UNAVAILABLE: Final[str] = "toolsmith.service.unavailable"
 TOOLSMITH_CYCLE_STARTED: Final[str] = "toolsmith.cycle.started"
 TOOLSMITH_CYCLE_COMPLETED: Final[str] = "toolsmith.cycle.completed"
+
+# Autonomous cycle scheduler (periodic detect -> propose driver)
+TOOLSMITH_CYCLE_SCHEDULER_STARTED: Final[str] = "toolsmith.cycle_scheduler.started"
+TOOLSMITH_CYCLE_SCHEDULER_STOPPED: Final[str] = "toolsmith.cycle_scheduler.stopped"
+TOOLSMITH_CYCLE_SCHEDULER_FAILED: Final[str] = "toolsmith.cycle_scheduler.failed"
+TOOLSMITH_CYCLE_SCHEDULER_RAN: Final[str] = "toolsmith.cycle_scheduler.ran"

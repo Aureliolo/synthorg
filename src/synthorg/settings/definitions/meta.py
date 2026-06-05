@@ -77,6 +77,23 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.META,
+        key="toolsmith_cycle_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the toolsmith autonomous detection cycle. When"
+            " True the periodic scheduler stays resident but every tick"
+            " short-circuits, so the org stops proposing new tools without a"
+            " restart -- used to halt self-extension during an incident."
+        ),
+        group="Self-Improvement",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.META,
         key="scorecard_history_dir",
         type=SettingType.STRING,
         default="",

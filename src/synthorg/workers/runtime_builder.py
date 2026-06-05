@@ -85,6 +85,7 @@ from synthorg.tools.sandbox.factory import (
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers._agent_engine_collaborators import (
+    boot_brain_tool_factory_provider,
     boot_steering_inbox,
     build_boot_flight_recorder_sink,
 )
@@ -452,12 +453,10 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
-    A single instance is shared by the worker execution service and the
-    coordinator's parallel executor so both consumers observe the same
-    interrupt store, event stream hub, and clock seam. The same
-    ``coordination_metrics_collector`` is shared too, so single-agent
-    runs accumulate the baselines the multi-agent metrics compare
-    against.
+    A single boot instance is shared by the worker execution service and the
+    coordinator's parallel executor, so both observe the same interrupt store,
+    event stream hub, clock seam, and shared ``coordination_metrics_collector``
+    (the source of the single-agent baselines the multi-agent metrics compare).
 
     Returns:
         The boot ``AgentEngine`` shared by the worker execution service
@@ -490,6 +489,7 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         event_stream_hub=app_state.slice(CommunicationStateSlice).event_stream_hub,
         interrupt_store=app_state.slice(CommunicationStateSlice).interrupt_store,
         external_api_runtime=external_api_runtime,
+        brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
         flight_recorder_sink=flight_recorder_sink,
         steering_inbox=boot_steering_inbox(app_state),
         clock=app_state.clock,

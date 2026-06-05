@@ -1125,6 +1125,7 @@
         "SSIMDiffer",
         "WorkspaceBaselineStore",
         "DesktopTool",
+        "ExternalApiTool",
         "build_structure_map_tool_factory",
         "QueryStructureMapTool",
         "create_lifecycle_strategy"
@@ -1155,14 +1156,17 @@
         "SandboxBriefRunner",
         "ToolCreationApplier",
         "DynamicToolRegistry",
-        "install_dynamic_tool_layer"
+        "install_dynamic_tool_layer",
+        "install_capability_gap_sink",
+        "ToolsmithCycleScheduler"
       ],
       "mcp_tool_names": [],
       "name": "toolsmith",
       "protocol_exports": [],
       "settings_namespace": null,
       "state_slice_fields": [
-        "service"
+        "service",
+        "cycle_scheduler"
       ]
     },
     {
@@ -1195,6 +1199,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-05T14:50:32.062022Z",
+  "generated_at": "2026-06-05T19:04:06.345916Z",
   "schema_version": 1
 }

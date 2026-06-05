@@ -7,6 +7,8 @@ plus the ``has_completion_gates`` query and the background-task drain.
 
 from typing import TYPE_CHECKING, Any, Literal
 
+from synthorg.core.enums import Stakes
+
 if TYPE_CHECKING:
     # Deferred to break a genuine import cycle: these collaborators live in
     # engine/security packages whose graph (via engine.coordination -> budget)
@@ -31,6 +33,7 @@ class ReviewGateWiringMixin:
     _red_team_input_builder: Any
     _background_tasks: Any
     _red_team_on_missing_deliverable: Any
+    _red_team_min_stakes: Any
 
     def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
         """Attach the receipt service after construction (boot wiring seam)."""
@@ -103,6 +106,17 @@ class ReviewGateWiringMixin:
         un-inspectable deliverable), ``"skip"`` allows completion.
         """
         self._red_team_on_missing_deliverable = policy
+
+    def set_red_team_min_stakes(self, min_stakes: Stakes) -> None:
+        """Set the lowest task stakes that trigger the red-team gate.
+
+        Mirrors ``StakesRoutingConfig.red_team_min_stakes`` so the gate fires
+        on exactly the work the routing layer marks ``red_team_required``: an
+        approved completion below this stakes level skips the adversarial
+        review. Sharing one configured threshold keeps routing and gating
+        from drifting apart.
+        """
+        self._red_team_min_stakes = min_stakes
 
     def has_completion_gates(self) -> bool:
         """Return whether any adversarial completion gate is configured.

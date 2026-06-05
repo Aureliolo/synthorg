@@ -300,5 +300,26 @@ async def wire_toolsmith(
             error=safe_error_description(exc),
         )
         return
-    app_state.swap_slice(ToolsmithStateSlice(service=runtime.service))
+    # Route every unfulfilled-capability MCP envelope into the service's gap
+    # store so a recurring gap is observed, then start the periodic detection
+    # cycle so the org proposes new tools automatically rather than only on a
+    # manual trigger.
+    from synthorg.meta.mcp.server import (  # noqa: PLC0415
+        install_capability_gap_sink,
+    )
+    from synthorg.meta.toolsmith.cycle_scheduler import (  # noqa: PLC0415
+        ToolsmithCycleScheduler,
+    )
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    install_capability_gap_sink(runtime.service)
+    scheduler = ToolsmithCycleScheduler(
+        runtime.service,
+        interval_seconds=si_config.toolsmith.cycle_interval_seconds,
+        config_resolver=config_resolver_of(app_state),
+    )
+    await scheduler.start()
+    app_state.swap_slice(
+        ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
+    )
     logger.info(API_APP_STARTUP, service="toolsmith", note="wired")

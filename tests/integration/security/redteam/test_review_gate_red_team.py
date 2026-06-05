@@ -17,7 +17,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel, Priority, TaskStatus, TaskType
+from synthorg.core.enums import (
+    AutonomyLevel,
+    Priority,
+    Stakes,
+    TaskStatus,
+    TaskType,
+)
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.engine.review import (
     ReviewPipeline,
@@ -57,6 +63,9 @@ def _task() -> Task:
         created_by="alice",
         assigned_to="agent-backend",
         status=TaskStatus.IN_REVIEW,
+        # HIGH stakes so the stakes-gated red-team review fires; the gate is
+        # reserved for work at or above red_team_min_stakes (default HIGH).
+        stakes=Stakes.HIGH,
         acceptance_criteria=(
             AcceptanceCriterion(description="Login endpoint exposed."),
             AcceptanceCriterion(description="Password reset endpoint exposed."),
