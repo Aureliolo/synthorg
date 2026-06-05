@@ -1,14 +1,19 @@
-"""SQLite-backed org fact repository with MVCC (append-only log + snapshot)."""
+# module-kind: repository
+"""SQLite-backed org fact repository with MVCC (append-only log + snapshot).
+
+Row <-> model marshalling is shared with the Postgres sibling via
+:mod:`synthorg.persistence._shared.org_fact_marshalling`; the
+point-in-time ``snapshot_at`` query lives in
+:mod:`synthorg.persistence.sqlite._org_fact_sql`.
+"""
 
 import contextlib
-import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
 import aiosqlite
-from pydantic import ValidationError
 
 from synthorg.core.enums import (
     AutonomyLevel,
@@ -33,190 +38,22 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_MVCC_RETRACT_APPENDED,
     ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
     ORG_MEMORY_QUERY_FAILED,
-    ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    coerce_row_timestamp,
-    format_iso_utc,
-    validate_pagination_args,
+from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence._shared.org_fact_marshalling import (
+    row_to_operation_log_entry,
+    row_to_snapshot,
+    snapshot_row_to_org_fact,
+    tags_from_json,
+    tags_to_json,
 )
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
+from synthorg.persistence.sqlite._org_fact_sql import SNAPSHOT_AT_SQL
 from synthorg.persistence.sqlite._shared import WriteContext
 
 logger = get_logger(__name__)
-
-
-def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
-    """Serialize tags tuple to sorted JSON array.
-
-    Returns:
-        Result of type ``str``.
-    """
-    return json.dumps(sorted(tags))
-
-
-def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
-    """Deserialize JSON array to tags tuple.
-
-    Returns:
-        The matching collection.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    parsed = json.loads(raw)
-    if not isinstance(parsed, list):
-        msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
-        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
-        raise OrgMemoryQueryError(msg)
-    if any(not isinstance(t, str) or not t.strip() for t in parsed):
-        msg = "Tags must be a JSON array of non-blank strings"
-        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
-        raise OrgMemoryQueryError(msg)
-    return tuple(NotBlankStr(t) for t in parsed)
-
-
-def _snapshot_row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a snapshot row.
-
-    Returns:
-        Result of type ``OrgFact``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        created_at = coerce_row_timestamp(row["created_at"])
-        author = OrgFactAuthor(
-            agent_id=row["author_agent_id"],
-            seniority=(
-                SeniorityLevel(row["author_seniority"])
-                if row["author_seniority"]
-                else None
-            ),
-            autonomy_level=(
-                AutonomyLevel(row["author_autonomy_level"])
-                if row["author_autonomy_level"]
-                else None
-            ),
-            is_human=bool(row["author_is_human"]),
-        )
-        return OrgFact(
-            id=row["fact_id"],
-            content=row["content"],
-            category=OrgFactCategory(row["category"]),
-            tags=_tags_from_json(row["tags"]),
-            author=author,
-            created_at=created_at,
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize snapshot row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
-
-
-def _row_to_operation_log_entry(row: aiosqlite.Row) -> OperationLogEntry:
-    """Reconstruct an ``OperationLogEntry`` from a database row.
-
-    Returns:
-        Result of type ``OperationLogEntry``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        return OperationLogEntry(
-            operation_id=row["operation_id"],
-            fact_id=row["fact_id"],
-            operation_type=row["operation_type"],
-            content=row["content"],
-            category=(OrgFactCategory(row["category"]) if row["category"] else None),
-            tags=_tags_from_json(row["tags"]),
-            author_agent_id=row["author_agent_id"],
-            author_seniority=(
-                SeniorityLevel(row["author_seniority"])
-                if row["author_seniority"]
-                else None
-            ),
-            author_is_human=bool(row["author_is_human"]),
-            author_autonomy_level=(
-                AutonomyLevel(row["author_autonomy_level"])
-                if row["author_autonomy_level"]
-                else None
-            ),
-            timestamp=coerce_row_timestamp(row["timestamp"]),
-            version=row["version"],
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize operation log row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
-
-
-def _row_to_snapshot(row: aiosqlite.Row) -> OperationLogSnapshot:
-    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
-
-    Returns:
-        Result of type ``OperationLogSnapshot``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        op_type: str = row["operation_type"]
-        retracted_at = (
-            coerce_row_timestamp(row["timestamp"]) if op_type == "RETRACT" else None
-        )
-        created_at_raw: str | None = row["created_at"]
-        if created_at_raw is None:
-            created_at = coerce_row_timestamp(row["timestamp"])
-        else:
-            created_at = coerce_row_timestamp(created_at_raw)
-        return OperationLogSnapshot(
-            fact_id=row["fact_id"],
-            content=row["content"],
-            category=OrgFactCategory(row["category"]),
-            tags=_tags_from_json(row["tags"]),
-            created_at=created_at,
-            retracted_at=retracted_at,
-            version=row["version"],
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize snapshot_at row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
 
 
 class SQLiteOrgFactRepository:
@@ -286,7 +123,7 @@ class SQLiteOrgFactRepository:
                 fact_id,
                 operation_type,
                 content,
-                _tags_to_json(tags),
+                tags_to_json(tags),
                 author_agent_id,
                 (author_seniority.value if author_seniority else None),
                 int(author_is_human),
@@ -313,7 +150,7 @@ class SQLiteOrgFactRepository:
         # ``try`` block, so we never strand a ``BEGIN IMMEDIATE``
         # transaction holding the write lock.
         created_at_iso = format_iso_utc(fact.created_at)
-        tags_json = _tags_to_json(fact.tags)
+        tags_json = tags_to_json(fact.tags)
         async with self._write_context():
             try:
                 await db.execute("BEGIN IMMEDIATE")
@@ -425,7 +262,7 @@ class SQLiteOrgFactRepository:
                     category=(
                         OrgFactCategory(row["category"]) if row["category"] else None
                     ),
-                    tags=_tags_from_json(row["tags"]),
+                    tags=tags_from_json(row["tags"]),
                     author_agent_id=author.agent_id,
                     author_seniority=author.seniority,
                     author_is_human=author.is_human,
@@ -484,7 +321,7 @@ class SQLiteOrgFactRepository:
             raise OrgMemoryQueryError(msg) from exc
         if row is None:
             return None
-        return _snapshot_row_to_org_fact(row)
+        return snapshot_row_to_org_fact(row)
 
     async def query(
         self,
@@ -544,7 +381,7 @@ class SQLiteOrgFactRepository:
             )
             msg = f"Failed to query org facts: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
+        return tuple(snapshot_row_to_org_fact(row) for row in rows)
 
     async def list_by_category(
         self,
@@ -589,7 +426,7 @@ class SQLiteOrgFactRepository:
             )
             msg = f"Failed to list org facts by category: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
+        return tuple(snapshot_row_to_org_fact(row) for row in rows)
 
     async def snapshot_at(
         self,
@@ -617,53 +454,9 @@ class SQLiteOrgFactRepository:
         limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
         db = self._db
         query_ts = format_iso_utc(timestamp)
-        sql = """\
-WITH latest_ops AS (
-    SELECT fact_id, operation_type, content, tags, category,
-           timestamp, version,
-           ROW_NUMBER() OVER (
-               PARTITION BY fact_id ORDER BY version DESC
-           ) AS rn
-    FROM org_facts_operation_log
-    WHERE timestamp <= ?
-)
-SELECT lo.fact_id, lo.operation_type,
-       COALESCE(lo.content,
-           (SELECT p.content FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= ?
-            ORDER BY p.version DESC LIMIT 1)
-       ) AS content,
-       COALESCE(lo.category,
-           (SELECT p.category FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= ?
-            ORDER BY p.version DESC LIMIT 1)
-       ) AS category,
-       COALESCE(
-           CASE WHEN lo.operation_type = 'PUBLISH' THEN lo.tags END,
-           (SELECT p.tags FROM org_facts_operation_log p
-            WHERE p.fact_id = lo.fact_id
-              AND p.operation_type = 'PUBLISH'
-              AND p.timestamp <= ?
-            ORDER BY p.version DESC LIMIT 1)
-       ) AS tags,
-       lo.version, lo.timestamp,
-       (SELECT MIN(timestamp)
-        FROM org_facts_operation_log
-        WHERE fact_id = lo.fact_id
-          AND operation_type = 'PUBLISH'
-          AND timestamp <= ?) AS created_at
-FROM latest_ops lo
-WHERE lo.rn = 1
-ORDER BY lo.fact_id
-LIMIT ? OFFSET ?
-"""
         try:
             cursor = await db.execute(
-                sql,
+                SNAPSHOT_AT_SQL,
                 (query_ts, query_ts, query_ts, query_ts, query_ts, limit, offset),
             )
             rows = await cursor.fetchall()
@@ -679,7 +472,7 @@ LIMIT ? OFFSET ?
             )
             raise OrgMemoryQueryError(msg) from exc
         else:
-            result = tuple(_row_to_snapshot(row) for row in rows)
+            result = tuple(row_to_snapshot(row) for row in rows)
             logger.debug(
                 ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
                 timestamp=query_ts,
@@ -727,10 +520,13 @@ LIMIT ? OFFSET ?
             msg = f"Failed to get operation log for {fact_id}: {safe_error_description(exc)}"  # noqa: E501
             raise OrgMemoryQueryError(msg) from exc
         else:
-            result = tuple(_row_to_operation_log_entry(row) for row in rows)
+            result = tuple(row_to_operation_log_entry(row) for row in rows)
             logger.debug(
                 ORG_MEMORY_MVCC_LOG_QUERIED,
                 fact_id=fact_id,
                 count=len(result),
             )
             return result
+
+
+__all__ = ["SQLiteOrgFactRepository"]

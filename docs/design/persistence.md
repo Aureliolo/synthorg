@@ -103,10 +103,14 @@ The dialect-specific subdirectories share a third sibling at
 ``src/synthorg/persistence/_shared/``.  This is the canonical home for
 backend-agnostic serialisation, deserialisation, error-classification,
 and timestamp-normalisation logic that both SQLite and Postgres repos
-would otherwise duplicate (current modules: ``audit.py``,
-``custom_rule.py``, ``datetime_marshaller.py`` exposing the strict ISO
-8601 pair ``parse_iso_utc`` / ``format_iso_utc``, plus the shared
-``normalize_utc`` helper exported from ``__init__.py``).  Backend repos
+would otherwise duplicate (modules: ``audit.py``, ``custom_rule.py``,
+``datetime_marshaller.py`` exposing the strict ISO 8601 pair
+``parse_iso_utc`` / ``format_iso_utc`` plus the shared ``normalize_utc``
+helper exported from ``__init__.py``, ``pagination.py``, the ``RowLike``
+row protocol in ``rows.py``, and per-aggregate row<->model marshalling
+modules ``charter_marshalling.py`` / ``cost_forecast_marshalling.py`` /
+``org_fact_marshalling.py`` / ``workflow_definition_marshalling.py`` /
+``workflow_execution_marshalling.py``).  Backend repos
 pass driver-specific bits (SQL
 placeholder style, JSON wrappers, predicates that classify duplicate-key
 errors) into the helpers as callables, so the helpers stay portable and

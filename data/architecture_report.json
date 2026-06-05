@@ -818,8 +818,8 @@
     },
     "src/synthorg/meta/appliers/code_applier.py": {
       "cap": 500,
-      "loc": 433,
-      "ratio": 0.866,
+      "loc": 435,
+      "ratio": 0.87,
       "tier": "code"
     },
     "src/synthorg/meta/chief_of_staff/group_chat.py": {
@@ -932,14 +932,8 @@
     },
     "src/synthorg/persistence/migrations.py": {
       "cap": 500,
-      "loc": 665,
-      "ratio": 1.33,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/approval_repo.py": {
-      "cap": 500,
-      "loc": 652,
-      "ratio": 1.304,
+      "loc": 413,
+      "ratio": 0.826,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/audit_repository.py": {
@@ -948,29 +942,17 @@
       "ratio": 0.826,
       "tier": "code"
     },
-    "src/synthorg/persistence/postgres/charter_repo.py": {
-      "cap": 500,
-      "loc": 551,
-      "ratio": 1.102,
-      "tier": "code"
-    },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
-      "loc": 459,
-      "ratio": 0.918,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/cost_forecast_repo.py": {
-      "cap": 500,
-      "loc": 518,
-      "ratio": 1.036,
+      "loc": 466,
+      "ratio": 0.932,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/escalation_repo.py": {
       "cap": 500,
-      "loc": 567,
-      "ratio": 1.134,
-      "tier": "code"
+      "loc": 478,
+      "ratio": 0.956,
+      "tier": "repository"
     },
     "src/synthorg/persistence/postgres/hr_repositories.py": {
       "cap": 500,
@@ -986,9 +968,9 @@
     },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 677,
-      "ratio": 1.354,
-      "tier": "code"
+      "loc": 487,
+      "ratio": 0.974,
+      "tier": "repository"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
       "cap": 500,
@@ -1000,18 +982,6 @@
       "cap": 500,
       "loc": 414,
       "ratio": 0.828,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/settings_repo.py": {
-      "cap": 500,
-      "loc": 545,
-      "ratio": 1.09,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/postgres/subworkflow_repo.py": {
-      "cap": 500,
-      "loc": 655,
-      "ratio": 1.31,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/tool_blueprint_repo.py": {
@@ -1040,44 +1010,26 @@
     },
     "src/synthorg/persistence/postgres/workflow_definition_repo.py": {
       "cap": 500,
-      "loc": 548,
-      "ratio": 1.096,
-      "tier": "code"
+      "loc": 481,
+      "ratio": 0.962,
+      "tier": "repository"
     },
     "src/synthorg/persistence/postgres/workflow_execution_repo.py": {
       "cap": 500,
-      "loc": 541,
-      "ratio": 1.082,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/sqlite/charter_repo.py": {
-      "cap": 500,
-      "loc": 577,
-      "ratio": 1.154,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/sqlite/conversation_repo.py": {
-      "cap": 500,
-      "loc": 530,
-      "ratio": 1.06,
-      "tier": "code"
+      "loc": 469,
+      "ratio": 0.938,
+      "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/cost_forecast_repo.py": {
       "cap": 500,
-      "loc": 552,
-      "ratio": 1.104,
-      "tier": "code"
+      "loc": 409,
+      "ratio": 0.818,
+      "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/escalation_repo.py": {
       "cap": 500,
       "loc": 432,
       "ratio": 0.864,
-      "tier": "code"
-    },
-    "src/synthorg/persistence/sqlite/fine_tune_repo.py": {
-      "cap": 500,
-      "loc": 670,
-      "ratio": 1.34,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/hr_repositories.py": {
@@ -1094,9 +1046,9 @@
     },
     "src/synthorg/persistence/sqlite/org_fact_repo.py": {
       "cap": 500,
-      "loc": 667,
-      "ratio": 1.334,
-      "tier": "code"
+      "loc": 478,
+      "ratio": 0.956,
+      "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
       "cap": 500,
@@ -1148,15 +1100,15 @@
     },
     "src/synthorg/persistence/sqlite/workflow_definition_repo.py": {
       "cap": 500,
-      "loc": 576,
-      "ratio": 1.152,
-      "tier": "code"
+      "loc": 474,
+      "ratio": 0.948,
+      "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/workflow_execution_repo.py": {
       "cap": 500,
-      "loc": 573,
-      "ratio": 1.146,
-      "tier": "code"
+      "loc": 492,
+      "ratio": 0.984,
+      "tier": "repository"
     },
     "src/synthorg/project_brain/service.py": {
       "cap": 600,
@@ -1420,24 +1372,24 @@
     "synthorg.communication.bus_protocol": 30,
     "synthorg.communication.enums": 29,
     "synthorg.communication.errors": 23,
-    "synthorg.communication.mcp_errors": 26,
+    "synthorg.communication.mcp_errors": 25,
     "synthorg.communication.message": 29,
     "synthorg.communication.state": 20,
     "synthorg.config.schema": 59,
     "synthorg.core.agent": 150,
-    "synthorg.core.approval": 33,
+    "synthorg.core.approval": 35,
     "synthorg.core.auth.models": 27,
     "synthorg.core.auth.roles": 25,
     "synthorg.core.clock": 153,
-    "synthorg.core.critical_errors": 463,
+    "synthorg.core.critical_errors": 469,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 489,
+    "synthorg.core.enums": 492,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.normalization": 73,
-    "synthorg.core.persistence_errors": 179,
+    "synthorg.core.persistence_errors": 191,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
-    "synthorg.core.types": 1048,
+    "synthorg.core.types": 1052,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 79,
@@ -1445,7 +1397,7 @@
     "synthorg.engine.prompt_safety": 66,
     "synthorg.engine.state": 36,
     "synthorg.engine.task_engine": 33,
-    "synthorg.engine.workflow.definition": 35,
+    "synthorg.engine.workflow.definition": 37,
     "synthorg.hr.enums": 22,
     "synthorg.hr.performance.models": 47,
     "synthorg.hr.performance.tracker": 26,
@@ -1461,19 +1413,19 @@
     "synthorg.memory.errors": 20,
     "synthorg.memory.models": 66,
     "synthorg.memory.protocol": 63,
-    "synthorg.meta.chief_of_staff.models": 29,
+    "synthorg.meta.chief_of_staff.models": 30,
     "synthorg.meta.config": 20,
-    "synthorg.meta.mcp.errors": 54,
+    "synthorg.meta.mcp.errors": 55,
     "synthorg.meta.mcp.handler_protocol": 45,
-    "synthorg.meta.mcp.handlers.common": 53,
-    "synthorg.meta.mcp.handlers.common_args": 48,
+    "synthorg.meta.mcp.handlers.common": 52,
+    "synthorg.meta.mcp.handlers.common_args": 47,
     "synthorg.meta.mcp.handlers.common_logging": 48,
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1461,
+    "synthorg.observability": 1475,
     "synthorg.observability.background_tasks": 20,
-    "synthorg.observability.events.api": 146,
+    "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
     "synthorg.observability.events.client": 22,
     "synthorg.observability.events.communication": 25,
@@ -1482,26 +1434,27 @@
     "synthorg.observability.events.execution": 38,
     "synthorg.observability.events.hr": 36,
     "synthorg.observability.events.integrations": 55,
-    "synthorg.observability.events.mcp": 61,
-    "synthorg.observability.events.memory": 45,
+    "synthorg.observability.events.mcp": 60,
+    "synthorg.observability.events.memory": 46,
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
-    "synthorg.observability.events.persistence": 114,
+    "synthorg.observability.events.persistence": 122,
     "synthorg.observability.events.provider": 26,
     "synthorg.observability.events.security": 63,
-    "synthorg.observability.events.settings": 31,
+    "synthorg.observability.events.settings": 32,
     "synthorg.observability.events.tool": 24,
     "synthorg.observability.events.training": 22,
     "synthorg.observability.events.workflow": 26,
     "synthorg.observability.events.workspace": 28,
     "synthorg.observability.metrics_hub": 28,
     "synthorg.ontology.models": 23,
-    "synthorg.persistence._generics": 179,
-    "synthorg.persistence._shared": 139,
-    "synthorg.persistence._shared.pagination": 63,
+    "synthorg.persistence._generics": 182,
+    "synthorg.persistence._shared": 144,
+    "synthorg.persistence._shared.datetime_marshaller": 20,
+    "synthorg.persistence._shared.pagination": 64,
     "synthorg.persistence.ontology_protocol": 20,
     "synthorg.persistence.protocol": 39,
-    "synthorg.persistence.sqlite._shared": 71,
+    "synthorg.persistence.sqlite._shared": 73,
     "synthorg.persistence.state": 60,
     "synthorg.project_brain.models": 23,
     "synthorg.providers.cost_recording": 36,

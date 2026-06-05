@@ -1,12 +1,17 @@
-"""Postgres-backed org fact repository with MVCC (append-only log + snapshot)."""
+# module-kind: repository
+"""Postgres-backed org fact repository with MVCC (append-only log + snapshot).
 
-import json
+Row <-> model marshalling is shared with the SQLite sibling via
+:mod:`synthorg.persistence._shared.org_fact_marshalling`; the
+point-in-time ``snapshot_at`` query lives in
+:mod:`synthorg.persistence.postgres._org_fact_sql`.
+"""
+
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 
-from psycopg.rows import BaseRowFactory, DictRow, TupleRow
-from pydantic import ValidationError
+from psycopg.rows import TupleRow, dict_row
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
@@ -28,195 +33,26 @@ from synthorg.observability.events.org_memory import (
     ORG_MEMORY_MVCC_RETRACT_APPENDED,
     ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
     ORG_MEMORY_QUERY_FAILED,
-    ORG_MEMORY_ROW_PARSE_FAILED,
     ORG_MEMORY_WRITE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc, validate_pagination_args
+from synthorg.persistence._shared.org_fact_marshalling import (
+    row_to_operation_log_entry,
+    row_to_snapshot,
+    snapshot_row_to_org_fact,
+    tags_from_json,
+    tags_to_json,
+)
 from synthorg.persistence.memory_protocol import _DEFAULT_LIST_LIMIT_FACTS
+from synthorg.persistence.postgres._org_fact_sql import SNAPSHOT_AT_SQL
 
 if TYPE_CHECKING:
     import psycopg
     from psycopg_pool import AsyncConnectionPool
 
 
-def _import_dict_row() -> BaseRowFactory[DictRow]:
-    """Lazily resolve ``psycopg.rows.dict_row``.
-
-    Returns:
-        The ``dict_row`` row factory.
-    """
-    from psycopg.rows import dict_row  # noqa: PLC0415
-
-    return dict_row
-
-
 logger = get_logger(__name__)
-
-
-def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
-    """Serialize tags tuple to sorted JSON array.
-
-    Returns:
-        Result of type ``str``.
-    """
-    return json.dumps(sorted(tags))
-
-
-def _tags_from_json(raw: str | list[object]) -> tuple[NotBlankStr, ...]:
-    """Deserialize tags (JSON string or JSONB-decoded list) to tuple.
-
-    Returns:
-        The matching collection.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    parsed = raw if isinstance(raw, list) else json.loads(raw)
-    if not isinstance(parsed, list):
-        msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
-        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
-        raise OrgMemoryQueryError(msg)
-    if any(not isinstance(t, str) or not t.strip() for t in parsed):
-        msg = "Tags must be a JSON array of non-blank strings"
-        logger.warning(ORG_MEMORY_ROW_PARSE_FAILED, error=msg)
-        raise OrgMemoryQueryError(msg)
-    return tuple(NotBlankStr(cast("str", t)) for t in parsed)
-
-
-def _snapshot_row_to_org_fact(row: DictRow) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a snapshot row.
-
-    Returns:
-        Result of type ``OrgFact``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        author = OrgFactAuthor(
-            agent_id=row["author_agent_id"],
-            seniority=(
-                SeniorityLevel(row["author_seniority"])
-                if row["author_seniority"]
-                else None
-            ),
-            autonomy_level=(
-                AutonomyLevel(row["author_autonomy_level"])
-                if row["author_autonomy_level"]
-                else None
-            ),
-            is_human=bool(row["author_is_human"]),
-        )
-        return OrgFact(
-            id=row["fact_id"],
-            content=row["content"],
-            category=OrgFactCategory(row["category"]),
-            tags=_tags_from_json(row["tags"]),
-            author=author,
-            created_at=normalize_utc(row["created_at"]),
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize snapshot row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
-
-
-def _row_to_operation_log_entry(row: DictRow) -> OperationLogEntry:
-    """Reconstruct an ``OperationLogEntry`` from a database row.
-
-    Returns:
-        Result of type ``OperationLogEntry``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        return OperationLogEntry(
-            operation_id=row["operation_id"],
-            fact_id=row["fact_id"],
-            operation_type=row["operation_type"],
-            content=row["content"],
-            category=(OrgFactCategory(row["category"]) if row["category"] else None),
-            tags=_tags_from_json(row["tags"]),
-            author_agent_id=row["author_agent_id"],
-            author_seniority=(
-                SeniorityLevel(row["author_seniority"])
-                if row["author_seniority"]
-                else None
-            ),
-            author_is_human=bool(row["author_is_human"]),
-            author_autonomy_level=(
-                AutonomyLevel(row["author_autonomy_level"])
-                if row["author_autonomy_level"]
-                else None
-            ),
-            timestamp=normalize_utc(row["timestamp"]),
-            version=row["version"],
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize operation log row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
-
-
-def _row_to_snapshot(row: DictRow) -> OperationLogSnapshot:
-    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
-
-    Returns:
-        Result of type ``OperationLogSnapshot``.
-
-    Raises:
-        OrgMemoryQueryError: If the underlying call raises.
-    """
-    try:
-        op_type: str = row["operation_type"]
-        retracted_at = normalize_utc(row["timestamp"]) if op_type == "RETRACT" else None
-        created_at_raw = row.get("created_at")
-        created_at = normalize_utc(created_at_raw or row["timestamp"])
-        return OperationLogSnapshot(
-            fact_id=row["fact_id"],
-            content=row["content"],
-            category=OrgFactCategory(row["category"]),
-            tags=_tags_from_json(row["tags"]),
-            created_at=created_at,
-            retracted_at=retracted_at,
-            version=row["version"],
-        )
-    except (
-        KeyError,
-        ValueError,
-        TypeError,
-        ValidationError,
-        OrgMemoryQueryError,
-    ) as exc:
-        logger.warning(
-            ORG_MEMORY_ROW_PARSE_FAILED,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        msg = f"Failed to deserialize snapshot_at row: {safe_error_description(exc)}"
-        raise OrgMemoryQueryError(msg) from exc
 
 
 class PostgresOrgFactRepository:
@@ -234,7 +70,6 @@ class PostgresOrgFactRepository:
 
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self._pool = pool
-        self._dict_row = _import_dict_row()
 
     async def _append_to_operation_log(  # noqa: PLR0913
         self,
@@ -278,7 +113,7 @@ class PostgresOrgFactRepository:
                     fact_id,
                     operation_type,
                     content,
-                    _tags_to_json(tags),
+                    tags_to_json(tags),
                     author_agent_id,
                     (author_seniority.value if author_seniority else None),
                     author_is_human,
@@ -334,7 +169,7 @@ class PostgresOrgFactRepository:
                             fact.id,
                             fact.content,
                             fact.category.value,
-                            _tags_to_json(fact.tags),
+                            tags_to_json(fact.tags),
                             fact.author.agent_id,
                             (
                                 fact.author.seniority.value
@@ -382,7 +217,6 @@ class PostgresOrgFactRepository:
         Raises:
             OrgMemoryWriteError: If the underlying call raises.
         """
-        dict_row = self._dict_row
         try:
             async with self._pool.connection() as conn, conn.transaction():
                 async with conn.cursor(row_factory=dict_row) as cur:
@@ -404,7 +238,7 @@ class PostgresOrgFactRepository:
                     category=(
                         OrgFactCategory(row["category"]) if row["category"] else None
                     ),
-                    tags=_tags_from_json(row["tags"]),
+                    tags=tags_from_json(row["tags"]),
                     author_agent_id=author.agent_id,
                     author_seniority=author.seniority,
                     author_is_human=author.is_human,
@@ -444,7 +278,6 @@ class PostgresOrgFactRepository:
         Raises:
             OrgMemoryQueryError: If the underlying call raises.
         """
-        dict_row = self._dict_row
         try:
             async with (
                 self._pool.connection() as conn,
@@ -468,7 +301,7 @@ class PostgresOrgFactRepository:
             raise OrgMemoryQueryError(msg) from exc
         if row is None:
             return None
-        return _snapshot_row_to_org_fact(row)
+        return snapshot_row_to_org_fact(row)
 
     async def query(
         self,
@@ -486,7 +319,6 @@ class PostgresOrgFactRepository:
         Raises:
             OrgMemoryQueryError: If the underlying call raises.
         """
-        dict_row = self._dict_row
         limit = max(1, min(limit, 100))
         offset = max(0, int(offset))
         clauses: list[str] = ["retracted_at IS NULL"]
@@ -533,7 +365,7 @@ class PostgresOrgFactRepository:
             )
             msg = f"Failed to query org facts: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
+        return tuple(snapshot_row_to_org_fact(row) for row in rows)
 
     async def list_by_category(
         self,
@@ -550,7 +382,6 @@ class PostgresOrgFactRepository:
         Raises:
             OrgMemoryQueryError: If the underlying call raises.
         """
-        dict_row = self._dict_row
         sql = (
             "SELECT * FROM org_facts_snapshot "
             "WHERE category = %s AND retracted_at IS NULL "
@@ -583,7 +414,7 @@ class PostgresOrgFactRepository:
             )
             msg = f"Failed to list org facts by category: {safe_error_description(exc)}"
             raise OrgMemoryQueryError(msg) from exc
-        return tuple(_snapshot_row_to_org_fact(row) for row in rows)
+        return tuple(snapshot_row_to_org_fact(row) for row in rows)
 
     async def snapshot_at(
         self,
@@ -611,61 +442,19 @@ class PostgresOrgFactRepository:
             OrgMemoryQueryError: If the underlying call raises.
         """
         limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
-        dict_row = self._dict_row
         if timestamp.tzinfo is None:
             msg = (
                 "snapshot_at requires a timezone-aware timestamp, "
                 f"got naive {timestamp!r}"
             )
             raise ValueError(msg)
-        sql = """\
-WITH latest_ops AS (
-    SELECT fact_id, operation_type, content, tags, category,
-           timestamp, version,
-           ROW_NUMBER() OVER (
-               PARTITION BY fact_id ORDER BY version DESC
-           ) AS rn
-    FROM org_facts_operation_log
-    WHERE timestamp <= %(ts)s
-),
-latest_publishes AS (
-    SELECT DISTINCT ON (fact_id)
-           fact_id, content, tags, category
-    FROM org_facts_operation_log
-    WHERE operation_type = 'PUBLISH'
-      AND timestamp <= %(ts)s
-    ORDER BY fact_id, version DESC
-),
-first_publishes AS (
-    SELECT fact_id, MIN(timestamp) AS created_at
-    FROM org_facts_operation_log
-    WHERE operation_type = 'PUBLISH'
-      AND timestamp <= %(ts)s
-    GROUP BY fact_id
-)
-SELECT lo.fact_id, lo.operation_type,
-       COALESCE(lo.content, lp.content) AS content,
-       COALESCE(lo.category, lp.category) AS category,
-       COALESCE(
-           CASE WHEN lo.operation_type = 'PUBLISH' THEN lo.tags END,
-           lp.tags
-       ) AS tags,
-       lo.version, lo.timestamp,
-       fp.created_at AS created_at
-FROM latest_ops lo
-LEFT JOIN latest_publishes lp ON lp.fact_id = lo.fact_id
-LEFT JOIN first_publishes fp ON fp.fact_id = lo.fact_id
-WHERE lo.rn = 1
-ORDER BY lo.fact_id
-LIMIT %(limit)s OFFSET %(offset)s
-"""
         try:
             async with (
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    sql,
+                    SNAPSHOT_AT_SQL,
                     {"ts": timestamp, "limit": limit, "offset": offset},
                 )
                 rows = await cur.fetchall()
@@ -681,7 +470,7 @@ LIMIT %(limit)s OFFSET %(offset)s
             )
             msg = f"Failed to query snapshot at {ts_iso}: {error_desc}"
             raise OrgMemoryQueryError(msg) from exc
-        result = tuple(_row_to_snapshot(row) for row in rows)
+        result = tuple(row_to_snapshot(row) for row in rows)
         logger.debug(
             ORG_MEMORY_MVCC_SNAPSHOT_AT_QUERIED,
             timestamp=timestamp.isoformat(),
@@ -711,7 +500,6 @@ LIMIT %(limit)s OFFSET %(offset)s
         limit = validate_pagination_args(
             limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id
         )
-        dict_row = self._dict_row
         try:
             async with (
                 self._pool.connection() as conn,
@@ -735,10 +523,13 @@ LIMIT %(limit)s OFFSET %(offset)s
             )
             msg = f"Failed to get operation log for {fact_id}: {error_desc}"
             raise OrgMemoryQueryError(msg) from exc
-        result = tuple(_row_to_operation_log_entry(row) for row in rows)
+        result = tuple(row_to_operation_log_entry(row) for row in rows)
         logger.debug(
             ORG_MEMORY_MVCC_LOG_QUERIED,
             fact_id=fact_id,
             count=len(result),
         )
         return result
+
+
+__all__ = ["PostgresOrgFactRepository"]

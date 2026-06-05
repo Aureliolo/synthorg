@@ -1,3 +1,4 @@
+# module-kind: repository
 """Postgres repository for pre-flight cost forecasts.
 
 Sibling of :class:`SQLiteCostForecastRepository` backed by
@@ -6,7 +7,9 @@ Sibling of :class:`SQLiteCostForecastRepository` backed by
 
 Enforces the same-currency invariant on :meth:`save` against the live
 ``budget.currency`` setting; mismatches raise
-:class:`MixedCurrencyAggregationError` at the repository boundary.
+:class:`MixedCurrencyAggregationError` at the repository boundary. Row
+<-> model marshalling is shared with the SQLite sibling via
+:mod:`synthorg.persistence._shared.cost_forecast_marshalling`.
 """
 
 from datetime import UTC, datetime
@@ -14,15 +17,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg.rows import dict_row
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.forecast_models import (
-    Forecast,
-    ForecastDecision,
-    HaltContext,
-)
+from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -31,14 +30,15 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_FORECAST_LISTED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import (
-    coerce_row_timestamp,
-    format_iso_utc,
-    validate_pagination_args,
+from synthorg.persistence._shared import format_iso_utc, validate_pagination_args
+from synthorg.persistence._shared.cost_forecast_marshalling import (
+    COST_FORECAST_COLUMNS,
+    build_cost_forecast_where,
+    forecast_save_params,
+    row_to_forecast,
+    validate_cost_forecast_update_keys,
 )
-from synthorg.persistence.cost_forecast_protocol import (
-    CostForecastFilterSpec,
-)
+from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -49,15 +49,8 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: int = 1_000
 
-_SELECT_COLS = (
-    "forecast_id, brief_hash, estimated_cost, lower_bound, upper_bound, "
-    "currency, decision, decided_at, decided_by, ceiling_amount, "
-    "halt_accumulated_cost, halt_ceiling_amount, halt_currency, halted_at, "
-    "created_at, updated_at"
-)
-
 _UPSERT_SQL = f"""
-    INSERT INTO cost_forecasts ({_SELECT_COLS})
+    INSERT INTO cost_forecasts ({COST_FORECAST_COLUMNS})
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (forecast_id) DO UPDATE SET
         brief_hash = EXCLUDED.brief_hash,
@@ -75,125 +68,6 @@ _UPSERT_SQL = f"""
         halted_at = EXCLUDED.halted_at,
         updated_at = EXCLUDED.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
-
-
-def _row_to_forecast(row: DictRow) -> Forecast:
-    """Convert a Postgres dict row into a :class:`Forecast`.
-
-    Returns:
-        Result of type ``Forecast``.
-
-    Raises:
-        QueryError: If the database query fails.
-    """
-    try:
-        decided_at_raw = row["decided_at"]
-        halted_at_raw = row["halted_at"]
-        halt_context = (
-            HaltContext(
-                accumulated_cost=float(row["halt_accumulated_cost"]),
-                ceiling_amount=float(row["halt_ceiling_amount"]),
-                currency=str(row["halt_currency"]),
-                halted_at=coerce_row_timestamp(halted_at_raw),
-            )
-            if halted_at_raw is not None
-            else None
-        )
-        return Forecast(
-            forecast_id=(
-                row["forecast_id"]
-                if isinstance(row["forecast_id"], UUID)
-                else UUID(row["forecast_id"])
-            ),
-            brief_hash=str(row["brief_hash"]),
-            estimated_cost=float(row["estimated_cost"]),
-            lower_bound=float(row["lower_bound"]),
-            upper_bound=float(row["upper_bound"]),
-            currency=str(row["currency"]),
-            decision=ForecastDecision(str(row["decision"])),
-            decided_at=(
-                coerce_row_timestamp(decided_at_raw)
-                if decided_at_raw is not None
-                else None
-            ),
-            decided_by=(
-                str(row["decided_by"]) if row["decided_by"] is not None else None
-            ),
-            ceiling_amount=(
-                float(row["ceiling_amount"])
-                if row["ceiling_amount"] is not None
-                else None
-            ),
-            halt_context=halt_context,
-            created_at=coerce_row_timestamp(row["created_at"]),
-            updated_at=coerce_row_timestamp(row["updated_at"]),
-        )
-    except (ValueError, TypeError, KeyError) as exc:
-        msg = (
-            f"Failed to parse cost forecast row: "
-            f"{type(exc).__name__} ({safe_error_description(exc)})"
-        )
-        logger.warning(
-            PERSISTENCE_COST_FORECAST_FAILED,
-            operation="deserialize",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
-
-
-def _build_where(
-    filter_spec: CostForecastFilterSpec,
-) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec.
-
-    Returns:
-        ``(where_clause, params)``: SQL fragment + positional params.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if filter_spec.brief_hash is not None:
-        clauses.append("brief_hash = %s")
-        params.append(filter_spec.brief_hash)
-    if filter_spec.decision is not None:
-        clauses.append("decision = %s")
-        params.append(filter_spec.decision.value)
-    where = " AND ".join(clauses) if clauses else "TRUE"
-    return where, params
-
-
-def _validate_update_keys(
-    operation: str,
-    forecast_id: UUID,
-    updates: dict[str, object],
-    *,
-    to_state: ForecastDecision,
-) -> None:
-    """Reject unknown update keys; enforce ``superseded`` semantics.
-
-    Raises:
-        QueryError: If unknown update keys or invalid transition inputs are supplied.
-    """
-    allowed = {"decided_by", "decided_at", "ceiling_amount"}
-    unknown = sorted(set(updates) - allowed)
-    if unknown:
-        msg = f"transition_if rejects unknown update keys: {unknown!r}"
-        logger.warning(
-            PERSISTENCE_COST_FORECAST_FAILED,
-            operation=operation,
-            forecast_id=str(forecast_id),
-            error=msg,
-        )
-        raise QueryError(msg)
-    if to_state is ForecastDecision.SUPERSEDED and "decided_by" in updates:
-        msg = "transition to 'superseded' must not carry decided_by"
-        logger.warning(
-            PERSISTENCE_COST_FORECAST_FAILED,
-            operation=operation,
-            forecast_id=str(forecast_id),
-            error=msg,
-        )
-        raise QueryError(msg)
 
 
 class PostgresCostForecastRepository:
@@ -219,13 +93,12 @@ class PostgresCostForecastRepository:
             currency_getter if currency_getter is not None else lambda: DEFAULT_CURRENCY
         )
 
-    async def save(self, entity: Forecast) -> None:
-        """Upsert a forecast row.
+    def _check_currency(self, entity: Forecast) -> None:
+        """Reject a save whose currency drifts from the live setting.
 
         Raises:
-            MixedCurrencyAggregationError: If aggregated rows mix currencies.
-            ConstraintViolationError: If a database constraint is violated.
-            QueryError: If the database query fails.
+            MixedCurrencyAggregationError: If the row's currency does not
+                match the live ``budget.currency`` setting.
         """
         live_currency = self._currency_getter()
         if entity.currency != live_currency:
@@ -242,44 +115,17 @@ class PostgresCostForecastRepository:
                 msg,
                 currencies=frozenset({entity.currency, live_currency}),
             )
-        params = (
-            str(entity.forecast_id),
-            entity.brief_hash,
-            float(entity.estimated_cost),
-            float(entity.lower_bound),
-            float(entity.upper_bound),
-            entity.currency,
-            entity.decision.value,
-            (
-                format_iso_utc(entity.decided_at)
-                if entity.decided_at is not None
-                else None
-            ),
-            entity.decided_by,
-            (
-                float(entity.ceiling_amount)
-                if entity.ceiling_amount is not None
-                else None
-            ),
-            (
-                float(entity.halt_context.accumulated_cost)
-                if entity.halt_context is not None
-                else None
-            ),
-            (
-                float(entity.halt_context.ceiling_amount)
-                if entity.halt_context is not None
-                else None
-            ),
-            (entity.halt_context.currency if entity.halt_context is not None else None),
-            (
-                format_iso_utc(entity.halt_context.halted_at)
-                if entity.halt_context is not None
-                else None
-            ),
-            format_iso_utc(entity.created_at),
-            format_iso_utc(entity.updated_at),
-        )
+
+    async def save(self, entity: Forecast) -> None:
+        """Upsert a forecast row.
+
+        Raises:
+            MixedCurrencyAggregationError: If aggregated rows mix currencies.
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
+        self._check_currency(entity)
+        params = forecast_save_params(entity)
         try:
             # The connection context manager rolls back any uncommitted
             # transaction on exception exit, so a failed execute/commit
@@ -325,7 +171,7 @@ class PostgresCostForecastRepository:
             QueryError: If the database query fails.
         """
         sql = (
-            f"SELECT {_SELECT_COLS} FROM cost_forecasts "  # noqa: S608
+            f"SELECT {COST_FORECAST_COLUMNS} FROM cost_forecasts "  # noqa: S608
             "WHERE forecast_id = %s"
         )
         try:
@@ -347,7 +193,7 @@ class PostgresCostForecastRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        forecast = _row_to_forecast(row)
+        forecast = row_to_forecast(row)
         logger.debug(
             PERSISTENCE_COST_FORECAST_FETCHED,
             forecast_id=str(entity_id),
@@ -373,7 +219,7 @@ class PostgresCostForecastRepository:
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
         sql = (
-            f"SELECT {_SELECT_COLS} FROM cost_forecasts "  # noqa: S608
+            f"SELECT {COST_FORECAST_COLUMNS} FROM cost_forecasts "  # noqa: S608
             "ORDER BY created_at DESC, forecast_id DESC LIMIT %s OFFSET %s"
         )
         try:
@@ -383,7 +229,7 @@ class PostgresCostForecastRepository:
             ):
                 await cur.execute(sql, (effective_limit, offset))
                 rows = await cur.fetchall()
-            items = tuple(_row_to_forecast(r) for r in rows)
+            items = tuple(row_to_forecast(r) for r in rows)
         except QueryError:
             raise
         except psycopg.Error as exc:
@@ -417,10 +263,10 @@ class PostgresCostForecastRepository:
             limit, offset, event=PERSISTENCE_COST_FORECAST_FAILED
         )
         effective_limit = min(effective_limit, _MAX_PAGE_LIMIT)
-        where, params = _build_where(filter_spec)
+        where, params = build_cost_forecast_where(filter_spec, placeholder="%s")
         params.extend([effective_limit, offset])
         sql = f"""
-            SELECT {_SELECT_COLS} FROM cost_forecasts
+            SELECT {COST_FORECAST_COLUMNS} FROM cost_forecasts
             WHERE {where}
             ORDER BY created_at DESC, forecast_id DESC
             LIMIT %s OFFSET %s
@@ -432,7 +278,7 @@ class PostgresCostForecastRepository:
             ):
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
-            items = tuple(_row_to_forecast(r) for r in rows)
+            items = tuple(row_to_forecast(r) for r in rows)
         except QueryError:
             raise
         except psycopg.Error as exc:
@@ -456,7 +302,7 @@ class PostgresCostForecastRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where, params = _build_where(filter_spec)
+        where, params = build_cost_forecast_where(filter_spec, placeholder="%s")
         sql = (
             "SELECT COUNT(*) FROM cost_forecasts "  # noqa: S608
             f"WHERE {where}"
@@ -492,7 +338,9 @@ class PostgresCostForecastRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        _validate_update_keys("transition_if", entity_id, updates, to_state=to_state)
+        validate_cost_forecast_update_keys(
+            "transition_if", entity_id, updates, to_state=to_state
+        )
         decided_by = updates.get("decided_by")
         decided_at_raw = updates.get("decided_at")
         ceiling_amount = updates.get("ceiling_amount")

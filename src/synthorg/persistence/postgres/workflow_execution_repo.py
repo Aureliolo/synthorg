@@ -1,23 +1,20 @@
+# module-kind: repository
 """Postgres repository implementation for WorkflowExecution.
 
 Postgres-native port of ``synthorg.persistence.sqlite.workflow_execution_repo``.
 Uses native JSONB for ``node_executions``, and native TIMESTAMPTZ for
-``created_at`` / ``updated_at`` / ``completed_at``. The protocol surface
-returns the same Pydantic models as the SQLite backend.
+``created_at`` / ``updated_at`` / ``completed_at``. Row <-> model
+marshalling is shared with the SQLite sibling via
+:mod:`synthorg.persistence._shared.workflow_execution_marshalling`.
 """
 
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
+from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -25,14 +22,10 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.execution_models import (
-    WorkflowExecution,
-    WorkflowNodeExecution,
-)
+from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCHED,
     PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
@@ -42,8 +35,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence._shared.pagination import (
-    validate_pagination_args,
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.workflow_execution_marshalling import (
+    WORKFLOW_EXECUTION_COLUMNS,
+    build_workflow_execution_where,
+    node_execution_payloads,
+    row_to_workflow_execution,
 )
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
@@ -54,75 +51,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SELECT_COLUMNS = """\
-id, definition_id, definition_revision, status, node_executions,
-activated_by, project, created_at, updated_at, completed_at,
-error, version"""
-
 _MAX_LIST_ROWS: int = 10_000
 """Safety cap on list query results pending pagination support."""
-
-
-def _deserialize_node_executions(
-    raw: list[DictRow],
-) -> tuple[WorkflowNodeExecution, ...]:
-    """Deserialize JSON array into WorkflowNodeExecution tuple.
-
-    Returns:
-        The matching collection.
-    """
-    return tuple(
-        WorkflowNodeExecution(
-            node_id=item["node_id"],
-            node_type=WorkflowNodeType(item["node_type"]),
-            status=WorkflowNodeExecutionStatus(item["status"]),
-            task_id=item.get("task_id"),
-            skipped_reason=item.get("skipped_reason"),
-        )
-        for item in raw
-    )
-
-
-def _deserialize_row(
-    row: DictRow,
-    context_id: str,
-) -> WorkflowExecution:
-    """Reconstruct a ``WorkflowExecution`` from a Postgres dict_row.
-
-    Postgres returns JSONB as Python list/dict (no json.loads needed),
-    and TIMESTAMPTZ as timezone-aware datetime.
-
-    Args:
-        row: A single database row with execution columns.
-        context_id: Identifier for error context logging.
-
-    Returns:
-        Validated ``WorkflowExecution`` model instance.
-
-    Raises:
-        QueryError: If deserialization fails.
-    """
-    try:
-        data = dict(row)
-        data["status"] = WorkflowExecutionStatus(data["status"])
-        data["node_executions"] = _deserialize_node_executions(
-            data.get("node_executions") or [],
-        )
-        return WorkflowExecution.model_validate(data)
-    except (
-        TypeError,
-        ValueError,
-        ValidationError,
-        KeyError,
-    ) as exc:
-        msg = f"Failed to deserialize workflow execution {context_id!r}"
-        logger.warning(
-            PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
-            execution_id=context_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 class PostgresWorkflowExecutionRepository:
@@ -170,9 +100,7 @@ class PostgresWorkflowExecutionRepository:
         Returns:
             The matching collection.
         """
-        node_jsonb = Jsonb(
-            [ne.model_dump(mode="json") for ne in execution.node_executions],
-        )
+        node_jsonb = Jsonb(node_execution_payloads(execution))
         return (
             execution.id,
             execution.definition_id,
@@ -315,7 +243,7 @@ class PostgresWorkflowExecutionRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM workflow_executions WHERE id = %s",  # noqa: S608
+                    f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions WHERE id = %s",  # noqa: S608, E501
                     (execution_id,),
                 )
                 row = await cur.fetchone()
@@ -337,7 +265,7 @@ class PostgresWorkflowExecutionRepository:
             )
             return None
 
-        execution = _deserialize_row(row, execution_id)
+        execution = row_to_workflow_execution(dict(row), execution_id)
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_FETCHED,
             execution_id=execution_id,
@@ -374,7 +302,7 @@ class PostgresWorkflowExecutionRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                    f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " ORDER BY id ASC LIMIT %s OFFSET %s",
                     (effective_limit, offset),
                 )
@@ -389,7 +317,8 @@ class PostgresWorkflowExecutionRepository:
             raise QueryError(msg) from exc
 
         executions = tuple(
-            _deserialize_row(row, str(row.get("id", "?"))) for row in rows
+            row_to_workflow_execution(dict(row), str(row.get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
@@ -424,19 +353,9 @@ class PostgresWorkflowExecutionRepository:
             limit, offset=offset, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
-
-        where_clauses = []
-        params: list[object] = []
-
-        if filter_spec.definition_id is not None:
-            where_clauses.append("definition_id = %s")
-            params.append(filter_spec.definition_id)
-
-        if filter_spec.status is not None:
-            where_clauses.append("status = %s")
-            params.append(filter_spec.status.value)
-
-        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        where_clause, params = build_workflow_execution_where(
+            filter_spec, placeholder="%s"
+        )
         params.extend([effective_limit, offset])
 
         try:
@@ -445,7 +364,7 @@ class PostgresWorkflowExecutionRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                    f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                     f" WHERE {where_clause}"
                     " ORDER BY updated_at DESC, id ASC LIMIT %s OFFSET %s",
                     params,
@@ -463,7 +382,8 @@ class PostgresWorkflowExecutionRepository:
             raise QueryError(msg) from exc
 
         executions = tuple(
-            _deserialize_row(row, str(row.get("id", "?"))) for row in rows
+            row_to_workflow_execution(dict(row), str(row.get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
@@ -485,19 +405,9 @@ class PostgresWorkflowExecutionRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        where_clauses = []
-        params: list[object] = []
-
-        if filter_spec.definition_id is not None:
-            where_clauses.append("definition_id = %s")
-            params.append(filter_spec.definition_id)
-
-        if filter_spec.status is not None:
-            where_clauses.append("status = %s")
-            params.append(filter_spec.status.value)
-
-        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
-
+        where_clause, params = build_workflow_execution_where(
+            filter_spec, placeholder="%s"
+        )
         try:
             async with (
                 self._pool.connection() as conn,
@@ -547,7 +457,7 @@ class PostgresWorkflowExecutionRepository:
             ):
                 task_filter = Jsonb([{"task_id": task_id}])
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                    f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                     " WHERE status = %s"
                     " AND node_executions @> %s::jsonb"
                     " LIMIT 1",
@@ -572,7 +482,7 @@ class PostgresWorkflowExecutionRepository:
             )
             return None
 
-        execution = _deserialize_row(row, str(row.get("id", task_id)))
+        execution = row_to_workflow_execution(dict(row), str(row.get("id", task_id)))
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
             task_id=task_id,
@@ -611,3 +521,6 @@ class PostgresWorkflowExecutionRepository:
             )
             raise QueryError(msg) from exc
         return deleted
+
+
+__all__ = ["PostgresWorkflowExecutionRepository"]

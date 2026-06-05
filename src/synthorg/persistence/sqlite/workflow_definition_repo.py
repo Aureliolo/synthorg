@@ -1,11 +1,16 @@
-"""SQLite repository implementation for WorkflowDefinition."""
+# module-kind: repository
+"""SQLite repository implementation for WorkflowDefinition.
 
-import json
+Nodes/edges/inputs/outputs are stored as JSON arrays and timestamps as
+ISO TEXT. Row <-> model marshalling is shared with the Postgres sibling
+via :mod:`synthorg.persistence._shared.workflow_definition_marshalling`;
+the SQL statements live in
+:mod:`synthorg.persistence.sqlite._workflow_definition_sql`.
+"""
+
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING
-
-from pydantic import ValidationError
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -14,22 +19,15 @@ if TYPE_CHECKING:
         WorkflowDefinitionFilterSpec,
     )
 
-from synthorg.core.enums import WorkflowType
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     QueryError,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,
-    WorkflowEdge,
-    WorkflowIODeclaration,
-    WorkflowNode,
-)
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCHED,
     PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
@@ -37,70 +35,21 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.pagination import (
-    validate_pagination_args,
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.workflow_definition_marshalling import (
+    WORKFLOW_DEFINITION_COLUMNS,
+    build_workflow_definition_where,
+    row_to_workflow_definition,
+    serialize_definition_columns,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
+from synthorg.persistence.sqlite._workflow_definition_sql import (
+    INSERT_IGNORE_SQL,
+    UPDATE_SQL,
+    UPSERT_SQL,
+)
 
 logger = get_logger(__name__)
-
-_SELECT_COLUMNS = """\
-id, name, description, workflow_type, version, inputs, outputs,
-is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision"""
-
-
-def _parse_row_timestamps(data: dict[str, object]) -> None:
-    """Parse ISO timestamps and ensure timezone awareness."""
-    for field in ("created_at", "updated_at"):
-        dt = datetime.fromisoformat(str(data[field]))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        data[field] = dt
-
-
-def _deserialize_row(
-    row: aiosqlite.Row,
-    context_id: str,
-) -> WorkflowDefinition:
-    """Reconstruct a ``WorkflowDefinition`` from a database row.
-
-    Args:
-        row: A single database row with workflow definition columns.
-        context_id: Identifier for error context logging.
-
-    Returns:
-        Validated ``WorkflowDefinition`` model instance.
-
-    Raises:
-        QueryError: If deserialization fails.
-    """
-    try:
-        data = dict(row)
-        data["workflow_type"] = WorkflowType(data["workflow_type"])
-        data["nodes"] = tuple(
-            WorkflowNode.model_validate(n) for n in json.loads(data["nodes"])
-        )
-        data["edges"] = tuple(
-            WorkflowEdge.model_validate(e) for e in json.loads(data["edges"])
-        )
-        data["inputs"] = tuple(
-            WorkflowIODeclaration.model_validate(i) for i in json.loads(data["inputs"])
-        )
-        data["outputs"] = tuple(
-            WorkflowIODeclaration.model_validate(o) for o in json.loads(data["outputs"])
-        )
-        data["is_subworkflow"] = bool(data["is_subworkflow"])
-        _parse_row_timestamps(data)
-        return WorkflowDefinition.model_validate(data)
-    except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
-        msg = f"Failed to deserialize workflow definition {context_id!r}"
-        logger.warning(
-            PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
-            definition_id=context_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 async def _rollback_quietly(db: aiosqlite.Connection) -> None:
@@ -193,26 +142,13 @@ class SQLiteWorkflowDefinitionRepository:
             QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
-        nodes_json = json.dumps(
-            [n.model_dump(mode="json") for n in definition.nodes],
-        )
-        edges_json = json.dumps(
-            [e.model_dump(mode="json") for e in definition.edges],
-        )
-        inputs_json = json.dumps(
-            [i.model_dump(mode="json") for i in definition.inputs],
-        )
-        outputs_json = json.dumps(
-            [o.model_dump(mode="json") for o in definition.outputs],
+        nodes_json, edges_json, inputs_json, outputs_json = (
+            serialize_definition_columns(definition)
         )
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
-                    """\
-UPDATE workflow_definitions SET
-    name=?, description=?, workflow_type=?, version=?, inputs=?, outputs=?,
-    is_subworkflow=?, nodes=?, edges=?, updated_at=?, revision=?
-WHERE id = ? AND revision = ?""",
+                    UPDATE_SQL,
                     (
                         definition.name,
                         definition.description,
@@ -279,28 +215,13 @@ WHERE id = ? AND revision = ?""",
             QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
-        nodes_json = json.dumps(
-            [n.model_dump(mode="json") for n in definition.nodes],
-        )
-        edges_json = json.dumps(
-            [e.model_dump(mode="json") for e in definition.edges],
-        )
-        inputs_json = json.dumps(
-            [i.model_dump(mode="json") for i in definition.inputs],
-        )
-        outputs_json = json.dumps(
-            [o.model_dump(mode="json") for o in definition.outputs],
+        nodes_json, edges_json, inputs_json, outputs_json = (
+            serialize_definition_columns(definition)
         )
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
-                    """\
-INSERT INTO workflow_definitions
-    (id, name, description, workflow_type, version, inputs, outputs,
-     is_subworkflow, nodes, edges, created_by, created_at, updated_at,
-     revision)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING""",
+                    INSERT_IGNORE_SQL,
                     (
                         definition.id,
                         definition.name,
@@ -348,40 +269,13 @@ ON CONFLICT(id) DO NOTHING""",
             PersistenceVersionConflictError: If the row version no longer matches.
         """
         self._require_valid_revision(entity)
-        nodes_json = json.dumps(
-            [n.model_dump(mode="json") for n in entity.nodes],
-        )
-        edges_json = json.dumps(
-            [e.model_dump(mode="json") for e in entity.edges],
-        )
-        inputs_json = json.dumps(
-            [i.model_dump(mode="json") for i in entity.inputs],
-        )
-        outputs_json = json.dumps(
-            [o.model_dump(mode="json") for o in entity.outputs],
+        nodes_json, edges_json, inputs_json, outputs_json = (
+            serialize_definition_columns(entity)
         )
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
-                    """\
-INSERT INTO workflow_definitions
-    (id, name, description, workflow_type, version, inputs, outputs,
-     is_subworkflow, nodes, edges, created_by, created_at, updated_at,
-     revision)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    name=excluded.name,
-    description=excluded.description,
-    workflow_type=excluded.workflow_type,
-    version=excluded.version,
-    inputs=excluded.inputs,
-    outputs=excluded.outputs,
-    is_subworkflow=excluded.is_subworkflow,
-    nodes=excluded.nodes,
-    edges=excluded.edges,
-    updated_at=excluded.updated_at,
-    revision=excluded.revision
-WHERE workflow_definitions.revision = excluded.revision - 1""",
+                    UPSERT_SQL,
                     (
                         entity.id,
                         entity.name,
@@ -451,7 +345,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         """
         try:
             cursor = await self._db.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions WHERE id = ?",  # noqa: S608
+                f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions WHERE id = ?",  # noqa: S608, E501
                 (definition_id,),
             )
             row = await cursor.fetchone()
@@ -473,7 +367,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             )
             return None
 
-        definition = _deserialize_row(row, definition_id)
+        definition = row_to_workflow_definition(dict(row), definition_id)
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_FETCHED,
             definition_id=definition_id,
@@ -505,16 +399,11 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
-        conditions: list[str] = []
-        params: list[object] = []
-
-        if filter_spec.workflow_type is not None:
-            conditions.append("workflow_type = ?")
-            params.append(filter_spec.workflow_type.value)
-
-        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        where_clause, params = build_workflow_definition_where(
+            filter_spec, placeholder="?"
+        )
         sql = (
-            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
+            f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions"  # noqa: S608
             f"{where_clause} ORDER BY updated_at DESC LIMIT ? OFFSET ?"
         )
         params.extend([limit, offset])
@@ -532,7 +421,8 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             raise QueryError(msg) from exc
 
         definitions = tuple(
-            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
+            row_to_workflow_definition(dict(row), str(dict(row).get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_LISTED,
@@ -563,7 +453,7 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
         sql = (
-            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions "  # noqa: S608
+            f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions "  # noqa: S608
             "ORDER BY id ASC LIMIT ? OFFSET ?"
         )
         try:
@@ -579,7 +469,8 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
             raise QueryError(msg) from exc
 
         return tuple(
-            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
+            row_to_workflow_definition(dict(row), str(dict(row).get("id", "?")))
+            for row in rows
         )
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
@@ -591,12 +482,9 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         Raises:
             QueryError: If the database query fails.
         """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.workflow_type is not None:
-            conditions.append("workflow_type = ?")
-            params.append(filter_spec.workflow_type.value)
-        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        where_clause, params = build_workflow_definition_where(
+            filter_spec, placeholder="?"
+        )
         sql = (
             f"SELECT COUNT(*) FROM workflow_definitions"  # noqa: S608
             f"{where_clause}"
@@ -645,3 +533,6 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
                 raise QueryError(msg) from exc
 
         return cursor.rowcount > 0
+
+
+__all__ = ["SQLiteWorkflowDefinitionRepository"]
