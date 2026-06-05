@@ -9,11 +9,12 @@ the admin guardrail triple (confirm + reason + actor), emitting
 
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._organization_helpers import (
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _require_str,
     _require_uuid,
 )
@@ -67,6 +68,7 @@ async def _departments_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -90,6 +92,7 @@ async def _departments_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -124,6 +127,7 @@ async def _departments_create(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
@@ -155,6 +159,7 @@ async def _departments_update(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -202,6 +207,7 @@ async def _departments_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
@@ -226,6 +232,7 @@ async def _departments_get_health(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))

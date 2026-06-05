@@ -82,7 +82,7 @@ class ImprovementProposal(BaseModel):
         observation_window_hours: Post-apply observation window.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     id: UUID = Field(default_factory=uuid4)
     altitude: ProposalAltitude

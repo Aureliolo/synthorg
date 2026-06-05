@@ -10,12 +10,13 @@ actor), emitting ``MCP_ADMIN_OP_EXECUTED`` on success.
 from typing import TYPE_CHECKING, Any
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._organization_helpers import (
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
     _require_str,
     _require_uuid,
@@ -72,6 +73,7 @@ async def _teams_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -95,6 +97,7 @@ async def _teams_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -129,6 +132,7 @@ async def _teams_create(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
@@ -166,6 +170,7 @@ async def _teams_update(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -213,6 +218,7 @@ async def _teams_delete(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
@@ -241,6 +247,7 @@ async def _role_versions_list(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
@@ -267,6 +274,7 @@ async def _role_versions_get(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:

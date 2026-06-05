@@ -7,7 +7,7 @@ cancelled. Satisfies the ``ShutdownStrategy`` protocol from
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -54,8 +54,8 @@ class CheckpointAndStopStrategy:
     # within the lifecycle budget.  Longer values defer SIGKILL
     # past the orchestrator's grace period.  Not exposed to the
     # settings registry.
-    _CANCEL_PROPAGATION_TIMEOUT: float = 5.0
-    _CHECKPOINT_TIMEOUT: float = 30.0
+    _CANCEL_PROPAGATION_TIMEOUT: Final[float] = 5.0
+    _CHECKPOINT_TIMEOUT: Final[float] = 30.0
 
     def __init__(
         self,

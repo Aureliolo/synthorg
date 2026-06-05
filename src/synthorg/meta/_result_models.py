@@ -146,7 +146,7 @@ class ImprovementCycleResult(BaseModel):
         proposals: Proposals produced by the cycle.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     cycle_id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

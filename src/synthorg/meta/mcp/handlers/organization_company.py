@@ -9,13 +9,14 @@ typed ``not_supported`` envelope via :func:`_map_capability`.
 from typing import TYPE_CHECKING, Any
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.errors import ArgumentValidationError
-from synthorg.meta.mcp.handlers._organization_helpers import (
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
     _require_str,
-    _require_uuid_list,
     _to_jsonable,
 )
+from synthorg.meta.mcp.handlers._organization_helpers import _require_uuid_list
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.mcp.handlers.common_args import require_actor_id, require_dict
 from synthorg.meta.mcp.handlers.common_logging import (
@@ -48,6 +49,7 @@ async def _company_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(company))
@@ -77,6 +79,7 @@ async def _company_update(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(_to_jsonable(result))
@@ -102,6 +105,7 @@ async def _company_list_departments(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(d) for d in departments])
@@ -131,6 +135,7 @@ async def _company_reorder_departments(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(None)
@@ -156,6 +161,7 @@ async def _company_versions_list(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(v) for v in versions])
@@ -182,6 +188,7 @@ async def _company_versions_get(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if version is None:

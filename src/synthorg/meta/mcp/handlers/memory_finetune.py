@@ -87,8 +87,6 @@ async def _memory_start_fine_tune(
         run = await service.start_fine_tune(plan)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except FineTuneRunActiveError as exc:
         # The orchestrator raises this when another run is already
         # active; surface it as a conflict so callers get a typed
@@ -96,6 +94,7 @@ async def _memory_start_fine_tune(
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

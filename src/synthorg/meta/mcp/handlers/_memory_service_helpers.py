@@ -63,25 +63,23 @@ def _service(app_state: Any) -> MemoryService:
     Returns:
         ``MemoryService`` instance.
     """
-    if app_state.slice(MemoryStateSlice).service is not None:
-        attached: MemoryService = memory_service_of(app_state)
-        return attached
-    # Probe the raw instance dict so we do not trigger
-    # ``AppState.memory_service`` (a property descriptor that raises
-    # ``RuntimeError`` when the slot has not been set). The facade-first
-    # short-circuit above already covered the wired path; this branch
-    # only exists for stripped-down test app-states that set
-    # ``memory_service`` as a plain attribute on a ``SimpleNamespace``.
+    # Probe the raw instance dict first so a stripped-down test
+    # app-state -- e.g. a ``SimpleNamespace`` that sets ``memory_service``
+    # as a plain attribute and has no ``slice`` method -- is served
+    # before we ever touch ``app_state.slice``. Reading ``vars`` also
+    # avoids triggering ``AppState.memory_service`` (a property descriptor
+    # that raises ``RuntimeError`` when the slot has not been set).
     raw_cached = (
         vars(app_state).get("memory_service")
-        if hasattr(
-            app_state,
-            "__dict__",
-        )
+        if hasattr(app_state, "__dict__")
         else None
     )
     if isinstance(raw_cached, MemoryService):
         return raw_cached
+    slice_fn = getattr(app_state, "slice", None)
+    if slice_fn is not None and slice_fn(MemoryStateSlice).service is not None:
+        attached: MemoryService = memory_service_of(app_state)
+        return attached
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None:
         raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)
@@ -133,9 +131,6 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     Returns:
         ``MemoryService`` instance.
     """
-    if app_state.slice(MemoryStateSlice).service is not None:
-        attached: MemoryService = memory_service_of(app_state)
-        return attached
     raw_cached = (
         vars(app_state).get("memory_service")
         if hasattr(app_state, "__dict__")
@@ -143,6 +138,10 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     )
     if isinstance(raw_cached, MemoryService):
         return raw_cached
+    slice_fn = getattr(app_state, "slice", None)
+    if slice_fn is not None and slice_fn(MemoryStateSlice).service is not None:
+        attached: MemoryService = memory_service_of(app_state)
+        return attached
     backend = app_state.slice(MemoryStateSlice).backend
     if backend is None:
         raise MemoryBackendUnsupportedError(_WHY_MEMORY_SERVICE_NOT_WIRED)

@@ -538,9 +538,11 @@ class CodeApplier:
                 continue
             try:
                 _revert_single_change(change, path, defensive=defensive)
-            except OSError:
+            except OSError as exc:
                 logger.warning(
                     META_APPLY_FAILED,
                     reason="local_revert_failed",
                     file_path=change.file_path,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )

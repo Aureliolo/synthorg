@@ -179,6 +179,33 @@ class ArchitectureApplier:
             )
 
         pending = _PendingChanges()
+        errors = self._collect_change_errors(proposal, context, pending)
+        if errors:
+            return self._fail(proposal, error_message="; ".join(errors))
+
+        logger.info(
+            META_DRY_RUN_COMPLETED,
+            altitude="architecture",
+            proposal_id=str(proposal.id),
+            changes=len(proposal.architecture_changes),
+        )
+        return ApplyResult(
+            success=True,
+            changes_applied=len(proposal.architecture_changes),
+        )
+
+    def _collect_change_errors(
+        self,
+        proposal: ImprovementProposal,
+        context: ArchitectureApplierContext,
+        pending: _PendingChanges,
+    ) -> list[str]:
+        """Validate each architecture change, collecting failure strings.
+
+        Returns:
+            One error string per change that fails validation; empty when
+            every change validates cleanly.
+        """
         errors: list[str] = []
         for change in proposal.architecture_changes:
             try:
@@ -200,20 +227,7 @@ class ArchitectureApplier:
                     reason=detail,
                 )
                 errors.append(f"{change.operation}({change.target_name!r}): {detail}")
-
-        if errors:
-            return self._fail(proposal, error_message="; ".join(errors))
-
-        logger.info(
-            META_DRY_RUN_COMPLETED,
-            altitude="architecture",
-            proposal_id=str(proposal.id),
-            changes=len(proposal.architecture_changes),
-        )
-        return ApplyResult(
-            success=True,
-            changes_applied=len(proposal.architecture_changes),
-        )
+        return errors
 
     def _fail(
         self,

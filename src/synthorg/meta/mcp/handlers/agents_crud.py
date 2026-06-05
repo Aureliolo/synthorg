@@ -148,12 +148,8 @@ async def _agents_create(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
 
-    # Local import: AgentIdentity transitively pulls heavy core modules
-    # whose runtime cost we don't want to pay on every handler import.
-    from synthorg.core.agent import AgentIdentity as _AgentIdentity  # noqa: PLC0415
-
     try:
-        identity = _AgentIdentity.model_validate(identity_dict)
+        identity = AgentIdentity.model_validate(identity_dict)
     except ValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc, domain_code="invalid_argument")

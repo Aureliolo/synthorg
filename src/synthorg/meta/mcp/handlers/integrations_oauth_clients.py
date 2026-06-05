@@ -11,6 +11,7 @@ OAuth provider configuration (list / configure / remove) through
 from typing import TYPE_CHECKING, Any
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import (
     client_facade_service_of,
     oauth_facade_service_of,
@@ -19,8 +20,8 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._integrations_helpers import (
-    _get_list_str,
+from synthorg.meta.mcp.handlers._integrations_helpers import _get_list_str
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
     _require_str,
     _require_uuid,
@@ -71,6 +72,7 @@ async def _oauth_list_providers(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(p) for p in providers])
@@ -109,6 +111,7 @@ async def _oauth_configure_provider(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(record.to_dict())
@@ -153,6 +156,7 @@ async def _oauth_remove_provider(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
@@ -184,6 +188,7 @@ async def _clients_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -207,6 +212,7 @@ async def _clients_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if client is None:
@@ -246,6 +252,7 @@ async def _clients_create(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(client.to_dict())
@@ -290,6 +297,7 @@ async def _clients_deactivate(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"deactivated": deactivated})
@@ -314,6 +322,7 @@ async def _clients_get_satisfaction(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(dict(result))

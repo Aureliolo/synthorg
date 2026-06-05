@@ -11,6 +11,7 @@ path enforces the admin guardrail triple and emits
 from typing import TYPE_CHECKING, Any
 
 from synthorg.communication.mcp_errors import CapabilityNotSupportedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.infrastructure.state import (
     artifact_facade_service_of,
     ontology_facade_service_of,
@@ -19,9 +20,9 @@ from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
 )
-from synthorg.meta.mcp.handlers._integrations_helpers import (
+from synthorg.meta.mcp.handlers._integrations_helpers import _require_int
+from synthorg.meta.mcp.handlers._mcp_handler_common import (
     _map_capability,
-    _require_int,
     _require_str,
     _require_uuid,
     _to_jsonable,
@@ -76,6 +77,7 @@ async def _artifacts_list(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -99,6 +101,7 @@ async def _artifacts_get(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if artifact is None:
@@ -139,6 +142,7 @@ async def _artifacts_create(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok(artifact.to_dict())
@@ -183,6 +187,7 @@ async def _artifacts_delete(
     except CapabilityNotSupportedError as exc:
         return _map_capability(tool, exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok({"removed": removed})
@@ -208,6 +213,7 @@ async def _ontology_list_entities(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(e) for e in entities])
@@ -234,6 +240,7 @@ async def _ontology_get_entity(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if entity is None:
@@ -267,6 +274,7 @@ async def _ontology_get_relationships(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(r) for r in result])
@@ -293,6 +301,7 @@ async def _ontology_search(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     return ok([_to_jsonable(r) for r in result])
