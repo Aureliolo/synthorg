@@ -14,7 +14,7 @@ interface RunBatchSaveArgs {
     ns: SettingNamespace,
     key: string,
     value: string,
-  ) => Promise<unknown | null>
+  ) => Promise<unknown>
   readonly setDirtyValues: React.Dispatch<React.SetStateAction<Map<string, string>>>
 }
 
@@ -76,7 +76,7 @@ export function useSettingsDirtyState(
     ns: SettingNamespace,
     key: string,
     value: string,
-  ) => Promise<unknown | null>,
+  ) => Promise<unknown>,
 ): UseSettingsDirtyStateReturn {
   const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(
     () => new Map(),

@@ -203,6 +203,10 @@ export function computeCategoryBreakdown(
 
   for (const r of records) {
     const cat = r.call_category ?? 'uncategorized'
+    // ``call_category`` is a backend enum; a value outside the known set
+    // (schema drift) falls through to the uncategorized bucket per this
+    // function's documented contract.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime boundary: backend call_category enum drift
     const bucket = buckets[cat] ?? buckets.uncategorized
     bucket.cost += r.cost
     bucket.count += 1
@@ -392,7 +396,7 @@ export function computeBudgetMetricCards(
     overview,
     budgetConfig,
     forecast,
-    currency: overview.currency ?? budgetConfig?.currency,
+    currency: overview.currency,
   }
   return [
     _buildSpendCard(ctx),

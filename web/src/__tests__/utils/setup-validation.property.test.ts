@@ -177,7 +177,7 @@ describe('setup-validation property tests', () => {
           const agents = specs.map((s) =>
             makeAgent({
               model_provider: s.provider as string | null,
-              model_id: s.modelId as string | null,
+              model_id: s.modelId,
             }),
           )
           const unresolved = resolveAgentModels(agents, {})

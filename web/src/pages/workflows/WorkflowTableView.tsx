@@ -10,6 +10,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   onExport: (id: string) => void | Promise<void>
@@ -152,7 +153,7 @@ function WorkflowTableRow({
       </td>
       <td className="px-4 py-2.5">
         <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-          {workflow.workflow_type ? workflow.workflow_type.replace(/_/g, ' ') : 'Unknown'}
+          {workflow.workflow_type.replace(/_/g, ' ')}
         </span>
       </td>
       <td className="px-4 py-2.5 text-right text-muted-foreground">{workflow.nodes.length}</td>

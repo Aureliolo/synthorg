@@ -137,7 +137,7 @@ export async function saveSettingsBatch(
     ns: SettingNamespace,
     key: string,
     value: string,
-  ) => Promise<unknown | null>,
+  ) => Promise<unknown>,
 ): Promise<Set<string>> {
   const keys = [...dirtyValues.keys()]
   // Local validation rejections bypass the store-CRUD contract (they

@@ -54,7 +54,7 @@ export async function updateWorkflow(
 }
 
 export async function deleteWorkflow(id: string): Promise<void> {
-  const response = await apiClient.delete(`/workflows/${encodeURIComponent(id)}`)
+  const response = await apiClient.delete<ApiResponse<null>>(`/workflows/${encodeURIComponent(id)}`)
   unwrapVoid(response)
 }
 

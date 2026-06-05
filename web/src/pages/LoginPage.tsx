@@ -60,7 +60,7 @@ function useLoginMode(): LoginMode {
         if (cancelled) return
         if (status.needs_admin) {
           setMode('setup')
-          setMinPasswordLength(status.min_password_length ?? MIN_PASSWORD_LENGTH)
+          setMinPasswordLength(status.min_password_length)
         } else {
           setMode('login')
         }
@@ -95,7 +95,7 @@ interface AuthForm {
   locked: boolean
   isLoginMode: boolean
   disabled: boolean
-  handleSubmit: (e: React.FormEvent) => void
+  handleSubmit: (e: React.SyntheticEvent) => void
 }
 
 function useAuthForm({ mode, minPasswordLength }: LoginMode): AuthForm {
@@ -147,7 +147,7 @@ function useAuthForm({ mode, minPasswordLength }: LoginMode): AuthForm {
   }, [username, password, confirmPassword, minPasswordLength, setup])
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SyntheticEvent) => {
       e.preventDefault()
       if (mode === 'loading') return
       if (mode === 'setup') void handleSetup()

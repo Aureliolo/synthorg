@@ -74,7 +74,7 @@ beforeAll(() => {
   Object.defineProperty(window, 'location', {
     writable: true,
     value: {
-      ...originalLocation,
+      ...(originalLocation as unknown as Record<string, unknown>),
       href: 'http://localhost/',
       origin: 'http://localhost',
       pathname: '/',

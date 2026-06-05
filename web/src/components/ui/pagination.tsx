@@ -41,7 +41,7 @@ function _safePageSizeFor(pageSize: number, pageSizeOptions: readonly number[]):
   // in totalPages. Fall back to the first option in the caller-supplied
   // list (rather than a fixed 20) so the <select> below always has a
   // matching <option> when `pageSize` is invalid or absent.
-  const firstValidOption = pageSizeOptions.find((size) => size > 0) ?? DEFAULT_PAGE_SIZE_OPTIONS[0]!
+  const firstValidOption = pageSizeOptions.find((size) => size > 0) ?? DEFAULT_PAGE_SIZE_OPTIONS[0]
   return pageSize > 0 ? pageSize : firstValidOption
 }
 

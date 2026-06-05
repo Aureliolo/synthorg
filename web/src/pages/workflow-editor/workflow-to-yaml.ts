@@ -116,7 +116,7 @@ function buildNodeContext(nodes: Node[], edges: Edge[]): NodeContext {
 }
 
 function buildStepData(node: Node, ctx: NodeContext): StepData {
-  const config = (node.data as Record<string, unknown>)?.config as
+  const config = node.data.config as
     | Record<string, unknown>
     | undefined
   const step: StepData = { id: node.id, type: node.type ?? 'task' }
@@ -142,13 +142,13 @@ const STEP_FIELD_FILLERS: Readonly<Record<string, (args: StepFillerArgs) => void
   },
   parallel_split: ({ step, config, node, ctx }) => {
     const branches = (ctx.outgoing.get(node.id) ?? [])
-      .filter((e) => (e.data as Record<string, unknown> | undefined)?.edgeType === 'parallel_branch')
+      .filter((e) => (e.data)?.edgeType === 'parallel_branch')
       .map((e) => e.target)
     if (branches.length > 0) step.branches = branches
     if (config?.max_concurrency) step.max_concurrency = config.max_concurrency
   },
   parallel_join: ({ step, config }) => {
-    step.join_strategy = (config?.join_strategy as string) || 'all'
+    step.join_strategy = (config?.join_strategy) || 'all'
   },
   agent_assignment: ({ step, config }) => {
     if (!config) return
@@ -196,7 +196,7 @@ function buildDependsOnEntry(
   edges: readonly Edge[],
 ): DependsOnEntry {
   const edge = edges.find((e) => e.source === srcId && e.target === nodeId)
-  const edgeType = (edge?.data as Record<string, unknown> | undefined)?.edgeType as
+  const edgeType = (edge?.data)?.edgeType as
     | string
     | undefined
   if (edgeType === 'conditional_true') return { id: srcId, branch: 'true' }

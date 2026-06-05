@@ -7,7 +7,7 @@ import type { TaskBoardSubmissionResponse } from '@/api/types/tasks'
 // 202-Accepted sentinel-return contract; this stub resolves to null
 // which the dialog treats as failure (keeps the dialog open). Tests
 // that assert the call site override with their own mock.
-const nullCreate = async (): Promise<TaskBoardSubmissionResponse | null> => null
+const nullCreate = (): Promise<TaskBoardSubmissionResponse | null> => Promise.resolve(null)
 
 const makeSubmission = (
   overrides: Partial<TaskBoardSubmissionResponse> = {},
@@ -87,7 +87,7 @@ describe('TaskCreateDialog', () => {
     await user.click(screen.getByText('Create Task'))
     expect(onCreate).toHaveBeenCalled()
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
-    expect((screen.getByPlaceholderText('Task title') as HTMLInputElement).value).toBe('My task')
+    expect(screen.getByPlaceholderText<HTMLInputElement>('Task title').value).toBe('My task')
   })
 
   it('calls onOpenChange(false) on successful creation', async () => {

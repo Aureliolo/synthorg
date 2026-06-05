@@ -112,7 +112,7 @@ function useCeremonyOverrides(
     (name: string, policy: CeremonyPolicyConfig | null) => {
       setOverrides((prev) => {
         const next = { ...prev }
-        if (policy === null) delete next[name]
+        if (policy === null) Reflect.deleteProperty(next, name)
         else next[name] = policy
         return next
       })

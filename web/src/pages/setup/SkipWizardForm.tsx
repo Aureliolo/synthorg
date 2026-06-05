@@ -13,7 +13,7 @@ interface SkipWizardSubmit {
   error: string | null
   setError: (value: string | null) => void
   loading: boolean
-  handleSubmit: (e?: React.FormEvent) => Promise<void>
+  handleSubmit: (e?: React.SyntheticEvent) => Promise<void>
 }
 
 function useSkipWizardSubmit(): SkipWizardSubmit {
@@ -26,7 +26,7 @@ function useSkipWizardSubmit(): SkipWizardSubmit {
   const setCompanyNameStore = useSetupWizardStore((s) => s.setCompanyName)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e?: React.SyntheticEvent) => {
     e?.preventDefault()
     const trimmed = companyName.trim()
     if (!trimmed) {

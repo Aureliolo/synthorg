@@ -58,11 +58,14 @@ export function MeetingTokenBreakdown({ meeting, className }: MeetingTokenBreakd
   const overallPercent = computeTokenUsagePercent(meeting)
   const totalTokens = meeting.minutes?.total_tokens ?? 0
 
-  const tokenUsage = meeting.token_usage_by_participant ?? {}
+  const tokenUsage = meeting.token_usage_by_participant
   // Fall back to the token-usage map's keys when the wire omits the
   // ranked list: rendering an empty bar / zero-row breakdown despite
   // having per-participant token data hides valid information.
-  const contributionRank = meeting.contribution_rank ?? Object.keys(tokenUsage)
+  const contributionRank =
+    meeting.contribution_rank.length > 0
+      ? meeting.contribution_rank
+      : Object.keys(tokenUsage)
   const segments = contributionRank.map((agentId) => ({
     label: agentId,
     value: tokenUsage[agentId] ?? 0,

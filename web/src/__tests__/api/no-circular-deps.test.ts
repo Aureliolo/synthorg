@@ -47,7 +47,7 @@ describe('module graph integrity', () => {
     if (result.status !== 0) {
       throw new Error(
         `dpdm exited with status ${String(result.status)} (signal=${String(result.signal)}):\n` +
-          `stdout:\n${result.stdout ?? ''}\nstderr:\n${result.stderr ?? ''}\n` +
+          `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n` +
           `error: ${result.error?.message ?? '(none)'}`,
       )
     }

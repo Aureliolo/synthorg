@@ -253,7 +253,7 @@ export function OrgChartToolbar({
 }: OrgChartToolbarProps) {
   const particleFlowMode = useOrgChartPrefs((s) => s.particleFlowMode)
   const setParticleFlowMode = useOrgChartPrefs((s) => s.setParticleFlowMode)
-  const { ref: toolbarRef, onKeyDown } = useToolbarKeyboardNav<HTMLDivElement>()
+  const { ref: toolbarRef, onKeyDown } = useToolbarKeyboardNav()
 
   return (
     <div

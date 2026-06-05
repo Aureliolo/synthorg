@@ -51,7 +51,7 @@ export function installGlobalErrorHandlers(): void {
   installed = true
 
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
-    const reason = event.reason
+    const reason: unknown = event.reason
     const formatted = formatReason(reason)
     if (isBenignError(reason)) {
       log.debug('Benign promise rejection ignored', {
@@ -98,7 +98,7 @@ function formatReason(reason: unknown): string {
     // ``JSON.stringify(undefined)`` returns ``undefined`` (not a string),
     // which would slip past the declared ``string`` return type and
     // surface as a runtime ``undefined`` in the operator toast.
-    const serialized = JSON.stringify(reason)
+    const serialized = JSON.stringify(reason) as string | undefined
     return serialized ?? String(reason)
   } catch {
     return String(reason)
@@ -110,7 +110,7 @@ function notifyOperator(title: string, description: string): void {
   // and React DevTools; a toast on top of that is just noise. In
   // production the only signal would otherwise be the structured
   // log, which most operators don't tail in real time.
-  if (import.meta.env?.DEV) return
+  if (import.meta.env.DEV) return
   // The toast store owns mutation error UX (per the Zustand store
   // mutation contract); callers do not wrap ``add`` in try/catch.
   useToastStore.getState().add({

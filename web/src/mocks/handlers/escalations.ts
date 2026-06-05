@@ -40,7 +40,7 @@ function buildResponse(
     ...overrides,
     escalation: esc,
     conflict_id: overrides.conflict_id ?? esc.conflict.id,
-    status: overrides.status ?? esc.status ?? 'pending',
+    status: overrides.status ?? esc.status,
   }
 }
 

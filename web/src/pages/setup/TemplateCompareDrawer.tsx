@@ -35,7 +35,7 @@ const COMPARISON_ROWS: readonly ComparisonRow[] = [
   { label: 'Estimated Agents', getValue: (t) => String(estimateAgentCount(t)) },
   { label: 'Source', getValue: (t) => t.source },
   { label: 'Tags', getValue: (t) => t.tags },
-  { label: 'Skill Patterns', getValue: (t) => t.skill_patterns.map((sp) => String(sp)) },
+  { label: 'Skill Patterns', getValue: (t) => [...t.skill_patterns] },
 ]
 
 /** Check whether all templates have the same value for a row. */

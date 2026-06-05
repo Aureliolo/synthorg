@@ -9,7 +9,7 @@ function makeDept(
   width: number,
   height: number,
 ): DepartmentBounds {
-  return { departmentName: name as DepartmentBounds['departmentName'], nodeId: `dept-${name}`, x, y, width, height }
+  return { departmentName: name, nodeId: `dept-${name}`, x, y, width, height }
 }
 
 describe('findDropTarget', () => {

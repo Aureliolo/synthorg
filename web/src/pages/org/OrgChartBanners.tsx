@@ -29,7 +29,7 @@ export function OrgChartBanners({
           description={commError}
         />
       )}
-      {Boolean(commTruncated && !commError) && (
+      {commTruncated && !commError && (
         <ErrorBanner
           variant="inline"
           severity="info"

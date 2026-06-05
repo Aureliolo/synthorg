@@ -112,15 +112,15 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof createConnection>(
         buildConnection({
-          id: `conn-${String(body.name)}`,
-          name: body.name as string,
-          connection_type: (body.connection_type ?? 'github') as ConnectionType,
+          id: `conn-${body.name}`,
+          name: body.name,
+          connection_type: (body.connection_type ?? 'github'),
         }),
       ),
       { status: 201 },
     )
   }),
-  http.patch('/api/v1/connections/:name', async ({ params }) => {
+  http.patch('/api/v1/connections/:name', ({ params }) => {
     const conn = mockConnections.find((c) => c.name === params.name)
     if (!conn) return HttpResponse.json(apiError('Connection not found'), { status: 404 })
     return HttpResponse.json(
@@ -134,7 +134,7 @@ export const connectionsList = [
     return HttpResponse.json(
       successFor<typeof checkConnectionHealth>({
         connection_name: conn.name,
-        status: conn.health_status ?? 'unknown',
+        status: conn.health_status,
         latency_ms: conn.health_status === 'healthy' ? 42 : null,
         error_detail: conn.health_status === 'unhealthy' ? 'Connection refused' : null,
         checked_at: NOW,

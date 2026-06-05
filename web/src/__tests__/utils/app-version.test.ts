@@ -170,6 +170,7 @@ describe('ensureFreshAppState', () => {
 
   it('skips reload when final setItem fails (avoids infinite loop)', async () => {
     localStorage.setItem(STORAGE_KEY, 'some-old-build')
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- saved to restore Storage.prototype.setItem after the test; never invoked unbound
     const originalSetItem = Storage.prototype.setItem
     const setItemSpy = vi
       .spyOn(Storage.prototype, 'setItem')

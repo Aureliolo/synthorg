@@ -28,7 +28,6 @@ function isPreviewableText(contentType: string): boolean {
 function shouldFetchPreview(artifact: Artifact): boolean {
   return Boolean(
     artifact.content_type
-    && artifact.size_bytes != null
     && artifact.size_bytes > 0
     && isPreviewableText(artifact.content_type),
   )

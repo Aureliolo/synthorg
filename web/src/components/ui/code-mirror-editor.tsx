@@ -174,7 +174,7 @@ function useCompartments(): EditorCompartments {
       language: { current: new Compartment() },
       readOnly: { current: new Compartment() },
       extra: { current: new Compartment() },
-    } as unknown as EditorCompartments
+    }
   }
   return ref.current
 }

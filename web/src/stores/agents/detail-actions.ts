@@ -138,7 +138,7 @@ async function fetchAgentDetailImpl(
       ? results.agentResult.value
       : null
     if (!agent) {
-      const reason = results.agentResult.status === 'rejected'
+      const reason: unknown = results.agentResult.status === 'rejected'
         ? results.agentResult.reason
         : null
       // Clear every detail slice so previously-loaded data for a

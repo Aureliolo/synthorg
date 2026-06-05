@@ -169,7 +169,7 @@ function useAgentDragReorder(
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveAgent(event.active.data.current?.agent ?? null)
+    setActiveAgent((event.active.data.current?.agent as AgentConfig | undefined) ?? null)
   }, [])
 
   const handleDragEnd = useCallback(

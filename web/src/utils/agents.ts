@@ -279,7 +279,7 @@ const CAREER_COLOR_MAP: Record<CareerEventType, SemanticColor> = {
 
 /** Map a career event type to its semantic color. */
 export function getCareerEventColor(eventType: CareerEventType): SemanticColor {
-  return CAREER_COLOR_MAP[eventType] ?? 'accent'
+  return CAREER_COLOR_MAP[eventType]
 }
 
 // ── Activity event icons ───────────────────────────────────

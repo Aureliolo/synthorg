@@ -57,7 +57,7 @@ export function createListActions(set: McpCatalogSet) {
       }
     },
 
-    setSearchQuery: async (q: string) => {
+    setSearchQuery: (q: string) => {
       // Normalise once at the top so the same trimmed value drives the
       // stored query, the empty-check, and the upstream API call.
       // Otherwise a whitespace-padded query stores raw, short-circuits
@@ -83,7 +83,7 @@ export function createListActions(set: McpCatalogSet) {
               const page = await searchMcpCatalog(trimmed, { limit: 100 })
               if (generation !== currentSearchGeneration()) return
               set({
-                searchResults: page.data as readonly McpCatalogEntry[],
+                searchResults: page.data,
                 searchLoading: false,
               })
             } catch (err) {

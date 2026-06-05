@@ -53,7 +53,7 @@ function _dispatchSseEvent(
   state.currentEvent = ''
   onProgress(payload)
   if (isError) {
-    const message = payload.error ?? payload.status ?? 'Pull failed'
+    const message = payload.error || payload.status || 'Pull failed'
     throw new Error(message)
   }
 }
@@ -156,7 +156,7 @@ async function _consumePullStream(
   // stream would leak across tests. Cancel-on-incomplete + always
   // release covers both clean and error paths.
   try {
-    while (true) {
+    for (;;) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
@@ -170,6 +170,10 @@ async function _consumePullStream(
       processSseLines(buffer.split('\n'), sseState, dispatch)
     }
 
+    // ``receivedDone`` is flipped inside the ``dispatch`` closure (invoked via
+    // ``processSseLines``); the flow analysis cannot see that indirect mutation
+    // and narrows it to ``false`` here.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- mutated indirectly inside the dispatch closure
     if (!receivedDone) {
       throw new Error('Pull stream ended without completion event')
     }

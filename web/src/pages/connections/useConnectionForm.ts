@@ -226,7 +226,7 @@ export interface ConnectionForm {
   setSensitive: (value: boolean) => void
   setWebhookRetention: (value: string) => void
   handleFieldChange: (group: 'topLevel' | 'credentials', key: string, value: string) => void
-  handleSubmit: (event: React.FormEvent) => Promise<void>
+  handleSubmit: (event: React.SyntheticEvent) => Promise<void>
 }
 
 interface ConnectionFieldSetters {
@@ -310,7 +310,7 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
   const setters = useConnectionFieldSetters(setForm, setErrors)
 
   const handleSubmit = useCallback(
-    async (event: React.FormEvent) => {
+    async (event: React.SyntheticEvent) => {
       event.preventDefault()
       setSubmitted(true)
       if (!spec || !form.type) return

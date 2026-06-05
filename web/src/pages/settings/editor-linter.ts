@@ -153,6 +153,15 @@ function unknownKeyDiagnostics(
 }
 
 /**
+ * ``parsed`` is user-typed JSON/YAML, so a namespace value can be null or an
+ * array at runtime despite the ``Record`` type. ``Object.keys(null)`` throws
+ * inside ``unknownKeyDiagnostics``, so reject non-plain-object values here.
+ */
+function isNamespaceRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
  * Validate parsed settings against the schema, returning diagnostics
  * for unknown namespaces and unknown keys.
  *
@@ -173,7 +182,7 @@ export function validateSchema(
       if (diag) diagnostics.push(diag)
       continue
     }
-    if (!keys || typeof keys !== 'object') continue
+    if (!isNamespaceRecord(keys)) continue
     const knownKeys = schema.namespaceKeys.get(ns)
     if (!knownKeys) continue
     diagnostics.push(...unknownKeyDiagnostics(ns, keys, knownKeys, findKey, text))

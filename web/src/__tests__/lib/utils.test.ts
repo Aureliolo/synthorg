@@ -11,7 +11,7 @@ describe('cn', () => {
   })
 
   it('handles conditional and falsy values', () => {
-    const isHidden = false
+    const isHidden = false as boolean
     expect(cn('base', isHidden && 'hidden', undefined, null, 'end')).toBe('base end')
   })
 })
@@ -36,7 +36,7 @@ describe('getStatusColor', () => {
   it('returns a valid color for every status (property)', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('active', 'idle', 'error', 'offline') as fc.Arbitrary<'active' | 'idle' | 'error' | 'offline'>,
+        fc.constantFrom('active', 'idle', 'error', 'offline'),
         (status) => {
           const color = getStatusColor(status)
           expect(['success', 'accent', 'danger', 'text-secondary']).toContain(color)

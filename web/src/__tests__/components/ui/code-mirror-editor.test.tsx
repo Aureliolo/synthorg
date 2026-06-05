@@ -195,7 +195,7 @@ describe('CodeMirrorEditor', () => {
           from: 0,
           to: defaultProps.value.length,
           insert: '{"new": "value"}',
-        }),
+        }) as unknown,
       }),
     )
   })
@@ -208,7 +208,7 @@ describe('CodeMirrorEditor', () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
-        effects: expect.anything(),
+        effects: expect.anything() as unknown,
       }),
     )
   })
@@ -221,7 +221,7 @@ describe('CodeMirrorEditor', () => {
 
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
-        effects: expect.anything(),
+        effects: expect.anything() as unknown,
       }),
     )
   })
@@ -250,7 +250,7 @@ describe('CodeMirrorEditor', () => {
     // dispatch should have been called to sync the new value
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: expect.objectContaining({ from: 0, to: 'a'.length, insert: 'b' }),
+        changes: expect.objectContaining({ from: 0, to: 'a'.length, insert: 'b' }) as unknown,
       }),
     )
     // but onChange must NOT fire because isProgrammaticRef blocks it
@@ -278,7 +278,7 @@ describe('CodeMirrorEditor', () => {
                     from: 0,
                     to: 'initial'.length,
                     insert: newValue,
-                  }),
+                  }) as unknown,
                 }),
               )
             } finally {

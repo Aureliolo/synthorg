@@ -38,7 +38,7 @@ const MIN_LINK_DISTANCE = 80
 
 /** Seed simulation nodes from the current React Flow positions. */
 function toSimNodes(nodes: Node[]): SimNode[] {
-  return nodes.map((n) => ({ id: n.id, x: n.position.x ?? 0, y: n.position.y ?? 0 }))
+  return nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }))
 }
 
 /** Bidirectional source::target -> volume lookup for link distances. */

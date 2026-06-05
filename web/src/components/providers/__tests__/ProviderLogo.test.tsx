@@ -5,7 +5,7 @@ import { ProviderLogo } from '../ProviderLogo'
 describe('ProviderLogo', () => {
   it('renders the bundled mask-image element for a known preset', () => {
     const { container } = render(<ProviderLogo name="anthropic" />)
-    const span = container.querySelector('[data-provider-logo="anthropic"]') as HTMLElement | null
+    const span = container.querySelector<HTMLElement>('[data-provider-logo="anthropic"]')
     expect(span).not.toBeNull()
     expect(span?.style.maskImage).toContain('/provider-logos/anthropic.svg')
     // No <img> tag is used: brand colour is applied via background +
@@ -23,7 +23,7 @@ describe('ProviderLogo', () => {
 
   it('respects the size prop on both bundled and fallback variants', () => {
     const known = render(<ProviderLogo name="openai" size={48} />)
-    const span = known.container.querySelector('[data-provider-logo="openai"]') as HTMLElement | null
+    const span = known.container.querySelector<HTMLElement>('[data-provider-logo="openai"]')
     expect(span?.style.width).toBe('48px')
     expect(span?.style.height).toBe('48px')
 

@@ -138,7 +138,7 @@ function CompanyErrorBanner({
       // specifically, hide Retry entirely (it would always re-fail until
       // upstream provider state is fixed) and surface the
       // "Open Providers step" action via the ``action`` prop instead.
-      onRetry={tierCoverageInsufficient || applyDisabled ? undefined : () => void onApply()}
+      onRetry={tierCoverageInsufficient || applyDisabled ? undefined : () => onApply()}
       action={
         tierCoverageInsufficient ? { label: 'Open Providers step', onClick: onOpenProviders } : undefined
       }

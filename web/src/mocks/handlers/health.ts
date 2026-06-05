@@ -16,11 +16,7 @@ export const healthHandlers = [
       }),
     ),
   ),
-  // Readiness -- 200 on healthy persistence + message bus. The
-  // ``successFor<typeof getHealth>`` alias covers the legacy
-  // ``getHealth()`` caller without a second handler; the schema is
-  // the same because ``getHealth`` is a direct alias for
-  // ``getReadiness``.
+  // Readiness -- 200 on healthy persistence + message bus.
   http.get('/api/v1/readyz', () =>
     HttpResponse.json(
       successFor<typeof getReadiness>({

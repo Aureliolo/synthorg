@@ -32,7 +32,7 @@ interface AutonomyValidationOk {
 
 function _normalizeAutonomyBody(raw: unknown): { level?: unknown; reason?: unknown } {
   if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as { level?: unknown; reason?: unknown }
+    return raw
   }
   return {}
 }

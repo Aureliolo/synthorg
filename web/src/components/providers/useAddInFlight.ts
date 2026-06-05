@@ -43,7 +43,7 @@ export function useAddInFlight(): AddInFlightHandle {
     setAdding((prev) => {
       if (!(name in prev)) return prev
       const next = { ...prev }
-      delete next[name]
+      Reflect.deleteProperty(next, name)
       return next
     })
   }

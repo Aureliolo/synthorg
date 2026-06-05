@@ -24,7 +24,7 @@ const meta = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreate: async () => stubArtifact,
+    onCreate: () => Promise.resolve(stubArtifact),
   },
 } satisfies Meta<typeof ArtifactCreateDialog>
 

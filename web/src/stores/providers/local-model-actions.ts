@@ -45,6 +45,7 @@ async function pullModelImpl(
       },
       controller.signal,
     )
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- assigned inside the streamed-progress onProgress callback; CFA cannot see the closure mutation
     if (lastError) {
       useToastStore.getState().add({
         variant: 'error',

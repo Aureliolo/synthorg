@@ -81,7 +81,7 @@ function updateFromWsEventImpl(set: AgentsSet, event: WsEvent): void {
   // pipeline in useNotificationsStore.handleWsEvent (see #1078).
   if (event.event_type === 'personality.trimmed') return
   log.debug('WS event ignored: unhandled event_type', {
-    event_type: sanitizeForLog(event?.event_type),
+    event_type: sanitizeForLog(event.event_type),
   })
 }
 

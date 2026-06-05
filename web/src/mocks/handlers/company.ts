@@ -27,7 +27,7 @@ function buildDepartment(
   overrides: Partial<Department> = {},
 ): Department {
   return {
-    name: 'engineering' as DepartmentName,
+    name: 'engineering',
     display_name: 'Engineering',
     head: null,
     head_id: null,
@@ -64,7 +64,7 @@ function buildCompanyConfig(
 
 function buildDepartmentHealth(name: string): DepartmentHealth {
   return {
-    department_name: name as DepartmentName,
+    department_name: name,
     agent_count: 0,
     active_agent_count: 0,
     currency: DEFAULT_CURRENCY,
@@ -92,7 +92,7 @@ export const companyHandlers = [
   http.patch('/api/v1/company', async ({ request }) => {
     const body = (await request.json()) as Partial<CompanyConfig>
     return HttpResponse.json(
-      successFor<typeof updateCompany>(body as Partial<CompanyConfig>),
+      successFor<typeof updateCompany>(body),
     )
   }),
   http.get('/api/v1/departments', () =>
@@ -101,7 +101,7 @@ export const companyHandlers = [
   http.get('/api/v1/departments/:name', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getDepartment>(
-        buildDepartment({ name: String(params.name) as DepartmentName }),
+        buildDepartment({ name: String(params.name) }),
       ),
     ),
   ),
@@ -114,7 +114,7 @@ export const companyHandlers = [
     const body = (await request.json()) as { name: string }
     return HttpResponse.json(
       successFor<typeof createDepartment>(
-        buildDepartment({ name: body.name as DepartmentName }),
+        buildDepartment({ name: body.name }),
       ),
       { status: 201 },
     )
@@ -125,7 +125,7 @@ export const companyHandlers = [
       successFor<typeof updateDepartment>(
         buildDepartment({
           ...body,
-          name: String(params.name) as DepartmentName,
+          name: String(params.name),
         }),
       ),
     )

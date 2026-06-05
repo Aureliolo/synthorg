@@ -434,7 +434,7 @@ describe('LoginPage', () => {
         ).toBeInTheDocument()
       })
 
-      const username = screen.getByLabelText('Username') as HTMLInputElement
+      const username = screen.getByLabelText<HTMLInputElement>('Username')
       await user.type(username, XSS_PAYLOAD)
 
       expect(username.value).toBe(XSS_PAYLOAD)

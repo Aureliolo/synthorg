@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { emptyPage, paginatedFor } from '@/mocks/handlers'
+import { emptyPage, paginatedFor, successFor } from '@/mocks/handlers'
 import { server } from '@/test-setup'
 import type { Capabilities } from '@/api/types/capabilities'
 import type { ClientRequest, listRequests } from '@/api/endpoints/clients'
@@ -18,13 +18,6 @@ let capReturn: CapReturn
 
 vi.mock('@/hooks/useCapabilities', () => ({
   useCapabilities: () => capReturn,
-}))
-
-vi.mock('@/api/endpoints/clients', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/endpoints/clients')>()),
-  scopeRequest: vi.fn(async () => undefined),
-  approveRequest: vi.fn(async () => undefined),
-  rejectRequest: vi.fn(async () => undefined),
 }))
 
 const { default: RequestQueuePage } = await import('@/pages/RequestQueuePage')
@@ -130,28 +123,57 @@ describe('RequestQueuePage', () => {
   })
 
   it('scopes a request from the board', async () => {
+    let scopeCall: { id: string; body: unknown } | undefined
+    server.use(
+      http.post('/api/v1/requests/:id/scope', async ({ params, request }) => {
+        scopeCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        return HttpResponse.json(
+          successFor<typeof scopeRequest>(makeRequest({ status: 'scoping' })),
+        )
+      }),
+    )
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Scope' }))
-    await waitFor(() =>
-      expect(scopeRequest).toHaveBeenCalledWith('req-1', { notes: 'Scoped from dashboard' }),
-    )
+    await waitFor(() => {
+      expect(scopeCall).toEqual({ id: 'req-1', body: { notes: 'Scoped from dashboard' } })
+    })
   })
 
   it('approves a request from the board', async () => {
+    let approvedId: string | undefined
+    server.use(
+      http.post('/api/v1/requests/:id/approve', ({ params }) => {
+        approvedId = String(params.id)
+        return HttpResponse.json(
+          successFor<typeof approveRequest>(makeRequest({ status: 'approved' })),
+        )
+      }),
+    )
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }))
-    await waitFor(() => expect(approveRequest).toHaveBeenCalledWith('req-1'))
+    await waitFor(() => {
+      expect(approvedId).toBe('req-1')
+    })
   })
 
   it('rejects a request from the board', async () => {
+    let rejectCall: { id: string; body: unknown } | undefined
+    server.use(
+      http.post('/api/v1/requests/:id/reject', async ({ params, request }) => {
+        rejectCall = { id: String(params.id), body: (await request.json()) as Record<string, unknown> }
+        return HttpResponse.json(
+          successFor<typeof rejectRequest>(makeRequest({ status: 'cancelled' })),
+        )
+      }),
+    )
     seedSubmittedRequest()
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reject' }))
-    await waitFor(() =>
-      expect(rejectRequest).toHaveBeenCalledWith('req-1', 'Rejected from dashboard'),
-    )
+    await waitFor(() => {
+      expect(rejectCall).toEqual({ id: 'req-1', body: { reason: 'Rejected from dashboard' } })
+    })
   })
 
   it('filters out non-matching requests by search query', async () => {

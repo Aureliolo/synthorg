@@ -69,7 +69,7 @@ const EVENT_SUMMARISERS: Partial<
 }
 
 function summariseEvent(event: ProviderAuditEvent): string {
-  return EVENT_SUMMARISERS[event.event_type]?.(event.payload ?? {}) ?? ''
+  return EVENT_SUMMARISERS[event.event_type]?.(event.payload) ?? ''
 }
 
 /**
@@ -87,7 +87,7 @@ function AuditRowItem({ event }: { event: ProviderAuditEvent }) {
     <li className="flex flex-col gap-1 py-grid-gap">
       <div className="flex items-center justify-between gap-grid-gap">
         <span className="font-medium text-foreground">
-          {EVENT_LABEL[event.event_type] ?? event.event_type}
+          {EVENT_LABEL[event.event_type]}
         </span>
         <time
           dateTime={event.occurred_at}
@@ -174,7 +174,7 @@ function AuditErrorBanner({
       onRetry={
         providerName
           ? () => {
-              void onRetry(providerName)
+              onRetry(providerName)
             }
           : undefined
       }
@@ -240,7 +240,7 @@ function AuditLoadMore({
     <Button
       variant="secondary"
       onClick={() => {
-        void onLoadMore()
+        onLoadMore()
       }}
       disabled={loadingMore}
     >

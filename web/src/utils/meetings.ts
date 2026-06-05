@@ -90,7 +90,7 @@ export function computeTokenUsagePercent(meeting: MeetingResponse): number {
 
 export function getParticipantTokenShare(meeting: MeetingResponse, agentId: string): number {
   if (!meeting.minutes || meeting.minutes.total_tokens <= 0) return 0
-  const usage = (meeting.token_usage_by_participant ?? {})[agentId]
+  const usage = meeting.token_usage_by_participant[agentId]
   if (usage === undefined || usage <= 0) return 0
   const pct = (usage / meeting.minutes.total_tokens) * 100
   return Math.min(100, Math.max(0, pct))

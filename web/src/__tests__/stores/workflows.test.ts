@@ -204,7 +204,7 @@ describe('deleteWorkflow', () => {
     useWorkflowsStore.setState({ workflows: [wf1], totalWorkflows: 1 })
 
     server.use(
-      http.delete('/api/v1/workflows/:id', async () => {
+      http.delete('/api/v1/workflows/:id', () => {
         // Simulate a WS-triggered upsert arriving during the in-flight
         // delete -- the store mutation happens before the delete's
         // rejection resolves.

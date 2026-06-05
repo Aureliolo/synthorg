@@ -31,7 +31,7 @@ export async function listProviders(): Promise<Record<string, ProviderConfig>> {
     const response = await apiClient.get<PaginatedResponse<ProviderConfig>>(url)
     return unwrapPaginated<ProviderConfig>(response)
   })
-  const result: Record<string, ProviderConfig> = Object.create(null)
+  const result = Object.create(null) as Record<string, ProviderConfig>
   for (const provider of all) {
     const key = provider.name
     // Prototype-pollution keys are silently dropped (defence-in-depth

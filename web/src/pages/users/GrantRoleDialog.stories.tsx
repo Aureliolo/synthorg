@@ -25,7 +25,7 @@ const meta = {
     (Story) => {
       useUsersStore.setState({
         submitting: false,
-        grantOrgRole: async () => sampleUser,
+        grantOrgRole: () => Promise.resolve(sampleUser),
       })
       return <Story />
     },

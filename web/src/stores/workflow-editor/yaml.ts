@@ -66,7 +66,7 @@ export function parseDefinition(def: WorkflowDefinition): {
     data: { label: n.label, config: n.config },
   }))
   const edges: Edge[] = def.edges.map((e) => {
-    const meta = mapPersistedEdge(e.type ?? 'sequential')
+    const meta = mapPersistedEdge(e.type)
     return {
       id: e.id,
       source: e.source_node_id,

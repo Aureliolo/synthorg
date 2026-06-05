@@ -1,7 +1,6 @@
 import { apiClient, ApiRequestError, unwrap, unwrapVoid } from '../../client'
 import type {
   ApiResponse,
-  ErrorDetail,
   PresetOverride,
   PresetOverrideUpdateRequest,
 } from '@/api/types'
@@ -17,12 +16,15 @@ export async function getPresetOverride(presetName: string): Promise<PresetOverr
   // here, not an error. Inspect the envelope directly and pass null
   // through; otherwise the ``| null`` half of the return type would be
   // unreachable.
-  const body = response.data
+  // Axios types ``response.data`` as the declared envelope, but the server
+  // can return a malformed / empty body at runtime; widen the boundary so the
+  // guards below are real, not dead.
+  const body = response.data as ApiResponse<PresetOverride | null> | null | undefined
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
-    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    const detail = 'error_detail' in body ? body.error_detail : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   // Distinguish "absent override" (``data: null``, intentional) from a

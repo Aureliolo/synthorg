@@ -56,7 +56,7 @@ function EscalationFilters({ q }: { q: EscalationQueue }) {
 
 function EscalationCard({ row, onReview }: { row: EscalationResponse; onReview: (id: string) => void }) {
   const e = row.escalation
-  const status = e.status ?? 'pending'
+  const status = e.status
   return (
     <SectionCard
       title={e.conflict.subject}

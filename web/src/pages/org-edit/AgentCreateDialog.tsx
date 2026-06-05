@@ -141,7 +141,7 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
       const result = await onCreate({
         name: form.name.trim(),
         role: form.role.trim(),
-        department: form.department as CreateAgentOrgRequest['department'],
+        department: form.department,
         level: form.level,
       })
       // Store owns the toast UX; the dialog stays open on failure so the

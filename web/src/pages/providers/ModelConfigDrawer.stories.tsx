@@ -41,7 +41,7 @@ const meta = {
   decorators: [
     (Story) => {
       useProvidersStore.setState({
-        updateModelConfig: async () => true,
+        updateModelConfig: () => Promise.resolve(true),
       })
       return <Story />
     },

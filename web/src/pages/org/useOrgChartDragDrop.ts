@@ -96,8 +96,8 @@ function computeDeptBounds(displayNodes: Node[]): DepartmentBounds[] {
       nodeId: n.id,
       x: n.position.x,
       y: n.position.y,
-      width: (n.measured?.width ?? n.width ?? 200) as number,
-      height: (n.measured?.height ?? n.height ?? 120) as number,
+      width: (n.measured?.width ?? n.width ?? 200),
+      height: (n.measured?.height ?? n.height ?? 120),
     }))
 }
 

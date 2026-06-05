@@ -185,14 +185,14 @@ async function duplicateWorkflow(navigate: ReturnType<typeof useNavigate>): Prom
   const edgeData = state.edges.map(extractEdgePayload)
   const created = await useWorkflowsStore.getState().createWorkflow({
     name: `${state.definition.name} (Copy)`,
-    description: state.definition.description ?? '',
+    description: state.definition.description,
     version: '1.0.0',
-    workflow_type: state.definition.workflow_type ?? 'sequential_pipeline',
-    inputs: (state.definition.inputs ?? []).map(toIORequest),
-    outputs: (state.definition.outputs ?? []).map(toIORequest),
+    workflow_type: state.definition.workflow_type,
+    inputs: state.definition.inputs.map(toIORequest),
+    outputs: state.definition.outputs.map(toIORequest),
     is_subworkflow: false,
-    nodes: nodeData as readonly Record<string, unknown>[],
-    edges: edgeData as readonly Record<string, unknown>[],
+    nodes: nodeData,
+    edges: edgeData,
   })
   if (!created) return
   void navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

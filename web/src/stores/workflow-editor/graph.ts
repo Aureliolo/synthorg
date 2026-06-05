@@ -83,7 +83,7 @@ function updateNodeConfigImpl(
   const snapshot = snapshotOf(get)
   const newNodes = nodes.map((n) =>
     n.id === nodeId
-      ? { ...n, data: { ...(n.data as Record<string, unknown>), config } }
+      ? { ...n, data: { ...(n.data), config } }
       : n,
   )
   const yaml = regenerateYaml(newNodes, edges, definition)

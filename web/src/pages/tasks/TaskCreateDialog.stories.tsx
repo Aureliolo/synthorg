@@ -16,15 +16,15 @@ type Story = StoryObj<typeof meta>
 // Sentinel-return stub: onCreate now resolves to the 202
 // ``TaskBoardSubmissionResponse`` envelope on success or ``null`` on
 // failure (the spine creates the task in the background).
-const nullCreate = async (): Promise<TaskBoardSubmissionResponse | null> => null
+const nullCreate = (): Promise<TaskBoardSubmissionResponse | null> => Promise.resolve(null)
 
 export const Open: Story = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreate: async (data) => {
+    onCreate: (data) => {
       action('onCreate')(data)
-      return null
+      return Promise.resolve(null)
     },
   },
 }

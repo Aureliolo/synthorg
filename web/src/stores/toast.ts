@@ -47,8 +47,6 @@ const VARIANT_DURATIONS: Record<ToastVariant, number | null> = {
   error: null,
 }
 
-const DEFAULT_DURATION = 5000
-
 /** Module-scoped timer map for auto-dismiss cleanup. */
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
@@ -59,13 +57,13 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
   add(toast) {
     const id = String(++nextId)
-    const duration = toast.duration ?? VARIANT_DURATIONS[toast.variant] ?? DEFAULT_DURATION
+    const duration = toast.duration ?? VARIANT_DURATIONS[toast.variant]
 
     set((state) => ({
       toasts: [...state.toasts, { ...toast, id }],
     }))
 
-    // Schedule auto-dismiss (null duration means persistent)
+    // Schedule auto-dismiss; a null duration (warning/error) stays persistent.
     if (duration !== null) {
       const timer = setTimeout(() => {
         timers.delete(id)

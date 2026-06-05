@@ -438,7 +438,7 @@ describe('filterCfoEvents', () => {
 describe('computeBudgetMetricCards', () => {
   const overview: OverviewMetrics = {
     total_tasks: 10,
-    tasks_by_status: {} as Record<string, number>,
+    tasks_by_status: {},
     total_agents: 5,
     total_cost: 42,
     budget_remaining: 58,

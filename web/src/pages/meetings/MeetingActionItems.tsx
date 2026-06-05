@@ -39,7 +39,7 @@ export function MeetingActionItems({ actionItems, className }: MeetingActionItem
             <div className="min-w-0 flex-1">
               <p className="text-sm text-foreground">{item.description}</p>
               <div className="mt-1 flex items-center gap-2">
-                <PriorityBadge priority={item.priority ?? 'medium'} />
+                <PriorityBadge priority={item.priority} />
                 <span className="text-micro text-muted-foreground">
                   {item.assignee_id ? formatLabel(item.assignee_id) : 'Unassigned'}
                 </span>

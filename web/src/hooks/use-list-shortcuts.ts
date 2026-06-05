@@ -27,13 +27,13 @@ function isEditable(el: Element | null): boolean {
   if (!el) return false
   const tag = el.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
-  return (el as HTMLElement).isContentEditable === true
+  return (el as HTMLElement).isContentEditable
 }
 
 interface ShortcutDeps {
   readonly itemCount: number
   readonly selectedIndex: number | null
-  readonly lastGRef: React.MutableRefObject<number>
+  readonly lastGRef: React.RefObject<number>
   readonly setSelectedIndex: React.Dispatch<React.SetStateAction<number | null>>
   readonly onOpen?: (index: number) => void
   readonly onEdit?: (index: number) => void

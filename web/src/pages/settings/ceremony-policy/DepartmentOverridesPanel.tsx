@@ -18,7 +18,7 @@ export interface DepartmentOverridesPanelProps {
 function derivePolicyFields(policy: CeremonyPolicyConfig | null | undefined, strategy: CeremonyStrategyType) {
   const p: Partial<CeremonyPolicyConfig> = policy ?? {}
   return {
-    strategyConfig: (p.strategy_config ?? {}) as Record<string, unknown>,
+    strategyConfig: (p.strategy_config ?? {}),
     velocityCalculator: p.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy],
     autoTransition: p.auto_transition ?? true,
     transitionThreshold: p.transition_threshold ?? 1.0,

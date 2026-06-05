@@ -15,7 +15,7 @@ export interface OrgChartFilterResult {
 function nodeMatchesQuery(n: Node, query: string): boolean {
   if (getNodeLabel(n).toLowerCase().includes(query)) return true
   if (n.type === 'agent' || n.type === 'ceo') {
-    const role = (n.data as AgentNodeData).role?.toLowerCase() ?? ''
+    const role = (n.data as AgentNodeData).role.toLowerCase()
     return role.includes(query)
   }
   return false

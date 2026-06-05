@@ -11,6 +11,7 @@ import type { WorkflowDefinition } from '@/api/types/workflows'
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
   /** Returning ``false`` keeps the confirm dialog open so the user can retry. */
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onDelete: (id: string) => boolean | void | Promise<boolean | void>
   onDuplicate: (id: string) => void
   /** Export the persisted definition as YAML. */
@@ -115,7 +116,7 @@ function WorkflowCardBody({ workflow }: WorkflowCardBodyProps) {
             instances below for Nodes/Edges and with ArtifactCard's type label)
             instead of a hand-rolled inline pill that drifts from the design
             tokens. */}
-        <StatPill value={formatLabel(workflow.workflow_type ?? 'unknown')} />
+        <StatPill value={formatLabel(workflow.workflow_type)} />
       </div>
       {workflow.description && (
         <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">

@@ -69,7 +69,7 @@ export function createWsHandler(set: MessagesSet) {
       set((s) => {
         if (!s.unreadCounts[channel]) return s
         const next = { ...s.unreadCounts }
-        delete next[channel]
+        Reflect.deleteProperty(next, channel)
         return { unreadCounts: next }
       })
     },

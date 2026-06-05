@@ -17,8 +17,8 @@ const meta = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreateTeam: async () => sampleTeam,
-    onUpdateTeam: async () => sampleTeam,
+    onCreateTeam: () => Promise.resolve(sampleTeam),
+    onUpdateTeam: () => Promise.resolve(sampleTeam),
   },
 } satisfies Meta<typeof TeamEditDialog>
 

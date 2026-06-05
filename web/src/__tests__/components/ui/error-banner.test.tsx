@@ -90,8 +90,8 @@ describe('ErrorBanner', () => {
         (severity, variant) => {
           const { unmount } = render(
             <ErrorBanner
-              severity={severity as 'error' | 'warning' | 'info'}
-              variant={variant as 'inline' | 'section' | 'offline'}
+              severity={severity}
+              variant={variant}
               title="Prop-test"
             />,
           )
@@ -128,7 +128,7 @@ describe('ErrorBanner', () => {
       const button = screen.getByRole('button', {
         name: /01J7CK5D9SXKZ0HFAQK4E8RBQX/,
       })
-      const visibleText = button.textContent ?? ''
+      const visibleText = button.textContent
       expect(visibleText.length).toBeLessThan('01J7CK5D9SXKZ0HFAQK4E8RBQX'.length)
     })
 

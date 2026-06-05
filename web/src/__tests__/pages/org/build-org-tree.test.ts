@@ -32,7 +32,7 @@ function buildTree(
 function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string }): AgentConfig {
   return {
     role: 'Developer',
-    department: 'engineering' as DepartmentName,
+    department: 'engineering',
     level: 'mid',
     status: 'active',
     personality: {

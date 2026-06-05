@@ -27,7 +27,7 @@ type PreviewMode =
 export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactContentPreviewProps) {
   // Exclude SVG: it is an XML document with JavaScript execution capability (XSS risk).
   const isImage =
-    artifact.content_type?.startsWith('image/') === true &&
+    artifact.content_type.startsWith('image/') &&
     artifact.content_type !== 'image/svg+xml'
   const { imageSrc, imageError } = useArtifactImagePreview(artifact, isImage)
 
@@ -46,7 +46,7 @@ function renderPreviewMode(
 ): React.ReactElement {
   if (mode.kind === 'empty') return <EmptyContent />
   if (mode.kind === 'text') {
-    return <TextPreview preview={mode.preview} contentType={artifact.content_type ?? ''} />
+    return <TextPreview preview={mode.preview} contentType={artifact.content_type} />
   }
   if (mode.kind === 'image-error') {
     return <ImageErrorPreview message={mode.message} onDownload={handleDownload} />

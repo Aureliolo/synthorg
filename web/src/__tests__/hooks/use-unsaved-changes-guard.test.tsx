@@ -121,7 +121,7 @@ describe('useUnsavedChangesGuard', () => {
 
   it('beforeunload event is prevented when dirty', () => {
     renderHook(() => useUnsavedChangesGuard({ when: true }), { wrapper: hookWrapper })
-    const event = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent
+    const event = new Event('beforeunload', { cancelable: true })
     act(() => {
       fireEvent(window, event)
     })

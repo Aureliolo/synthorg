@@ -73,7 +73,7 @@ export function graphemeLength(s: string): number {
     while (!iterator.next().done) count += 1
     return count
   }
-  return [...s].length
+  return Array.from(s).length
 }
 
 export function validateCompanyStep(input: CompanyStepInput): CompanyStepValidationResult {

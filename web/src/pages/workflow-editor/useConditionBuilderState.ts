@@ -169,7 +169,7 @@ interface SyncArgs {
   core: BuilderCoreState
   allocKey: () => number
   toEntries: (comparisons: ConditionComparison[]) => ComparisonEntry[]
-  appliedExternalUpdateRef: React.MutableRefObject<boolean>
+  appliedExternalUpdateRef: React.RefObject<boolean>
 }
 
 function useExternalValueSync({
@@ -232,7 +232,7 @@ interface EmitArgs {
   value: string
   core: BuilderCoreState
   onChange: (value: string) => void
-  appliedExternalUpdateRef: React.MutableRefObject<boolean>
+  appliedExternalUpdateRef: React.RefObject<boolean>
 }
 
 function useEmitOnBuilderChange({

@@ -135,10 +135,10 @@ const meta = {
   args: {
     config: mockConfig,
     saving: false,
-    onCreateAgent: async () => mockAgents[0]!,
-    onUpdateAgent: async () => mockAgents[0]!,
-    onDeleteAgent: async () => true,
-    onReorderAgents: async () => true,
+    onCreateAgent: () => Promise.resolve(mockAgents[0]!),
+    onUpdateAgent: () => Promise.resolve(mockAgents[0]!),
+    onDeleteAgent: () => Promise.resolve(true),
+    onReorderAgents: () => Promise.resolve(true),
     optimisticReorderAgents: () => () => {},
   },
 } satisfies Meta<typeof AgentsTab>

@@ -37,9 +37,9 @@ describe('motion presets', () => {
     it.each(springs)('$name has valid spring config', ({ value }) => {
       expect(value).toMatchObject({
         type: 'spring',
-        stiffness: expect.any(Number),
-        damping: expect.any(Number),
-        mass: expect.any(Number),
+        stiffness: expect.any(Number) as unknown,
+        damping: expect.any(Number) as unknown,
+        mass: expect.any(Number) as unknown,
       })
       const v = value as { stiffness: number; damping: number; mass: number }
       expect(v.stiffness).toBeGreaterThan(0)
@@ -58,7 +58,7 @@ describe('motion presets', () => {
     it.each(tweens)('$name has valid tween config', ({ value }) => {
       expect(value).toMatchObject({
         type: 'tween',
-        duration: expect.any(Number),
+        duration: expect.any(Number) as unknown,
       })
       const v = value as { duration: number }
       expect(v.duration).toBeGreaterThan(0)
@@ -155,7 +155,7 @@ describe('motion presets', () => {
     it('is a tween transition', () => {
       expect(statusColorTransition).toMatchObject({
         type: 'tween',
-        duration: expect.any(Number),
+        duration: expect.any(Number) as unknown,
       })
     })
   })

@@ -51,7 +51,7 @@ export const projectsHandlers = [
           id: `project-${body.name}`,
           name: body.name,
           description: body.description ?? '',
-          team: (body.team ?? []) as string[],
+          team: (body.team ?? []),
           lead: body.lead ?? null,
           deadline: body.deadline ?? null,
           budget: body.budget ?? 0,

@@ -196,7 +196,7 @@ describe('InputField', () => {
 
     it('does not submit a wrapping form when clicked', async () => {
       const user = userEvent.setup()
-      const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+      const onSubmit = vi.fn((e: React.SyntheticEvent) => e.preventDefault())
       render(
         <form onSubmit={onSubmit}>
           <InputField label="Password" type="password" />

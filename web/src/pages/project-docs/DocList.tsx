@@ -83,7 +83,7 @@ export function DocList({
                 <span className="text-muted-foreground block text-xs">
                   {docTypeLabel(doc.doc_type)}
                   {doc.tags.length > 0
-                    ? ` ${'·'} ${doc.tags.slice(0, 3).join(', ')}`
+                    ? ` · ${doc.tags.slice(0, 3).join(', ')}`
                     : ''}
                 </span>
               </button>

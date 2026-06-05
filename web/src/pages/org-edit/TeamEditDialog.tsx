@@ -55,7 +55,7 @@ function useTeamEditForm(props: TeamEditDialogProps): TeamEditForm {
     if (open) {
       if (mode === 'edit' && team) {
         setName(team.name)
-        setLead(team.lead ?? '')
+        setLead(team.lead)
         setMembers(team.members)
       } else {
         setName('')

@@ -17,7 +17,7 @@ function MockMotionDiv({ children, ref, ...allProps }: React.ComponentProps<'div
   const domProps = Object.fromEntries(
     Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
   ) as React.HTMLAttributes<HTMLDivElement>
-  return <div ref={ref} {...domProps}>{children as React.ReactNode}</div>
+  return <div ref={ref} {...domProps}>{children}</div>
 }
 
 vi.mock('motion/react', async () => {
@@ -28,14 +28,14 @@ vi.mock('motion/react', async () => {
     motion: new Proxy(actual.motion as object, {
       get(target, prop, receiver) {
         if (prop === 'div') return MockMotionDiv
-        return Reflect.get(target, prop, receiver)
+        return Reflect.get(target, prop, receiver) as unknown
       },
     }) as typeof actual.motion,
   }
 })
 
 // Mock useBreakpoint so we can control breakpoint per-test
-const getBreakpoint = vi.fn()
+const getBreakpoint = vi.fn<() => ReturnType<typeof import('@/hooks/useBreakpoint').useBreakpoint>>()
 vi.mock('@/hooks/useBreakpoint', () => ({
 
   useBreakpoint: () => getBreakpoint(),
@@ -46,7 +46,7 @@ const originalLocation = window.location
 beforeAll(() => {
   Object.defineProperty(window, 'location', {
     writable: true,
-    value: { ...originalLocation, href: '', pathname: '/' },
+    value: { ...(originalLocation as unknown as Record<string, unknown>), href: '', pathname: '/' },
   })
 })
 afterAll(() => {

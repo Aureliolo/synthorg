@@ -91,7 +91,7 @@ export function getCspNonce(): string | undefined {
   const meta = document.querySelector<HTMLMetaElement>(
     'meta[name="csp-nonce"]',
   )
-  const value = meta?.content?.trim()
+  const value = meta?.content.trim()
   _logCspNonceIssue(meta, value)
   cached = _validNonce(value)
   return cached

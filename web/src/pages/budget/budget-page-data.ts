@@ -34,7 +34,7 @@ export function useParetoFrontier(): ParetoFrontierState {
       .then((frontier) => {
         if (!controller.signal.aborted) setParetoFrontier(frontier)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (controller.signal.aborted) return
         log.warn('failed to load pareto frontier', err)
         setParetoFrontier(null)

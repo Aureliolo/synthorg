@@ -41,7 +41,7 @@ const mockTask: Task = {
 }
 
 const noop = async () => {}
-const noopSentinel = async () => true
+const noopSentinel = () => Promise.resolve(true)
 
 describe('TaskDetailPanel', () => {
   it('renders task title', () => {

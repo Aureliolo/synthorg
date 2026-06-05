@@ -50,6 +50,10 @@ async function addDetectedLocalProvider(presetName: string, detectedUrl: string)
 /** Run a create mutation, then refresh the list unless the create poisoned it. */
 async function createProviderThenRefresh<T>(create: () => Promise<T>): Promise<T> {
   const result = await create()
+  // ``result`` may be a falsy store sentinel (``null`` / ``false``) for callers
+  // whose mutation poisoned the result; the unconstrained ``T`` cannot express
+  // that here, so the guard reads as always-truthy to the flow analysis.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- guards against a falsy store sentinel not expressible on the bare type parameter
   if (result && !useSetupWizardStore.getState().providersError) {
     await useSetupWizardStore.getState().fetchProviders()
   }

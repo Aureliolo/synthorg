@@ -11,6 +11,7 @@ import { vi } from 'vitest'
 
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
+import type { MockInstance } from 'vitest'
 import { apiClient } from '@/api/client'
 
 function _build429Error(
@@ -46,7 +47,7 @@ function _build429Error(
  * call signature changes, only this helper needs to adapt.
  */
 function _rateLimitedPayloads(
-  warnSpy: ReturnType<typeof vi.spyOn>,
+  warnSpy: MockInstance<typeof console.warn>,
 ): Array<Record<string, unknown>> {
   return warnSpy.mock.calls
     .filter(
@@ -57,8 +58,8 @@ function _rateLimitedPayloads(
 }
 
 describe('apiClient 429 retry telemetry', () => {
-  let warnSpy: ReturnType<typeof vi.spyOn>
-  let requestSpy: ReturnType<typeof vi.spyOn>
+  let warnSpy: MockInstance<typeof console.warn>
+  let requestSpy: MockInstance<typeof apiClient.request>
 
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -68,7 +69,7 @@ describe('apiClient 429 retry telemetry', () => {
       headers: {},
       statusText: 'OK',
       config: {} as AxiosResponse['config'],
-    } as AxiosResponse)
+    })
   })
 
   afterEach(() => {

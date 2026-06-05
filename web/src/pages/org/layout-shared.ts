@@ -78,7 +78,7 @@ export function computeFooterHeight(prefs: LayoutVisualPrefs): number {
 }
 
 export function getNodeDim(node: Node): { w: number; h: number } {
-  const w = node.measured?.width ?? (node.width as number | undefined) ?? DEFAULT_NODE_WIDTH
-  const h = node.measured?.height ?? (node.height as number | undefined) ?? DEFAULT_NODE_HEIGHT
+  const w = node.measured?.width ?? (node.width) ?? DEFAULT_NODE_WIDTH
+  const h = node.measured?.height ?? (node.height) ?? DEFAULT_NODE_HEIGHT
   return { w, h }
 }

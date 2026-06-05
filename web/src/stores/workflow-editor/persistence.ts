@@ -88,11 +88,7 @@ function buildUpdatePayload(
   edges: readonly Edge[],
 ) {
   return {
-    workflow_type: (definition.workflow_type ?? 'sequential_pipeline') as
-      | 'sequential_pipeline'
-      | 'parallel_execution'
-      | 'kanban'
-      | 'agile_kanban',
+    workflow_type: definition.workflow_type,
     nodes: nodes.map((n) => ({
       id: n.id,
       type: n.type!,
@@ -357,10 +353,12 @@ export const createPersistenceSlice: SliceCreator<PersistenceSlice> = (
     createDefinitionImpl(set, name, workflowType),
   saveDefinition: () => saveDefinitionImpl(set, get),
 
-  exportYaml: async () => {
+  exportYaml: () => {
     const { definition, yamlPreview } = get()
-    if (!definition) throw new Error('Cannot export: no workflow loaded')
-    return yamlPreview
+    if (!definition) {
+      return Promise.reject(new Error('Cannot export: no workflow loaded'))
+    }
+    return Promise.resolve(yamlPreview)
   },
 
   reset: () => resetPersistenceImpl(set),

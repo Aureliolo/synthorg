@@ -70,7 +70,7 @@ function useClientDetail(clientId: string | undefined): ClientDetailState {
       try {
         const [profile, history] = await Promise.all([
           getClient(clientId),
-          getClientSatisfaction(clientId).catch((err) => {
+          getClientSatisfaction(clientId).catch((err: unknown) => {
             log.warn('get_client_satisfaction_failed', err)
             setSatisfactionError('Failed to load satisfaction history.')
             return null

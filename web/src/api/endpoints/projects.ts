@@ -18,5 +18,5 @@ export async function createProject(data: CreateProjectRequest): Promise<Project
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
-  await apiClient.delete<void>(`/projects/${encodeURIComponent(projectId)}`)
+  await apiClient.delete(`/projects/${encodeURIComponent(projectId)}`)
 }

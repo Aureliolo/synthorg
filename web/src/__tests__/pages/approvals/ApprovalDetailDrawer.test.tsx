@@ -24,7 +24,7 @@ function MockAside(props: React.ComponentProps<'aside'> & Record<string, unknown
       role={props.role}
       aria-modal={props['aria-modal']}
       aria-label={props['aria-label']}
-      ref={props.ref as React.Ref<HTMLElement>}
+      ref={props.ref}
     >
       {props.children}
     </aside>
@@ -37,11 +37,10 @@ vi.mock('motion/react', async () => {
   return {
     ...actual,
     AnimatePresence: MockAnimatePresence,
-    motion: {
-      ...actual.motion,
+    motion: Object.assign({}, actual.motion, {
       div: MockDiv,
       aside: MockAside,
-    },
+    }),
   }
 })
 
@@ -225,7 +224,7 @@ describe('ApprovalDetailDrawer', () => {
     // surfaced the error toast.
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
-      (screen.getByLabelText('Optional comment') as HTMLTextAreaElement).value,
+      screen.getByLabelText<HTMLTextAreaElement>('Optional comment').value,
     ).toBe('Looks good')
   })
 
@@ -242,7 +241,7 @@ describe('ApprovalDetailDrawer', () => {
     })
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(
-      (screen.getByLabelText(/reason for rejection/i) as HTMLTextAreaElement).value,
+      screen.getByLabelText<HTMLTextAreaElement>(/reason for rejection/i).value,
     ).toBe('Missing context')
   })
 

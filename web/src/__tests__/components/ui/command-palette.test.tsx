@@ -14,6 +14,7 @@ let originalScrollIntoView: typeof Element.prototype.scrollIntoView
 
 beforeAll(() => {
   originalResizeObserver = globalThis.ResizeObserver
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- saved to restore the original prototype method after the suite; never invoked unbound
   originalScrollIntoView = Element.prototype.scrollIntoView
 
   // cmdk uses ResizeObserver and scrollIntoView which are not in jsdom.

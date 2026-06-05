@@ -169,7 +169,7 @@ function useDeptDragReorder(
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveDept(event.active.data.current?.dept ?? null)
+    setActiveDept((event.active.data.current?.dept as Department | undefined) ?? null)
   }, [])
 
   const handleDragEnd = useCallback(

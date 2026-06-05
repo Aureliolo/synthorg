@@ -46,7 +46,7 @@ export interface McpCatalogState {
    * Set starts empty and the install endpoint is write-only.
    */
   fetchInstalled: () => Promise<void>
-  setSearchQuery: (q: string) => Promise<void>
+  setSearchQuery: (q: string) => void
   selectEntry: (entry: McpCatalogEntry | null) => void
   startInstall: (entryId: string) => void
   setInstallConnection: (connectionName: string | null) => void

@@ -10,7 +10,6 @@ import {
   getRiskLevelLabel,
   getUrgencyColor,
   groupByRiskLevel,
-  type ApprovalPageFilters,
 } from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types/enums'
 import { makeApproval } from '@/__tests__/helpers/factories'
@@ -233,7 +232,7 @@ describe('filterApprovals', () => {
   })
 
   it('combines multiple filters with AND', () => {
-    const result = filterApprovals(approvals, { status: 'pending', riskLevel: 'medium' } as ApprovalPageFilters)
+    const result = filterApprovals(approvals, { status: 'pending', riskLevel: 'medium' })
     expect(result.map((a) => a.id)).toEqual(['3'])
   })
 })

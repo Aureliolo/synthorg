@@ -87,7 +87,7 @@ function parseSingleComparison(str: string): ConditionComparison | null {
   if (!match) return null
 
   return createComparison(
-    match[1]!,
+    match[1],
     match[2] as ComparisonOperator,
     match[3]!.trim(),
   )
@@ -121,7 +121,7 @@ function consumeSplitChar(
   state: SplitState,
   tokenRegex: RegExp,
 ): 'ok' | 'unbalanced' {
-  const ch = str[state.i]
+  const ch = str[state.i] ?? ''
   if (ch === '(') {
     state.depth++
     state.current += '('
@@ -252,7 +252,7 @@ export function parseForBuilderState(str: string): BuilderState | null {
   const groupRows = partitionGroupChildren(expr.conditions)
   if (!groupRows) return null
   if (groupRows.comparisons.length === 0 && groupRows.subGroups.length === 0) return null
-  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator) as 'AND' | 'OR'
+  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator)
   return {
     comparisons: groupRows.comparisons,
     logicalOperator: op,
@@ -284,7 +284,7 @@ function partitionGroupChildren(
       comparisons.push(child)
       continue
     }
-    if (child.kind === 'group' && child.logicalOperator !== 'NOT') {
+    if (child.logicalOperator !== 'NOT') {
       const sub = collectFlatSubGroup(child)
       if (!sub) return null
       subGroups.push(sub)

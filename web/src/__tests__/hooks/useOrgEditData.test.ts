@@ -81,8 +81,9 @@ describe('useOrgEditData', () => {
   })
 
   it('calls fetchDepartmentHealths after config is available', async () => {
-    mockFetchCompanyData.mockImplementationOnce(async () => {
+    mockFetchCompanyData.mockImplementationOnce(() => {
       useCompanyStore.setState({ config: makeCompanyConfig() })
+      return Promise.resolve()
     })
     renderHook(() => useOrgEditData())
     await waitFor(() => {

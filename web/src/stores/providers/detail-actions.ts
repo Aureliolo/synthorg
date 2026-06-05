@@ -49,7 +49,7 @@ function setProviderNotFound(
   set: ProvidersSet,
   results: DetailResults,
 ): void {
-  const reason = results.providerResult.status === 'rejected'
+  const reason: unknown = results.providerResult.status === 'rejected'
     ? results.providerResult.reason
     : null
   set({

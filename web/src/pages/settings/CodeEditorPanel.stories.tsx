@@ -70,7 +70,7 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     entries: mockEntries,
-    onSave: async () => new Set<string>(),
+    onSave: () => Promise.resolve(new Set<string>()),
     saving: false,
   },
 }
@@ -78,7 +78,7 @@ export const Default: Story = {
 export const Saving: Story = {
   args: {
     entries: mockEntries,
-    onSave: async () => new Set<string>(),
+    onSave: () => Promise.resolve(new Set<string>()),
     saving: true,
   },
 }
@@ -86,7 +86,7 @@ export const Saving: Story = {
 export const Interactive: Story = {
   args: {
     entries: mockEntries,
-    onSave: async () => new Set<string>(),
+    onSave: () => Promise.resolve(new Set<string>()),
     saving: false,
   },
   render: function InteractivePanel() {

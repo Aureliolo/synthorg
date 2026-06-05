@@ -30,7 +30,7 @@ export interface ArtifactCreateFormController {
   errors: ArtifactFormErrors
   submitting: boolean
   updateField: <K extends keyof ArtifactFormState>(key: K, value: ArtifactFormState[K]) => void
-  handleSubmit: (e?: React.FormEvent) => Promise<void>
+  handleSubmit: (e?: React.SyntheticEvent) => Promise<void>
 }
 
 interface UseArtifactCreateFormArgs {
@@ -74,7 +74,7 @@ export function useArtifactCreateForm({
   const isSubmittingRef = useRef(false)
 
   const handleSubmit = useCallback(
-    async (e?: React.FormEvent) => {
+    async (e?: React.SyntheticEvent) => {
       e?.preventDefault()
       if (isSubmittingRef.current) return
       const nextErrors = validateArtifactForm(form)

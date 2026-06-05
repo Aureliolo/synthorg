@@ -51,9 +51,9 @@ const meta = {
         presetOverride: null,
         presetOverrideLoading: false,
         presetOverrideError: null,
-        fetchPresetOverride: async () => {},
-        updatePresetOverride: async () => null,
-        deletePresetOverride: async () => true,
+        fetchPresetOverride: () => Promise.resolve(),
+        updatePresetOverride: () => Promise.resolve(null),
+        deletePresetOverride: () => Promise.resolve(true),
       })
       return <Story />
     },

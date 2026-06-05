@@ -27,6 +27,7 @@ export interface ConfirmDialogProps {
    * caller propagates that as ``false`` here). Any other resolution
    * (``void`` / ``undefined`` / ``true``) closes the dialog.
    */
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- intentional confirm-handler contract: false keeps the dialog open, void (sync or async) closes it
   onConfirm: () => boolean | void | Promise<boolean | void>
   /**
    * Optional handler invoked when the user explicitly clicks the

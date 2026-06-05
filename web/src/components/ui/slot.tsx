@@ -1,5 +1,5 @@
 import { Children, cloneElement, isValidElement } from 'react'
-import type { HTMLAttributes, ReactNode, Ref, MutableRefObject } from 'react'
+import type { HTMLAttributes, ReactNode, Ref } from 'react'
 import { mergeProps } from '@base-ui/react/merge-props'
 import { createLogger } from '@/lib/logger'
 
@@ -34,7 +34,7 @@ function composeRefs<T>(
       if (typeof ref === 'function') {
         ref(node)
       } else if (ref !== undefined && ref !== null) {
-        ;(ref as MutableRefObject<T | null>).current = node
+        ref.current = node
       }
     }
   }
@@ -51,7 +51,7 @@ export function Slot({ children, ref, ...slotProps }: SlotProps) {
   }
 
   const child = children
-  const childProps = (child.props ?? {}) as Record<string, unknown>
+  const childProps = child.props
   const merged = mergeProps(slotProps as Record<string, unknown>, childProps)
 
   // Compose the Slot's own ref with any ref the child element carries so

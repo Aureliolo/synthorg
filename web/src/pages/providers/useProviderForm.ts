@@ -288,7 +288,7 @@ export function useProviderFormController(
 
   const preset = presets.find((p) => p.name === fields.selectedPreset)
   const isCustom = fields.selectedPreset === '__custom__'
-  const cloudPreset = preset?.kind === 'cloud' ? (preset as CloudPreset) : null
+  const cloudPreset = preset?.kind === 'cloud' ? (preset) : null
 
   const presetOptions = useMemo(
     () => [

@@ -78,7 +78,7 @@ function buildStepsCompleted(
   const stepsCompleted = initialStepsCompleted()
   const persistedCompleted: Partial<Record<WizardStep, unknown>> =
     rawCompleted !== null && typeof rawCompleted === 'object'
-      ? (rawCompleted as Partial<Record<WizardStep, unknown>>)
+      ? (rawCompleted)
       : {}
   for (const step of stepOrder) {
     if (persistedCompleted[step] === true) {

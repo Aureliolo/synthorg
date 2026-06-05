@@ -5,8 +5,9 @@ import { KANBAN_COLUMNS, type KanbanColumn } from '@/utils/tasks'
 import { makeTask } from '../../helpers/factories'
 import type { Task } from '@/api/types/tasks'
 
-const inProgressColumn: KanbanColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')!
-if (!inProgressColumn) throw new Error('Missing in_progress column in KANBAN_COLUMNS')
+const foundColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')
+if (!foundColumn) throw new Error('Missing in_progress column in KANBAN_COLUMNS')
+const inProgressColumn: KanbanColumn = foundColumn
 
 function renderColumn(tasks: Task[] = [], onSelectTask = vi.fn()) {
   return render(

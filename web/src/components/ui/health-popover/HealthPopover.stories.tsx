@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { http, HttpResponse } from 'msw'
-import type { getHealth } from '@/api/endpoints/health'
+import type { getReadiness } from '@/api/endpoints/health'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { apiError, successFor } from '@/mocks/handlers/helpers'
 import { Button } from '@/components/ui/button'
@@ -37,7 +37,7 @@ export const AllSystemsOk: Story = {
     msw: {
       handlers: [
         http.get('/api/v1/readyz', () =>
-          HttpResponse.json(successFor<typeof getHealth>(BASE_PAYLOAD)),
+          HttpResponse.json(successFor<typeof getReadiness>(BASE_PAYLOAD)),
         ),
       ],
     },
@@ -53,7 +53,7 @@ export const Degraded: Story = {
       handlers: [
         http.get('/api/v1/readyz', () =>
           HttpResponse.json(
-            successFor<typeof getHealth>({
+            successFor<typeof getReadiness>({
               ...BASE_PAYLOAD,
               status: 'unavailable',
               message_bus: false,
@@ -74,7 +74,7 @@ export const Down: Story = {
       handlers: [
         http.get('/api/v1/readyz', () =>
           HttpResponse.json(
-            successFor<typeof getHealth>({
+            successFor<typeof getReadiness>({
               ...BASE_PAYLOAD,
               status: 'unavailable',
               persistence: false,
@@ -127,7 +127,7 @@ export const Loading: Story = {
       handlers: [
         http.get('/api/v1/readyz', async () => {
           await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
-          return HttpResponse.json(successFor<typeof getHealth>(BASE_PAYLOAD))
+          return HttpResponse.json(successFor<typeof getReadiness>(BASE_PAYLOAD))
         }),
       ],
     },

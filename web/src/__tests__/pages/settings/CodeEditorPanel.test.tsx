@@ -64,6 +64,7 @@ const { CodeEditorPanel } = await import('@/pages/settings/CodeEditorPanel')
 
 /** Set textarea value via native setter + fireEvent to bypass userEvent's keyboard parsing. */
 function setEditorValue(editor: HTMLElement, value: string) {
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- the setter is invoked via .call with an explicit receiver on the next line
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
     HTMLTextAreaElement.prototype, 'value',
   )!.set!
@@ -105,8 +106,8 @@ describe('CodeEditorPanel', () => {
 
   it('displays entries as serialized JSON in the editor', () => {
     renderPanel()
-    const editor = screen.getByTestId('mock-editor') as HTMLTextAreaElement
-    const parsed = JSON.parse(editor.value)
+    const editor = screen.getByTestId<HTMLTextAreaElement>('mock-editor')
+    const parsed: unknown = JSON.parse(editor.value)
     expect(parsed).toEqual({ api: { max_retries: '3', timeout: '30' } })
   })
 
@@ -172,7 +173,7 @@ describe('CodeEditorPanel', () => {
     await user.click(screen.getByRole('button', { name: /save/i }))
 
     expect(defaultOnSave).toHaveBeenCalledOnce()
-    const changesArg = defaultOnSave.mock.calls[0]![0] as Map<string, string>
+    const changesArg = defaultOnSave.mock.calls[0]![0]
     expect(changesArg.get('api/max_retries')).toBe('5')
     expect(changesArg.size).toBe(1)
   })

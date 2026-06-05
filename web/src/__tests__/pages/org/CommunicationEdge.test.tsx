@@ -132,7 +132,7 @@ describe('CommunicationEdge', () => {
     )
     // Keyframes are injected into document.head, not inline
     const headStyles = Array.from(document.head.querySelectorAll('style'))
-    const keyframeStyle = headStyles.find((s) => s.textContent?.includes('comm-dash'))
+    const keyframeStyle = headStyles.find((s) => s.textContent.includes('comm-dash'))
     expect(keyframeStyle).toBeDefined()
     expect(keyframeStyle!.textContent).toContain('@keyframes')
     expect(keyframeStyle!.textContent).toContain('stroke-dashoffset')

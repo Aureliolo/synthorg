@@ -89,7 +89,7 @@ function TaskDetailBreadcrumbsRow({ task, ctrl }: TaskDetailBreadcrumbsRowProps)
       <Breadcrumbs
         items={[
           { label: 'Tasks', to: ROUTES.TASKS },
-          { label: task.title ?? task.id },
+          { label: task.title },
         ]}
       />
       <DetailNavBar

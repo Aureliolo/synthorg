@@ -25,10 +25,10 @@ interface ProjectCardData {
 function deriveProjectCardData(project: Project): ProjectCardData {
   return {
     detailHref: ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id)),
-    status: project.status ?? 'planning',
-    taskCount: project.task_ids?.length ?? 0,
-    budget: project.budget ?? 0,
-    teamSize: project.team?.length ?? 0,
+    status: project.status,
+    taskCount: project.task_ids.length,
+    budget: project.budget,
+    teamSize: project.team.length,
   }
 }
 
