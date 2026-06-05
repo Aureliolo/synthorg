@@ -9137,7 +9137,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 137,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/pdf.py",
       "owning_feature": "knowledge"

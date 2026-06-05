@@ -14,7 +14,9 @@ because pdfplumber is synchronous and CPU-bound.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
+from typing import Protocol
 
 from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
@@ -23,7 +25,12 @@ from synthorg.knowledge.errors import (
     KnowledgeIngestError,
     KnowledgeSourceUnavailableError,
 )
-from synthorg.knowledge.models import PdfLocator, RawDocument, RawUnit
+from synthorg.knowledge.models import (
+    KnowledgeSource,
+    PdfLocator,
+    RawDocument,
+    RawUnit,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_LOAD_FAILED,
@@ -31,21 +38,39 @@ from synthorg.observability.events.knowledge import (
 )
 from synthorg.versioning.hashing import compute_text_hash
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from contextlib import AbstractContextManager
 
-    from synthorg.knowledge.models import KnowledgeSource
+class _PdfPage(Protocol):
+    """Structural view of a pdfplumber page used by the loader."""
 
-    # A PDF opener takes a path and returns a context manager yielding a
-    # pdfplumber-like object exposing ``.pages``. Aliased here (type-only)
-    # so tests can inject a fake without satisfying a strict Protocol.
-    PdfOpener = Callable[[str], AbstractContextManager[Any]]
+    # Plain attribute in both pdfplumber's Page and the test fakes.
+    page_number: int
+
+    def extract_text(self) -> str | None: ...
+
+
+class _PdfDocument(Protocol):
+    """Structural view of a pdfplumber PDF: a sequence of pages.
+
+    ``pages`` is declared as a read-only ``@property`` so pdfplumber's
+    read-only ``PDF.pages`` property satisfies it; declaring it as a
+    mutable attribute would instead demand a settable implementation,
+    which a read-only property is not. A plain attribute on a test fake
+    also satisfies a read-only-property member.
+    """
+
+    @property
+    def pages(self) -> Sequence[_PdfPage]: ...
+
+
+# A PDF opener takes a path and returns a context manager yielding the
+# narrow ``_PdfDocument`` view the loader actually uses; both the real
+# pdfplumber ``PDF`` and the structural test fakes satisfy it.
+PdfOpener = Callable[[str], AbstractContextManager[_PdfDocument]]
 
 logger = get_logger(__name__)
 
 
-def _default_opener(path: str) -> AbstractContextManager[Any]:
+def _default_opener(path: str) -> AbstractContextManager[_PdfDocument]:
     """Open *path* with pdfplumber, lazily importing the optional dep.
 
     Returns:
@@ -63,9 +88,10 @@ def _default_opener(path: str) -> AbstractContextManager[Any]:
             "`pip install synthorg[knowledge]`."
         )
         raise KnowledgeDependencyError(msg) from exc
-    # pdfplumber ships no type stubs, so the open() result is typed Any;
-    # the context manager interface is well-documented and stable.
-    opened: AbstractContextManager[Any] = pdfplumber.open(path)
+    # Widen the concrete pdfplumber ``PDF`` (which satisfies _PdfDocument
+    # structurally) to the narrow view so the opener contract stays
+    # decoupled from pdfplumber's full surface.
+    opened: AbstractContextManager[_PdfDocument] = pdfplumber.open(path)
     return opened
 
 
