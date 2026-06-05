@@ -20,8 +20,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.tool_retriever import (

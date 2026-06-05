@@ -17,6 +17,7 @@ residual orchestrator is the cohesive driver.
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_REPLAN_DECIDED,
@@ -68,7 +69,6 @@ from .loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
-    TurnRecord,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,

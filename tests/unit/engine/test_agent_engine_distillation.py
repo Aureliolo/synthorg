@@ -11,7 +11,8 @@ from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
+from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.protocol import CompletionProvider

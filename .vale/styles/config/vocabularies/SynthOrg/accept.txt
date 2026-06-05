@@ -499,6 +499,7 @@ gitleaks
 glibc
 govulncheck
 greppable
+grimp
 gzipped
 hackathon
 hardcode
@@ -523,6 +524,7 @@ ignore_names
 impl
 impls
 initialFocus
+inits
 inlines
 interop
 interruptible
@@ -536,6 +538,8 @@ keyframes
 keyless
 kwarg
 kwargs
+lazification
+lazify
 leaderboard
 list_by_category
 liveness
@@ -663,11 +667,13 @@ reimplemented
 reimplementing
 reindex
 reinit
+relocations
 replan
 replanning
 replans
 replayable
 repo
+repointed
 reporting_lines
 repos
 reputational
@@ -737,6 +743,7 @@ subagents
 subcommand
 subcommands
 subcomponents
+subgraph
 sublabel
 sublabels
 subpackage

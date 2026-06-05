@@ -15,8 +15,8 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TaskCancellationChecker,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,

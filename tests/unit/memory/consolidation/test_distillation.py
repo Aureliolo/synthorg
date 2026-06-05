@@ -15,8 +15,8 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.memory.consolidation.distillation import (
     DistillationRequest,
     MemoryToolName,

@@ -126,7 +126,6 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.loop_selector import (
     DEFAULT_AUTO_LOOP_RULES,
@@ -430,7 +429,6 @@ __all__ = [
     "TopologyDispatcher",
     "TopologySelector",
     "TransitionTaskMutation",
-    "TurnRecord",
     "UpdateTaskMutation",
     "WorkloadAscendingRanker",
     "Workspace",

@@ -1,161 +1,25 @@
 """Pluggable persistence layer for operational data (see Memory design page).
 
-Re-exports the protocol, repository protocols, config models, factory,
-and error hierarchy so consumers can import from ``synthorg.persistence``
-directly.
+This package uses explicit per-module imports rather than re-exporting
+the protocol, repository protocols, config models, factory, and error
+hierarchy from the top level. Import specific symbols from their
+defining submodule, e.g.::
+
+    from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.persistence.factory import create_backend
+    from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
+    from synthorg.core.persistence_errors import PersistenceError
+
+Eagerly importing ``factory -> protocol`` (and ~60 repository protocols)
+here meant that any importer of a persistence *leaf* (most commonly the
+``persistence._shared`` datetime/marshalling helpers, used by 150+ call
+sites across the codebase) transitively loaded ``persistence.protocol``,
+which references domain models and DTOs from app-layer packages and
+reached back up into the partially-initialised provider/config/engine
+graph. That accidental drag is the spine of the cold-import cycle; a
+leaf utility import has no business loading the whole backend. Keeping
+this init empty stops it. Backend registration still happens eagerly
+inside :mod:`synthorg.persistence.factory` (the registry is built in the
+module body), so ``create_backend`` consumers that import the factory
+submodule directly are unaffected.
 """
-
-from synthorg.core.persistence_errors import (
-    ArtifactStorageFullError,
-    ArtifactTooLargeError,
-    DuplicateRecordError,
-    MigrationError,
-    PersistenceConnectionError,
-    PersistenceError,
-    QueryError,
-    RecordNotFoundError,
-)
-from synthorg.persistence.agent_state_protocol import AgentStateRepository
-from synthorg.persistence.artifact_protocol import (
-    ArtifactFilterSpec,
-    ArtifactRepository,
-)
-from synthorg.persistence.audit_protocol import AuditRepository
-from synthorg.persistence.auth_protocol import (
-    LockoutRepository,
-    RefreshTokenRepository,
-    SessionFilterSpec,
-    SessionRepository,
-)
-from synthorg.persistence.ceremony_scheduler_state_protocol import (
-    CeremonySchedulerStateRecord,
-    CeremonySchedulerStateRepository,
-)
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
-)
-from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
-from synthorg.persistence.connection_protocol import (
-    ConnectionFilterSpec,
-    ConnectionRepository,
-    ConnectionSecretRepository,
-    OAuthStateRepository,
-    WebhookReceiptRepository,
-)
-from synthorg.persistence.cost_record_protocol import CostRecordRepository
-from synthorg.persistence.decision_protocol import (
-    DecisionFilterSpec,
-    DecisionRepository,
-    DecisionRole,
-)
-from synthorg.persistence.factory import create_backend
-from synthorg.persistence.meeting_cooldown_protocol import (
-    MeetingCooldownRecord,
-    MeetingCooldownRepository,
-)
-from synthorg.persistence.message_protocol import MessageRepository
-from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-from synthorg.persistence.preset_protocol import (
-    PersonalityPresetRepository,
-    Preset,
-    PresetFilterSpec,
-)
-from synthorg.persistence.project_protocol import (
-    ProjectFilterSpec,
-    ProjectRepository,
-)
-from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.settings_protocol import (
-    SettingRow,
-    SettingRowKey,
-    SettingsRepository,
-)
-from synthorg.persistence.subworkflow_protocol import (
-    SubworkflowKey,
-    SubworkflowRepository,
-)
-from synthorg.persistence.task_protocol import TaskRepository
-from synthorg.persistence.tracked_container_protocol import (
-    TrackedContainerRecord,
-    TrackedContainerRepository,
-)
-from synthorg.persistence.training_protocol import (
-    TrainingPlanFilterSpec,
-    TrainingPlanRepository,
-    TrainingResultRepository,
-)
-from synthorg.persistence.user_protocol import (
-    ApiKeyFilterSpec,
-    ApiKeyRepository,
-    UserFilterSpec,
-    UserRepository,
-)
-from synthorg.persistence.version_protocol import VersionRepository
-from synthorg.persistence.workflow_execution_protocol import (
-    WorkflowExecutionFilterSpec,
-    WorkflowExecutionRepository,
-)
-
-__all__ = [
-    "AgentStateRepository",
-    "ApiKeyFilterSpec",
-    "ApiKeyRepository",
-    "ArtifactFilterSpec",
-    "ArtifactRepository",
-    "ArtifactStorageFullError",
-    "ArtifactTooLargeError",
-    "AuditRepository",
-    "CeremonySchedulerStateRecord",
-    "CeremonySchedulerStateRepository",
-    "CheckpointRepository",
-    "ConnectionFilterSpec",
-    "ConnectionRepository",
-    "ConnectionSecretRepository",
-    "CostRecordRepository",
-    "DecisionFilterSpec",
-    "DecisionRepository",
-    "DecisionRole",
-    "DuplicateRecordError",
-    "HeartbeatRepository",
-    "LockoutRepository",
-    "MeetingCooldownRecord",
-    "MeetingCooldownRepository",
-    "MessageRepository",
-    "MigrationError",
-    "OAuthStateRepository",
-    "ParkedContextRepository",
-    "PersistenceBackend",
-    "PersistenceConfig",
-    "PersistenceConnectionError",
-    "PersistenceError",
-    "PersonalityPresetRepository",
-    "Preset",
-    "PresetFilterSpec",
-    "ProjectFilterSpec",
-    "ProjectRepository",
-    "QueryError",
-    "RecordNotFoundError",
-    "RefreshTokenRepository",
-    "SQLiteConfig",
-    "SessionFilterSpec",
-    "SessionRepository",
-    "SettingRow",
-    "SettingRowKey",
-    "SettingsRepository",
-    "SubworkflowKey",
-    "SubworkflowRepository",
-    "TaskRepository",
-    "TrackedContainerRecord",
-    "TrackedContainerRepository",
-    "TrainingPlanFilterSpec",
-    "TrainingPlanRepository",
-    "TrainingResultRepository",
-    "UserFilterSpec",
-    "UserRepository",
-    "VersionRepository",
-    "WebhookReceiptRepository",
-    "WorkflowExecutionFilterSpec",
-    "WorkflowExecutionRepository",
-    "create_backend",
-]

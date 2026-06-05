@@ -22,10 +22,10 @@ from synthorg.engine.errors import (
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability.correlation import (
     bind_correlation_id,
     clear_correlation_ids,

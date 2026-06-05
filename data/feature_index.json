@@ -138,11 +138,7 @@
         "synthorg_budget_versions_get"
       ],
       "name": "budget",
-      "protocol_exports": [
-        "CallClassificationStrategy",
-        "ProjectCostAggregateRepository",
-        "SimilarityComputer"
-      ],
+      "protocol_exports": [],
       "settings_namespace": "budget",
       "state_slice_fields": [
         "cost_tracker",
@@ -924,39 +920,7 @@
       "ghost_wired_symbols": [],
       "mcp_tool_names": [],
       "name": "persistence",
-      "protocol_exports": [
-        "AgentStateRepository",
-        "ApiKeyRepository",
-        "ArtifactRepository",
-        "AuditRepository",
-        "CeremonySchedulerStateRepository",
-        "CheckpointRepository",
-        "ConnectionRepository",
-        "ConnectionSecretRepository",
-        "CostRecordRepository",
-        "DecisionRepository",
-        "HeartbeatRepository",
-        "LockoutRepository",
-        "MeetingCooldownRepository",
-        "MessageRepository",
-        "OAuthStateRepository",
-        "ParkedContextRepository",
-        "PersistenceBackend",
-        "PersonalityPresetRepository",
-        "ProjectRepository",
-        "RefreshTokenRepository",
-        "SessionRepository",
-        "SettingsRepository",
-        "SubworkflowRepository",
-        "TaskRepository",
-        "TrackedContainerRepository",
-        "TrainingPlanRepository",
-        "TrainingResultRepository",
-        "UserRepository",
-        "VersionRepository",
-        "WebhookReceiptRepository",
-        "WorkflowExecutionRepository"
-      ],
+      "protocol_exports": [],
       "settings_namespace": null,
       "state_slice_fields": [
         "backend"
@@ -1231,6 +1195,6 @@
       ]
     }
   ],
-  "generated_at": "2026-06-05T12:02:38.245603Z",
+  "generated_at": "2026-06-05T14:50:32.062022Z",
   "schema_version": 1
 }

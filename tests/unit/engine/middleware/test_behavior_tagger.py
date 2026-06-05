@@ -5,12 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.engine.middleware.behavior_tagger import (
     _DEFAULT_TOOL_TAG_MAP,
     BehaviorTaggerMiddleware,
 )
 from synthorg.engine.middleware.models import AgentMiddlewareContext
+from synthorg.execution.turn import BehaviorTag
 
 
 def _make_ctx(**metadata: Any) -> MagicMock:

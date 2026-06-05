@@ -30,8 +30,8 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.notifications.models import Notification
 from synthorg.providers.enums import FinishReason, MessageRole

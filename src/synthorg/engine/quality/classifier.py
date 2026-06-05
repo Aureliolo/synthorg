@@ -8,12 +8,13 @@ turn metadata -- no LLM cost.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.models import StepQuality, StepQualitySignal
 from synthorg.engine.stagnation.models import (
     StagnationResult,
     StagnationVerdict,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.quality import (
     QUALITY_CLASSIFIER_CONFIG_INVALID,

@@ -11,7 +11,6 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.prompt_safety import (
     TAG_BRAIN_STATE,
@@ -28,6 +27,7 @@ from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
     wrap_untrusted,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,

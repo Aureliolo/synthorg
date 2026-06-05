@@ -19,8 +19,8 @@ from synthorg.engine.loop_protocol import (
     ExecutionLoop,
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameFilterSpec,
 )

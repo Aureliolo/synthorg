@@ -166,7 +166,8 @@ class TestSuccessProposerWraps:
 
     def test_user_message_is_wrapped(self) -> None:
         """``_build_user_message`` returns a single ``<task-data>`` fence."""
-        from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
+        from synthorg.engine.loop_protocol import ExecutionResult
+        from synthorg.execution.turn import TurnRecord
         from synthorg.memory.procedural.success_proposer import _build_user_message
 
         execution = MagicMock(spec=ExecutionResult)

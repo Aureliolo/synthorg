@@ -12,7 +12,6 @@ from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.task_engine_models import (
     TaskErrorCode,
@@ -24,6 +23,7 @@ from synthorg.engine.task_sync import (
     sync_to_task_engine,
     transition_task_if_needed,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:

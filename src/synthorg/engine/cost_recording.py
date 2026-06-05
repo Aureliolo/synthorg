@@ -23,7 +23,8 @@ from synthorg.observability.metrics_hub import record_provider_usage
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
+    from synthorg.engine.loop_protocol import ExecutionResult
+    from synthorg.execution.turn import TurnRecord
 
 logger = get_logger(__name__)
 

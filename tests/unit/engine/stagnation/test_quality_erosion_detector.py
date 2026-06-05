@@ -2,7 +2,6 @@
 
 import pytest
 
-from synthorg.engine.loop_protocol import TurnRecord
 from synthorg.engine.stagnation.models import (
     StagnationReason,
     StagnationVerdict,
@@ -10,6 +9,7 @@ from synthorg.engine.stagnation.models import (
 from synthorg.engine.stagnation.quality_erosion_detector import (
     QualityErosionDetector,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 

@@ -5,16 +5,16 @@ from typing import Any, override
 import pytest
 
 from synthorg.core.enums import ActionType, ToolAccessLevel, ToolCategory
+from synthorg.core.tool_constraints import (
+    NetworkMode,
+    TerminalAccess,
+    ToolSubConstraints,
+)
 from synthorg.providers.models import ToolCall
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sub_constraints import (
-    NetworkMode,
-    TerminalAccess,
-    ToolSubConstraints,
-)
 
 # ── Test tools ─────────────────────────────────────────────────
 

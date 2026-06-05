@@ -238,9 +238,10 @@ class TestSourceModuleCrossCheck:
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        # ``synthorg.persistence`` re-exports ``SQLiteConfig`` from its
-        # ``__init__``; importing through the parent surface is the
-        # same layering leak as the deeper-path import.
+        # Importing ``SQLiteConfig`` through the ``synthorg.persistence``
+        # parent surface is the same layering leak as the deeper-path
+        # import; the gate flags it by module-path prefix, independent of
+        # whether the parent package actually re-exports the symbol.
         project_root = _make_project(
             tmp_path,
             files={

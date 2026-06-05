@@ -13,12 +13,12 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.post_execution.memory_hooks import (
     try_capture_distillation,
     try_procedural_memory,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 

@@ -14,6 +14,7 @@ fence responsibility lives upstream of the loop (see
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
@@ -36,7 +37,6 @@ from .loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TerminationReason,
-    TurnRecord,
 )
 from .stagnation.models import StagnationResult, StagnationVerdict
 

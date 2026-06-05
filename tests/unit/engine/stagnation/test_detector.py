@@ -2,12 +2,12 @@
 
 import pytest
 
-from synthorg.engine.loop_protocol import TurnRecord
 from synthorg.engine.stagnation.detector import ToolRepetitionDetector
 from synthorg.engine.stagnation.models import (
     StagnationConfig,
     StagnationVerdict,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 

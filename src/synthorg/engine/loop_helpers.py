@@ -30,6 +30,7 @@ import json
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.execution.turn import BehaviorTag, NodeType, TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
@@ -48,11 +49,8 @@ from synthorg.providers.models import (
 )
 
 from .loop_protocol import (
-    BehaviorTag,
     ExecutionResult,
-    NodeType,
     TerminationReason,
-    TurnRecord,
 )
 
 if TYPE_CHECKING:

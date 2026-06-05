@@ -27,13 +27,13 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.review.models import (
     PipelineResult,
     ReviewStageResult,
     ReviewVerdict,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage
 

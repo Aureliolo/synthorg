@@ -12,17 +12,17 @@ tool execution in the ``ToolInvoker`` pipeline.
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.enums import ActionType, ToolCategory
+from synthorg.core.tool_constraints import (
+    GitAccess,
+    NetworkMode,
+    TerminalAccess,
+    ToolSubConstraints,
+)
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.sub_constraint import (
     SUB_CONSTRAINT_DENIED,
     SUB_CONSTRAINT_ENFORCED,
-)
-from synthorg.tools.sub_constraints import (
-    GitAccess,
-    NetworkMode,
-    TerminalAccess,
-    ToolSubConstraints,
 )
 
 logger = get_logger(__name__)

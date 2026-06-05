@@ -129,6 +129,26 @@ from hypothesis.database import (  # noqa: E402
     MultiplexedDatabase,
 )
 
+# Cold-import graph prime. The package inits hold no eager re-exports, so
+# importing an arbitrary leaf no longer drags the rest of the graph in a
+# known-good order. A conftest or test that imports a leaf cold can therefore
+# trip a latent, hub-mediated circular import. Two live examples:
+#   * ``budget.cost_record`` imports ``providers.enums``, which triggers
+#     ``providers/__init__`` -> ``providers.base`` -> ``providers.cost_recording``,
+#     and ``cost_recording`` imports back into the still-initialising
+#     ``budget.cost_record``.
+#   * importing any ``tools.*`` submodule triggers ``tools/__init__`` ->
+#     ``tools.base`` -> ``security/__init__`` -> ``engine/__init__`` ->
+#     ``agent_engine`` -> ``tools.invoker``, which imports back into the
+#     still-initialising ``tools.base``.
+# ``synthorg.api.app`` is the real application entry point; importing it loads
+# every hub in the order the application boot path uses (an order the
+# subprocess cold-import guard in ``tests/unit/test_cold_import.py`` keeps
+# honest). Importing it once here primes the module cache before collection
+# begins, so every later per-test leaf import resolves from cache. This primes
+# the TEST process only; production leaf entry points are genuinely cold-safe
+# and need no prime, which that guard verifies.
+import synthorg.api.app  # noqa: E402, F401 -- graph prime, see comment above
 from synthorg.persistence import (  # noqa: E402 -- runs after typeguard hook install
     migrations,
 )
@@ -631,16 +651,25 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # integration work (real subprocess, real network, real heavy I/O)
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
-# Architecture / layering meta-tests under ``tests/unit/architecture/``
-# legitimately AST-parse the entire src tree (the ``@cache``d sweep in
-# test_layering.py); the one-time fill lands on whichever such test runs
-# first under ``--dist=loadfile`` and is inherently near the budget.
-# That is the meta-test's job, not misplaced integration work, so the
-# per-test guard exempts the directory (the suite-level timing
-# regression guard still covers real slowdowns). pytest nodeids always
-# use ``/`` separators on every platform, so the fragment matches on
-# Windows too.
-_WALL_CLOCK_GUARD_EXEMPT_FRAGMENT: Final = "unit/architecture/"
+# Meta-tests whose per-test cost is inherent to their job, not misplaced
+# integration work, so the per-test guard exempts them (the suite-level
+# timing regression guard still covers real slowdowns):
+#  - ``tests/unit/architecture/``: AST-parse the entire src tree (the
+#    ``@cache``d sweep in test_layering.py); the one-time fill lands on
+#    whichever such test runs first under ``--dist=loadfile`` and is
+#    inherently near the budget.
+#  - ``tests/unit/test_cold_import.py``: spawns a fresh interpreter per
+#    leaf to import it on a cold graph (the only faithful cold-path
+#    check). Interpreter startup plus a heavy cold import, contending
+#    with the xdist workers that are themselves spawning it, routinely
+#    pushes the heaviest leaf past the 6s budget on a loaded CI runner;
+#    the real subprocess is the test's whole point, not a fixture leak.
+# pytest nodeids always use ``/`` separators on every platform, so these
+# fragments match on Windows too.
+_WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS: Final = (
+    "unit/architecture/",
+    "unit/test_cold_import.py",
+)
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 # pytest-repeat's ``--count`` flag is used exclusively by
 # ``scripts/run_affected_tests.py``'s isolation regression gate (a
@@ -723,7 +752,9 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
         not _FUZZ_PROFILE_ACTIVE
         and not _COUNT_ISOLATION_RUN
         and item.get_closest_marker("unit")
-        and _WALL_CLOCK_GUARD_EXEMPT_FRAGMENT not in item.nodeid
+        and not any(
+            fragment in item.nodeid for fragment in _WALL_CLOCK_GUARD_EXEMPT_FRAGMENTS
+        )
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
         pytest.fail(

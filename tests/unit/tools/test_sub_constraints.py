@@ -3,7 +3,7 @@
 import pytest
 
 from synthorg.core.enums import ToolAccessLevel
-from synthorg.tools.sub_constraints import (
+from synthorg.core.tool_constraints import (
     _LEVEL_SUB_CONSTRAINTS,
     CodeExecutionIsolation,
     FileSystemScope,

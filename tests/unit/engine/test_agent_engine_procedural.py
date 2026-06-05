@@ -12,8 +12,9 @@ from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.recovery import FailAndReassignStrategy
+from synthorg.execution.turn import TurnRecord
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason

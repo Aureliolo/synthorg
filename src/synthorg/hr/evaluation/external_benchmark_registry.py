@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     BenchmarkRunResult,

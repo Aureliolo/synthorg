@@ -13,8 +13,8 @@ from synthorg.engine.cost_recording import (
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 if TYPE_CHECKING:

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     EvalTestCase,

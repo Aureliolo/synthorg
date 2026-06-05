@@ -9,9 +9,10 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.plan_models import PlanExecuteConfig
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,

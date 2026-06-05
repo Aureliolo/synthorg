@@ -6,18 +6,18 @@ endpoint, and dispatch-back of human decisions into the resolver.
 
 Follows the Protocol + strategy + factory + config discriminator shape
 prescribed by ``CLAUDE.md`` for cross-cutting subsystems.
+
+Only the lightweight config / models / protocol abstractions are
+re-exported here. The concrete store, factory, processors, notify
+subscriber, registry, and sweeper are imported directly from their
+defining submodules so that merely importing ``escalation.config``
+(reached transitively from ``communication.config``) does not pull the
+``persistence`` package onto the config-load path and re-introduce a
+cold-import cycle.
 """
 
 from synthorg.communication.conflict_resolution.escalation.config import (
     EscalationQueueConfig,
-)
-from synthorg.communication.conflict_resolution.escalation.factory import (
-    build_decision_processor,
-    build_escalation_notify_subscriber,
-    build_escalation_queue_store,
-)
-from synthorg.communication.conflict_resolution.escalation.in_memory_store import (
-    InMemoryEscalationStore,
 )
 from synthorg.communication.conflict_resolution.escalation.models import (
     Escalation,
@@ -26,42 +26,18 @@ from synthorg.communication.conflict_resolution.escalation.models import (
     RejectDecision,
     WinnerDecision,
 )
-from synthorg.communication.conflict_resolution.escalation.notify import (
-    EscalationNotifySubscriber,
-    NoopEscalationNotifySubscriber,
-)
-from synthorg.communication.conflict_resolution.escalation.processors import (
-    HybridDecisionProcessor,
-    WinnerOnlyDecisionProcessor,
-)
 from synthorg.communication.conflict_resolution.escalation.protocol import (
     DecisionProcessor,
     EscalationQueueStore,
-)
-from synthorg.communication.conflict_resolution.escalation.registry import (
-    PendingFuturesRegistry,
-)
-from synthorg.communication.conflict_resolution.escalation.sweeper import (
-    EscalationExpirationSweeper,
 )
 
 __all__ = [
     "DecisionProcessor",
     "Escalation",
     "EscalationDecision",
-    "EscalationExpirationSweeper",
-    "EscalationNotifySubscriber",
     "EscalationQueueConfig",
     "EscalationQueueStore",
     "EscalationStatus",
-    "HybridDecisionProcessor",
-    "InMemoryEscalationStore",
-    "NoopEscalationNotifySubscriber",
-    "PendingFuturesRegistry",
     "RejectDecision",
     "WinnerDecision",
-    "WinnerOnlyDecisionProcessor",
-    "build_decision_processor",
-    "build_escalation_notify_subscriber",
-    "build_escalation_queue_store",
 ]

@@ -55,12 +55,16 @@ from synthorg.backup.service import BackupService
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.conflict_resolution.escalation import (
-    EscalationExpirationSweeper,
-    PendingFuturesRegistry,
+from synthorg.communication.conflict_resolution.escalation.factory import (
     build_decision_processor,
     build_escalation_notify_subscriber,
     build_escalation_queue_store,
+)
+from synthorg.communication.conflict_resolution.escalation.registry import (
+    PendingFuturesRegistry,
+)
+from synthorg.communication.conflict_resolution.escalation.sweeper import (
+    EscalationExpirationSweeper,
 )
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub

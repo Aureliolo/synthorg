@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.engine.loop_protocol import TurnRecord
 from synthorg.engine.trajectory.structural_erosion import (
     compute_cyclomatic_complexity_delta,
     compute_structural_erosion_score,
     detect_dead_branches,
     detect_duplicated_blocks,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 

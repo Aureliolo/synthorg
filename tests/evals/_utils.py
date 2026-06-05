@@ -8,7 +8,8 @@ trace and letting the agent generate only the final turn.
 import inspect
 from collections.abc import Awaitable, Callable
 
-from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
+from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.execution.turn import TurnRecord
 
 
 async def n1_prefix_replay(

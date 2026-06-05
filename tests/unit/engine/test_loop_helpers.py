@@ -22,11 +22,12 @@ from synthorg.engine.loop_helpers import (
     make_turn_record,
     response_to_message,
 )
-from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.loop_tool_execution import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     CompletionConfig,
