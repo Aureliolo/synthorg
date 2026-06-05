@@ -13512,7 +13512,7 @@
     },
     {
       "kind": "code",
-      "loc": 178,
+      "loc": 180,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/decorator.py",
       "owning_feature": "ontology"
@@ -13631,7 +13631,7 @@
     },
     {
       "kind": "code",
-      "loc": 217,
+      "loc": 219,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/injection/tool.py",
       "owning_feature": "ontology"
@@ -13666,7 +13666,7 @@
     },
     {
       "kind": "code",
-      "loc": 99,
+      "loc": 100,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/sync.py",
       "owning_feature": "ontology"

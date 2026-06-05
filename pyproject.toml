@@ -323,9 +323,9 @@ extend-select = [
     # ``explicit-preview-rules`` activates exactly these, not every preview
     # rule. Selecting the ``DOC`` prefix in ``select`` is inert under that
     # flag, so the codes must live here for the standard ``ruff check`` to
-    # enforce them. Enforced across all of src/synthorg/ (the #2065 wave
-    # backfill is complete); only tests, scripts, and the api god modules
-    # awaiting #2077 decomposition carry per-file-ignores below.
+    # enforce them. Enforced across all of src/synthorg/; only tests,
+    # scripts, and the api modules not yet at full compliance carry
+    # per-file-ignores below.
     "DOC201",  # missing return docstring
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
@@ -567,14 +567,14 @@ ignore_missing_imports = true
 # ──────────────────────────────────────────────────────────────────────
 
 # The broad api exemption covers the ~70 still-undecomposed controllers and
-# the decomposed controllers that inherited explicit-Any (drained by #2056,
-# not this PR). The narrower block below re-enables the bar for the
-# modules #2049 wrote/reduced.
+# the decomposed controllers that inherited explicit-Any still awaiting a
+# drain. The narrower block below re-enables the bar for the Any-clean
+# composition root and lifecycle modules.
 [[tool.mypy.overrides]]
 module = "synthorg.api.*"
 disallow_any_explicit = false
 
-# #2049 composition root + lifecycle runners + the Any-clean decomposed
+# The composition root + lifecycle runners + the Any-clean decomposed
 # controller packages hit the FULL strict++ bar (a more-specific override
 # beats the synthorg.api.* wildcard; verified against state.py's Any).
 [[tool.mypy.overrides]]
@@ -637,10 +637,6 @@ module = "synthorg.observability.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.ontology.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.security.*"
 disallow_any_explicit = false
 
@@ -668,28 +664,24 @@ module = [
 ]
 disallow_any_explicit = false
 
-# Test code carries the residual strict++ exemptions that the original
-# tests.* override block lifted. This PR (#2061) narrowed the original
-# block by NEWLY ENFORCING ``disallow_any_generics`` across tests/,
-# while explicitly typing ~140 test files (foundation helpers, fakes
-# hubs, settings, observability, core, config, persistence, scripts,
-# monitoring, telemetry, providers, security, budget, plus the bulk of
-# the memory/knowledge/communication/hr/integrations/notifications/
-# templates/workers/meta/tools tiers) under the full strict++ bar.
+# Test code carries the residual strict++ exemptions still lifted on the
+# tests.* surface. ``disallow_any_generics`` is already enforced across
+# tests/, with the bulk of test files explicitly typed under the full
+# strict++ bar; the remaining lifted flags below are the open tail.
 #
-# Each remaining lifted flag maps to a filed follow-up issue. Drop the
+# Each remaining lifted flag is tracked by a filed follow-up. Drop the
 # entry from ``disable_error_code`` (or remove ``disallow_any_explicit
-# = false``) when the linked issue closes. Full breakdown lives in
+# = false``) when its tracked work completes. Full breakdown lives in
 # docs/decisions/0006-tiered-module-size-policy.md Section F.1.
 #
-# * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
-#   #2121
+# * ``disallow_any_explicit`` (~1,800 sites): tracked as a separate
+#   cleanup effort; remove the line below when it completes.
 # * ``unused-ignore`` is a holding pen for pre-existing per-line
 #   ``# type: ignore[code]`` comments that target a code lifted above;
 #   each ratchet-off PR cleans up its own stale ignores.
 [[tool.mypy.overrides]]
 module = "tests.*"
-disallow_any_explicit = false  # #2121
+disallow_any_explicit = false
 disable_error_code = [
     "unused-ignore",         # holding pen; closes alongside the above
 ]

@@ -17,6 +17,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -26,6 +27,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.resolver import ConfigResolver
@@ -35,6 +37,7 @@ from synthorg.workers.execution_service import (
 )
 from synthorg.workers.runtime_builder import (
     RuntimeServices,
+    _build_runtime_coordinator,
     build_runtime_services,
 )
 from tests._shared import FakeClock, make_app_state, mock_of
@@ -384,7 +387,16 @@ class TestRuntimeCoordinatorResolveFailure:
         self,
         tmp_path: Path,
     ) -> None:
-        """Decomposition resolve failure surfaces a redacted log + raises."""
+        """Decomposition resolve failure surfaces a redacted log + raises.
+
+        Drives ``_build_runtime_coordinator`` directly rather than the full
+        ``build_runtime_services`` entry point: the resolve-failure
+        behaviour lives entirely in this TaskGroup wrapper. Bypassing the
+        entry point means no tool registry and no boot ``AgentEngine`` are
+        constructed at all (the failure path never reaches them anyway).
+        ``engine`` and ``provider`` are only consumed AFTER the TaskGroup
+        succeeds, so stub doubles suffice on the failure path.
+        """
         registry = ProviderRegistry.from_config(
             {"test-provider": ProviderConfig(driver="scripted")}
         )
@@ -397,7 +409,12 @@ class TestRuntimeCoordinatorResolveFailure:
             capture_logs() as logs,
             pytest.raises(BaseExceptionGroup) as excinfo,
         ):
-            await build_runtime_services(app_state, workspace_root=tmp_path)
+            await _build_runtime_coordinator(
+                app_state,
+                mock_of[AgentEngine](),
+                mock_of[CompletionProvider](),
+                None,
+            )
         # TaskGroup collapses task failures into a BaseExceptionGroup
         # whose ``str()`` is the generic "unhandled errors in a TaskGroup"
         # banner -- the original RuntimeError must travel inside it

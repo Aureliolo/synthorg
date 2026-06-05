@@ -12,7 +12,7 @@ import textwrap
 import threading
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, NamedTuple, overload
+from typing import TYPE_CHECKING, Final, NamedTuple, overload
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -135,7 +135,7 @@ def _derive_definition(entry: _RegistryEntry) -> EntityDefinition:
     )
 
 
-def _annotation_to_str(annotation: Any) -> str:
+def _annotation_to_str(annotation: object) -> str:
     """Convert a type annotation to a readable string.
 
     Returns:
@@ -182,7 +182,7 @@ def ontology_entity(
     entity_name: str | None = None,
     tier: EntityTier | None = None,
     source: EntitySource | None = None,
-) -> Any:
+) -> type[BaseModel] | Callable[[type[BaseModel]], type[BaseModel]]:
     """Decorator to register a Pydantic model as an ontology entity.
 
     Can be used with or without arguments::
@@ -201,7 +201,9 @@ def ontology_entity(
         source: Entity origin source (default: AUTO).
 
     Returns:
-        The original class, unchanged.
+        When used without arguments, the original class (unchanged).
+        When called with keyword arguments, a single-argument decorator
+        that registers and returns the class it is applied to.
 
     Raises:
         OntologyDuplicateError: If an entity with the same name is
