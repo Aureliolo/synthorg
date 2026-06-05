@@ -9046,7 +9046,7 @@
     },
     {
       "kind": "code",
-      "loc": 306,
+      "loc": 307,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/chunking/code.py",
       "owning_feature": "knowledge"
@@ -9137,7 +9137,7 @@
     },
     {
       "kind": "code",
-      "loc": 120,
+      "loc": 133,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/loaders/pdf.py",
       "owning_feature": "knowledge"

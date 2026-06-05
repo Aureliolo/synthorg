@@ -14,7 +14,8 @@ because pdfplumber is synchronous and CPU-bound.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Protocol
 
 from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
@@ -31,21 +32,42 @@ from synthorg.observability.events.knowledge import (
 )
 from synthorg.versioning.hashing import compute_text_hash
 
+
+class _PdfPage(Protocol):
+    """Structural view of a pdfplumber page used by the loader."""
+
+    page_number: int
+
+    def extract_text(self) -> str | None: ...
+
+
+class _PdfDocument(Protocol):
+    """Structural view of a pdfplumber PDF: a sequence of pages.
+
+    ``pages`` is a read-only property (not a plain attribute) so the
+    pdfplumber ``PDF.pages`` property satisfies it; a plain attribute on a
+    test fake satisfies a read-only property too.
+    """
+
+    @property
+    def pages(self) -> Sequence[_PdfPage]: ...
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from contextlib import AbstractContextManager
 
     from synthorg.knowledge.models import KnowledgeSource
 
-    # A PDF opener takes a path and returns a context manager yielding a
-    # pdfplumber-like object exposing ``.pages``. Aliased here (type-only)
-    # so tests can inject a fake without satisfying a strict Protocol.
-    PdfOpener = Callable[[str], AbstractContextManager[Any]]
+    # A PDF opener takes a path and returns a context manager yielding the
+    # narrow ``_PdfDocument`` view the loader actually uses; both the real
+    # pdfplumber ``PDF`` and the structural test fakes satisfy it.
+    PdfOpener = Callable[[str], AbstractContextManager[_PdfDocument]]
 
 logger = get_logger(__name__)
 
 
-def _default_opener(path: str) -> AbstractContextManager[Any]:
+def _default_opener(path: str) -> AbstractContextManager[_PdfDocument]:
     """Open *path* with pdfplumber, lazily importing the optional dep.
 
     Returns:
@@ -63,9 +85,10 @@ def _default_opener(path: str) -> AbstractContextManager[Any]:
             "`pip install synthorg[knowledge]`."
         )
         raise KnowledgeDependencyError(msg) from exc
-    # pdfplumber ships no type stubs, so the open() result is typed Any;
-    # the context manager interface is well-documented and stable.
-    opened: AbstractContextManager[Any] = pdfplumber.open(path)
+    # Widen the concrete pdfplumber ``PDF`` (which satisfies _PdfDocument
+    # structurally) to the narrow view so the opener contract stays
+    # decoupled from pdfplumber's full surface.
+    opened: AbstractContextManager[_PdfDocument] = pdfplumber.open(path)
     return opened
 
 

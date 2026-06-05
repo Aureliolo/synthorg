@@ -12,7 +12,7 @@ deterministic line-window split.
 :class:`KnowledgeDependencyError` with install guidance.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from synthorg.knowledge.chunking.protocol import ChunkPiece
 from synthorg.knowledge.constants import (
@@ -24,6 +24,8 @@ from synthorg.knowledge.errors import KnowledgeDependencyError
 from synthorg.knowledge.models import CodeLocator
 
 if TYPE_CHECKING:
+    import tree_sitter
+
     from synthorg.knowledge.models import RawUnit
 
 # Maps file extension to a tree-sitter-language-pack grammar name. Kept
@@ -79,7 +81,7 @@ def _language_for(path: str) -> str | None:
     return None
 
 
-def _load_parser(language: str) -> Any | None:
+def _load_parser(language: str) -> tree_sitter.Parser | None:
     """Lazily build a tree-sitter parser; None when the grammar is absent.
 
     Uses the standard ``tree_sitter.Parser`` + ``get_language`` path
@@ -141,7 +143,7 @@ class CodeChunker:
     def _ast_chunks(
         self,
         *,
-        parser: Any,
+        parser: tree_sitter.Parser,
         path: str,
         text: str,
         lines: list[str],
@@ -313,7 +315,7 @@ def _is_definition(node_type: str) -> bool:
     return any(marker in node_type for marker in _DEFINITION_MARKERS)
 
 
-def _node_symbol(node: Any) -> str | None:
+def _node_symbol(node: tree_sitter.Node) -> str | None:
     """Extract a definition's name via the ``name`` field, if present.
 
     Returns:
