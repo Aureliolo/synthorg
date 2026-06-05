@@ -174,7 +174,7 @@ class CompositeBackend:
         logger.info(MEMORY_BACKEND_CONNECTING, backend="composite")
         async with asyncio.TaskGroup() as tg:
             for b in self._unique_backends:
-                tg.create_task(b.connect())
+                _ = tg.create_task(b.connect())
         logger.info(MEMORY_BACKEND_CONNECTED, backend="composite")
 
     async def disconnect(self) -> None:
@@ -182,7 +182,7 @@ class CompositeBackend:
         logger.info(MEMORY_BACKEND_DISCONNECTING, backend="composite")
         async with asyncio.TaskGroup() as tg:
             for b in self._unique_backends:
-                tg.create_task(b.disconnect())
+                _ = tg.create_task(b.disconnect())
         logger.info(MEMORY_BACKEND_DISCONNECTED, backend="composite")
 
     async def health_check(self) -> bool:
@@ -201,7 +201,7 @@ class CompositeBackend:
                     """Append the backend's health-check outcome to ``results``."""
                     results.append(await backend.health_check())
 
-                tg.create_task(_check())
+                _ = tg.create_task(_check())
         healthy = all(results)
         logger.debug(
             MEMORY_BACKEND_HEALTH_CHECK,
@@ -396,7 +396,7 @@ class CompositeBackend:
                         ),
                     )
 
-                tg.create_task(_cnt())
+                _ = tg.create_task(_cnt())
         return sum(totals)
 
     # -- Fan-out helpers (private) ------------------------------------
@@ -474,7 +474,7 @@ class CompositeBackend:
                             error=safe_error_description(exc),
                         )
 
-                tg.create_task(_fetch())
+                _ = tg.create_task(_fetch())
         if errors:
             if not results:
                 msg = f"All backends failed during retrieve: {'; '.join(errors)}"

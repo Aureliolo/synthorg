@@ -147,50 +147,50 @@ class SnapshotBuilder:
                 )
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "perf",
                     self._performance.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "budget",
                     self._budget.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "coord",
                     self._coordination.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "scale",
                     self._scaling.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "err",
                     self._errors.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "evo",
                     self._evolution.aggregate(since=since, until=until),
                 )
             )
-            tg.create_task(
+            _ = tg.create_task(
                 _run(
                     "telem",
                     self._telemetry.aggregate(since=since, until=until),
                 )
             )
             if self._benchmark is not None:
-                tg.create_task(
+                _ = tg.create_task(
                     _run(
                         "bench",
                         self._benchmark.aggregate(since=since, until=until),

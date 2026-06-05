@@ -306,7 +306,7 @@ class CompositeSemanticAnalyzer:
 
         async with asyncio.TaskGroup() as tg:
             for i, analyzer in enumerate(self._analyzers):
-                tg.create_task(_run(i, analyzer))
+                _ = tg.create_task(_run(i, analyzer))
 
         all_conflicts: list[MergeConflict] = []
         for slot in slots:

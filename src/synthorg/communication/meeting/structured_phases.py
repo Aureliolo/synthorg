@@ -458,7 +458,7 @@ class StructuredPhasesProtocol:
 
         async with asyncio.TaskGroup() as tg:
             for idx, pid in enumerate(participant_ids):
-                tg.create_task(_collect_input(pid, idx, tokens_per_agent))
+                _ = tg.create_task(_collect_input(pid, idx, tokens_per_agent))
 
         # All slots must be filled -- TaskGroup propagates ExceptionGroup
         # on any task failure, so reaching this point means all succeeded.

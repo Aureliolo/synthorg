@@ -180,7 +180,7 @@ class DriftDetectionService:
 
         async with asyncio.TaskGroup() as tg:
             for index, entity in enumerate(entities):
-                tg.create_task(_check_one(index, entity.name))
+                _ = tg.create_task(_check_one(index, entity.name))
         return tuple(report for report in slots if report is not None)
 
     @property

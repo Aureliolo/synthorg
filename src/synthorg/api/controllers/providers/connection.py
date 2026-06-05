@@ -104,7 +104,7 @@ class ProviderConnectionController(Controller):
 
         async with asyncio.TaskGroup() as tg:
             for preset in probable:
-                tg.create_task(_probe_one(preset))
+                _ = tg.create_task(_probe_one(preset))
 
         logger.info(
             PROVIDER_PROBE_LOCAL_BATCH_COMPLETED,

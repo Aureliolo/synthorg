@@ -197,7 +197,7 @@ class NotificationDispatcher:
             failed: list[NotificationSink] = []
             async with asyncio.TaskGroup() as tg:
                 for sink in sinks:
-                    tg.create_task(self._safe_start(sink, failed))
+                    _ = tg.create_task(self._safe_start(sink, failed))
             for sink in failed:
                 with _ignore_value_error():
                     self._sinks.remove(sink)
@@ -232,7 +232,7 @@ class NotificationDispatcher:
             sinks = list(self._sinks)
             async with asyncio.TaskGroup() as tg:
                 for sink in sinks:
-                    tg.create_task(self._safe_close(sink))
+                    _ = tg.create_task(self._safe_close(sink))
             self._started = False
             logger.info(
                 NOTIFICATION_DISPATCHER_CLOSED,
@@ -330,7 +330,7 @@ class NotificationDispatcher:
         try:
             async with asyncio.TaskGroup() as tg:
                 for idx, sink in enumerate(sinks):
-                    tg.create_task(
+                    _ = tg.create_task(
                         self._guarded_send(sink, notification, errors, idx),
                     )
         except ExceptionGroup as eg:

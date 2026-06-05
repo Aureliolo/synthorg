@@ -903,7 +903,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         async with asyncio.TaskGroup() as tg:
             for idx, call in enumerate(calls):
-                tg.create_task(
+                _ = tg.create_task(
                     self._run_guarded(
                         idx,
                         call,

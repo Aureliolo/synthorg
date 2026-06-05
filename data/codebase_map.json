@@ -9088,7 +9088,7 @@
     },
     {
       "kind": "code",
-      "loc": 305,
+      "loc": 307,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/indexer.py",
       "owning_feature": "knowledge"

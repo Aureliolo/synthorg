@@ -215,7 +215,7 @@ class MessageDispatcher:
 
         async with asyncio.TaskGroup() as tg:
             for idx, reg in enumerate(matched):
-                tg.create_task(
+                _ = tg.create_task(
                     self._guarded_handle(reg, message, errors, idx),
                 )
 

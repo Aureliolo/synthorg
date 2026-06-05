@@ -564,7 +564,7 @@ async def run_worker_pool(  # noqa: PLR0913 -- canonical worker-pool entry point
     try:
         async with asyncio.TaskGroup() as tg:
             for worker in workers:
-                tg.create_task(worker.run())
+                _ = tg.create_task(worker.run())
     finally:
         with contextlib.suppress(Exception):
             await asyncio.gather(

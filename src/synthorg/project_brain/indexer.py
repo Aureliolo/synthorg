@@ -87,7 +87,7 @@ class BrainIndexer:
         try:
             async with asyncio.TaskGroup() as tg:
                 for chunk in chunks:
-                    tg.create_task(
+                    _ = tg.create_task(
                         self._backend.store(
                             SYSTEM_BRAIN_AGENT_ID,
                             _chunk_to_request(chunk),
