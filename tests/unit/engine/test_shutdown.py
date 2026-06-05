@@ -17,12 +17,10 @@ from synthorg.engine.shutdown import (
     ShutdownStrategy,
     _log_post_cancel_exceptions,
 )
-from synthorg.engine.shutdown_strategies import (
-    CheckpointAndStopStrategy,
-    FinishCurrentToolStrategy,
-    ImmediateCancelStrategy,
-    build_shutdown_strategy,
-)
+from synthorg.engine.shutdown_checkpoint import CheckpointAndStopStrategy
+from synthorg.engine.shutdown_finish_tool import FinishCurrentToolStrategy
+from synthorg.engine.shutdown_immediate import ImmediateCancelStrategy
+from synthorg.engine.shutdown_strategies import build_shutdown_strategy
 from tests._shared import FakeClock
 
 

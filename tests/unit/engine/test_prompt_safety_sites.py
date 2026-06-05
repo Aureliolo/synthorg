@@ -121,10 +121,10 @@ class TestGraderFence:
     def test_payload_wrapped_and_system_prompt_has_directive(self) -> None:
         from unittest.mock import MagicMock
 
-        from synthorg.engine.quality.graders.llm import (
+        from synthorg.engine.quality.graders._llm_prompt import (
             _GRADER_SYSTEM_PROMPT,
-            LLMRubricGrader,
         )
+        from synthorg.engine.quality.graders.llm import LLMRubricGrader
         from synthorg.engine.quality.verification import (
             GradeType,
             RubricCriterion,

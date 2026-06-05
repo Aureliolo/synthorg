@@ -6,10 +6,8 @@ from typing import Any
 import pytest
 from pydantic import JsonValue
 
-from synthorg.engine.quality.graders.llm import (
-    LLMRubricGrader,
-    _parse_unit_interval,
-)
+from synthorg.engine.quality.graders._llm_parser import _parse_unit_interval
+from synthorg.engine.quality.graders.llm import LLMRubricGrader
 from synthorg.engine.quality.verification import (
     AtomicProbe,
     GradeType,

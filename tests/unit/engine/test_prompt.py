@@ -495,7 +495,6 @@ class TestPolicyValidationIntegration:
         assert result.content
         assert "org_policies" in result.sections
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         "policies",
         [
@@ -913,7 +912,7 @@ class TestCatchAllExceptionWrapping:
             msg = "simulated failure"
             raise RuntimeError(msg)
 
-        monkeypatch.setattr(prompt_module, "_render_with_trimming", _broken_render)
+        monkeypatch.setattr(prompt_module, "render_with_trimming", _broken_render)
 
         with pytest.raises(PromptBuildError, match="Unexpected error") as exc_info:
             build_system_prompt(agent=sample_agent_with_personality)
@@ -1112,7 +1111,6 @@ class TestPromptProfileIntegration:
         assert "Risk tolerance" not in result.content
         assert "Creativity" not in result.content
 
-    @pytest.mark.unit
     @pytest.mark.parametrize("tier", ["large", "medium", "small"])
     def test_authority_always_present(
         self,
@@ -1128,7 +1126,6 @@ class TestPromptProfileIntegration:
         assert "## Authority" in result.content
         assert "authority" in result.sections
 
-    @pytest.mark.unit
     @pytest.mark.parametrize("tier", ["large", "medium", "small"])
     def test_identity_always_present(
         self,
@@ -1179,7 +1176,6 @@ class TestPromptProfileIntegration:
 
         assert small.estimated_tokens < large.estimated_tokens
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         ("tier", "autonomy_map"),
         [

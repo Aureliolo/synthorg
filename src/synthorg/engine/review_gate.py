@@ -14,24 +14,22 @@ decision, so a self-review attempt never leaves a decided approval row
 or a broadcast WebSocket event behind.
 """
 
-import uuid
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
-from synthorg.core.enums import DecisionOutcome, TaskStatus
-from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
+from synthorg.core.enums import TaskStatus
 from synthorg.engine._review_completion_gates import (
     map_pipeline_verdict,
     run_completion_gates,
 )
 from synthorg.engine._review_gate_receipt import DeliverableReceiptSeam, emit_receipt
+from synthorg.engine._review_gate_record import ReviewGateRecordMixin
+from synthorg.engine._review_gate_wiring import ReviewGateWiringMixin
 from synthorg.engine.errors import SelfReviewError, TaskNotFoundError
 from synthorg.engine.review.models import PipelineResult
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_DECISION_RECORD_FAILED,
     APPROVAL_GATE_REVIEW_COMPLETED,
     APPROVAL_GATE_REVIEW_REWORK,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -40,10 +38,8 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.observability.events.red_team import RED_TEAM_GATE_DISPATCHED
 from synthorg.observability.events.security import (
-    SECURITY_APPROVAL_DECISION_RECORDED,
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
-from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -59,7 +55,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class ReviewGateService:
+class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
     """Handles IN_REVIEW -> COMPLETED/IN_PROGRESS transitions.
 
     Called by the approval controller when a review-gate approval
@@ -102,90 +98,6 @@ class ReviewGateService:
         self._vision_gate = vision_gate
         self._receipt_service = receipt_service
         self._background_tasks = background_tasks
-
-    def set_receipt_service(self, receipt_service: DeliverableReceiptSeam) -> None:
-        """Attach the receipt service after construction (boot wiring seam)."""
-        self._receipt_service = receipt_service
-
-    def set_vision_gate(self, vision_gate: VisionVerifierGate | None) -> None:
-        """Attach (or clear) the vision gate after construction (boot wiring seam).
-
-        Built in on-startup runtime wiring once the workspace and provider
-        are available, so it is injected post-construction rather than at
-        __init__. Passing ``None`` clears a previously-attached gate so an
-        enabled -> disabled reinit does not leave a stale gate firing.
-        """
-        self._vision_gate = vision_gate
-
-    def set_red_team_gate(self, red_team_gate: RedTeamGate | None) -> None:
-        """Attach (or clear) the red-team gate after construction (boot wiring seam).
-
-        Mirrors :meth:`set_vision_gate`: the red-team runtime is built in
-        on-startup wiring once the boot ``AgentEngine`` exists, after this
-        service is constructed during app construction. Once attached the
-        gate fires on every path to COMPLETED (both :meth:`complete_review`
-        and :meth:`run_pipeline`); the review input is built from the
-        completing task's recorded deliverable by the
-        :class:`DeliverableReviewInputBuilder` attached via
-        :meth:`set_red_team_input_builder`.
-        """
-        self._red_team_gate = red_team_gate
-
-    def set_red_team_input_builder(
-        self, builder: DeliverableReviewInputBuilder
-    ) -> None:
-        """Attach the red-team review-input builder (boot wiring seam).
-
-        Wired alongside :meth:`set_red_team_gate` once the flight-recorder
-        frame store is connected. The builder sources the deliverable text
-        and execution id the gate evaluates; without it a configured gate
-        falls under the ``on_missing_deliverable`` posture for every task.
-        """
-        self._red_team_input_builder = builder
-
-    def set_background_tasks(self, registry: BackgroundTaskRegistry) -> None:
-        """Attach the background-task registry for gated completions.
-
-        When present, :meth:`dispatch_completion` runs a gated approve in
-        a tracked background task so the inline red-team AgentEngine
-        latency does not block the operator's approve/reject response.
-        """
-        self._background_tasks = registry
-
-    async def drain_background_tasks(self) -> None:
-        """Drain in-flight gated-completion background tasks (shutdown seam).
-
-        A gated approve runs the red-team evaluation in a tracked
-        background task (see :meth:`dispatch_completion`); without this
-        drain a graceful shutdown would cancel an in-flight evaluation and
-        leave the task stranded in IN_REVIEW. No-op when no registry is
-        attached.
-        """
-        if self._background_tasks is not None:
-            await self._background_tasks.drain()
-
-    def set_red_team_on_missing_deliverable(
-        self, policy: Literal["block", "skip"]
-    ) -> None:
-        """Set the red-team posture when no deliverable can be retrieved.
-
-        Mirrors ``RedTeamConfig.on_missing_deliverable``: ``"block"``
-        fails closed (a configured gate never silently passes an
-        un-inspectable deliverable), ``"skip"`` allows completion.
-        """
-        self._red_team_on_missing_deliverable = policy
-
-    def has_completion_gates(self) -> bool:
-        """Return whether any adversarial completion gate is configured.
-
-        Returns:
-            ``True`` when at least one completion gate (red-team or
-            vision) is attached, so a completion must pass every
-            configured gate before reaching COMPLETED. A ``True`` result
-            does not imply both gates run: the chain evaluates only those
-            that are attached.
-        """
-        return self._red_team_gate is not None or self._vision_gate is not None
 
     async def check_can_decide(
         self,
@@ -545,171 +457,3 @@ class ReviewGateService:
                 agent_id=decided_by,
             )
             raise SelfReviewError(task_id=task.id, agent_id=decided_by)
-
-    async def _record_decision(
-        self,
-        *,
-        task: Task,
-        decided_by: str,
-        approved: bool,
-        reason: str | None,
-        approval_id: str | None,
-    ) -> None:
-        """Append a decision record to the drop-box (best-effort).
-
-        Uses ``append_with_next_version`` so version assignment happens
-        atomically in SQL -- no TOCTOU race across concurrent reviewers.
-
-        The transition has already happened at this point, so a failed
-        append is logged but does not propagate.  Only ``QueryError``
-        and ``DuplicateRecordError`` are non-fatal; programming errors
-        propagate loudly so schema drift surfaces in dev/CI.
-        """
-        if self._persistence is None:
-            logger.warning(
-                APPROVAL_GATE_DECISION_RECORD_FAILED,
-                task_id=task.id,
-                decided_by=decided_by,
-                approved=approved,
-                error_type="NoPersistence",
-                error=(
-                    "Decision recording skipped: no persistence backend "
-                    "configured on ReviewGateService"
-                ),
-            )
-            return
-
-        if task.assigned_to is None:
-            logger.error(
-                APPROVAL_GATE_DECISION_RECORD_FAILED,
-                task_id=task.id,
-                decided_by=decided_by,
-                approved=approved,
-                error_type="UnassignedExecutor",
-                error=(
-                    "Cannot record decision: task reached review gate "
-                    "without an assigned executor"
-                ),
-            )
-            return
-
-        decision = DecisionOutcome.APPROVED if approved else DecisionOutcome.REJECTED
-        criteria = self._dedupe_criteria(task)
-        executor = task.assigned_to
-        metadata = await self._fetch_charter_metadata(executor)
-        await self._append_decision(
-            task_id=task.id,
-            executing_agent_id=executor,
-            decided_by=decided_by,
-            approved=approved,
-            approval_id=approval_id,
-            decision=decision,
-            reason=reason,
-            criteria_snapshot=criteria,
-            metadata=metadata,
-        )
-
-    @staticmethod
-    def _dedupe_criteria(task: Task) -> tuple[str, ...]:
-        """Dedupe acceptance criteria descriptions preserving order.
-
-        ``DecisionRecord.criteria_snapshot`` rejects duplicates via
-        its unique-strings validator; without deduping a task with
-        repeated criteria would raise ``ValidationError``.
-
-        Returns:
-            Tuple of acceptance-criteria descriptions in their first
-            occurrence order, with empty entries dropped.
-        """
-        seen: set[str] = set()
-        result: list[str] = []
-        for c in task.acceptance_criteria:
-            stripped = c.description.strip()
-            if stripped and stripped not in seen:
-                seen.add(stripped)
-                result.append(stripped)
-        return tuple(result)
-
-    async def _fetch_charter_metadata(
-        self,
-        agent_id: str,
-    ) -> dict[str, object] | None:
-        """Look up the latest charter version for decision metadata.
-
-        Returns a metadata dict on success, a failure-flag dict on
-        ``QueryError``, or ``None`` if no version exists.
-
-        Returns:
-            Mapping of charter metadata fields when a version exists;
-            a failure-flag mapping when persistence raised; ``None``
-            when no charter version is recorded for the agent.
-        """
-        persistence = self._persistence
-        assert persistence is not None  # noqa: S101  # caller checks
-        try:
-            latest = await persistence.identity_versions.get_latest_version(
-                agent_id,
-            )
-        except QueryError as exc:
-            logger.warning(
-                VERSION_FETCH_FAILED,
-                entity_id=agent_id,
-                context="charter_version_lookup",
-                error=safe_error_description(exc),
-                error_type=type(exc).__name__,
-            )
-            return {"charter_version_lookup_failed": True}
-        if latest is None:
-            return None
-        return {
-            "charter_version": {
-                "agent_id": latest.entity_id,
-                "version": latest.version,
-                "content_hash": latest.content_hash,
-            }
-        }
-
-    async def _append_decision(  # noqa: PLR0913
-        self,
-        *,
-        task_id: str,
-        executing_agent_id: str,
-        decided_by: str,
-        approved: bool,
-        approval_id: str | None,
-        decision: DecisionOutcome,
-        reason: str | None,
-        criteria_snapshot: tuple[str, ...],
-        metadata: dict[str, object] | None,
-    ) -> None:
-        """Append the decision record (best-effort, non-fatal on persistence errors)."""
-        persistence = self._persistence
-        assert persistence is not None  # noqa: S101  # caller checks
-        try:
-            record = await persistence.decision_records.append_with_next_version(
-                record_id=str(uuid.uuid4()),
-                task_id=task_id,
-                approval_id=approval_id,
-                executing_agent_id=executing_agent_id,
-                reviewer_agent_id=decided_by,
-                decision=decision,
-                reason=reason,
-                criteria_snapshot=criteria_snapshot,
-                recorded_at=datetime.now(UTC),
-                metadata=metadata,
-            )
-            logger.info(
-                SECURITY_APPROVAL_DECISION_RECORDED,
-                task_id=task_id,
-                decision=record.decision.value,
-                version=record.version,
-            )
-        except (QueryError, DuplicateRecordError) as exc:
-            logger.warning(
-                APPROVAL_GATE_DECISION_RECORD_FAILED,
-                task_id=task_id,
-                decided_by=decided_by,
-                approved=approved,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )

@@ -125,8 +125,8 @@ src/synthorg/meta/
     invoker.py         -- MCPToolInvoker (handler dispatch + error mapping)
     errors.py          -- ArgumentValidationError + GuardrailViolationError
     tool_builder.py    -- read_tool / write_tool / admin_tool builders
-    domains/           -- 15 domain tool definition modules (200+ tools)
-    handlers/          -- 15 domain handler modules + common envelope helpers
+    domains/           -- 21 domain tool definition modules (200+ tools)
+    handlers/          -- 21 domain handler modules + common envelope helpers
                          (ok / err / not_supported / require_admin_guardrails)
 
   chief_of_staff/      -- Interactive agent role + advanced capabilities
@@ -418,7 +418,7 @@ reports owns async job lifecycle + artifact storage.
 
 ## Follow-up Issues
 
-1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
+1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; 242 tools, 21 domains, capability-based scoping)
 2. ~~Product-level improvement~~: completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
 3. ~~Cross-deployment analytics~~: completed via #1341 (opt-in anonymised telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~: completed via #1342 (outcome learning, proactive alerts, NL chat)

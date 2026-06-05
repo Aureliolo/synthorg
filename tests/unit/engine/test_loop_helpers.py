@@ -8,13 +8,16 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_control_helpers import (
+    check_budget,
+    check_shutdown,
+    check_stagnation,
+    invoke_compaction,
+)
 from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
-    check_budget,
     check_response_errors,
-    check_shutdown,
-    check_stagnation,
     get_tool_definitions,
     make_turn_record,
     response_to_message,
@@ -969,3 +972,46 @@ class TestCheckStagnation:
             execution_id="exec-1",
         )
         assert result is None
+
+
+@pytest.mark.unit
+class TestInvokeCompaction:
+    """Direct unit tests for invoke_compaction()."""
+
+    async def test_none_callback_returns_none(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        result = await invoke_compaction(sample_agent_context, None, 1)
+        assert result is None
+
+    async def test_returns_compacted_context(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        async def _callback(ctx: AgentContext) -> AgentContext:
+            return ctx
+
+        result = await invoke_compaction(sample_agent_context, _callback, 1)
+        assert result is sample_agent_context
+
+    async def test_swallows_callback_error(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        async def _callback(ctx: AgentContext) -> AgentContext:
+            msg = "compaction boom"
+            raise ValueError(msg)
+
+        result = await invoke_compaction(sample_agent_context, _callback, 1)
+        assert result is None
+
+    async def test_reraises_critical_error(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        async def _callback(ctx: AgentContext) -> AgentContext:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            await invoke_compaction(sample_agent_context, _callback, 1)

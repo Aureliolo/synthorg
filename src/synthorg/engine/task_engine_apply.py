@@ -2,8 +2,6 @@
 
 Each ``apply_*`` function takes the mutation, a persistence backend,
 and a :class:`VersionTracker`, returning a :class:`TaskMutationResult`.
-Extracted from ``task_engine.py`` to keep the main module focused on
-lifecycle, queue management, and the public API.
 """
 
 from datetime import UTC, datetime
@@ -19,6 +17,11 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
 from synthorg.engine.errors import TaskVersionConflictError
+from synthorg.engine.task_engine_apply_helpers import (
+    compute_task_duration_sec,
+    format_validation_error,
+    not_found_result,
+)
 from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskMutation,
@@ -34,7 +37,6 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_STATUS_TRANSITIONED,
-    TASK_ENGINE_TIMING_FALLBACK,
 )
 from synthorg.observability.metrics_hub import record_task_run
 from synthorg.observability.tracing.instrumentation import get_tracer
@@ -78,98 +80,10 @@ _TRULY_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
 )
 
 
-def _compute_task_duration_sec(
-    timings: TaskTimingTracker,
-    task_id: str,
-    mutation_type: str,
-) -> float | None:
-    """Look up *task_id*'s creation time and return ``now - created_at``.
-
-    Returns ``None`` when the timing tracker has no record (typically
-    a task created before the current process restart). Callers must
-    skip the duration-histogram observation in that case so the
-    histogram is not skewed by spurious 0-duration samples; the
-    outcome counter still ticks so a tracked-since-restart vs.
-    inherited-from-prior-process task can be told apart in dashboards
-    via ``rate(task_runs_total) - rate(task_duration_count)``. A WARN
-    with ``reason="creation_timestamp_missing"`` makes the missing-
-    timestamp event searchable.
-
-    Returns:
-        Elapsed seconds since the task's tracked creation timestamp,
-        clamped at ``0.0``; ``None`` when no timestamp is recorded.
-    """
-    created_at = timings.get_creation(task_id)
-    if created_at is not None:
-        return max(0.0, (datetime.now(UTC) - created_at).total_seconds())
-    logger.warning(
-        TASK_ENGINE_TIMING_FALLBACK,
-        mutation_type=mutation_type,
-        task_id=task_id,
-        reason="creation_timestamp_missing",
-        note=(
-            "duration-histogram observation skipped; "
-            "task likely created before process restart"
-        ),
-    )
-    return None
-
-
 if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _format_validation_error(
-    prefix: str,
-    exc: PydanticValidationError,
-) -> str:
-    """Format a Pydantic validation error for external consumption.
-
-    Extracts field paths and messages without exposing raw input
-    values or internal Pydantic URL hints.
-
-    Returns:
-        A ``"{prefix}: field.path: msg; field.path: msg"`` string
-        suitable for surfacing in API error responses.
-    """
-    parts = [
-        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in exc.errors()
-    ]
-    return f"{prefix}: {'; '.join(parts)}"
-
-
-def _not_found_result(
-    mutation_type: str,
-    request_id: str,
-    task_id: str,
-) -> TaskMutationResult:
-    """Build a failure result for a missing task and log it.
-
-    Sets ``error_code='not_found'`` on the result.
-
-    Returns:
-        A :class:`TaskMutationResult` with ``success=False`` and
-        ``error_code="not_found"``.
-    """
-    error = f"Task {task_id!r} not found"
-    logger.warning(
-        TASK_ENGINE_MUTATION_FAILED,
-        mutation_type=mutation_type,
-        request_id=request_id,
-        task_id=task_id,
-        error=error,
-    )
-    return TaskMutationResult(
-        request_id=request_id,
-        success=False,
-        error=error,
-        error_code="not_found",
-    )
 
 
 # ── Dispatch ─────────────────────────────────────────────────────
@@ -248,7 +162,7 @@ async def apply_create(
             budget_limit=data.budget_limit,
         )
     except PydanticValidationError as exc:
-        error_msg = _format_validation_error("Invalid task data", exc)
+        error_msg = format_validation_error("Invalid task data", exc)
         logger.warning(
             TASK_ENGINE_MUTATION_FAILED,
             mutation_type="create",
@@ -298,7 +212,7 @@ async def apply_update(
     """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return _not_found_result("update", mutation.request_id, mutation.task_id)
+        return not_found_result("update", mutation.request_id, mutation.task_id)
 
     try:
         versions.check(mutation.task_id, mutation.expected_version)
@@ -337,7 +251,7 @@ async def apply_update(
     try:
         updated = Task.model_validate(merged)
     except PydanticValidationError as exc:
-        error_msg = _format_validation_error("Invalid update data", exc)
+        error_msg = format_validation_error("Invalid update data", exc)
         logger.warning(
             TASK_ENGINE_MUTATION_FAILED,
             mutation_type="update",
@@ -394,7 +308,7 @@ async def apply_transition(
     """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return _not_found_result("transition", mutation.request_id, mutation.task_id)
+        return not_found_result("transition", mutation.request_id, mutation.task_id)
 
     try:
         versions.check(mutation.task_id, mutation.expected_version)
@@ -484,14 +398,14 @@ async def apply_transition(
     # CREATED -> ASSIGNED hop doesn't pollute the counter. The
     # duration baseline is the engine's recorded creation time;
     # tasks created before a process restart have no entry, in which
-    # case ``_compute_task_duration_sec`` returns ``None`` and
+    # case ``compute_task_duration_sec`` returns ``None`` and
     # ``record_task_run`` skips the duration-histogram observation
     # while still incrementing the outcome counter (the histogram
     # is therefore not skewed by spurious 0-second samples).
     if mutation.target_status in _RECORDED_STATUS_OUTCOME:
         record_task_run(
             outcome=_RECORDED_STATUS_OUTCOME[mutation.target_status],
-            duration_sec=_compute_task_duration_sec(
+            duration_sec=compute_task_duration_sec(
                 timings,
                 mutation.task_id,
                 "transition",
@@ -533,7 +447,7 @@ async def apply_delete(
     """
     deleted = await persistence.tasks.delete(mutation.task_id)
     if not deleted:
-        return _not_found_result("delete", mutation.request_id, mutation.task_id)
+        return not_found_result("delete", mutation.request_id, mutation.task_id)
 
     versions.remove(mutation.task_id)
     timings.remove(mutation.task_id)
@@ -578,7 +492,7 @@ async def apply_cancel(
     """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return _not_found_result("cancel", mutation.request_id, mutation.task_id)
+        return not_found_result("cancel", mutation.request_id, mutation.task_id)
 
     previous_status = task.status
     try:
@@ -621,7 +535,7 @@ async def apply_cancel(
 
     record_task_run(
         outcome="cancelled",
-        duration_sec=_compute_task_duration_sec(
+        duration_sec=compute_task_duration_sec(
             timings,
             mutation.task_id,
             "cancel",

@@ -25,16 +25,18 @@ from synthorg.providers.models import (
 
 from .intervention.loop_hook import check_steering
 from .loop_cancellation import check_task_cancelled
+from .loop_control_helpers import (
+    check_budget,
+    check_shutdown,
+    check_stagnation,
+    invoke_compaction,
+)
 from .loop_helpers import (
     build_result,
     call_provider,
-    check_budget,
     check_response_errors,
-    check_shutdown,
-    check_stagnation,
     classify_turn,
     get_tool_definitions,
-    invoke_compaction,
     make_turn_record,
     response_to_message,
 )

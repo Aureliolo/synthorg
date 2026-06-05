@@ -492,8 +492,9 @@ class TestPartialWriteError:
         # Patch ``_apply_single_change`` so c.py's write blows up; the
         # others write to disk normally.
         from synthorg.meta.appliers import code_applier as code_applier_module
-
-        original = code_applier_module._apply_single_change
+        from synthorg.meta.appliers._code_io import (
+            _apply_single_change as original,
+        )
 
         def faulty(change: CodeChange, file_path: Path) -> None:
             if change.file_path == "c.py":

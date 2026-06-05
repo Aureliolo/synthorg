@@ -11,12 +11,14 @@ from typing import TYPE_CHECKING
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.intervention.loop_hook import check_steering
 from synthorg.engine.loop_cancellation import check_task_cancelled
+from synthorg.engine.loop_control_helpers import (
+    check_budget,
+    check_shutdown,
+)
 from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
-    check_budget,
     check_response_errors,
-    check_shutdown,
     classify_turn,
     make_turn_record,
     response_to_message,

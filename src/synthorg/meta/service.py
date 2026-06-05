@@ -6,12 +6,14 @@ and Chief of Staff confidence learning.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.models import ProposalOutcome
+from synthorg.meta._service_config import _SECRET_PATHS, _redact_secrets
+from synthorg.meta._service_lifecycle import SelfImprovementLifecycleMixin
+from synthorg.meta._service_rollout import SelfImprovementRolloutMixin
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
 from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.factory import (
@@ -28,12 +30,6 @@ from synthorg.meta.models import (
     ImprovementCycleResult,
     ImprovementProposal,
     OrgSignalSnapshot,
-    ProposalAltitude,
-    ProposalStatus,
-    RegressionThresholds,
-    RegressionVerdict,
-    RolloutOutcome,
-    RolloutResult,
 )
 from synthorg.meta.rules.builtin import default_rules
 from synthorg.meta.telemetry.factory import build_analytics_emitter
@@ -42,79 +38,16 @@ from synthorg.observability.events.chief_of_staff import (
     COS_CONFIDENCE_ADJUSTMENT_FAILED,
     COS_LEARNING_ENABLED,
     COS_OUTCOME_RECORD_FAILED,
-    COS_OUTCOME_SKIPPED,
-)
-from synthorg.observability.events.cross_deployment import (
-    XDEPLOY_EVENT_EMIT_FAILED,
 )
 from synthorg.observability.events.meta import (
-    META_CODE_GITHUB_CREDS_INVALID,
-    META_CODE_GITHUB_CREDS_VALID,
     META_CYCLE_COMPLETED,
     META_CYCLE_NO_TRIGGERS,
     META_CYCLE_STARTED,
     META_CYCLE_TRIGGER_FAILED,
     META_CYCLE_TRIGGERED,
     META_PROPOSAL_GUARD_REJECTED,
-    META_ROLLOUT_PRECONDITION_FAILED,
-    META_ROLLOUT_REGRESSION_DETECTED,
-    META_SERVICE_CLOSE_FAILED,
 )
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
-
-_SECRET_PATHS: frozenset[str] = frozenset(
-    {
-        "code_modification.github_token",
-        "cross_deployment_analytics.deployment_id_salt",
-    }
-)
-"""Dotted JSON paths whose values are redacted by ``_redact_secrets``.
-
-Adding a new entry requires a matching test case in
-``tests/unit/meta/test_service_get_config.py``; the redactor silently
-ignores unknown paths, so a misspelled entry only fails in tests.
-"""
-
-_REDACTED: str = "***redacted***"
-
-
-def _redact_secrets(
-    dump: dict[str, Any],
-    paths: frozenset[str],
-) -> dict[str, Any]:
-    """Return a copy of *dump* with each path in *paths* masked.
-
-    Operates on a copy so the caller's source data is never mutated.
-    Unknown paths are silently ignored: redaction must remain a
-    safe-default operation even when the config schema is in flux.
-
-    Returns:
-        Mapping with the declared key/value types.
-    """
-    redacted = dict(dump)
-    for path in paths:
-        keys = path.split(".")
-        node: Any = redacted
-        # Walk down a copy at each level. Each ``cloned`` dict replaces
-        # the parent's reference in ``redacted`` so the mutation stays
-        # local; the corresponding nested dict on the caller's original
-        # ``dump`` is never touched. This keeps ``get_config`` safe to
-        # call repeatedly without re-leaking secrets across calls.
-        for key in keys[:-1]:
-            child = node.get(key)
-            if not isinstance(child, dict):
-                node = None
-                break
-            cloned = dict(child)
-            node[key] = cloned
-            node = cloned
-        if node is None:
-            continue
-        leaf = keys[-1]
-        if leaf in node and node[leaf] is not None:
-            node[leaf] = _REDACTED
-    return redacted
-
 
 if TYPE_CHECKING:
     from synthorg.approval.protocol import ApprovalStoreProtocol
@@ -129,8 +62,6 @@ if TYPE_CHECKING:
     from synthorg.meta.models import RuleMatch
     from synthorg.meta.protocol import (
         ImprovementStrategy,
-        ProposalApplier,
-        RolloutStrategy,
     )
     from synthorg.meta.rollout.before_after import SnapshotBuilder
     from synthorg.meta.rollout.group_aggregator import GroupSignalAggregator
@@ -142,7 +73,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class SelfImprovementService:
+class SelfImprovementService(
+    SelfImprovementRolloutMixin,
+    SelfImprovementLifecycleMixin,
+):
     """Orchestrates the self-improvement meta-loop cycle.
 
     1. Evaluates signal snapshot against rules.
@@ -279,46 +213,6 @@ class SelfImprovementService:
                     strategy=config.chief_of_staff.adjuster_strategy,
                 )
 
-    async def validate_prerequisites(self) -> None:
-        """Validate startup prerequisites.
-
-        Verifies the GitHub token when code modification is enabled
-        by pinging the GitHub API.
-
-        Raises:
-            GitHubAuthError: If the GitHub token is invalid.
-            GitHubAPIError: On other GitHub API failures.
-        """
-        if not self._config.code_modification_enabled:
-            return
-        from synthorg.meta.appliers.code_applier import (  # noqa: PLC0415
-            CodeApplier,
-        )
-
-        applier = self._appliers.get(ProposalAltitude.CODE_MODIFICATION)
-        if applier is None or not isinstance(applier, CodeApplier):
-            return
-        from synthorg.meta.appliers.github_client import (  # noqa: PLC0415
-            GitHubAPIError,
-        )
-
-        try:
-            await applier.verify_github_token()
-        except GitHubAPIError as exc:
-            # Never let raw exception text leak into telemetry on
-            # credential-bearing paths -- the GitHub API client may
-            # include the bearer header in error messages.
-            # ``safe_error_description`` is the project-wide redactor
-            # mandated by CLAUDE.md ``## Logging``.
-            logger.warning(
-                META_CODE_GITHUB_CREDS_INVALID,
-                reason="token_verification_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
-        logger.info(META_CODE_GITHUB_CREDS_VALID)
-
     async def run_cycle(
         self,
         snapshot: OrgSignalSnapshot,
@@ -421,153 +315,6 @@ class SelfImprovementService:
         )
         return tuple(approved)
 
-    def _build_regression_thresholds(self) -> RegressionThresholds:
-        """Build RegressionThresholds from the service config.
-
-        Returns:
-            ``RegressionThresholds`` instance.
-        """
-        rc = self._config.regression
-        return RegressionThresholds(
-            quality_drop=rc.quality_drop_threshold,
-            cost_increase=rc.cost_increase_threshold,
-            error_rate_increase=rc.error_rate_increase_threshold,
-            success_rate_drop=rc.success_rate_drop_threshold,
-        )
-
-    async def execute_rollout(
-        self,
-        proposal: ImprovementProposal,
-        *,
-        baseline: OrgSignalSnapshot | None = None,
-        current: OrgSignalSnapshot | None = None,
-    ) -> RolloutResult:
-        """Execute a rollout for an approved proposal.
-
-        If ``baseline`` and ``current`` snapshots are provided, the
-        tiered regression detector is invoked after the rollout
-        completes.  On regression, the result is updated with the
-        detection verdict.
-
-        Args:
-            proposal: The human-approved proposal.
-            baseline: Signal snapshot taken before the rollout.
-            current: Signal snapshot taken after the observation
-                window completes.
-
-        Returns:
-            Rollout result (may include regression verdict).
-        """
-        applier, rollout = self._validate_rollout_preconditions(proposal)
-        result = await rollout.execute(
-            proposal=proposal,
-            applier=applier,
-            detector=self._detector,
-        )
-        result = await self._post_rollout_regression_check(
-            result,
-            proposal,
-            baseline=baseline,
-            current=current,
-        )
-        if self._analytics_emitter is not None:
-            await self._analytics_emitter.emit_rollout(
-                result,
-                proposal=proposal,
-            )
-        return result
-
-    def _validate_rollout_preconditions(
-        self,
-        proposal: ImprovementProposal,
-    ) -> tuple[ProposalApplier, RolloutStrategy]:
-        """Validate proposal status, applier, and strategy exist.
-
-        Returns:
-            Tuple of the declared element types.
-
-        Raises:
-            ValueError: Raised on the corresponding failure path.
-        """
-        if proposal.status is not ProposalStatus.APPROVED:
-            logger.error(
-                META_ROLLOUT_PRECONDITION_FAILED,
-                proposal_id=str(proposal.id),
-                reason="not_approved",
-                status=proposal.status.value,
-            )
-            msg = (
-                f"Proposal {proposal.id} must be approved before "
-                f"rollout; current status is {proposal.status.value}"
-            )
-            raise ValueError(msg)
-        applier = self._appliers.get(proposal.altitude)
-        if applier is None:
-            logger.error(
-                META_ROLLOUT_PRECONDITION_FAILED,
-                proposal_id=str(proposal.id),
-                reason="no_applier",
-                altitude=proposal.altitude.value,
-            )
-            msg = f"No applier for altitude {proposal.altitude}"
-            raise ValueError(msg)
-        strategy_name = proposal.rollout_strategy.value
-        rollout = self._rollout_strategies.get(strategy_name)
-        if rollout is None:
-            logger.error(
-                META_ROLLOUT_PRECONDITION_FAILED,
-                proposal_id=str(proposal.id),
-                reason="no_strategy",
-                strategy=strategy_name,
-            )
-            msg = f"No rollout strategy '{strategy_name}'"
-            raise ValueError(msg)
-        return applier, rollout
-
-    async def _post_rollout_regression_check(
-        self,
-        result: RolloutResult,
-        proposal: ImprovementProposal,
-        *,
-        baseline: OrgSignalSnapshot | None,
-        current: OrgSignalSnapshot | None,
-    ) -> RolloutResult:
-        """Run tiered regression detection after a successful rollout.
-
-        Returns:
-            ``RolloutResult`` instance.
-        """
-        if (
-            baseline is None
-            or current is None
-            or result.outcome != RolloutOutcome.SUCCESS
-        ):
-            return result
-        thresholds = self._build_regression_thresholds()
-        regression = await self._detector.check(
-            baseline=baseline,
-            current=current,
-            thresholds=thresholds,
-        )
-        if regression.verdict == RegressionVerdict.NO_REGRESSION:
-            return result
-        logger.warning(
-            META_ROLLOUT_REGRESSION_DETECTED,
-            proposal_id=str(proposal.id),
-            verdict=regression.verdict.value,
-            breached_metric=regression.breached_metric,
-        )
-        return result.model_copy(
-            update={
-                "outcome": RolloutOutcome.REGRESSED,
-                "regression_verdict": regression.verdict,
-                "details": (
-                    f"Regression detected: {regression.verdict.value}"
-                    f" on {regression.breached_metric or 'unknown'}"
-                ),
-            },
-        )
-
     async def _dispatch_strategies(
         self,
         snapshot: OrgSignalSnapshot,
@@ -605,73 +352,6 @@ class SelfImprovementService:
                 results.extend(task.result())
 
         return results
-
-    async def record_decision(
-        self,
-        proposal: ImprovementProposal,
-    ) -> None:
-        """Record a decided proposal for learning and analytics.
-
-        Called by the approval API after a human approves or
-        rejects a proposal. Emits analytics telemetry independently
-        of Chief of Staff learning (outcome_store).
-
-        Args:
-            proposal: The decided proposal.
-        """
-        if proposal.decided_at is None or proposal.decided_by is None:
-            logger.info(
-                COS_OUTCOME_SKIPPED,
-                proposal_id=str(proposal.id),
-                reason="missing_decision_context",
-            )
-            return
-        if proposal.status not in (
-            ProposalStatus.APPROVED,
-            ProposalStatus.REJECTED,
-        ):
-            logger.info(
-                COS_OUTCOME_SKIPPED,
-                proposal_id=str(proposal.id),
-                reason="non_terminal_status",
-                status=proposal.status.value,
-            )
-            return
-        decision: Literal["approved", "rejected"] = (
-            "approved" if proposal.status is ProposalStatus.APPROVED else "rejected"
-        )
-        outcome = ProposalOutcome(
-            proposal_id=proposal.id,
-            title=proposal.title,
-            altitude=proposal.altitude,
-            source_rule=proposal.source_rule,
-            decision=decision,
-            confidence_at_decision=proposal.confidence,
-            decided_at=proposal.decided_at,
-            decided_by=proposal.decided_by,
-            decision_reason=proposal.decision_reason,
-        )
-
-        # Record outcome for Chief of Staff learning (if enabled).
-        if self._outcome_store is not None:
-            try:
-                await self._outcome_store.record_outcome(outcome)
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    COS_OUTCOME_RECORD_FAILED,
-                    proposal_id=str(proposal.id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-
-        # Emit anonymized event for cross-deployment analytics.
-        # emit_decision handles its own exceptions internally.
-        if self._analytics_emitter is not None:
-            await self._analytics_emitter.emit_decision(
-                outcome,
-                proposal=proposal,
-            )
 
     def get_config(self) -> dict[str, Any]:
         """Return the active self-improvement config with secrets redacted.
@@ -765,31 +445,3 @@ class SelfImprovementService:
             duration_seconds=self._clock.monotonic() - started_monotonic,
         )
         return result
-
-    async def close(self) -> None:
-        """Flush analytics emitter, close appliers, and release resources."""
-        for applier in self._appliers.values():
-            close = getattr(applier, "aclose", None)
-            if close is not None:
-                try:
-                    await close()
-                except Exception as exc:
-                    reraise_critical(exc)
-                    logger.warning(
-                        META_SERVICE_CLOSE_FAILED,
-                        reason="applier_close_failed",
-                        altitude=str(applier.altitude),
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-        if self._analytics_emitter is not None:
-            try:
-                await self._analytics_emitter.aclose()
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    XDEPLOY_EVENT_EMIT_FAILED,
-                    reason="emitter_close_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
