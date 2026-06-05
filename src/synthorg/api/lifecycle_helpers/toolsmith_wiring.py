@@ -312,14 +312,39 @@ async def wire_toolsmith(
     )
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
-    install_capability_gap_sink(runtime.service)
     scheduler = ToolsmithCycleScheduler(
         runtime.service,
         interval_seconds=si_config.toolsmith.cycle_interval_seconds,
         config_resolver=config_resolver_of(app_state),
     )
-    await scheduler.start()
-    app_state.swap_slice(
-        ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
-    )
+    try:
+        await scheduler.start()
+        app_state.swap_slice(
+            ToolsmithStateSlice(service=runtime.service, cycle_scheduler=scheduler),
+        )
+    except Exception as exc:
+        reraise_critical(exc)
+        try:
+            await scheduler.stop()
+        except Exception as stop_exc:
+            reraise_critical(stop_exc)
+            logger.warning(
+                API_APP_STARTUP,
+                service="toolsmith",
+                note="toolsmith scheduler cleanup failed after wiring error",
+                error_type=type(stop_exc).__name__,
+                error=safe_error_description(stop_exc),
+            )
+        logger.warning(
+            API_APP_STARTUP,
+            service="toolsmith",
+            note="toolsmith scheduler wiring failed; self-extending toolkit disabled",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return
+    # Install the gap sink only after the scheduler is started and the state
+    # slice is published, so a failed start/swap leaves no dangling sink
+    # routing envelopes into a store that nothing drains (fail-closed).
+    install_capability_gap_sink(runtime.service)
     logger.info(API_APP_STARTUP, service="toolsmith", note="wired")

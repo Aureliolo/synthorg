@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
 from synthorg.meta.mcp.handler_protocol import (
@@ -417,6 +418,7 @@ def _on_gap_task_done(task: asyncio.Task[None]) -> None:
         return
     exc = task.exception()
     if exc is not None:
+        reraise_critical(exc)
         logger.warning(
             MCP_HANDLER_CAPABILITY_GAP,
             error_type=type(exc).__name__,

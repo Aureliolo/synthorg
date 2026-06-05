@@ -438,7 +438,8 @@ ring-buffered `CapabilityGapStore` (the `ToolsmithService` is the sink). The
 sink is installed at boot (`install_capability_gap_sink`), so every
 `capability_gap` MCP envelope an agent emits feeds the store; the record is
 fire-and-forget and a write failure logs without a traceback (SEC-1) rather
-than blocking the agent. When a capability signature (`domain:action`) recurs
+than blocking the agent. When a capability signature (currently the MCP tool
+name, for example `synthorg_<domain>_<action>`) recurs
 at least `gap_recurrence_threshold` times within `gap_window_hours`, it
 qualifies as a recurring gap. Detection is autonomous: a periodic
 `ToolsmithCycleScheduler` drives `ToolsmithService.run_cycle()` on a cadence

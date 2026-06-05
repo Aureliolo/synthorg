@@ -169,4 +169,6 @@ def reset_singletons() -> None:
         _PENDING_GAP_TASKS,
     )
 
+    for task in tuple(_PENDING_GAP_TASKS):
+        task.cancel()
     _PENDING_GAP_TASKS.clear()
