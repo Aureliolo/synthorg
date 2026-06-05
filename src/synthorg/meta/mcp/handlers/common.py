@@ -26,11 +26,15 @@ call it.  The placeholder logs at WARNING via the
 ``MCP_HANDLER_NOT_IMPLEMENTED`` event so ops can alert on unwired tools.
 """
 
+import asyncio
 import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,
@@ -360,7 +364,67 @@ def capability_gap(tool_name: str, reason: str) -> str:
         tool_name=tool_name,
         reason=reason,
     )
+    _record_capability_gap(tool_name)
     return _not_supported_envelope(reason)
+
+
+# Fire-and-forget record_gap tasks are held here so the loop does not GC
+# them mid-flight (asyncio keeps only weak references to scheduled tasks).
+_PENDING_GAP_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _record_capability_gap(tool_name: str) -> None:
+    """Feed a capability-gap observation to the toolsmith sink, if installed.
+
+    Best-effort and non-blocking: ``capability_gap`` runs on the response
+    path of an MCP handler, so the async ``record_gap`` is scheduled as a
+    fire-and-forget task on the running loop and never awaited inline. A
+    no-op when the toolsmith is disabled (no sink installed) or no event
+    loop is running. The toolsmith gap store swallows its own write errors,
+    so a failed record never disturbs the handler response. Recording every
+    unfulfilled capability request is what lets the toolsmith detect a
+    recurring gap and propose a new tool.
+    """
+    from synthorg.meta.mcp.server import (  # noqa: PLC0415
+        get_capability_gap_sink,
+    )
+
+    sink = get_capability_gap_sink()
+    if sink is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    task = loop.create_task(
+        sink.record_gap(NotBlankStr(tool_name), occurred_at=datetime.now(UTC)),
+    )
+    _PENDING_GAP_TASKS.add(task)
+    task.add_done_callback(_on_gap_task_done)
+
+
+def _on_gap_task_done(task: asyncio.Task[None]) -> None:
+    """Release the task reference and surface any failure safely.
+
+    The gap store swallows its own write errors today, but the
+    ``CapabilityGapSink`` protocol does not guarantee that, so an exception
+    must be retrieved here. Leaving it unretrieved lets asyncio log the task
+    with a full traceback whose frame-locals could serialise secrets; instead
+    it is logged via ``safe_error_description`` without a traceback so no
+    secret-bearing locals leak into the log.
+    """
+    _PENDING_GAP_TASKS.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        reraise_critical(exc)
+        logger.warning(
+            MCP_HANDLER_CAPABILITY_GAP,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="gap_record_failed",
+        )
 
 
 def make_placeholder_handler(tool_name: str) -> ToolHandler:

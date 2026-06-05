@@ -434,10 +434,20 @@ A fixed toolset caps what the studio can build. The **toolsmith**
 surface at runtime when it hits a recurring capability gap, governed end to end.
 
 **Detection.** Every unfulfilled capability request is recorded into a
-ring-buffered `CapabilityGapStore` (the `ToolsmithService` is the sink). When a
-capability signature (`domain:action`) recurs at least
-`gap_recurrence_threshold` times within `gap_window_hours`, it qualifies as a
-recurring gap.
+ring-buffered `CapabilityGapStore` (the `ToolsmithService` is the sink). The
+sink is installed at boot (`install_capability_gap_sink`), so every
+`capability_gap` MCP envelope an agent emits feeds the store; the record is
+fire-and-forget and a write failure logs without a traceback (SEC-1) rather
+than blocking the agent. When a capability signature (currently the MCP tool
+name, for example `synthorg_<domain>_<action>`) recurs
+at least `gap_recurrence_threshold` times within `gap_window_hours`, it
+qualifies as a recurring gap. Detection is autonomous: a periodic
+`ToolsmithCycleScheduler` drives `ToolsmithService.run_cycle()` on a cadence
+(`toolsmith.cycle_interval_seconds`, default one hour) so a recurring gap
+becomes a proposal without an operator trigger. A `meta.toolsmith_cycle_paused`
+kill-switch (re-read each tick, fail-safe to enabled) lets an operator halt
+self-extension at runtime without a restart. The cycle only proposes; the
+governance and validation steps below still gate every authored tool.
 
 **Authoring.** `LLMToolBlueprintGenerator` authors a `ToolBlueprint` from the
 gap: a declarative spec (name, capability, JSON Schema, action type) plus a

@@ -37,10 +37,12 @@ class AgentEngineRunMixin:
         """Apply stakes-aware routing, returning the adjusted identity.
 
         Delegates to the injected :class:`StakesRouter` to pick a model
-        tier matched to ``task.stakes``. The red-team requirement carried
-        on the decision is consumed downstream by the review pipeline,
-        which derives it from the persisted ``task.stakes``; this method
-        only adjusts the model the subtask runs with.
+        tier matched to ``task.stakes``; this method only adjusts the
+        model the subtask runs with. The review pipeline independently
+        gates the red-team review on the task's persisted ``task.stakes``
+        (see ``run_completion_gates`` / ``red_team_min_stakes``), so the
+        routing decision's ``red_team_required`` flag is not threaded from
+        here.
 
         Returns:
             ``identity`` with its model replaced when the router picks

@@ -16,7 +16,7 @@ service. Each gate returns the (possibly rerouted) transition tuple
 
 from typing import TYPE_CHECKING, Literal
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
@@ -62,41 +62,60 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     event: str,
     approved: bool,
     vision_input: VisionReviewInput | None,
+    red_team_min_stakes: Stakes,
 ) -> GateOutcome:
     """Run the red-team then vision gates before a COMPLETED transition.
 
     When the incoming verdict is already a rejection (``approved`` is
     ``False``), returns immediately without evaluating any gate. The
     red-team gate is active only when BOTH the gate and its
-    ``red_team_input_builder`` are wired; a gate attached without a
-    builder (for example a boot with no persistence, where the
-    flight-recorder deliverable source is absent) is left inert rather
-    than fail-closed, since blocking every completion on a wiring gap the
-    operator did not ask for would be worse than not gating. When active,
-    the input is built from the task's recorded deliverable; a ``None``
-    build result is handled by :func:`apply_red_team_gate` under
-    ``on_missing_deliverable``. A BLOCK from either gate reroutes the task
-    to IN_PROGRESS rework.
+    ``red_team_input_builder`` are wired AND the task's stakes are at or
+    above ``red_team_min_stakes``: the adversarial pass is reserved for
+    consequential work (matching the routing layer, which only marks
+    ``red_team_required`` at that same threshold), so low-stakes
+    deliverables are not gated. A gate attached without a builder (for
+    example a boot with no persistence, where the flight-recorder
+    deliverable source is absent) is left inert rather than fail-closed,
+    since blocking every completion on a wiring gap the operator did not
+    ask for would be worse than not gating. When active, the input is
+    built from the task's recorded deliverable; a ``None`` build result is
+    handled by :func:`apply_red_team_gate` under ``on_missing_deliverable``.
+    A BLOCK from either gate reroutes the task to IN_PROGRESS rework.
 
     Returns:
         The (possibly rerouted) ``(target, reason, event, approved)``
-        tuple. Unchanged when no gate is configured or every gate
-        passes; rerouted to IN_PROGRESS rework on any BLOCK.
+        tuple. Unchanged when no gate is configured, the task is below
+        the stakes threshold, or every gate passes; rerouted to
+        IN_PROGRESS rework on any BLOCK.
     """
     if not approved:
         return target, transition_reason, event, approved
     if red_team_gate is not None and red_team_input_builder is not None:
-        red_team_input = await red_team_input_builder.build(task)
-        target, transition_reason, event, approved = await apply_red_team_gate(
-            gate=red_team_gate,
-            on_missing_deliverable=on_missing_deliverable,
-            task_id=task.id,
-            target=target,
-            transition_reason=transition_reason,
-            event=event,
-            approved=approved,
-            red_team_input=red_team_input,
-        )
+        if compare_stakes(task.stakes, red_team_min_stakes) < 0:
+            logger.info(
+                RED_TEAM_GATE_SKIPPED,
+                task_id=task.id,
+                reason="below_stakes_threshold",
+                stakes=task.stakes.value,
+                min_stakes=red_team_min_stakes.value,
+                note=(
+                    "Red-team gate is wired but the task's stakes are below "
+                    "the configured red_team_min_stakes threshold; the "
+                    "adversarial review is reserved for higher-stakes work."
+                ),
+            )
+        else:
+            red_team_input = await red_team_input_builder.build(task)
+            target, transition_reason, event, approved = await apply_red_team_gate(
+                gate=red_team_gate,
+                on_missing_deliverable=on_missing_deliverable,
+                task_id=task.id,
+                target=target,
+                transition_reason=transition_reason,
+                event=event,
+                approved=approved,
+                red_team_input=red_team_input,
+            )
     elif red_team_gate is not None:
         logger.warning(
             RED_TEAM_GATE_SKIPPED,

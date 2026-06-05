@@ -331,6 +331,7 @@ class AgentEngineRecoveryMixin:
                 checkpoint_ctx.identity,
                 task_id=task_id,
                 effective_autonomy=effective_autonomy,
+                project_id=project_id,
             ),
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,

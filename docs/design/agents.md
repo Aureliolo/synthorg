@@ -373,7 +373,9 @@ role is special:
 - **Red Team** (`name="Red Team"`, department: Quality Assurance,
   seniority: Senior). The built-in adversarial skeptic. Instantiated
   at boot when `CompanyConfig.security.red_team.enabled` is true; the
-  framework runs it as the last gate before IN_REVIEW -> COMPLETED.
+  framework runs it as the last gate before IN_REVIEW -> COMPLETED for
+  deliverables whose `stakes` meet the configured
+  `stakes_routing.red_team_min_stakes` threshold (default `HIGH`).
   See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
   for the full design.
 

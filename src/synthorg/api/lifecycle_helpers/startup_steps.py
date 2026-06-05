@@ -293,6 +293,12 @@ def _wire_red_team_completion(
     ``run_completion_gates``), rather than crashing boot on the missing
     frame repository.
     """
+    # Share the routing layer's stakes threshold so the gate fires on exactly
+    # the work the router marks red_team_required. Set before the persistence
+    # guard: the threshold is independent of the deliverable source.
+    review_gate_service.set_red_team_min_stakes(
+        app_state.config.stakes_routing.red_team_min_stakes,
+    )
     from synthorg.engine.review_gate_inputs import (  # noqa: PLC0415
         DeliverableReviewInputBuilder,
     )

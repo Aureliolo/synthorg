@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import DomainToolRegistry
     from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
+    from synthorg.meta.toolsmith.protocol import CapabilityGapSink
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,12 @@ _invoker: MCPToolInvoker | None = None
 # the live authored-tool registry, so runtime-authored tools become
 # reachable without unfreezing the static registry.
 _dynamic_registry: DynamicToolRegistry | None = None
+# Set by the toolsmith boot hook (install_capability_gap_sink). When
+# present, the ``capability_gap`` envelope helper records every
+# unfulfilled capability request so the toolsmith's recurrence analysis
+# can detect a repeated gap and propose a new tool. ``None`` (toolsmith
+# disabled) makes capability-gap recording a no-op.
+_gap_sink: CapabilityGapSink | None = None
 
 
 def get_registry() -> DomainToolRegistry:
@@ -104,6 +111,29 @@ def install_dynamic_tool_layer(dynamic_registry: DynamicToolRegistry) -> None:
     _invoker = None
 
 
+def install_capability_gap_sink(sink: CapabilityGapSink) -> None:
+    """Install the sink that records unfulfilled-capability observations.
+
+    Called once by the toolsmith boot hook. Once installed, the
+    :func:`synthorg.meta.mcp.handlers.common.capability_gap` envelope helper
+    feeds every capability gap to ``sink`` (the toolsmith service) so a
+    recurring gap can be detected and turned into a new-tool proposal.
+    """
+    global _gap_sink  # noqa: PLW0603
+    _gap_sink = sink
+
+
+def get_capability_gap_sink() -> CapabilityGapSink | None:
+    """Return the installed capability-gap sink, or ``None`` when unset.
+
+    Returns:
+        The toolsmith-backed sink installed at boot, or ``None`` when the
+        self-extending toolkit is disabled (capability-gap recording is
+        then a no-op).
+    """
+    return _gap_sink
+
+
 def get_server_config() -> dict[str, object]:
     """Return MCP server configuration for registration.
 
@@ -129,8 +159,16 @@ def reset_singletons() -> None:
     This allows tests to rebuild the registry, scoper, and invoker
     without polluting other test runs.
     """
-    global _registry, _scoper, _invoker, _dynamic_registry  # noqa: PLW0603
+    global _registry, _scoper, _invoker, _dynamic_registry, _gap_sink  # noqa: PLW0603
     _registry = None
     _scoper = None
     _invoker = None
     _dynamic_registry = None
+    _gap_sink = None
+    from synthorg.meta.mcp.handlers.common import (  # noqa: PLC0415
+        _PENDING_GAP_TASKS,
+    )
+
+    for task in tuple(_PENDING_GAP_TASKS):
+        task.cancel()
+    _PENDING_GAP_TASKS.clear()

@@ -17,7 +17,7 @@ or a broadcast WebSocket event behind.
 from typing import TYPE_CHECKING, Literal
 
 from synthorg.core.actor_context import resolve_decided_by
-from synthorg.core.enums import TaskStatus
+from synthorg.core.enums import Stakes, TaskStatus, compare_stakes
 from synthorg.engine._review_completion_gates import (
     map_pipeline_verdict,
     run_completion_gates,
@@ -84,6 +84,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         red_team_gate: RedTeamGate | None = None,
         red_team_input_builder: DeliverableReviewInputBuilder | None = None,
         red_team_on_missing_deliverable: Literal["block", "skip"] = "block",
+        red_team_min_stakes: Stakes = Stakes.HIGH,
         vision_gate: VisionVerifierGate | None = None,
         receipt_service: DeliverableReceiptSeam | None = None,
         background_tasks: BackgroundTaskRegistry | None = None,
@@ -95,6 +96,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         self._red_team_on_missing_deliverable: Literal["block", "skip"] = (
             red_team_on_missing_deliverable
         )
+        self._red_team_min_stakes = red_team_min_stakes
         self._vision_gate = vision_gate
         self._receipt_service = receipt_service
         self._background_tasks = background_tasks
@@ -200,6 +202,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
                 event=event,
                 approved=approved,
                 vision_input=None,
+                red_team_min_stakes=self._red_team_min_stakes,
             )
             # A gate that reroutes the human-approved task back to rework
             # rewrites ``transition_reason`` with its block summary; align
@@ -254,11 +257,25 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             engine-layer errors); ``False`` when it ran inline.
         """
         decided_by = resolve_decided_by(decided_by)
-        if (
+        gated = (
             approved
             and self._red_team_gate is not None
             and self._background_tasks is not None
-        ):
+        )
+        if gated:
+            # The inline red-team evaluation only runs when the task's stakes
+            # meet the configured red_team_min_stakes; a below-threshold
+            # approve skips the gate, so run it inline for an immediate
+            # transition rather than deferring a no-op to the background. A
+            # missing task also runs inline so complete_review re-fetches and
+            # raises TaskNotFoundError synchronously (the caller maps it to a
+            # 404) instead of swallowing it in a background task.
+            task = await self._task_engine.get_task(task_id)
+            if task is None or (
+                compare_stakes(task.stakes, self._red_team_min_stakes) < 0
+            ):
+                gated = False
+        if gated and self._background_tasks is not None:
             logger.info(
                 RED_TEAM_GATE_DISPATCHED,
                 task_id=task_id,
@@ -358,6 +375,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             event=event,
             approved=approved,
             vision_input=vision_input,
+            red_team_min_stakes=self._red_team_min_stakes,
         )
         await self._apply_decision(
             task=task,
