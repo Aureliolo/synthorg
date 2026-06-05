@@ -15,7 +15,7 @@ Formula approximation (no internal KV state required):
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.engine.loop_protocol import TurnRecord
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

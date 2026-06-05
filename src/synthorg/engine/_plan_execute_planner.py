@@ -9,6 +9,7 @@ reuse the per-turn checkpoint seam.
 from typing import TYPE_CHECKING
 
 from synthorg.engine.plan_execute_step_mixin import PlanExecuteStepMixin
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TURN_COMPLETE,
@@ -35,7 +36,6 @@ from .loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TerminationReason,
-    TurnRecord,
 )
 from .plan_helpers import extract_task_summary, update_step_status
 from .plan_models import ExecutionPlan, PlanExecuteConfig, PlanStep, StepStatus

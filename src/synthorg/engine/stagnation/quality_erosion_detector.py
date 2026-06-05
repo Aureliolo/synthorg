@@ -11,10 +11,10 @@ complexity).
 
 from typing import Final
 
-from synthorg.engine.loop_protocol import TurnRecord
 from synthorg.engine.trajectory.structural_erosion import (
     compute_structural_erosion_score,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.stagnation import (
     QUALITY_STAGNATION_DETECTED,

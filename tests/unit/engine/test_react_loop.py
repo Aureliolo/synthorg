@@ -8,8 +8,9 @@ import pytest
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,

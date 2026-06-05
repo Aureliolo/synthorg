@@ -4,21 +4,16 @@ Provides self-consistency filtering, verbalized confidence scoring,
 trace length scoring, and budget-guarded K-candidate sampling.
 """
 
-# Resolve forward reference: TurnRecord.efficiency_delta uses
-# "EfficiencyRatios" as a string annotation to avoid circular imports.
-from synthorg.engine.loop_protocol import TurnRecord as _TurnRecord
 from synthorg.engine.trajectory.budget_guard import (
     check_trajectory_budget,
 )
-from synthorg.engine.trajectory.efficiency_ratios import EfficiencyRatios
 from synthorg.engine.trajectory.models import (
     CandidateResult,
     TrajectoryConfig,
     TrajectoryScore,
 )
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
-
-_TurnRecord.model_rebuild(_types_namespace={"EfficiencyRatios": EfficiencyRatios})
+from synthorg.execution.efficiency import EfficiencyRatios
 
 __all__ = [
     "CandidateResult",

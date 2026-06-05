@@ -29,7 +29,7 @@ from synthorg.observability.events.classification import (
 from synthorg.providers.enums import FinishReason, MessageRole
 
 if TYPE_CHECKING:
-    from synthorg.engine.loop_protocol import TurnRecord
+    from synthorg.execution.turn import TurnRecord
     from synthorg.providers.models import ChatMessage
 
 logger = get_logger(__name__)

@@ -8,6 +8,11 @@ matching the design spec (operations.md, section 11.2).
 
 ``get_sub_constraints`` resolves the effective constraints for an
 access level, optionally overriding with per-agent custom constraints.
+
+Lives in ``core`` (the foundation layer) so leaf domain models such as
+``core.agent.AgentIdentity`` can reference ``ToolSubConstraints`` without
+importing the ``tools`` package, whose ``__init__`` eagerly pulls the
+provider/engine stack and would re-introduce a cold-import cycle.
 """
 
 from enum import StrEnum

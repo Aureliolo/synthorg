@@ -4,16 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import ActionType, ToolCategory
-from synthorg.tools.sub_constraint_enforcer import (
-    SubConstraintEnforcer,
-    SubConstraintViolation,
-)
-from synthorg.tools.sub_constraints import (
+from synthorg.core.tool_constraints import (
     FileSystemScope,
     GitAccess,
     NetworkMode,
     TerminalAccess,
     ToolSubConstraints,
+)
+from synthorg.tools.sub_constraint_enforcer import (
+    SubConstraintEnforcer,
+    SubConstraintViolation,
 )
 
 # ── SubConstraintViolation model ───────────────────────────────

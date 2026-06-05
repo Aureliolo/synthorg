@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.dogfooding_dataset_builder import (
     DogfoodingDatasetBuilder,
     DogfoodingDatasetConfig,

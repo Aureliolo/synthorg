@@ -11,14 +11,6 @@ can reproduce the competent-vs-degraded discrimination without a real provider.
 import argparse
 from pathlib import Path
 
-# The synthorg package is import-order sensitive: a cold standalone import of the
-# eval runner (which pulls synthorg.core / providers / engine) trips a
-# pre-existing core <-> persistence import cycle. The test suite's root
-# tests/conftest.py sidesteps it by importing synthorg.persistence first; this
-# entry point does the same so `python -m evals` resolves the graph. The eval
-# runner itself is imported lazily in main() AFTER this prime. The underlying
-# cycle is tracked as cross-package tech debt to be broken in its own ADR.
-import synthorg.persistence  # noqa: F401 -- prime the package import graph
 from evals.runner.profiles import BenchmarkStrategyProfile
 
 _REPO_ROOT: Path = Path(__file__).resolve().parents[1]

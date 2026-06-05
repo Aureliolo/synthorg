@@ -14,7 +14,7 @@ quality metrics to tool-integrated reasoning traces.
 
 from typing import Final
 
-from synthorg.engine.loop_protocol import TurnRecord
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

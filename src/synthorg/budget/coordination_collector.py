@@ -41,6 +41,7 @@ from synthorg.budget.coordination_metrics import (
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.execution.view import ExecutionResultView
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_ALERT_FIRED,
@@ -60,7 +61,6 @@ if TYPE_CHECKING:
     from synthorg.budget.coordination_store import CoordinationMetricsStore
     from synthorg.budget.tracker import CostTracker
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.notifications.dispatcher import NotificationDispatcher
 
 logger = get_logger(__name__)
@@ -84,7 +84,7 @@ class CollectionInputs(NamedTuple):
         is_multi_agent: Whether this is a multi-agent execution.
     """
 
-    execution_result: ExecutionResult
+    execution_result: ExecutionResultView
     agent_id: str
     task_id: str
     team_size: int = 1
@@ -94,7 +94,7 @@ class CollectionInputs(NamedTuple):
 
 
 def _extract_run_stats(
-    execution_result: ExecutionResult,
+    execution_result: ExecutionResultView,
 ) -> tuple[int, float, int]:
     """Extract basic run stats from an execution result.
 
@@ -276,7 +276,7 @@ class CoordinationMetricsCollector:
         turns: int,
         error_rate: float,
         total_tokens: int,
-        execution_result: ExecutionResult,
+        execution_result: ExecutionResultView,
     ) -> None:
         """Record single-agent baseline data when store is available."""
         if self._baseline_store is None or turns == 0:

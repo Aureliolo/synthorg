@@ -26,7 +26,8 @@ from synthorg.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
-    from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
+    from synthorg.engine.loop_protocol import ExecutionResult
+    from synthorg.execution.turn import TurnRecord
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
 

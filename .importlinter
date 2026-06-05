@@ -31,6 +31,22 @@ forbidden_modules =
     synthorg.engine
     synthorg.workers
     synthorg.meta
+    synthorg.tools
+    synthorg.providers
+    synthorg.communication
+    synthorg.budget
+    synthorg.config
+
+[importlinter:contract:execution-is-a-leaf]
+name = execution is a leaf below engine (Cut C)
+type = forbidden
+source_modules =
+    synthorg.execution
+forbidden_modules =
+    synthorg.engine
+    synthorg.api
+    synthorg.workers
+    synthorg.meta
 
 [importlinter:contract:persistence-app-boundary]
 name = persistence does not directly import the api or worker layers

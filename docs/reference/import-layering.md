@@ -25,9 +25,17 @@ current import graph and exists to stop regressions, not to describe an
 aspirational layering. The current contracts are:
 
 - **core-is-foundation** -- `synthorg.core` has no import path (direct or
-  indirect) up to `api`, `persistence`, `engine`, `workers`, or `meta`.
-  `core` is the bottom layer; everything may depend on it, it depends on
-  nothing above it.
+  indirect) up to `api`, `persistence`, `engine`, `workers`, `meta`,
+  `tools`, `providers`, `communication`, `budget`, or `config`. `core` is
+  the bottom layer; everything may depend on it, it depends on nothing
+  above it. (`security` is intentionally absent: `core.company` reads a
+  small set of `security` config models, a deliberate pre-existing edge.)
+- **execution-is-a-leaf** -- `synthorg.execution` (the light leaf holding
+  `TurnRecord`, the trajectory enums, `EfficiencyRatios`, and the
+  `ExecutionResultView` protocol) has no path up to `engine`, `api`,
+  `workers`, or `meta`. `engine` depends downward on the leaf; the leaf
+  never reaches back into `engine`. See
+  [ADR-0012](../decisions/0012-cold-import-cycle-break.md).
 - **persistence-app-boundary** -- `synthorg.persistence` does not
   *directly* import `api` or `workers`. Domain-model imports into
   `engine` and `meta` are legitimate (repositories serialise those
@@ -78,6 +86,31 @@ graph-level tool cannot see:
   modules must not be imported inside `persistence/` or service layers.
 - **`scripts/check_dependency_inversion.py`** -- callers depend on
   repository *protocols*, not concrete backend classes.
+
+## Cold-import smoke test (`tests/unit/test_cold_import.py`)
+
+The declarative contracts cannot see the worst class of import bug this
+codebase has hit: a **cold-import cycle** driven by eager re-export side
+effects in a package `__init__`, not by a simple module-to-module edge.
+Importing any submodule runs its package `__init__`, and a hub `__init__`
+that eagerly re-exports its implementation pulls a large subgraph as a
+side effect. `grimp` builds its graph from explicit `import` statements,
+so it reports such a contract `KEPT` even when a fresh-interpreter import
+of the leaf raises `ImportError` (see
+[ADR-0012](../decisions/0012-cold-import-cycle-break.md)).
+
+The regression guard is therefore a runtime smoke test: each leaf in
+`COLD_IMPORT_LEAVES` is imported in its own freshly spawned interpreter
+via `subprocess`, which is the only faithful way to assert a *cold*
+import (within the pytest process the graph is already primed by
+`tests/conftest.py`). The `forbidden` contracts above are a secondary,
+documentation-grade backstop.
+
+To keep a leaf cold-importable, do not add eager implementation
+re-exports to a package `__init__` on its import path; keep hub inits to
+light abstractions (config / models / protocols) or empty, and place
+genuinely shared types in a light leaf package (`core.*` or
+`execution.*`) rather than reaching up into a heavy hub.
 
 ## Changing the contracts
 

@@ -3,7 +3,7 @@
 import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- populate registry side-effect
-from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.quality.classifier import (
     _DEFAULT_CONFIDENCE_FALLBACK,
     _DEFAULT_CONFIDENCE_RULE_MATCHED,
@@ -15,6 +15,7 @@ from synthorg.engine.stagnation.models import (
     StagnationResult,
     StagnationVerdict,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.registry import get_registry

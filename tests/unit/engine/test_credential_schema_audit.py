@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from synthorg.core.task import Task
 from synthorg.engine._validation import _CREDENTIAL_KEY_PATTERNS
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TurnRecord
+from synthorg.execution.turn import TurnRecord
 
 _PATTERNS = _CREDENTIAL_KEY_PATTERNS
 

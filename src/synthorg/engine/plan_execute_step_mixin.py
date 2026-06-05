@@ -29,7 +29,6 @@ from synthorg.engine.loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.loop_tool_execution import (
     clear_last_turn_tool_calls,
@@ -37,6 +36,7 @@ from synthorg.engine.loop_tool_execution import (
 )
 from synthorg.engine.plan_helpers import assess_step_success
 from synthorg.engine.plan_models import ExecutionPlan
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,

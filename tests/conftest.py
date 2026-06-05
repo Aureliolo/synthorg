@@ -129,6 +129,21 @@ from hypothesis.database import (  # noqa: E402
     MultiplexedDatabase,
 )
 
+# Cold-import graph prime. The eager package-init re-exports were removed
+# so the two acceptance leaves and the evals entry point import
+# cold, but the consequence is that importing an arbitrary leaf module no
+# longer drags the rest of the graph in a known-good order. A conftest or test
+# that imports a leaf cold -- before any sibling test has loaded the heavy
+# hubs -- can therefore still trip a latent package-level circular import
+# (e.g. ``budget.cost_record`` <-> ``providers.cost_recording``, or the
+# ``tools.base`` <-> ``tools.invoker`` edge reached via ``security``/``engine``).
+# ``synthorg.api.app`` is the real application entry point and imports every
+# hub in a proven-working order, so importing it once here primes the module
+# cache before collection begins; every later per-test leaf import then
+# resolves from cache. This primes the TEST process only -- production leaf
+# entry points are genuinely cold-safe and need no prime, which the
+# subprocess-isolated ``tests/unit/test_cold_import.py`` guard verifies.
+import synthorg.api.app  # noqa: E402, F401 -- graph prime, see comment above
 from synthorg.persistence import (  # noqa: E402 -- runs after typeguard hook install
     migrations,
 )

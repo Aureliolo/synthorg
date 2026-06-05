@@ -9,6 +9,7 @@ check for LLM errors -> update context -> handle completion or
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -46,7 +47,6 @@ from .loop_protocol import (
     ShutdownChecker,
     TaskCancellationChecker,
     TerminationReason,
-    TurnRecord,
 )
 from .loop_tool_execution import (
     clear_last_turn_tool_calls,

@@ -20,8 +20,8 @@ from synthorg.core.enums import TaskStatus
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.cockpit import (
     FLIGHT_RECORDER_FRAME_RECORDED,

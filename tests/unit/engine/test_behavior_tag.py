@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.engine.loop_protocol import BehaviorTag, TurnRecord
+from synthorg.execution.turn import BehaviorTag, TurnRecord
 from synthorg.providers.enums import FinishReason
 
 

@@ -11,11 +11,11 @@ from synthorg.engine.loop_protocol import (
     ExecutionLoop,
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
     make_budget_checker,
 )
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage
 

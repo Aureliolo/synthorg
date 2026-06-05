@@ -13,12 +13,12 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
     make_budget_checker,
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage, ToolCall
 

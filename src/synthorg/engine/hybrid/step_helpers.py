@@ -20,7 +20,6 @@ from synthorg.engine.loop_helpers import (
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.plan_helpers import (
     assess_step_success,
@@ -29,6 +28,7 @@ from synthorg.engine.plan_helpers import (
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep
 from synthorg.engine.plan_parsing import parse_plan
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,

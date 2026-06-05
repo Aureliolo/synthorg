@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.execution.turn import BehaviorTag
 
 
 @pytest.mark.integration

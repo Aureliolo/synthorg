@@ -33,11 +33,11 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.plan_helpers import update_step_status
 from synthorg.engine.plan_models import ExecutionPlan, PlanStep, StepStatus
 from synthorg.engine.plan_parsing import _REPLAN_JSON_EXAMPLE
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_HYBRID_PROGRESS_SUMMARY,

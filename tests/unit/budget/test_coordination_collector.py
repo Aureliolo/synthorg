@@ -25,8 +25,8 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 from tests._shared import FakeClock
 

@@ -19,10 +19,10 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from synthorg.engine.trajectory.models import CandidateResult
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason
 
 

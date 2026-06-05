@@ -8,7 +8,7 @@ in this issue -- the infrastructure is ready for future integration.
 from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
-from synthorg.engine.loop_protocol import BehaviorTag
+from synthorg.execution.turn import BehaviorTag
 from synthorg.hr.evaluation.external_benchmark_models import (
     BenchmarkGrade,
     EvalTestCase,

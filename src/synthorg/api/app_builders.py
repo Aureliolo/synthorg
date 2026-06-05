@@ -73,7 +73,7 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     Raises:
         ValueError: Raised on the corresponding failure path.
     """
-    from synthorg.config import bootstrap_logging  # noqa: PLC0415
+    from synthorg.config.loader import bootstrap_logging  # noqa: PLC0415
 
     resolved = resolve_init_value(
         SettingNamespace.OBSERVABILITY,

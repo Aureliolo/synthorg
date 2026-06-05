@@ -62,7 +62,6 @@ from .sandbox import (
     SubprocessSandbox,
     SubprocessSandboxConfig,
 )
-from .sub_constraints import ToolSubConstraints
 from .terminal import BaseTerminalTool, ShellCommandTool, TerminalConfig
 from .web import (
     BaseWebTool,
@@ -133,7 +132,6 @@ __all__ = [
     "ToolPermissionChecker",
     "ToolPermissionDeniedError",
     "ToolRegistry",
-    "ToolSubConstraints",
     "WebSearchProvider",
     "WebSearchTool",
     "WebToolsConfig",

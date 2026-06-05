@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.engine.trajectory.efficiency_ratios import (
+from synthorg.execution.efficiency import (
     EfficiencyRatios,
     IdealTrajectoryBaseline,
     compute_efficiency_ratios,

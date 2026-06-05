@@ -12,6 +12,7 @@ limit.  When re-planning is exhausted, the loop terminates with ERROR.
 from typing import TYPE_CHECKING
 
 from synthorg.engine._plan_execute_planner import PlanExecutePlannerMixin
+from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_START,
@@ -38,7 +39,6 @@ from .loop_protocol import (
     ExecutionResult,
     ShutdownChecker,
     TaskCancellationChecker,
-    TurnRecord,
 )
 from .plan_helpers import (
     update_step_status,

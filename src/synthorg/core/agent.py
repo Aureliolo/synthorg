@@ -24,11 +24,11 @@ from synthorg.core.enums import (
 )
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
+from synthorg.core.tool_constraints import ToolSubConstraints
 from synthorg.core.types import ModelTier, NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.ontology.decorator import ontology_entity
-from synthorg.tools.sub_constraints import ToolSubConstraints
 
 logger = get_logger(__name__)
 

@@ -10,7 +10,7 @@ from synthorg.engine.classification.detectors import (
     detect_numerical_drift,
 )
 from synthorg.engine.classification.models import ErrorSeverity
-from synthorg.engine.loop_protocol import TurnRecord
+from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 

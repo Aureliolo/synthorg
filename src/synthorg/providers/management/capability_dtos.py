@@ -37,7 +37,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.config.schema import ProviderModelConfig
+from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import safe_error_description
 from synthorg.providers.enums import (
