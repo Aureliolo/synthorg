@@ -84,7 +84,7 @@ class TurnRecord(BaseModel):
         success: Whether this turn completed without error or content filter (computed).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     turn_number: int = Field(gt=0, description="1-indexed turn number")
     input_tokens: int = Field(ge=0, description="Input tokens this turn")
