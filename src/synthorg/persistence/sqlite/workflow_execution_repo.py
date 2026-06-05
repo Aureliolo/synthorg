@@ -1,20 +1,20 @@
-"""SQLite repository implementation for WorkflowExecution."""
+# module-kind: repository
+"""SQLite repository implementation for WorkflowExecution.
+
+Node executions are stored as a JSON array and timestamps as ISO TEXT.
+Row <-> model marshalling is shared with the Postgres sibling via
+:mod:`synthorg.persistence._shared.workflow_execution_marshalling`.
+"""
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC
 from typing import TYPE_CHECKING
-
-from pydantic import ValidationError
 
 if TYPE_CHECKING:
     import aiosqlite
 
-from synthorg.core.enums import (
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
+from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -22,14 +22,10 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.execution_models import (
-    WorkflowExecution,
-    WorkflowNodeExecution,
-)
+from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCHED,
     PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
@@ -39,8 +35,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
 )
 from synthorg.persistence._shared import DEFAULT_LIST_LIMIT
-from synthorg.persistence._shared.pagination import (
-    validate_pagination_args,
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.workflow_execution_marshalling import (
+    WORKFLOW_EXECUTION_COLUMNS,
+    build_workflow_execution_where,
+    node_execution_payloads,
+    row_to_workflow_execution,
 )
 from synthorg.persistence.sqlite._shared import WriteContext
 from synthorg.persistence.workflow_execution_protocol import (
@@ -49,92 +49,8 @@ from synthorg.persistence.workflow_execution_protocol import (
 
 logger = get_logger(__name__)
 
-_SELECT_COLUMNS = """\
-id, definition_id, definition_revision, status, node_executions,
-activated_by, project, created_at, updated_at, completed_at,
-error, version"""
-
 _MAX_LIST_ROWS: int = 10_000
 """Safety cap on list query results pending pagination support."""
-
-
-def _parse_row_timestamps(data: dict[str, object]) -> None:
-    """Parse ISO timestamps and ensure timezone awareness.
-
-    Mutates ``data`` in-place.
-    """
-    for field in ("created_at", "updated_at"):
-        dt = datetime.fromisoformat(str(data[field]))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        data[field] = dt
-    if data.get("completed_at") is not None:
-        dt = datetime.fromisoformat(str(data["completed_at"]))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        data["completed_at"] = dt
-
-
-def _deserialize_node_executions(
-    raw_json: str,
-) -> tuple[WorkflowNodeExecution, ...]:
-    """Deserialize JSON array into WorkflowNodeExecution tuple.
-
-    Returns:
-        Tuple of deserialized ``WorkflowNodeExecution`` instances.
-    """
-    items = json.loads(raw_json)
-    return tuple(
-        WorkflowNodeExecution(
-            node_id=item["node_id"],
-            node_type=WorkflowNodeType(item["node_type"]),
-            status=WorkflowNodeExecutionStatus(item["status"]),
-            task_id=item.get("task_id"),
-            skipped_reason=item.get("skipped_reason"),
-        )
-        for item in items
-    )
-
-
-def _deserialize_row(
-    row: aiosqlite.Row,
-    context_id: str,
-) -> WorkflowExecution:
-    """Reconstruct a ``WorkflowExecution`` from a database row.
-
-    Args:
-        row: A single database row with execution columns.
-        context_id: Identifier for error context logging.
-
-    Returns:
-        Validated ``WorkflowExecution`` model instance.
-
-    Raises:
-        QueryError: If deserialization fails.
-    """
-    try:
-        data = dict(row)
-        data["status"] = WorkflowExecutionStatus(data["status"])
-        data["node_executions"] = _deserialize_node_executions(
-            data["node_executions"],
-        )
-        _parse_row_timestamps(data)
-        return WorkflowExecution.model_validate(data)
-    except (
-        TypeError,
-        ValueError,
-        ValidationError,
-        json.JSONDecodeError,
-        KeyError,
-    ) as exc:
-        msg = f"Failed to deserialize workflow execution {context_id!r}"
-        logger.warning(
-            PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
-            execution_id=context_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
 
 
 class SQLiteWorkflowExecutionRepository:
@@ -195,9 +111,7 @@ class SQLiteWorkflowExecutionRepository:
         Returns:
             Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
-        node_json = json.dumps(
-            [ne.model_dump(mode="json") for ne in execution.node_executions],
-        )
+        node_json = json.dumps(node_execution_payloads(execution))
         completed_iso = (
             execution.completed_at.astimezone(UTC).isoformat()
             if execution.completed_at is not None
@@ -362,7 +276,7 @@ WHERE id = ? AND version = ?""",
         """
         try:
             cursor = await self._db.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM workflow_executions WHERE id = ?",  # noqa: S608
+                f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions WHERE id = ?",  # noqa: S608, E501
                 (execution_id,),
             )
             row = await cursor.fetchone()
@@ -384,7 +298,7 @@ WHERE id = ? AND version = ?""",
             )
             return None
 
-        execution = _deserialize_row(row, execution_id)
+        execution = row_to_workflow_execution(dict(row), execution_id)
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_FETCHED,
             execution_id=execution_id,
@@ -417,7 +331,7 @@ WHERE id = ? AND version = ?""",
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " ORDER BY id ASC LIMIT ? OFFSET ?",
                 (effective_limit, offset),
             )
@@ -432,7 +346,8 @@ WHERE id = ? AND version = ?""",
             raise QueryError(msg) from exc
 
         executions = tuple(
-            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
+            row_to_workflow_execution(dict(row), str(dict(row).get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
@@ -467,24 +382,14 @@ WHERE id = ? AND version = ?""",
             limit, offset=offset, event=PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
-
-        where_clauses = []
-        params: list[object] = []
-
-        if filter_spec.definition_id is not None:
-            where_clauses.append("definition_id = ?")
-            params.append(filter_spec.definition_id)
-
-        if filter_spec.status is not None:
-            where_clauses.append("status = ?")
-            params.append(filter_spec.status.value)
-
-        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        where_clause, params = build_workflow_execution_where(
+            filter_spec, placeholder="?"
+        )
         params.extend([effective_limit, offset])
 
         try:
             cursor = await self._db.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 f" WHERE {where_clause}"
                 " ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?",
                 params,
@@ -502,7 +407,8 @@ WHERE id = ? AND version = ?""",
             raise QueryError(msg) from exc
 
         executions = tuple(
-            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
+            row_to_workflow_execution(dict(row), str(dict(row).get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_LISTED,
@@ -524,19 +430,9 @@ WHERE id = ? AND version = ?""",
         Raises:
             QueryError: If the database query fails.
         """
-        where_clauses = []
-        params = []
-
-        if filter_spec.definition_id is not None:
-            where_clauses.append("definition_id = ?")
-            params.append(filter_spec.definition_id)
-
-        if filter_spec.status is not None:
-            where_clauses.append("status = ?")
-            params.append(filter_spec.status.value)
-
-        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
-
+        where_clause, params = build_workflow_execution_where(
+            filter_spec, placeholder="?"
+        )
         try:
             cursor = await self._db.execute(
                 f"SELECT COUNT(*) FROM workflow_executions"  # noqa: S608
@@ -577,7 +473,7 @@ WHERE id = ? AND version = ?""",
         """
         try:
             cursor = await self._db.execute(
-                f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                f"SELECT {WORKFLOW_EXECUTION_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
                 " AND EXISTS ("
                 "   SELECT 1 FROM json_each(node_executions)"
@@ -605,7 +501,10 @@ WHERE id = ? AND version = ?""",
             )
             return None
 
-        execution = _deserialize_row(row, str(dict(row).get("id", task_id)))
+        row_data = dict(row)
+        execution = row_to_workflow_execution(
+            row_data, str(row_data.get("id", task_id))
+        )
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
             task_id=task_id,
@@ -645,3 +544,6 @@ WHERE id = ? AND version = ?""",
                 raise QueryError(msg) from exc
 
         return cursor.rowcount > 0
+
+
+__all__ = ["SQLiteWorkflowExecutionRepository"]

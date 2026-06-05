@@ -1,34 +1,28 @@
+# module-kind: repository
 """Postgres repository implementation for WorkflowDefinition.
 
 Postgres-native port of ``synthorg.persistence.sqlite.workflow_definition_repo``.
-Uses native JSONB for ``nodes`` and ``edges``, and native TIMESTAMPTZ for
-``created_at`` / ``updated_at``. The protocol surface returns the same
-Pydantic models as the SQLite backend.
+Uses native JSONB for ``nodes`` / ``edges`` and native TIMESTAMPTZ for
+``created_at`` / ``updated_at``. Row <-> model marshalling is shared with
+the SQLite sibling via
+:mod:`synthorg.persistence._shared.workflow_definition_marshalling`.
 """
 
 from typing import TYPE_CHECKING
 
 import psycopg
-from psycopg.rows import DictRow, dict_row
+from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowType
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     QueryError,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,
-    WorkflowEdge,
-    WorkflowIODeclaration,
-    WorkflowNode,
-)
+from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
-    PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_DEF_FETCHED,
     PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
@@ -36,8 +30,12 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared.pagination import (
-    validate_pagination_args,
+from synthorg.persistence._shared.pagination import validate_pagination_args
+from synthorg.persistence._shared.workflow_definition_marshalling import (
+    WORKFLOW_DEFINITION_COLUMNS,
+    build_workflow_definition_where,
+    definition_jsonb_payloads,
+    row_to_workflow_definition,
 )
 
 if TYPE_CHECKING:
@@ -49,57 +47,32 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SELECT_COLUMNS = """\
-id, name, description, workflow_type, version, inputs, outputs,
-is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision"""
+_UPDATE_SQL = """
+UPDATE workflow_definitions SET
+    name=%s, description=%s, workflow_type=%s, version=%s, inputs=%s, outputs=%s,
+    is_subworkflow=%s, nodes=%s, edges=%s, updated_at=%s, revision=%s
+WHERE id = %s AND revision = %s
+"""
+
+_INSERT_SQL = """
+INSERT INTO workflow_definitions
+    (id, name, description, workflow_type, version, inputs, outputs,
+     is_subworkflow, nodes, edges, created_by, created_at, updated_at, revision)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT(id) DO NOTHING
+"""
 
 
-def _deserialize_row(
-    row: DictRow,
-    context_id: str,
-) -> WorkflowDefinition:
-    """Reconstruct a ``WorkflowDefinition`` from a Postgres dict_row.
-
-    Postgres returns JSONB as Python list/dict (no json.loads needed),
-    and TIMESTAMPTZ as timezone-aware datetime. The main work is
-    reconstructing the node/edge/input/output models and enums.
-
-    Args:
-        row: A single database row with workflow definition columns.
-        context_id: Identifier for error context logging.
+def _jsonb_columns(
+    definition: WorkflowDefinition,
+) -> tuple[Jsonb, Jsonb, Jsonb, Jsonb]:
+    """Wrap the node/edge/input/output payloads as ``Jsonb`` params.
 
     Returns:
-        Validated ``WorkflowDefinition`` model instance.
-
-    Raises:
-        QueryError: If deserialization fails.
+        ``(nodes, edges, inputs, outputs)`` as psycopg ``Jsonb`` values.
     """
-    try:
-        data = dict(row)
-        data["workflow_type"] = WorkflowType(data["workflow_type"])
-        data["nodes"] = tuple(
-            WorkflowNode.model_validate(n) for n in (data.get("nodes") or [])
-        )
-        data["edges"] = tuple(
-            WorkflowEdge.model_validate(e) for e in (data.get("edges") or [])
-        )
-        data["inputs"] = tuple(
-            WorkflowIODeclaration.model_validate(i) for i in (data.get("inputs") or [])
-        )
-        data["outputs"] = tuple(
-            WorkflowIODeclaration.model_validate(o) for o in (data.get("outputs") or [])
-        )
-        data["is_subworkflow"] = bool(data.get("is_subworkflow", False))
-        return WorkflowDefinition.model_validate(data)
-    except (ValueError, ValidationError, KeyError, TypeError) as exc:
-        msg = f"Failed to deserialize workflow definition {context_id!r}"
-        logger.warning(
-            PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
-            definition_id=context_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        raise QueryError(msg) from exc
+    nodes, edges, inputs, outputs = definition_jsonb_payloads(definition)
+    return Jsonb(nodes), Jsonb(edges), Jsonb(inputs), Jsonb(outputs)
 
 
 class PostgresWorkflowDefinitionRepository:
@@ -155,39 +128,28 @@ class PostgresWorkflowDefinitionRepository:
             PersistenceVersionConflictError: If the row version no longer matches.
         """
         self._require_valid_revision(definition)
-        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
-        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
-        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
-        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        nodes, edges, inputs, outputs = _jsonb_columns(definition)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    UPDATE workflow_definitions SET
-                        name=%s, description=%s, workflow_type=%s,
-                        version=%s, inputs=%s, outputs=%s,
-                        is_subworkflow=%s, nodes=%s, edges=%s,
-                        updated_at=%s, revision=%s
-                    WHERE id = %s AND revision = %s
-                    """,
+                    _UPDATE_SQL,
                     (
                         definition.name,
                         definition.description,
                         definition.workflow_type.value,
                         definition.version,
-                        inputs_jsonb,
-                        outputs_jsonb,
+                        inputs,
+                        outputs,
                         definition.is_subworkflow,
-                        nodes_jsonb,
-                        edges_jsonb,
+                        nodes,
+                        edges,
                         definition.updated_at,
                         definition.revision,
                         definition.id,
                         definition.revision - 1,
                     ),
                 )
-                updated = cur.rowcount
-                if updated == 0:
+                if cur.rowcount == 0:
                     # Row either missing or at a different revision.
                     # Probe to distinguish the two cases so callers can
                     # surface precise errors (404 vs 409).
@@ -235,33 +197,22 @@ class PostgresWorkflowDefinitionRepository:
             QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
-        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
-        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in definition.edges])
-        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in definition.inputs])
-        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in definition.outputs])
+        nodes, edges, inputs, outputs = _jsonb_columns(definition)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
-                    """
-                    INSERT INTO workflow_definitions
-                        (id, name, description, workflow_type, version,
-                         inputs, outputs, is_subworkflow, nodes, edges,
-                         created_by, created_at, updated_at, revision)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s)
-                    ON CONFLICT(id) DO NOTHING
-                    """,
+                    _INSERT_SQL,
                     (
                         definition.id,
                         definition.name,
                         definition.description,
                         definition.workflow_type.value,
                         definition.version,
-                        inputs_jsonb,
-                        outputs_jsonb,
+                        inputs,
+                        outputs,
                         definition.is_subworkflow,
-                        nodes_jsonb,
-                        edges_jsonb,
+                        nodes,
+                        edges,
                         definition.created_by,
                         definition.created_at,
                         definition.updated_at,
@@ -297,11 +248,7 @@ class PostgresWorkflowDefinitionRepository:
             PersistenceVersionConflictError: If optimistic concurrency check fails.
         """
         self._require_valid_revision(entity)
-
-        nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in entity.nodes])
-        edges_jsonb = Jsonb([e.model_dump(mode="json") for e in entity.edges])
-        inputs_jsonb = Jsonb([i.model_dump(mode="json") for i in entity.inputs])
-        outputs_jsonb = Jsonb([o.model_dump(mode="json") for o in entity.outputs])
+        nodes, edges, inputs, outputs = _jsonb_columns(entity)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 if entity.revision > 1:
@@ -310,24 +257,17 @@ class PostgresWorkflowDefinitionRepository:
                     # at all this is also a revision conflict (you can't
                     # "update" a non-existent definition).
                     await cur.execute(
-                        """
-                        UPDATE workflow_definitions SET
-                            name=%s, description=%s, workflow_type=%s,
-                            version=%s, inputs=%s, outputs=%s,
-                            is_subworkflow=%s, nodes=%s, edges=%s,
-                            updated_at=%s, revision=%s
-                        WHERE id = %s AND revision = %s
-                        """,
+                        _UPDATE_SQL,
                         (
                             entity.name,
                             entity.description,
                             entity.workflow_type.value,
                             entity.version,
-                            inputs_jsonb,
-                            outputs_jsonb,
+                            inputs,
+                            outputs,
                             entity.is_subworkflow,
-                            nodes_jsonb,
-                            edges_jsonb,
+                            nodes,
+                            edges,
                             entity.updated_at,
                             entity.revision,
                             entity.id,
@@ -338,26 +278,18 @@ class PostgresWorkflowDefinitionRepository:
                     # Create path: revision == 1.  ON CONFLICT DO NOTHING
                     # so a duplicate create attempt sets rowcount to 0.
                     await cur.execute(
-                        """
-                        INSERT INTO workflow_definitions
-                            (id, name, description, workflow_type, version,
-                             inputs, outputs, is_subworkflow, nodes, edges,
-                             created_by, created_at, updated_at, revision)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                                %s, %s, %s, %s)
-                        ON CONFLICT(id) DO NOTHING
-                        """,
+                        _INSERT_SQL,
                         (
                             entity.id,
                             entity.name,
                             entity.description,
                             entity.workflow_type.value,
                             entity.version,
-                            inputs_jsonb,
-                            outputs_jsonb,
+                            inputs,
+                            outputs,
                             entity.is_subworkflow,
-                            nodes_jsonb,
-                            edges_jsonb,
+                            nodes,
+                            edges,
                             entity.created_by,
                             entity.created_at,
                             entity.updated_at,
@@ -415,7 +347,7 @@ class PostgresWorkflowDefinitionRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions WHERE id = %s",  # noqa: S608
+                    f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions WHERE id = %s",  # noqa: S608, E501
                     (definition_id,),
                 )
                 row = await cur.fetchone()
@@ -437,7 +369,7 @@ class PostgresWorkflowDefinitionRepository:
             )
             return None
 
-        definition = _deserialize_row(row, definition_id)
+        definition = row_to_workflow_definition(dict(row), definition_id)
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_FETCHED,
             definition_id=definition_id,
@@ -469,16 +401,11 @@ class PostgresWorkflowDefinitionRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
-        conditions: list[str] = []
-        params: list[object] = []
-
-        if filter_spec.workflow_type is not None:
-            conditions.append("workflow_type = %s")
-            params.append(filter_spec.workflow_type.value)
-
-        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        where_clause, params = build_workflow_definition_where(
+            filter_spec, placeholder="%s"
+        )
         sql = (
-            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
+            f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions"  # noqa: S608
             f"{where_clause} ORDER BY updated_at DESC, id DESC "
             "LIMIT %s OFFSET %s"
         )
@@ -501,7 +428,8 @@ class PostgresWorkflowDefinitionRepository:
             raise QueryError(msg) from exc
 
         definitions = tuple(
-            _deserialize_row(row, str(row.get("id", "?"))) for row in rows
+            row_to_workflow_definition(dict(row), str(row.get("id", "?")))
+            for row in rows
         )
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_LISTED,
@@ -532,7 +460,7 @@ class PostgresWorkflowDefinitionRepository:
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
         )
         sql = (
-            f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions "  # noqa: S608
+            f"SELECT {WORKFLOW_DEFINITION_COLUMNS} FROM workflow_definitions "  # noqa: S608
             "ORDER BY id ASC LIMIT %s OFFSET %s"
         )
         try:
@@ -551,7 +479,10 @@ class PostgresWorkflowDefinitionRepository:
             )
             raise QueryError(msg) from exc
 
-        return tuple(_deserialize_row(row, str(row.get("id", "?"))) for row in rows)
+        return tuple(
+            row_to_workflow_definition(dict(row), str(row.get("id", "?")))
+            for row in rows
+        )
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
         """Count workflow definitions matching the filter spec.
@@ -562,12 +493,9 @@ class PostgresWorkflowDefinitionRepository:
         Raises:
             QueryError: If the database query fails.
         """
-        conditions: list[str] = []
-        params: list[object] = []
-        if filter_spec.workflow_type is not None:
-            conditions.append("workflow_type = %s")
-            params.append(filter_spec.workflow_type.value)
-        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        where_clause, params = build_workflow_definition_where(
+            filter_spec, placeholder="%s"
+        )
         sql = (
             f"SELECT COUNT(*) FROM workflow_definitions"  # noqa: S608
             f"{where_clause}"
@@ -617,3 +545,6 @@ class PostgresWorkflowDefinitionRepository:
             raise QueryError(msg) from exc
 
         return deleted
+
+
+__all__ = ["PostgresWorkflowDefinitionRepository"]

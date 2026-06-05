@@ -494,12 +494,20 @@ class PostgresConversationTurnRepository:
     async def purge_before(self, threshold: datetime) -> int:
         """Delete turns created before ``threshold``. Returns rows removed.
 
+        ``threshold`` must be timezone-aware; a naive value would be bound
+        against a ``TIMESTAMPTZ`` column in the session timezone and
+        silently shift the cut-off, so it is rejected up front rather than
+        coerced.
+
         Raises:
-            QueryError: On database errors.
+            QueryError: If ``threshold`` is naive, or on database errors.
 
         Returns:
             Numeric result of the operation.
         """
+        if threshold.tzinfo is None:
+            msg = "purge_before requires a timezone-aware threshold"
+            raise QueryError(msg)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
