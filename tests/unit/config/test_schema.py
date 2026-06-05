@@ -1,7 +1,7 @@
 """Tests for config schema models."""
 
 import pytest
-from pydantic import ValidationError
+from pydantic import JsonValue, ValidationError
 
 from synthorg.config.schema import (
     AgentConfig,
@@ -324,7 +324,7 @@ class TestAgentConfig:
         and importing it here would create a config -> templates
         cycle.  The matcher rehydrates the dict at use sites.
         """
-        requirement = {
+        requirement: dict[str, JsonValue] = {
             "tier": "medium",
             "priority": "balanced",
             "min_context": 32_000,

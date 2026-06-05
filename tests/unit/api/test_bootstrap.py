@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.config.schema import AgentConfig
 from synthorg.core.enums import SeniorityLevel
@@ -19,15 +20,19 @@ def _make_agent_config(
     role: str = "developer",
     department: str = "engineering",
     level: SeniorityLevel = SeniorityLevel.MID,
-    model: dict[str, str] | None = None,
+    model: dict[str, JsonValue] | None = None,
 ) -> AgentConfig:
     """Build an AgentConfig with sensible defaults."""
+    default_model: dict[str, JsonValue] = {
+        "provider": "test-provider",
+        "model_id": "test-small-001",
+    }
     return AgentConfig(
         name=name,
         role=role,
         department=department,
         level=level,
-        model=model or {"provider": "test-provider", "model_id": "test-small-001"},
+        model=model or default_model,
     )
 
 

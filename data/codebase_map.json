@@ -464,7 +464,7 @@
     },
     {
       "kind": "code",
-      "loc": 119,
+      "loc": 131,
       "loc_cap": 500,
       "module": "src/synthorg/api/bootstrap.py",
       "owning_feature": "api_core"
@@ -3600,7 +3600,7 @@
     },
     {
       "kind": "code",
-      "loc": 438,
+      "loc": 440,
       "loc_cap": 500,
       "module": "src/synthorg/config/loader.py",
       "owning_feature": null
@@ -3628,7 +3628,7 @@
     },
     {
       "kind": "code",
-      "loc": 48,
+      "loc": 55,
       "loc_cap": 500,
       "module": "src/synthorg/config/utils.py",
       "owning_feature": null

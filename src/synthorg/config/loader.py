@@ -2,8 +2,8 @@
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import yaml
 from pydantic import ValidationError
@@ -75,7 +75,7 @@ def _read_config_text(file_path: Path) -> str:
         ) from exc
 
 
-def _parse_yaml_file(file_path: Path) -> dict[str, Any]:
+def _parse_yaml_file(file_path: Path) -> dict[str, object]:
     """Parse a YAML file and return its top-level mapping.
 
     Args:
@@ -96,7 +96,7 @@ def _parse_yaml_file(file_path: Path) -> dict[str, Any]:
 def _parse_yaml_string(
     text: str,
     source_name: str,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Parse a YAML string and return its top-level mapping.
 
     Args:
@@ -220,7 +220,7 @@ def _build_line_map(yaml_text: str) -> dict[str, tuple[int, int]]:
 
 
 def _validate_config_dict(
-    data: dict[str, Any],
+    data: Mapping[str, object],
     *,
     source_file: str | None = None,
     line_map: dict[str, tuple[int, int]] | None = None,
@@ -239,7 +239,7 @@ def _validate_config_dict(
         ConfigValidationError: If Pydantic validation fails.
     """
     try:
-        return RootConfig(**data)
+        return RootConfig.model_validate(data)
     except ValidationError as exc:
         logger.warning(
             CONFIG_VALIDATION_FAILED,
@@ -304,7 +304,7 @@ def _resolve_env_var_match(
     )
 
 
-def _walk_substitute(node: Any, *, source_file: str | None) -> Any:
+def _walk_substitute(node: object, *, source_file: str | None) -> object:
     """Recursively substitute env var placeholders in a config node.
 
     Args:
@@ -330,10 +330,10 @@ def _walk_substitute(node: Any, *, source_file: str | None) -> Any:
 
 
 def _substitute_env_vars(
-    data: dict[str, Any],
+    data: Mapping[str, object],
     *,
     source_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Substitute ``${VAR}`` and ``${VAR:-default}`` in string values.
 
     Walks the dict recursively, replacing environment variable
@@ -352,8 +352,10 @@ def _substitute_env_vars(
         ConfigValidationError: If a referenced env var is not set
             and no default is provided.
     """
-    result: dict[str, Any] = _walk_substitute(data, source_file=source_file)
-    return result
+    return {
+        key: _walk_substitute(value, source_file=source_file)
+        for key, value in data.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -440,9 +442,9 @@ def load_config(
 
 
 def _load_and_merge_overrides(
-    merged: dict[str, Any],
+    merged: dict[str, object],
     override_paths: tuple[Path | str, ...],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Apply override config files onto the merged dict.
 
     Returns:
@@ -459,7 +461,7 @@ def _load_and_merge_overrides(
 
 
 def _finalize_config(
-    merged: dict[str, Any],
+    merged: dict[str, object],
     yaml_text: str,
     config_path: Path,
     override_paths: tuple[Path | str, ...],

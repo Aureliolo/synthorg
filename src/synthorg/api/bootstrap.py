@@ -43,7 +43,7 @@ def _build_model_config(config: AgentConfig) -> ModelConfig:
         ``ModelConfig`` instance.
     """
     if config.model:
-        return ModelConfig(**config.model)
+        return ModelConfig.model_validate(config.model)
     msg = f"Agent {config.name!r} has no model config -- skipping"
     raise ValueError(msg)
 
@@ -64,13 +64,25 @@ def _identity_from_config(config: AgentConfig) -> AgentIdentity:
         level=config.level,
         model=_build_model_config(config),
         personality=(
-            PersonalityConfig(**config.personality)
+            PersonalityConfig.model_validate(config.personality)
             if config.personality
             else PersonalityConfig()
         ),
-        memory=(MemoryConfig(**config.memory) if config.memory else MemoryConfig()),
-        tools=(ToolPermissions(**config.tools) if config.tools else ToolPermissions()),
-        authority=(Authority(**config.authority) if config.authority else Authority()),
+        memory=(
+            MemoryConfig.model_validate(config.memory)
+            if config.memory
+            else MemoryConfig()
+        ),
+        tools=(
+            ToolPermissions.model_validate(config.tools)
+            if config.tools
+            else ToolPermissions()
+        ),
+        authority=(
+            Authority.model_validate(config.authority)
+            if config.authority
+            else Authority()
+        ),
         autonomy_level=config.autonomy_level,
         strategic_output_mode=config.strategic_output_mode,
         # Hiring date is always "today" -- bootstrap represents re-activation

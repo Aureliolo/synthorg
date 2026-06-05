@@ -7,7 +7,7 @@ rate-limit middleware both consume these from the config layer so the
 144 layer violation).
 """
 
-from typing import Any, ClassVar, Final, Literal
+from typing import ClassVar, Final, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -97,7 +97,7 @@ class PerOpRateLimitConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_override_tuples(cls, data: Any) -> Any:
+    def _validate_override_tuples(cls, data: object) -> object:
         """Reject override tuples with malformed length or negative values.
 
         Run BEFORE Pydantic coercion so the malformed-length branch is
@@ -166,8 +166,8 @@ class PerOpRateLimitConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
 
 class PerOpConcurrencyConfig(BaseModel):
@@ -214,7 +214,7 @@ class PerOpConcurrencyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_override_values(cls, data: Any) -> Any:
+    def _validate_override_values(cls, data: object) -> object:
         """Reject malformed-shape and negative override values.
 
         Run BEFORE Pydantic coercion so non-int / mis-typed overrides
@@ -258,5 +258,5 @@ class PerOpConcurrencyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))

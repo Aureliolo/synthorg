@@ -1,9 +1,9 @@
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.a2a.config import A2AConfig
 from synthorg.api.config import ApiConfig
@@ -160,8 +160,8 @@ class RoutingConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
 
 class AgentConfig(BaseModel):
@@ -208,23 +208,23 @@ class AgentConfig(BaseModel):
             "the field rather than reject it under ``extra=forbid``."
         ),
     )
-    personality: dict[str, Any] = Field(
+    personality: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw personality config",
     )
-    model: dict[str, Any] = Field(
+    model: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw model config",
     )
-    memory: dict[str, Any] = Field(
+    memory: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw memory config",
     )
-    tools: dict[str, Any] = Field(
+    tools: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw tools config",
     )
-    authority: dict[str, Any] = Field(
+    authority: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw authority config",
     )
@@ -248,7 +248,7 @@ class AgentConfig(BaseModel):
             "the wizard persists tier alongside the model selection."
         ),
     )
-    model_requirement: dict[str, Any] | None = Field(
+    model_requirement: dict[str, JsonValue] | None = Field(
         default=None,
         description=(
             "Structured model requirement dict emitted by the setup "

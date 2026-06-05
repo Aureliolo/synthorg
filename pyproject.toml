@@ -608,10 +608,6 @@ module = "synthorg.communication.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.config.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.core.*"
 disallow_any_explicit = false
 
