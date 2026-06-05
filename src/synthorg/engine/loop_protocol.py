@@ -1,9 +1,10 @@
 """Execution loop protocol and supporting models.
 
 Defines the ``ExecutionLoop`` protocol that the agent engine calls to
-run a task, along with ``ExecutionResult``, ``TurnRecord``,
-``TerminationReason``, and the ``BudgetChecker`` and ``ShutdownChecker``
-type aliases.
+run a task, along with ``ExecutionResult``, ``TerminationReason``, and the
+``BudgetChecker`` and ``ShutdownChecker`` type aliases. ``TurnRecord`` is
+imported from ``synthorg.execution.turn`` (the engine-free leaf) and
+re-exported here for callers.
 """
 
 import copy

@@ -70,7 +70,7 @@ def main(argv: tuple[str, ...] | None = None) -> int:
     Returns:
         Process exit code: ``0`` if the scorecard passes, ``1`` otherwise.
     """
-    from evals.run import run_benchmark  # noqa: PLC0415 -- imported after the prime
+    from evals.run import run_benchmark  # noqa: PLC0415 -- deferred local import
 
     args = _build_parser().parse_args(argv)
     scorecard = run_benchmark(

@@ -15,9 +15,6 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 
 class IdealTrajectoryBaseline(BaseModel):

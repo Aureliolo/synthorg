@@ -129,20 +129,25 @@ from hypothesis.database import (  # noqa: E402
     MultiplexedDatabase,
 )
 
-# Cold-import graph prime. The eager package-init re-exports were removed
-# so the two acceptance leaves and the evals entry point import
-# cold, but the consequence is that importing an arbitrary leaf module no
-# longer drags the rest of the graph in a known-good order. A conftest or test
-# that imports a leaf cold -- before any sibling test has loaded the heavy
-# hubs -- can therefore still trip a latent package-level circular import
-# (e.g. ``budget.cost_record`` <-> ``providers.cost_recording``, or the
-# ``tools.base`` <-> ``tools.invoker`` edge reached via ``security``/``engine``).
-# ``synthorg.api.app`` is the real application entry point and imports every
-# hub in a proven-working order, so importing it once here primes the module
-# cache before collection begins; every later per-test leaf import then
-# resolves from cache. This primes the TEST process only -- production leaf
-# entry points are genuinely cold-safe and need no prime, which the
-# subprocess-isolated ``tests/unit/test_cold_import.py`` guard verifies.
+# Cold-import graph prime. The package inits hold no eager re-exports, so
+# importing an arbitrary leaf no longer drags the rest of the graph in a
+# known-good order. A conftest or test that imports a leaf cold can therefore
+# trip a latent, hub-mediated circular import. Two live examples:
+#   * ``budget.cost_record`` imports ``providers.enums``, which triggers
+#     ``providers/__init__`` -> ``providers.base`` -> ``providers.cost_recording``,
+#     and ``cost_recording`` imports back into the still-initialising
+#     ``budget.cost_record``.
+#   * importing any ``tools.*`` submodule triggers ``tools/__init__`` ->
+#     ``tools.base`` -> ``security/__init__`` -> ``engine/__init__`` ->
+#     ``agent_engine`` -> ``tools.invoker``, which imports back into the
+#     still-initialising ``tools.base``.
+# ``synthorg.api.app`` is the real application entry point; importing it loads
+# every hub in the order the application boot path uses (an order the
+# subprocess cold-import guard in ``tests/unit/test_cold_import.py`` keeps
+# honest). Importing it once here primes the module cache before collection
+# begins, so every later per-test leaf import resolves from cache. This primes
+# the TEST process only; production leaf entry points are genuinely cold-safe
+# and need no prime, which that guard verifies.
 import synthorg.api.app  # noqa: E402, F401 -- graph prime, see comment above
 from synthorg.persistence import (  # noqa: E402 -- runs after typeguard hook install
     migrations,

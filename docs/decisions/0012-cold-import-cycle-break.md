@@ -98,8 +98,9 @@ and cannot move. So instead of moving it, the types
 `budget.coordination_collector` actually needs were relocated into a new light
 leaf package, and the collector was given a structural view to depend on:
 
-- `execution/turn.py` -- `NodeType`, `BehaviorTag`, `TerminationReason`,
-  `TurnRecord` (moved out of `engine/loop_protocol.py`).
+- `execution/turn.py` -- `NodeType`, `BehaviorTag`, `TurnRecord` (moved out of
+  `engine/loop_protocol.py`). `TerminationReason` stays in
+  `engine/loop_protocol.py` alongside `ExecutionResult`.
 - `execution/efficiency.py` -- `EfficiencyRatios`, `IdealTrajectoryBaseline`
   (moved out of `engine/trajectory/efficiency_ratios.py`).
 - `execution/view.py` -- a `@runtime_checkable ExecutionResultView` protocol

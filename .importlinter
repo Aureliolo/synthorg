@@ -38,7 +38,7 @@ forbidden_modules =
     synthorg.config
 
 [importlinter:contract:execution-is-a-leaf]
-name = execution is a leaf below engine (Cut C)
+name = execution is a leaf below engine
 type = forbidden
 source_modules =
     synthorg.execution

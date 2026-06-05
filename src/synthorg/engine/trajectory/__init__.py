@@ -13,11 +13,9 @@ from synthorg.engine.trajectory.models import (
     TrajectoryScore,
 )
 from synthorg.engine.trajectory.scorer import TrajectoryScorer
-from synthorg.execution.efficiency import EfficiencyRatios
 
 __all__ = [
     "CandidateResult",
-    "EfficiencyRatios",
     "TrajectoryConfig",
     "TrajectoryScore",
     "TrajectoryScorer",

@@ -15,6 +15,13 @@ from typing import Protocol, runtime_checkable
 from synthorg.execution.turn import TurnRecord
 
 
+# ``runtime_checkable`` is precautionary: no in-tree caller runs
+# ``isinstance`` against this protocol today, but the decorator lets typeguard
+# (active on the test suite) validate annotated boundaries that receive an
+# ``ExecutionResultView`` without raising, and lets a future defensive guard
+# add an ``isinstance`` check without modifying this definition. It is a
+# presence-only check (it verifies a ``turns`` attribute exists, not its type);
+# element-type correctness is enforced statically by mypy.
 @runtime_checkable
 class ExecutionResultView(Protocol):
     """Read-only structural view of an execution result.

@@ -9,9 +9,10 @@ defining submodule, e.g.::
     from synthorg.budget.tracker import CostTracker
 
 Eagerly re-exporting here pulled ``budget.risk_record`` (-> security ->
-engine -> ...) onto the import path of every importer of a budget *leaf*
-(most notably ``providers.cost_recording``, which imports the
-``LLMCallCategory`` enum). That cascade reached back into the
-partially-initialised ``providers.cost_recording`` module and was the
-spine of the cold-import cycle. Keeping this init empty stops it.
+engine -> ...) onto the import path of every importer of a budget *leaf*.
+The worst case was ``providers.cost_recording`` importing
+``LLMCallCategory`` (defined in ``budget.call_category``): that leaf
+import ran this init, whose cascade reached back through security/engine
+into the partially-initialised ``providers.cost_recording``, closing the
+cold-import cycle. Keeping this init empty stops the cascade.
 """
