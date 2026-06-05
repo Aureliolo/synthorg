@@ -2158,7 +2158,7 @@
     },
     {
       "kind": "code",
-      "loc": 14,
+      "loc": 15,
       "loc_cap": 500,
       "module": "src/synthorg/budget/__init__.py",
       "owning_feature": "budget"
@@ -5532,7 +5532,7 @@
     },
     {
       "kind": "code",
-      "loc": 152,
+      "loc": 153,
       "loc_cap": 500,
       "module": "src/synthorg/engine/loop_protocol.py",
       "owning_feature": "engine"
@@ -6610,7 +6610,7 @@
     },
     {
       "kind": "code",
-      "loc": 22,
+      "loc": 20,
       "loc_cap": 500,
       "module": "src/synthorg/engine/trajectory/__init__.py",
       "owning_feature": "engine"
@@ -7443,14 +7443,14 @@
     },
     {
       "kind": "code",
-      "loc": 16,
+      "loc": 20,
       "loc_cap": 500,
       "module": "src/synthorg/execution/__init__.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 170,
       "loc_cap": 500,
       "module": "src/synthorg/execution/efficiency.py",
       "owning_feature": null
