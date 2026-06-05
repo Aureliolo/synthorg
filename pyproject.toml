@@ -641,10 +641,6 @@ module = "synthorg.observability.*"
 disallow_any_explicit = false
 
 [[tool.mypy.overrides]]
-module = "synthorg.ontology.*"
-disallow_any_explicit = false
-
-[[tool.mypy.overrides]]
 module = "synthorg.security.*"
 disallow_any_explicit = false
 

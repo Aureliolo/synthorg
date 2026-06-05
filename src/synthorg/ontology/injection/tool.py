@@ -5,7 +5,7 @@ retrieve entity definitions.  No prompt injection -- agents
 discover entities through the tool interface.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, override
 
 from pydantic import BaseModel
 
@@ -67,7 +67,7 @@ class LookupEntityTool(BaseTool):
     async def execute(
         self,
         *,
-        arguments: dict[str, Any],
+        arguments: dict[str, object],
     ) -> ToolExecutionResult:
         """Execute entity lookup or search.
 
@@ -79,16 +79,18 @@ class LookupEntityTool(BaseTool):
         """
         name = arguments.get("name")
         query = arguments.get("query")
+        name_str = name if isinstance(name, str) else None
+        query_str = query if isinstance(query, str) else None
 
-        if name and query:
+        if name_str and query_str:
             return ToolExecutionResult(
                 content="Provide exactly one of 'name' or 'query', not both.",
                 is_error=True,
             )
-        if name:
-            return await self._lookup_by_name(name)
-        if query:
-            return await self._search(query)
+        if name_str:
+            return await self._lookup_by_name(name_str)
+        if query_str:
+            return await self._search(query_str)
         return ToolExecutionResult(
             content="Provide either 'name' for exact lookup or 'query' for search.",
             is_error=True,
