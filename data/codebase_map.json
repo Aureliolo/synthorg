@@ -1640,14 +1640,14 @@
     },
     {
       "kind": "code",
-      "loc": 268,
+      "loc": 290,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_helpers/toolsmith_wiring.py",
       "owning_feature": "api_core"
     },
     {
       "kind": "code",
-      "loc": 237,
+      "loc": 240,
       "loc_cap": 500,
       "module": "src/synthorg/api/lifecycle_runner_shutdown.py",
       "owning_feature": "api_core"
@@ -11174,7 +11174,7 @@
     },
     {
       "kind": "code",
-      "loc": 382,
+      "loc": 384,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/handlers/common.py",
       "owning_feature": "meta"
@@ -11538,7 +11538,7 @@
     },
     {
       "kind": "code",
-      "loc": 123,
+      "loc": 125,
       "loc_cap": 500,
       "module": "src/synthorg/meta/mcp/server.py",
       "owning_feature": "meta"
