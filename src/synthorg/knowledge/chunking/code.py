@@ -21,12 +21,10 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_CHUNK_TARGET_TOKENS,
 )
 from synthorg.knowledge.errors import KnowledgeDependencyError
-from synthorg.knowledge.models import CodeLocator
+from synthorg.knowledge.models import CodeLocator, RawUnit
 
 if TYPE_CHECKING:
     import tree_sitter
-
-    from synthorg.knowledge.models import RawUnit
 
 # Maps file extension to a tree-sitter-language-pack grammar name. Kept
 # small and obvious; unknown extensions fall back to line windows.
@@ -85,7 +83,7 @@ def _load_parser(language: str) -> tree_sitter.Parser | None:
     """Lazily build a tree-sitter parser; None when the grammar is absent.
 
     Uses the standard ``tree_sitter.Parser`` + ``get_language`` path
-    (well-documented Node API) rather than the language pack's bundled
+    (the tree-sitter Python API) rather than the language pack's bundled
     fast-binding, whose ``Tree`` / ``Node`` surface differs.
 
     Returns:
