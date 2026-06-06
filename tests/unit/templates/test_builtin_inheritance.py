@@ -71,7 +71,9 @@ class TestStartupExtendsSoloFounder:
         senior = next(a for a in fs_agents if a.level.value == "senior")
         assert senior.personality
         # pragmatic_builder has "practical" in traits
-        assert "practical" in senior.personality.get("traits", ())
+        traits = senior.personality.get("traits", ())
+        assert isinstance(traits, (list, tuple))
+        assert "practical" in traits
 
     def test_departments(self) -> None:
         config = _render("startup")
@@ -340,4 +342,6 @@ class TestThreeLevelInheritanceRegression:
         assert len(fs_agents) == 1
         assert fs_agents[0].personality is not None
         # communication_bridge preset has articulate, sociable, diplomatic
-        assert "articulate" in fs_agents[0].personality.get("traits", ())
+        traits = fs_agents[0].personality.get("traits", ())
+        assert isinstance(traits, (list, tuple))
+        assert "articulate" in traits

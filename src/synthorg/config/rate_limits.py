@@ -2,12 +2,12 @@
 
 Domain-layer location for the per-operation rate-limit and
 inflight-concurrency config models.  Settings subscribers and the API
-rate-limit middleware both consume these from the config layer so the
-``settings/`` subsystem no longer imports from ``synthorg.api`` (audit-
-144 layer violation).
+rate-limit middleware both consume these from the config layer, keeping
+the ``settings/`` subsystem free of imports from ``synthorg.api`` (a
+prohibited upward dependency).
 """
 
-from typing import Any, ClassVar, Final, Literal
+from typing import ClassVar, Final, Literal, NoReturn, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 _OVERRIDE_TUPLE_LEN: Final[int] = 2
 
 
-def _warn_and_raise(msg: str, **ctx: object) -> None:
+def _warn_and_raise(msg: str, **ctx: object) -> NoReturn:
     """Log ``API_APP_STARTUP`` warning with ``ctx`` then raise ValueError.
 
     Centralised so both rate-limit and concurrency override validators
@@ -57,6 +57,42 @@ def _check_operation_key(operation: object, override: object) -> None:
             operation=str(operation),
             override=str(override),
         )
+
+
+def _validate_override_pair(operation: object, pair: object) -> None:
+    """Validate one rate-limit override entry.
+
+    Checks the operation key, the ``(max_requests, window_seconds)``
+    2-tuple shape, and that both components are non-negative integers.
+
+    Raises:
+        ValueError: Via :func:`_warn_and_raise` (logs then raises) when
+            the key, shape, or integer values are malformed.
+    """
+    _check_operation_key(operation, pair)
+    if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
+        msg = (
+            f"overrides[{operation!r}]={pair!r} must be a "
+            "(max_requests, window_seconds) 2-tuple"
+        )
+        _warn_and_raise(msg, operation=operation, override=str(pair))
+    max_req, window = pair
+    # ``isinstance(True, int)`` is True in Python (``bool`` is a subclass
+    # of ``int``), so an explicit ``bool`` reject is required to keep
+    # ``True`` / ``False`` out of the override values.
+    if (
+        not isinstance(max_req, int)
+        or isinstance(max_req, bool)
+        or not isinstance(window, int)
+        or isinstance(window, bool)
+        or max_req < 0
+        or window < 0
+    ):
+        msg = (
+            f"overrides[{operation!r}]={pair!r} must contain non-negative "
+            "integers; use 0 to disable an operation"
+        )
+        _warn_and_raise(msg, operation=operation, override=str(pair))
 
 
 class PerOpRateLimitConfig(BaseModel):
@@ -97,7 +133,7 @@ class PerOpRateLimitConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_override_tuples(cls, data: Any) -> Any:
+    def _validate_override_tuples(cls, data: object) -> object:
         """Reject override tuples with malformed length or negative values.
 
         Run BEFORE Pydantic coercion so the malformed-length branch is
@@ -137,37 +173,13 @@ class PerOpRateLimitConfig(BaseModel):
 
             _warn_and_raise(msg, override=str(overrides))
         for operation, pair in overrides.items():
-            _check_operation_key(operation, pair)
-            if not isinstance(pair, (tuple, list)) or len(pair) != _OVERRIDE_TUPLE_LEN:
-                msg = (
-                    f"overrides[{operation!r}]={pair!r} must be a "
-                    "(max_requests, window_seconds) 2-tuple"
-                )
-                _warn_and_raise(msg, operation=operation, override=str(pair))
-            max_req, window = pair
-            # ``isinstance(True, int)`` is True in Python (``bool`` is a
-            # subclass of ``int``), so an explicit ``bool`` reject is
-            # required to keep ``True`` / ``False`` out of the override
-            # values.  Mirrors PerOpConcurrencyConfig.
-            if (
-                not isinstance(max_req, int)
-                or isinstance(max_req, bool)
-                or not isinstance(window, int)
-                or isinstance(window, bool)
-                or max_req < 0
-                or window < 0
-            ):
-                msg = (
-                    f"overrides[{operation!r}]={pair!r} must contain non-negative "
-                    "integers; use 0 to disable an operation"
-                )
-                _warn_and_raise(msg, operation=operation, override=str(pair))
+            _validate_override_pair(operation, pair)
         return data
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
 
 class PerOpConcurrencyConfig(BaseModel):
@@ -214,7 +226,7 @@ class PerOpConcurrencyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_override_values(cls, data: Any) -> Any:
+    def _validate_override_values(cls, data: object) -> object:
         """Reject malformed-shape and negative override values.
 
         Run BEFORE Pydantic coercion so non-int / mis-typed overrides
@@ -258,5 +270,5 @@ class PerOpConcurrencyConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))

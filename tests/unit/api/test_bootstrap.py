@@ -1,16 +1,18 @@
 """Unit tests for agent bootstrap from persisted config."""
 
-from datetime import UTC, datetime
+from collections.abc import Callable
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.config.schema import AgentConfig
 from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-from tests._shared import make_app_state, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 
 
 def _make_agent_config(
@@ -19,15 +21,19 @@ def _make_agent_config(
     role: str = "developer",
     department: str = "engineering",
     level: SeniorityLevel = SeniorityLevel.MID,
-    model: dict[str, str] | None = None,
+    model: dict[str, JsonValue] | None = None,
 ) -> AgentConfig:
     """Build an AgentConfig with sensible defaults."""
+    default_model: dict[str, JsonValue] = {
+        "provider": "test-provider",
+        "model_id": "test-small-001",
+    }
     return AgentConfig(
         name=name,
         role=role,
         department=department,
         level=level,
-        model=model or {"provider": "test-provider", "model_id": "test-small-001"},
+        model=model or default_model,
     )
 
 
@@ -38,11 +44,25 @@ def registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-def config_resolver() -> AsyncMock:
-    """Create a mock ConfigResolver."""
-    resolver = AsyncMock()
-    resolver.get_agents = AsyncMock(return_value=())
-    return resolver
+def make_config_resolver() -> Callable[..., ConfigResolver]:
+    """Build a spec'd ConfigResolver whose ``get_agents`` yields *agents*.
+
+    Autospec via ``mock_of`` makes a method-name typo (``get_agnts``)
+    raise loudly instead of silently producing a truthy child mock.
+
+    Each test passes its agent tuple at construction rather than
+    mutating ``.return_value`` post hoc, so the injected value stays
+    correctly typed as ``ConfigResolver`` (the fixture's contract)
+    instead of a bare ``AsyncMock``.
+    """
+
+    def _make(agents: tuple[AgentConfig, ...] = ()) -> ConfigResolver:
+        resolver: ConfigResolver = mock_of[ConfigResolver](
+            get_agents=AsyncMock(return_value=agents),
+        )
+        return resolver
+
+    return _make
 
 
 @pytest.mark.unit
@@ -52,16 +72,18 @@ class TestBootstrapAgents:
     async def test_registers_agents_from_config(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Happy path: two agent configs produce two registered agents."""
         from synthorg.api.bootstrap import bootstrap_agents
 
-        config_resolver.get_agents.return_value = (
-            _make_agent_config(
-                name="alice", role="developer", department="engineering"
-            ),
-            _make_agent_config(name="bob", role="designer", department="design"),
+        config_resolver = make_config_resolver(
+            (
+                _make_agent_config(
+                    name="alice", role="developer", department="engineering"
+                ),
+                _make_agent_config(name="bob", role="designer", department="design"),
+            )
         )
 
         count = await bootstrap_agents(config_resolver, registry)
@@ -72,12 +94,12 @@ class TestBootstrapAgents:
     async def test_returns_zero_on_empty_config(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Empty agent list produces zero registrations."""
         from synthorg.api.bootstrap import bootstrap_agents
 
-        config_resolver.get_agents.return_value = ()
+        config_resolver = make_config_resolver()
 
         count = await bootstrap_agents(config_resolver, registry)
 
@@ -87,7 +109,7 @@ class TestBootstrapAgents:
     async def test_re_call_resilience(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Calling bootstrap twice does not crash.
 
@@ -102,7 +124,7 @@ class TestBootstrapAgents:
             _make_agent_config(name="alice"),
             _make_agent_config(name="bob"),
         )
-        config_resolver.get_agents.return_value = configs
+        config_resolver = make_config_resolver(configs)
 
         first_count = await bootstrap_agents(config_resolver, registry)
         assert first_count == 2
@@ -114,7 +136,7 @@ class TestBootstrapAgents:
     async def test_skips_invalid_config_without_aborting(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """One invalid config doesn't prevent valid configs from registering."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -127,39 +149,44 @@ class TestBootstrapAgents:
             model={"model_id": "test-small-001"},
         )
 
-        config_resolver.get_agents.return_value = (valid_config, invalid_config)
+        config_resolver = make_config_resolver((valid_config, invalid_config))
 
         count = await bootstrap_agents(config_resolver, registry)
 
         assert count == 1
         assert await registry.agent_count() == 1
 
-    async def test_sets_hiring_date_to_today(
+    async def test_sets_hiring_date_from_clock(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
-        """Bootstrapped agents have hiring_date set to today."""
+        """Hiring date is read from the injected clock, not wall time.
+
+        Pinning the clock removes the midnight-boundary race that a
+        direct ``datetime.now()`` read would otherwise carry.
+        """
         from synthorg.api.bootstrap import bootstrap_agents
 
-        config_resolver.get_agents.return_value = (_make_agent_config(name="alice"),)
+        config_resolver = make_config_resolver((_make_agent_config(name="alice"),))
+        clock = FakeClock(start=datetime(2026, 3, 14, 9, 0, tzinfo=UTC))
 
-        await bootstrap_agents(config_resolver, registry)
+        await bootstrap_agents(config_resolver, registry, clock=clock)
 
         agents = await registry.list_active()
         assert len(agents) == 1
-        assert agents[0].hiring_date == datetime.now(UTC).date()
+        assert agents[0].hiring_date == date(2026, 3, 14)
 
     async def test_preserves_agent_level(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Agent level from config is preserved in the identity."""
         from synthorg.api.bootstrap import bootstrap_agents
 
-        config_resolver.get_agents.return_value = (
-            _make_agent_config(name="senior-dev", level=SeniorityLevel.SENIOR),
+        config_resolver = make_config_resolver(
+            (_make_agent_config(name="senior-dev", level=SeniorityLevel.SENIOR),)
         )
 
         await bootstrap_agents(config_resolver, registry)
@@ -171,7 +198,7 @@ class TestBootstrapAgents:
     async def test_preserves_autonomy_level(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Per-agent autonomy_level is forwarded from config."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -184,7 +211,7 @@ class TestBootstrapAgents:
             model={"provider": "test-provider", "model_id": "test-small-001"},
             autonomy_level=AutonomyLevel.SEMI,
         )
-        config_resolver.get_agents.return_value = (config,)
+        config_resolver = make_config_resolver((config,))
 
         await bootstrap_agents(config_resolver, registry)
 
@@ -195,7 +222,7 @@ class TestBootstrapAgents:
     async def test_empty_model_skips_agent(
         self,
         registry: AgentRegistryService,
-        config_resolver: AsyncMock,
+        make_config_resolver: Callable[..., ConfigResolver],
     ) -> None:
         """Agent with empty model dict is skipped (not registered)."""
         from synthorg.api.bootstrap import bootstrap_agents
@@ -206,7 +233,7 @@ class TestBootstrapAgents:
             department="engineering",
             # model defaults to {} which is falsy
         )
-        config_resolver.get_agents.return_value = (config,)
+        config_resolver = make_config_resolver((config,))
 
         count = await bootstrap_agents(config_resolver, registry)
 

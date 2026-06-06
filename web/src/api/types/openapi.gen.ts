@@ -5232,10 +5232,12 @@ export type components = {
         readonly AgentConfig: {
             /** @description Raw authority config */
             readonly authority: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /**
-             * @description Per-agent autonomy level override (D6)
+             * @description Per-agent autonomy level override; None inherits the default.
              * @enum {string|null}
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
@@ -5244,21 +5246,29 @@ export type components = {
             readonly level: components["schemas"]["SeniorityLevel"];
             /** @description Raw memory config */
             readonly memory: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /** @description Raw model config */
             readonly model: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /** @description Structured model requirement dict emitted by the setup wizard (tier / priority / min_context / capabilities). Stored as a raw dict because the canonical ``ModelRequirement`` model lives in ``synthorg.templates`` and importing it here would create a config -> templates cycle; the matcher rehydrates the dict at use sites. */
             readonly model_requirement: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             } | null;
             /** @description Agent display name */
             readonly name: string;
             /** @description Raw personality config */
             readonly personality: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
             /** @description Named personality preset.  ``setup_agents`` writes the resolved preset name back when bootstrapping from a template, so the company-agents setting must round-trip the field rather than reject it under ``extra=forbid``. */
             readonly personality_preset: string | null;
@@ -5276,7 +5286,9 @@ export type components = {
             readonly tier: "large" | "medium" | "small" | null;
             /** @description Raw tools config */
             readonly tools: {
-                readonly [key: string]: unknown;
+                readonly [key: string]: readonly unknown[] | {
+                    readonly [key: string]: unknown;
+                } | string | boolean | number | null;
             };
         };
         /** AgentHealthResponse */

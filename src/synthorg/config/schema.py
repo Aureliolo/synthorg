@@ -1,9 +1,9 @@
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter
-from typing import Any, ClassVar, Literal, Self
+from typing import ClassVar, Literal, Self, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from synthorg.a2a.config import A2AConfig
 from synthorg.api.config import ApiConfig
@@ -12,6 +12,11 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
+from synthorg.config.provider_schema import (
+    LocalModelParams,
+    ProviderConfig,
+    ProviderModelConfig,
+)
 from synthorg.core.company import (
     CompanyConfig,
     Department,
@@ -63,13 +68,6 @@ from synthorg.tools.web.config import WebToolsConfig
 from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
-
-
-from synthorg.config.provider_schema import (  # noqa: E402
-    LocalModelParams,
-    ProviderConfig,
-    ProviderModelConfig,
-)
 
 __all__ = [
     "LocalModelParams",
@@ -160,18 +158,17 @@ class RoutingConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _apply_mirrors(cls, data: Any) -> Any:
-        return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
+    def _apply_mirrors(cls, data: object) -> object:
+        return cast("object", apply_settings_mirrors(data, cls._MIRROR_FIELDS))
 
 
 class AgentConfig(BaseModel):
     """Agent configuration from YAML.
 
-    Uses raw dicts for personality, model, memory, tools, and authority
-    because :class:`~synthorg.core.agent.AgentIdentity` has runtime
-    fields (``id``, ``hiring_date``, ``status``) that are not present in
-    config.  The engine constructs full ``AgentIdentity`` objects at
-    startup.
+    Personality, model, memory, tools, and authority stay raw dicts so
+    wizard-emitted intermediate keys (e.g. a resolved ``tier``) round-trip
+    through validation that ``extra="forbid"`` sub-models would reject; the
+    engine rehydrates each into its typed form at startup.
 
     Attributes:
         name: Agent display name.
@@ -208,29 +205,29 @@ class AgentConfig(BaseModel):
             "the field rather than reject it under ``extra=forbid``."
         ),
     )
-    personality: dict[str, Any] = Field(
+    personality: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw personality config",
     )
-    model: dict[str, Any] = Field(
+    model: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw model config",
     )
-    memory: dict[str, Any] = Field(
+    memory: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw memory config",
     )
-    tools: dict[str, Any] = Field(
+    tools: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw tools config",
     )
-    authority: dict[str, Any] = Field(
+    authority: dict[str, JsonValue] = Field(
         default_factory=dict,
         description="Raw authority config",
     )
     autonomy_level: AutonomyLevel | None = Field(
         default=None,
-        description="Per-agent autonomy level override (D6)",
+        description="Per-agent autonomy level override; None inherits the default.",
     )
     strategic_output_mode: StrategicOutputMode | None = Field(
         default=None,
@@ -248,7 +245,7 @@ class AgentConfig(BaseModel):
             "the wizard persists tier alongside the model selection."
         ),
     )
-    model_requirement: dict[str, Any] | None = Field(
+    model_requirement: dict[str, JsonValue] | None = Field(
         default=None,
         description=(
             "Structured model requirement dict emitted by the setup "

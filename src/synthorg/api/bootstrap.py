@@ -6,7 +6,6 @@ and registers them as ``AgentIdentity`` instances in the
 and again after setup completion.
 """
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.agent import (
@@ -16,10 +15,11 @@ from synthorg.core.agent import (
     PersonalityConfig,
     ToolPermissions,
 )
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Authority
 from synthorg.hr.errors import AgentAlreadyRegisteredError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_SKIPPED,
     SETUP_AGENTS_BOOTSTRAPPED,
@@ -43,16 +43,17 @@ def _build_model_config(config: AgentConfig) -> ModelConfig:
         ``ModelConfig`` instance.
     """
     if config.model:
-        return ModelConfig(**config.model)
+        return ModelConfig.model_validate(config.model)
     msg = f"Agent {config.name!r} has no model config -- skipping"
     raise ValueError(msg)
 
 
-def _identity_from_config(config: AgentConfig) -> AgentIdentity:
+def _identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity:
     """Convert a persisted AgentConfig to a runtime AgentIdentity.
 
     Args:
         config: Agent configuration loaded from settings/YAML.
+        clock: Time source for the hiring date (injected for testability).
 
     Returns:
         A fully constructed AgentIdentity.
@@ -64,25 +65,40 @@ def _identity_from_config(config: AgentConfig) -> AgentIdentity:
         level=config.level,
         model=_build_model_config(config),
         personality=(
-            PersonalityConfig(**config.personality)
+            PersonalityConfig.model_validate(config.personality)
             if config.personality
             else PersonalityConfig()
         ),
-        memory=(MemoryConfig(**config.memory) if config.memory else MemoryConfig()),
-        tools=(ToolPermissions(**config.tools) if config.tools else ToolPermissions()),
-        authority=(Authority(**config.authority) if config.authority else Authority()),
+        memory=(
+            MemoryConfig.model_validate(config.memory)
+            if config.memory
+            else MemoryConfig()
+        ),
+        tools=(
+            ToolPermissions.model_validate(config.tools)
+            if config.tools
+            else ToolPermissions()
+        ),
+        authority=(
+            Authority.model_validate(config.authority)
+            if config.authority
+            else Authority()
+        ),
         autonomy_level=config.autonomy_level,
         strategic_output_mode=config.strategic_output_mode,
         # Hiring date is always "today" -- bootstrap represents re-activation
         # into runtime, not re-creation.  AgentConfig does not persist
-        # hiring_date.
-        hiring_date=datetime.now(UTC).date(),
+        # hiring_date.  Read through the clock seam so a test pins the date
+        # and the value cannot straddle a midnight boundary mid-run.
+        hiring_date=clock.now().date(),
     )
 
 
 async def bootstrap_agents(
     config_resolver: ConfigResolver,
     agent_registry: AgentRegistryService,
+    *,
+    clock: Clock | None = None,
 ) -> int:
     """Bootstrap agents from persisted config into the runtime registry.
 
@@ -94,10 +110,12 @@ async def bootstrap_agents(
     Args:
         config_resolver: Resolver for persisted settings.
         agent_registry: Runtime agent registry.
+        clock: Time source for hiring dates; defaults to ``SystemClock``.
 
     Returns:
         Count of newly registered agents.
     """
+    resolved_clock = clock if clock is not None else SystemClock()
     agent_configs = await config_resolver.get_agents()
 
     if not agent_configs:
@@ -108,13 +126,15 @@ async def bootstrap_agents(
 
     for config in agent_configs:
         try:
-            identity = _identity_from_config(config)
+            identity = _identity_from_config(config, clock=resolved_clock)
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
                 agent_name=config.name,
                 reason="invalid_config",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             continue
 
@@ -135,6 +155,8 @@ async def bootstrap_agents(
                 agent_name=config.name,
                 agent_id=str(identity.id),
                 reason="registration_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     logger.info(
