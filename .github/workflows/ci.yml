@@ -931,14 +931,14 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: Download coverage data
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: coverage-data-*
           merge-multiple: true
           path: coverage-data
 
       - name: Download test results
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: test-results-*
           merge-multiple: true
@@ -1208,7 +1208,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openapi-schema
           path: docs/openapi
@@ -1245,7 +1245,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openapi-schema
           path: docs/openapi
@@ -1292,7 +1292,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: openapi-schema
           path: docs/openapi
