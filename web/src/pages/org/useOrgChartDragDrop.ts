@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
-import type { Node } from '@xyflow/react'
+import type { Node, OnNodeDrag } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useToastStore } from '@/stores/toast'
 import { isDepartmentName, type DepartmentName } from '@/api/types/enums'
@@ -15,9 +14,9 @@ type AddToast = ReturnType<typeof useToastStore.getState>['add']
 
 export interface OrgChartDragDropResult {
   dragOverDeptId: string | null
-  handleNodeDragStart: (event: ReactMouseEvent, node: Node) => void
-  handleNodeDrag: (event: ReactMouseEvent, node: Node) => void
-  handleNodeDragStop: (event: ReactMouseEvent, node: Node) => void
+  handleNodeDragStart: OnNodeDrag<Node>
+  handleNodeDrag: OnNodeDrag<Node>
+  handleNodeDragStop: OnNodeDrag<Node>
 }
 
 interface UseOrgChartDragDropArgs {
@@ -115,7 +114,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   )
 
   const handleNodeDragStart = useCallback(
-    (_event: ReactMouseEvent, node: Node) => {
+    (_event: MouseEvent | TouchEvent, node: Node) => {
       if (node.type !== 'agent') return
       if (viewMode !== 'hierarchy') return
       dragOriginalDeptRef.current = (node.data as AgentNodeData).department
@@ -125,7 +124,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   )
 
   const handleNodeDrag = useCallback(
-    (_event: ReactMouseEvent, node: Node) => {
+    (_event: MouseEvent | TouchEvent, node: Node) => {
       if (!dragOriginalDeptRef.current) return
       const target = findDropTarget(nodeCenter(node), deptBounds)
       const newOverId = target?.nodeId ?? null
@@ -140,7 +139,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   )
 
   const handleNodeDragStop = useCallback(
-    (_event: ReactMouseEvent, node: Node) => {
+    (_event: MouseEvent | TouchEvent, node: Node) => {
       const originalDept = dragOriginalDeptRef.current
       dragOriginalDeptRef.current = null
       dragOverDeptIdRef.current = null
