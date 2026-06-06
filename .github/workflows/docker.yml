@@ -44,9 +44,9 @@ concurrency:
 
 env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
-  TRIVY_VERSION: "0.70.0"
+  TRIVY_VERSION: "0.71.0"
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.14"
+  APKO_VERSION: "v1.2.15"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -704,10 +704,10 @@ jobs:
         # Renovate watches the binary version via the comment marker
         # below; the action SHA is bumped via the standard
         # ``actions/*`` Renovate manager.
-        uses: chainguard-dev/actions/setup-melange@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
+        uses: chainguard-dev/actions/setup-melange@05fbd381f7c158bd33c9bbf3a28f67852269fdf8 # v1.6.21
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.50.8
+          version: v0.52.0
 
       - name: Generate melange signing key
         run: melange keygen
@@ -787,7 +787,7 @@ jobs:
         run: sudo mkdir -p /work && sudo chown "$(id -u):$(id -g)" /work
 
       - name: Download web-assets apk
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: web-apk-packages
           path: /work
@@ -861,7 +861,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web
@@ -909,7 +909,7 @@ jobs:
           persist-credentials: false
 
       - name: Download web image tarball
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: web-image-tarball
           path: .
@@ -1465,7 +1465,7 @@ jobs:
       # this job mirrored the rules locally and risked silent drift on
       # future tag-policy changes).
       - name: Download per-job pushed-tag inventories
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: pushed-tags-*
           merge-multiple: true
@@ -1541,14 +1541,14 @@ jobs:
       contents: write
     steps:
       - name: Download SBOM artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: sbom-*
           merge-multiple: true
           path: sboms
 
       - name: Download fine-tune digest artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: fine-tune-*-digest
           merge-multiple: true
