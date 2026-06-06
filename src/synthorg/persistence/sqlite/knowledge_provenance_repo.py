@@ -17,7 +17,7 @@ from synthorg.core.enums import ContentKind
 from synthorg.core.persistence_errors import QueryError
 from synthorg.knowledge.models import ChunkProvenanceRow, ProvenanceLocator
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.knowledge_provenance import (
     PERSISTENCE_KNOWLEDGE_PROVENANCE_COUNT_FAILED,
     PERSISTENCE_KNOWLEDGE_PROVENANCE_COUNTED,
     PERSISTENCE_KNOWLEDGE_PROVENANCE_DELETE_FAILED,

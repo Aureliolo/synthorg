@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, cast
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
     PERSISTENCE_CHARTER_UNKNOWN_BACKEND,
 )

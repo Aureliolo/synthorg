@@ -24,7 +24,7 @@ from synthorg.observability.events.integrations import (
     MCP_SERVER_INSTALLED,
     MCP_SERVER_UNINSTALLED,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.mcp_installation import (
     PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
 )
 from synthorg.persistence._shared import (

@@ -21,7 +21,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.dynamic_tool import (
     PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
     PERSISTENCE_DYNAMIC_TOOL_DESERIALIZE_FAILED,
     PERSISTENCE_DYNAMIC_TOOL_FETCH_FAILED,

@@ -44,11 +44,13 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_VALIDATION_FAILED
-from synthorg.observability.events.persistence import (
-    PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_METADATA_MISSING,
-    PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVE_FAILED,
+)
+from synthorg.observability.events.persistence.artifact_storage import (
+    PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+    PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
     PERSISTENCE_ARTIFACT_STORE_FAILED,
     PERSISTENCE_ARTIFACT_STORED,

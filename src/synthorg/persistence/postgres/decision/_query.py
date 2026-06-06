@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.decision_record import (
     PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
     PERSISTENCE_DECISION_RECORD_QUERIED,
     PERSISTENCE_DECISION_RECORD_QUERY_FAILED,

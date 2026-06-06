@@ -8,7 +8,7 @@ import aiosqlite
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.preset_override import (
     PERSISTENCE_PRESET_OVERRIDE_DELETE_FAILED,
     PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_PRESET_OVERRIDE_SAVE_FAILED,

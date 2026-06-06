@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.ceremony_state import (
     PERSISTENCE_CEREMONY_STATE_DELETE_FAILED,
     PERSISTENCE_CEREMONY_STATE_LOAD_FAILED,
     PERSISTENCE_CEREMONY_STATE_LOADED,

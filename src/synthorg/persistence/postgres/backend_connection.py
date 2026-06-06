@@ -17,7 +17,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_ALREADY_CONNECTED,
     PERSISTENCE_BACKEND_CONNECTED,
     PERSISTENCE_BACKEND_CONNECTING,

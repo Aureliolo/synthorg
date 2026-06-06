@@ -15,7 +15,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import OAuthState
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.oauth_state import (
     PERSISTENCE_OAUTH_STATE_CLEANUP,
     PERSISTENCE_OAUTH_STATE_CLEANUP_FAILED,
     PERSISTENCE_OAUTH_STATE_DELETE_FAILED,

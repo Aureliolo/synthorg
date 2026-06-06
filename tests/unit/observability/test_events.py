@@ -143,10 +143,16 @@ _DOT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
 def _all_event_names() -> list[tuple[str, str]]:
-    """Return (attr_name, value) for every public string constant."""
+    """Return (attr_name, value) for every public string constant.
+
+    Walks sub-packages too (e.g. ``events.persistence``) so the
+    uniqueness / dot-pattern guards cover the per-subdomain modules,
+    not just the flat top-level event modules.
+    """
     result: list[tuple[str, str]] = []
-    for info in pkgutil.iter_modules(events.__path__):
-        mod = importlib.import_module(f"synthorg.observability.events.{info.name}")
+    prefix = f"{events.__name__}."
+    for info in pkgutil.walk_packages(events.__path__, prefix=prefix):
+        mod = importlib.import_module(info.name)
         for attr in dir(mod):
             if attr.startswith("_"):
                 continue
@@ -795,8 +801,10 @@ class TestEventConstants:
         ],
     )
     def test_persistence_events_exist(self, constant_name: str, expected: str) -> None:
-        from synthorg.observability.events import persistence as mod
-
+        module_name = expected.split(".")[1]
+        mod = importlib.import_module(
+            f"synthorg.observability.events.persistence.{module_name}"
+        )
         assert getattr(mod, constant_name) == expected
 
     def test_autonomy_events_exist(self) -> None:
@@ -854,7 +862,7 @@ class TestEventConstants:
         assert TIMEOUT_UNKNOWN_ACTION_TYPE == "timeout.unknown_action_type"
 
     def test_parked_context_persistence_events_exist(self) -> None:
-        from synthorg.observability.events.persistence import (
+        from synthorg.observability.events.persistence.parked_context import (
             PERSISTENCE_PARKED_CONTEXT_DELETED,
             PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
             PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,

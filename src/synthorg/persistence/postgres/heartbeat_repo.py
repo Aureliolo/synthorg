@@ -15,7 +15,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.heartbeat import (
     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
     PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
     PERSISTENCE_HEARTBEAT_NOT_FOUND,

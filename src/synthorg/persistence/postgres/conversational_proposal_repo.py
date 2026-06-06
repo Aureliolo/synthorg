@@ -14,7 +14,7 @@ from synthorg.core.enums import ConversationalProposalStatus
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.meta.chief_of_staff.models import ConversationalProposal
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversational_proposal import (
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED,
     PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED,

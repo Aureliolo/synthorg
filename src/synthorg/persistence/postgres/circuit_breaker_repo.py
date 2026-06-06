@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.circuit_breaker import (
     PERSISTENCE_CIRCUIT_BREAKER_DELETE_FAILED,
     PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED,
     PERSISTENCE_CIRCUIT_BREAKER_LOADED,

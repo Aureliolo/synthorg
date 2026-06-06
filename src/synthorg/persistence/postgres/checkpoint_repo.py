@@ -16,7 +16,7 @@ from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.checkpoint import (
     PERSISTENCE_CHECKPOINT_DELETE_FAILED,
     PERSISTENCE_CHECKPOINT_DESERIALIZE_FAILED,
     PERSISTENCE_CHECKPOINT_NOT_FOUND,

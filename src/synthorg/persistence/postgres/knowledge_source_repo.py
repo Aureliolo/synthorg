@@ -10,7 +10,7 @@ from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.knowledge_source import (
     PERSISTENCE_KNOWLEDGE_SOURCE_COUNT_FAILED,
     PERSISTENCE_KNOWLEDGE_SOURCE_COUNTED,
     PERSISTENCE_KNOWLEDGE_SOURCE_DELETE_FAILED,

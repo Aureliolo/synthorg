@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.meeting_cooldown import (
     PERSISTENCE_MEETING_COOLDOWN_DELETE_FAILED,
     PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED,
     PERSISTENCE_MEETING_COOLDOWN_LOADED,

@@ -16,7 +16,7 @@ from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.risk_override import (
     PERSISTENCE_RISK_OVERRIDE_DELETE_FAILED,
     PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED,
     PERSISTENCE_RISK_OVERRIDE_REVOKE_FAILED,

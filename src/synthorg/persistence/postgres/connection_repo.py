@@ -25,7 +25,7 @@ from synthorg.integrations.connections.models import (
     SecretRef,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.connection import (
     PERSISTENCE_CONNECTION_DELETE_FAILED,
     PERSISTENCE_CONNECTION_DESERIALIZE_FAILED,
     PERSISTENCE_CONNECTION_FETCH_FAILED,

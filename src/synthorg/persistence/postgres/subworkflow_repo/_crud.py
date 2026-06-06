@@ -9,7 +9,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.engine.workflow.subworkflow_models import SubworkflowSummary
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.subworkflow import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCH_FAILED,
     PERSISTENCE_SUBWORKFLOW_FETCHED,

@@ -27,7 +27,9 @@ from yoyo.migrations import MigrationList  # type: ignore[import-untyped]
 
 from synthorg.core.persistence_errors import MigrationError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import PERSISTENCE_MIGRATION_FAILED
+from synthorg.observability.events.persistence.migration import (
+    PERSISTENCE_MIGRATION_FAILED,
+)
 from synthorg.persistence.config import PostgresConfig
 
 logger = get_logger(__name__)

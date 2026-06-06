@@ -13,7 +13,7 @@ from synthorg.core.persistence_errors import (
     QueryError,
 )
 from synthorg.observability import safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.audit_entry import (
     PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED,
     PERSISTENCE_AUDIT_ENTRY_SAVE_FAILED,
 )

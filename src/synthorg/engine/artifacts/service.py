@@ -29,9 +29,11 @@ from synthorg.observability.events.api import (
     API_ARTIFACT_DELETED,
     API_ARTIFACT_UPDATED,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.artifact import (
     PERSISTENCE_ARTIFACT_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_DELETE_NO_STORAGE,
+)
+from synthorg.observability.events.persistence.artifact_storage import (
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
 )
 

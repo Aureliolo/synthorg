@@ -646,7 +646,7 @@
     },
     {
       "kind": "code",
-      "loc": 496,
+      "loc": 498,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/artifacts.py",
       "owning_feature": "api_core"
@@ -4412,7 +4412,7 @@
     },
     {
       "kind": "code",
-      "loc": 200,
+      "loc": 202,
       "loc_cap": 500,
       "module": "src/synthorg/engine/artifacts/service.py",
       "owning_feature": "engine"
@@ -12882,9 +12882,394 @@
     },
     {
       "kind": "declarative",
-      "loc": 778,
+      "loc": 5,
       "loc_cap": null,
-      "module": "src/synthorg/observability/events/persistence.py",
+      "module": "src/synthorg/observability/events/persistence/__init__.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 24,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/agent_state.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/api_key.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 19,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/artifact.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 22,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/artifact_storage.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/audit_entry.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 20,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/backend.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 14,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/ceremony_state.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 9,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/charter.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 14,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/checkpoint.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 14,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/circuit_breaker.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 23,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/codebase_structure_map.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/collab_metric.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 15,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/connection.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 25,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/connection_secret.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 10,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/conversation.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/conversation_turn.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 8,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/conversational.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/conversational_proposal.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/cost_claim_dedupe.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 6,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/cost_forecast.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 12,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/cost_record.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/decision_record.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 30,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/dynamic_tool.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 16,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/flight_recorder.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 12,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/heartbeat.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 35,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/knowledge_provenance.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 33,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/knowledge_source.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/lifecycle_event.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/mcp_installation.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 18,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/meeting_cooldown.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 14,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/message.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 5,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/migration.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 19,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/oauth_state.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 20,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/parked_context.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/preset_override.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 14,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/principle_override.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/project.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 20,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/project_cost_agg.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 23,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/project_doc.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 23,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/project_environment.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 23,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/project_workspace.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 27,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/research_run.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 16,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/risk_override.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 10,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/seen_claims.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 6,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/setting.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/ssrf_violation.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 17,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/subworkflow.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 13,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/task.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 11,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/task_metric.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 9,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/timescaledb.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 18,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/tracked_container.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 16,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/user.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 23,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/webhook_receipt.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 21,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/workflow_def.py",
+      "owning_feature": "observability"
+    },
+    {
+      "kind": "declarative",
+      "loc": 27,
+      "loc_cap": null,
+      "module": "src/synthorg/observability/events/persistence/workflow_exec.py",
       "owning_feature": "observability"
     },
     {
@@ -13729,7 +14114,7 @@
     },
     {
       "kind": "code",
-      "loc": 159,
+      "loc": 161,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_conversation_marshalling.py",
       "owning_feature": "persistence"
@@ -13771,7 +14156,7 @@
     },
     {
       "kind": "code",
-      "loc": 177,
+      "loc": 179,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/cost_forecast_marshalling.py",
       "owning_feature": "persistence"
@@ -14142,7 +14527,7 @@
     },
     {
       "kind": "code",
-      "loc": 303,
+      "loc": 305,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/migration_helpers.py",
       "owning_feature": "persistence"
@@ -14303,7 +14688,7 @@
     },
     {
       "kind": "code",
-      "loc": 161,
+      "loc": 163,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/backend_migration.py",
       "owning_feature": "persistence"
@@ -14394,7 +14779,7 @@
     },
     {
       "kind": "code",
-      "loc": 466,
+      "loc": 468,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_repo.py",
       "owning_feature": "persistence"
@@ -14513,7 +14898,7 @@
     },
     {
       "kind": "code",
-      "loc": 422,
+      "loc": 426,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/hr_repositories.py",
       "owning_feature": "persistence"
@@ -14814,7 +15199,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 769,
+      "loc": 771,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/postgres/user_repo.py",
       "owning_feature": "persistence"
@@ -15318,7 +15703,7 @@
     },
     {
       "kind": "code",
-      "loc": 413,
+      "loc": 417,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/hr_repositories.py",
       "owning_feature": "persistence"
@@ -15591,7 +15976,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 829,
+      "loc": 831,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/user_repo.py",
       "owning_feature": "persistence"

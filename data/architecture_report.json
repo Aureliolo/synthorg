@@ -68,8 +68,8 @@
     },
     "src/synthorg/api/controllers/artifacts.py": {
       "cap": 500,
-      "loc": 496,
-      "ratio": 0.992,
+      "loc": 498,
+      "ratio": 0.996,
       "tier": "code"
     },
     "src/synthorg/api/controllers/clients.py": {
@@ -344,14 +344,14 @@
     },
     "src/synthorg/config/loader.py": {
       "cap": 500,
-      "loc": 438,
-      "ratio": 0.876,
+      "loc": 440,
+      "ratio": 0.88,
       "tier": "code"
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 759,
-      "ratio": 1.518,
+      "loc": 758,
+      "ratio": 1.516,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -398,8 +398,8 @@
     },
     "src/synthorg/engine/agent_engine.py": {
       "cap": 700,
-      "loc": 644,
-      "ratio": 0.92,
+      "loc": 655,
+      "ratio": 0.936,
       "tier": "adapter"
     },
     "src/synthorg/engine/agent_engine_errors.py": {
@@ -518,8 +518,8 @@
     },
     "src/synthorg/engine/review_gate.py": {
       "cap": 500,
-      "loc": 402,
-      "ratio": 0.804,
+      "loc": 413,
+      "ratio": 0.826,
       "tier": "code"
     },
     "src/synthorg/engine/shutdown.py": {
@@ -944,8 +944,8 @@
     },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
-      "loc": 466,
-      "ratio": 0.932,
+      "loc": 468,
+      "ratio": 0.936,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/escalation_repo.py": {
@@ -956,8 +956,8 @@
     },
     "src/synthorg/persistence/postgres/hr_repositories.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
@@ -1034,8 +1034,8 @@
     },
     "src/synthorg/persistence/sqlite/hr_repositories.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
+      "loc": 417,
+      "ratio": 0.834,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/ontology_entity_repo.py": {
@@ -1380,16 +1380,16 @@
     "synthorg.core.approval": 35,
     "synthorg.core.auth.models": 27,
     "synthorg.core.auth.roles": 25,
-    "synthorg.core.clock": 153,
-    "synthorg.core.critical_errors": 469,
+    "synthorg.core.clock": 154,
+    "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 492,
+    "synthorg.core.enums": 493,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.normalization": 73,
     "synthorg.core.persistence_errors": 190,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
-    "synthorg.core.types": 1052,
+    "synthorg.core.types": 1054,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 79,
@@ -1418,13 +1418,13 @@
     "synthorg.meta.config": 20,
     "synthorg.meta.mcp.errors": 55,
     "synthorg.meta.mcp.handler_protocol": 45,
-    "synthorg.meta.mcp.handlers.common": 52,
+    "synthorg.meta.mcp.handlers.common": 53,
     "synthorg.meta.mcp.handlers.common_args": 47,
     "synthorg.meta.mcp.handlers.common_logging": 48,
     "synthorg.meta.mcp.registry": 30,
     "synthorg.meta.mcp.tool_builder": 22,
     "synthorg.meta.models": 63,
-    "synthorg.observability": 1474,
+    "synthorg.observability": 1475,
     "synthorg.observability.background_tasks": 20,
     "synthorg.observability.events.api": 149,
     "synthorg.observability.events.chief_of_staff": 29,
@@ -1439,7 +1439,6 @@
     "synthorg.observability.events.memory": 46,
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
-    "synthorg.observability.events.persistence": 122,
     "synthorg.observability.events.provider": 26,
     "synthorg.observability.events.security": 63,
     "synthorg.observability.events.settings": 32,
@@ -1473,7 +1472,7 @@
     "synthorg.settings.mirrors": 21,
     "synthorg.settings.models": 33,
     "synthorg.settings.registry": 36,
-    "synthorg.settings.resolver": 32,
+    "synthorg.settings.resolver": 33,
     "synthorg.settings.service": 30,
     "synthorg.settings.state": 71,
     "synthorg.tools.base": 74

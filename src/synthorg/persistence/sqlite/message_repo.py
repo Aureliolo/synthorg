@@ -12,7 +12,7 @@ from synthorg.communication.message import Message
 from synthorg.core.persistence_errors import DuplicateRecordError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.message import (
     PERSISTENCE_MESSAGE_DELETE_FAILED,
     PERSISTENCE_MESSAGE_DESERIALIZE_FAILED,
     PERSISTENCE_MESSAGE_DUPLICATE,

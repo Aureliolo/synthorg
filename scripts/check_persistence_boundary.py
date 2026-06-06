@@ -309,7 +309,7 @@ def _build_alias_map(tree: ast.AST) -> dict[str, str]:
     """Return ``{local_name: imported_name}`` for ``import ... as ...`` lines.
 
     Used to resolve aliased imports so the scanner cannot be bypassed
-    by ``from synthorg.observability.events.persistence import
+    by ``from synthorg.observability.events.persistence.user import
     PERSISTENCE_USER_SAVED as EVT`` followed by ``logger.info(EVT, ...)``.
 
     Module-level only -- function-scoped imports are ignored on the

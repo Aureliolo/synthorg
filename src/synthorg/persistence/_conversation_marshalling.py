@@ -27,8 +27,10 @@ from synthorg.observability.events.chief_of_staff import (
     COS_GROUP_INVITE_FAILED,
     COS_GROUP_PARTICIPANT_FAILED,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.conversation import (
     PERSISTENCE_CONVERSATION_FAILED,
+)
+from synthorg.observability.events.persistence.conversation_turn import (
     PERSISTENCE_CONVERSATION_TURN_FAILED,
 )
 from synthorg.persistence._shared import coerce_row_timestamp

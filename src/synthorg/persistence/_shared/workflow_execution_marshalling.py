@@ -28,7 +28,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowNodeExecution,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.workflow_exec import (
     PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
 )
 from synthorg.persistence._shared.datetime_marshaller import coerce_row_timestamp

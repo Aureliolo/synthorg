@@ -15,7 +15,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.mcp_installation import (
     PERSISTENCE_MCP_INSTALLATION_DELETE_FAILED,
     PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
     PERSISTENCE_MCP_INSTALLATION_SAVE_FAILED,

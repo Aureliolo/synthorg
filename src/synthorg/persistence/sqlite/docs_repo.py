@@ -16,7 +16,7 @@ from synthorg.core.enums import DocType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.project_doc import (
     PERSISTENCE_PROJECT_DOC_COUNT_FAILED,
     PERSISTENCE_PROJECT_DOC_COUNTED,
     PERSISTENCE_PROJECT_DOC_DELETE_FAILED,

@@ -9,7 +9,7 @@ company's ``RootConfig``.
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.observability import get_logger
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_CREATED,
     PERSISTENCE_BACKEND_UNKNOWN,
 )

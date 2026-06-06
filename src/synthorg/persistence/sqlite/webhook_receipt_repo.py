@@ -15,7 +15,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,

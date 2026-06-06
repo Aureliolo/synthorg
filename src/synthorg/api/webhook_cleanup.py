@@ -22,7 +22,7 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_PAUSED,

@@ -19,7 +19,7 @@ from synthorg.core.persistence_errors import ConstraintViolationError, QueryErro
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.models import ProjectCharter
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.charter import (
     PERSISTENCE_CHARTER_FAILED,
     PERSISTENCE_CHARTER_FETCHED,
     PERSISTENCE_CHARTER_LISTED,

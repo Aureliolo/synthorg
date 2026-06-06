@@ -70,10 +70,11 @@ below its recorded LOC; growth past the baseline fails. New files may
 not exceed their tier cap regardless of baseline. Baselines shrink
 monotonically (enforced by `check_baseline_growth.py`).
 
-In addition, an explicit god-module allowlist (`core/enums.py`,
-`observability/events/persistence.py`) must net-shrink on every PR.
-This gate (`check_no_growth_in_god_modules.py`) prevents the central
-files from absorbing more responsibility while PR 4 decomposes them.
+In addition, an explicit god-module allowlist (`core/enums.py`) must
+net-shrink on every PR. This gate (`check_no_growth_in_god_modules.py`)
+prevents the central files from absorbing more responsibility while PR 4
+decomposes them. (`observability/events/persistence.py` left the allowlist
+in #2246 when it dissolved into a per-subdomain package.)
 The five `api/` entries (`app.py`, `state.py`, `auto_wire.py`,
 `lifecycle.py`, `lifecycle_builder.py`) drained from the allowlist in
 PR 3 (#2049) once the controller decomposition brought each under its
@@ -327,8 +328,9 @@ into per-sub-domain packages; `api/auto_wire.py`, `api/lifecycle.py`, and
 five `api/` entries (`app.py`, `state.py`, `auto_wire.py`, `lifecycle.py`,
 `lifecycle_builder.py`) drained from the `check_no_growth_in_god_modules.py`
 allowlist and are now governed at their tier cap by
-`check_module_size_budget.py`; `core/enums.py` +
-`observability/events/persistence.py` remain net-shrink until #2051.
+`check_module_size_budget.py`; `core/enums.py` remains net-shrink until #2051
+(`observability/events/persistence.py` dissolved into a per-subdomain package
+in #2246).
 `api/state.py` (354 LOC) is governed by the code-tier 500 cap (the EPIC's
 `<150` figure was descriptive, not a #2049 gate). The decomposed sub-package
 files carry no baseline entries, so they are enforced at the controller-tier

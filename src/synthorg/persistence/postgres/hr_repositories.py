@@ -23,15 +23,19 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.collab_metric import (
     PERSISTENCE_COLLAB_METRIC_DESERIALIZE_FAILED,
     PERSISTENCE_COLLAB_METRIC_QUERIED,
     PERSISTENCE_COLLAB_METRIC_QUERY_FAILED,
     PERSISTENCE_COLLAB_METRIC_SAVE_FAILED,
+)
+from synthorg.observability.events.persistence.lifecycle_event import (
     PERSISTENCE_LIFECYCLE_EVENT_DESERIALIZE_FAILED,
     PERSISTENCE_LIFECYCLE_EVENT_LIST_FAILED,
     PERSISTENCE_LIFECYCLE_EVENT_LISTED,
     PERSISTENCE_LIFECYCLE_EVENT_SAVE_FAILED,
+)
+from synthorg.observability.events.persistence.task_metric import (
     PERSISTENCE_TASK_METRIC_DESERIALIZE_FAILED,
     PERSISTENCE_TASK_METRIC_QUERIED,
     PERSISTENCE_TASK_METRIC_QUERY_FAILED,

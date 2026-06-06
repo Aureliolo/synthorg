@@ -25,7 +25,7 @@ from synthorg.core.role import Role
 from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.observability import get_logger
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.backend import (
     PERSISTENCE_BACKEND_NOT_CONNECTED,
 )
 from synthorg.persistence.fine_tune_protocol import (

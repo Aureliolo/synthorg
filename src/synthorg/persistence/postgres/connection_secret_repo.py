@@ -13,7 +13,7 @@ import psycopg
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.connection_secret import (
     PERSISTENCE_CONNECTION_SECRET_DELETE_FAILED,
     PERSISTENCE_CONNECTION_SECRET_RETRIEVE_FAILED,
     PERSISTENCE_CONNECTION_SECRET_STORE_FAILED,

@@ -9,7 +9,7 @@ import aiosqlite
 
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.audit_entry import (
     PERSISTENCE_AUDIT_ENTRY_QUERIED,
     PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
 )

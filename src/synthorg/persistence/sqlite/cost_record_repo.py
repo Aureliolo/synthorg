@@ -13,7 +13,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.normalization import parse_comma_list
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.cost_record import (
     PERSISTENCE_COST_RECORD_AGGREGATE_FAILED,
     PERSISTENCE_COST_RECORD_AGGREGATED,
     PERSISTENCE_COST_RECORD_QUERIED,

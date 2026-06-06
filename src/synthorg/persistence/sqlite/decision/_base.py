@@ -6,7 +6,7 @@ import sqlite3
 import aiosqlite
 
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.decision_record import (
     PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
 )
 from synthorg.persistence.sqlite._shared import WriteContext

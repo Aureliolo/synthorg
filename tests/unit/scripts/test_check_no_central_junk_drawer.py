@@ -48,25 +48,6 @@ def test_count_top_level_classes_ignores_functions() -> None:
     assert _GATE.count_top_level_classes(src) == 0
 
 
-# ── events/persistence.py counting ──────────────────────────────
-
-
-def test_count_top_level_assignments_basic() -> None:
-    src = "FOO = 'a'\nBAR: str = 'b'\nBAZ = 'c'\n"
-    assert _GATE.count_top_level_assignments(src) == 3
-
-
-def test_count_top_level_assignments_excludes_imports_and_classes() -> None:
-    src = "import os\nfrom typing import Any\nFOO = 'a'\nclass Bar:\n    pass\n"
-    assert _GATE.count_top_level_assignments(src) == 1
-
-
-def test_count_top_level_assignments_ignores_dunder() -> None:
-    """Module-level ``__all__`` / ``__version__`` shouldn't inflate the count."""
-    src = "__all__ = ('FOO',)\n__version__ = '1.0'\nFOO = 'a'\n"
-    assert _GATE.count_top_level_assignments(src) == 1
-
-
 # ── api/state.py AppState __slots__ counting ────────────────────
 
 
@@ -95,17 +76,12 @@ def test_count_state_slots_no_slots_returns_zero() -> None:
 
 
 def _make_project(tmp_path: Path) -> Path:
-    """Materialise a synthetic project tree with the three junk-drawer files."""
+    """Materialise a synthetic project tree with the two junk-drawer files."""
     project = tmp_path
     (project / "src" / "synthorg" / "core").mkdir(parents=True)
-    (project / "src" / "synthorg" / "observability" / "events").mkdir(parents=True)
     (project / "src" / "synthorg" / "api").mkdir(parents=True)
     (project / "src" / "synthorg" / "core" / "enums.py").write_text(
         "class A:\n    pass\n\nclass B:\n    pass\n", encoding="utf-8"
-    )
-    events_dir = project / "src" / "synthorg" / "observability" / "events"
-    (events_dir / "persistence.py").write_text(
-        "FOO = 'a'\nBAR = 'b'\n", encoding="utf-8"
     )
     (project / "src" / "synthorg" / "api" / "state.py").write_text(
         "class AppState:\n    __slots__ = ('_a', '_b')\n", encoding="utf-8"
@@ -128,9 +104,6 @@ def test_check_passes_when_counts_match_baseline(tmp_path: Path) -> None:
         project,
         {
             "src/synthorg/core/enums.py": {"top_level_classes": 2},
-            "src/synthorg/observability/events/persistence.py": {
-                "top_level_assignments": 2
-            },
             "src/synthorg/api/state.py": {"state_slots": 2},
         },
     )
@@ -144,9 +117,6 @@ def test_check_passes_when_counts_decrease(tmp_path: Path) -> None:
         project,
         {
             "src/synthorg/core/enums.py": {"top_level_classes": 5},
-            "src/synthorg/observability/events/persistence.py": {
-                "top_level_assignments": 5
-            },
             "src/synthorg/api/state.py": {"state_slots": 5},
         },
     )
@@ -160,9 +130,6 @@ def test_check_fails_when_enums_grow(tmp_path: Path) -> None:
         project,
         {
             "src/synthorg/core/enums.py": {"top_level_classes": 1},  # ← stale
-            "src/synthorg/observability/events/persistence.py": {
-                "top_level_assignments": 2
-            },
             "src/synthorg/api/state.py": {"state_slots": 2},
         },
     )
@@ -177,9 +144,6 @@ def test_check_fails_when_state_slots_grow(tmp_path: Path) -> None:
         project,
         {
             "src/synthorg/core/enums.py": {"top_level_classes": 2},
-            "src/synthorg/observability/events/persistence.py": {
-                "top_level_assignments": 2
-            },
             "src/synthorg/api/state.py": {"state_slots": 1},  # ← stale
         },
     )
@@ -209,10 +173,25 @@ def test_write_baseline_captures_current_counts(tmp_path: Path) -> None:
     _GATE.write_baseline(project_root=project, baseline_path=baseline)
     payload = json.loads(baseline.read_text(encoding="utf-8"))
     assert payload["counts"]["src/synthorg/core/enums.py"]["top_level_classes"] == 2
-    assert (
-        payload["counts"]["src/synthorg/observability/events/persistence.py"][
-            "top_level_assignments"
-        ]
-        == 2
-    )
     assert payload["counts"]["src/synthorg/api/state.py"]["state_slots"] == 2
+
+
+def test_main_update_baseline_writes_and_exits_zero(tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    baseline = project / "scripts" / "_central_junk_drawer_baseline.json"
+    baseline.parent.mkdir(parents=True)
+    exit_code = _GATE.main(
+        [
+            "--project-root",
+            str(project),
+            "--baseline",
+            str(baseline),
+            "--update-baseline",
+        ]
+    )
+    assert exit_code == 0
+    payload = json.loads(baseline.read_text(encoding="utf-8"))
+    assert set(payload["counts"]) == {
+        "src/synthorg/core/enums.py",
+        "src/synthorg/api/state.py",
+    }

@@ -24,7 +24,7 @@ from synthorg.observability.events.api import (
     API_AUDIT_RETENTION,
     API_WS_TICKET_CLEANUP,
 )
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.webhook_receipt import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
 )
 

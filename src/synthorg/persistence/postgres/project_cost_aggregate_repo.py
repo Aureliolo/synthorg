@@ -28,7 +28,7 @@ from synthorg.budget.project_cost_aggregate import ProjectCostAggregate
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.persistence import (
+from synthorg.observability.events.persistence.project_cost_agg import (
     PERSISTENCE_PROJECT_COST_AGG_CURRENCY_PIN_MISSING,
     PERSISTENCE_PROJECT_COST_AGG_DESERIALIZE_FAILED,
     PERSISTENCE_PROJECT_COST_AGG_FETCH_FAILED,
