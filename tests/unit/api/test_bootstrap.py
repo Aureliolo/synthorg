@@ -57,7 +57,10 @@ def make_config_resolver() -> Callable[..., ConfigResolver]:
     """
 
     def _make(agents: tuple[AgentConfig, ...] = ()) -> ConfigResolver:
-        return mock_of[ConfigResolver](get_agents=AsyncMock(return_value=agents))
+        resolver: ConfigResolver = mock_of[ConfigResolver](
+            get_agents=AsyncMock(return_value=agents),
+        )
+        return resolver
 
     return _make
 

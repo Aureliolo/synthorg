@@ -3628,7 +3628,7 @@
     },
     {
       "kind": "code",
-      "loc": 79,
+      "loc": 75,
       "loc_cap": 500,
       "module": "src/synthorg/config/utils.py",
       "owning_feature": null
