@@ -5,8 +5,8 @@ import {
   type Edge,
   type EdgeMouseHandler,
   type Node,
+  type OnNodeDrag,
 } from '@xyflow/react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
 import { LiveRegion } from '@/components/ui/live-region'
 import { AgentNode } from './AgentNode'
 import { CeoNode } from './CeoNode'
@@ -82,9 +82,9 @@ export interface OrgChartCanvasProps {
   onEdgeMouseEnter: EdgeMouseHandler
   onEdgeMouseLeave: EdgeMouseHandler
   onEdgeClick: EdgeMouseHandler
-  handleNodeDragStart: (event: ReactMouseEvent, node: Node) => void
-  handleNodeDrag: (event: ReactMouseEvent, node: Node) => void
-  handleNodeDragStop: (event: ReactMouseEvent, node: Node) => void
+  handleNodeDragStart: OnNodeDrag<Node>
+  handleNodeDrag: OnNodeDrag<Node>
+  handleNodeDragStop: OnNodeDrag<Node>
   dragEnabled: boolean
   showMinimap: boolean
   filterOverlay: React.ReactNode
