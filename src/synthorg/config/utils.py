@@ -54,10 +54,6 @@ def to_float(value: object, *, field_name: str = "value") -> float:
     Raises:
         ValueError: If *value* cannot be converted to float.
     """
-    if value is None:
-        msg = f"Expected numeric value for {field_name}, got None"
-        logger.warning(CONFIG_CONVERSION_ERROR, field=field_name, error=msg)
-        raise ValueError(msg)
     if isinstance(value, (str, int, float)) and not isinstance(value, bool):
         try:
             return float(value)
@@ -89,7 +85,7 @@ def deep_merge(
     }
     for key, value in override.items():
         existing = result.get(key)
-        if isinstance(existing, dict) and isinstance(value, dict):
+        if isinstance(existing, Mapping) and isinstance(value, Mapping):
             result[key] = deep_merge(existing, value)
         else:
             result[key] = copy.deepcopy(value)

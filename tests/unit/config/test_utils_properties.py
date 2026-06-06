@@ -129,6 +129,20 @@ class TestDeepMergeProperties:
         assert result == {"a": 1, "nested": {"x": 1}, "b": 2}
         assert isinstance(result, dict)
 
+    def test_recursively_merges_nested_non_dict_mapping(self) -> None:
+        """A nested non-dict ``Mapping`` override merges, not overwrites.
+
+        The recursion guard checks ``Mapping`` rather than ``dict``, so a
+        nested ``MappingProxyType`` in the override merges key-wise with
+        the base rather than replacing it wholesale.
+        """
+        base = {"nested": {"x": 1}}
+        override = {"nested": MappingProxyType({"y": 2})}
+
+        result = deep_merge(base, override)
+
+        assert result == {"nested": {"x": 1, "y": 2}}
+
 
 # ── to_float ────────────────────────────────────────────────────
 
