@@ -464,7 +464,7 @@
     },
     {
       "kind": "code",
-      "loc": 131,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/api/bootstrap.py",
       "owning_feature": "api_core"
@@ -3614,21 +3614,21 @@
     },
     {
       "kind": "code",
-      "loc": 209,
+      "loc": 218,
       "loc_cap": 500,
       "module": "src/synthorg/config/rate_limits.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 759,
+      "loc": 758,
       "loc_cap": 500,
       "module": "src/synthorg/config/schema.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 55,
+      "loc": 79,
       "loc_cap": 500,
       "module": "src/synthorg/config/utils.py",
       "owning_feature": null

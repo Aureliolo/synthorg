@@ -12,6 +12,11 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
 from synthorg.communication.config import CommunicationConfig
+from synthorg.config.provider_schema import (
+    LocalModelParams,
+    ProviderConfig,
+    ProviderModelConfig,
+)
 from synthorg.core.company import (
     CompanyConfig,
     Department,
@@ -63,13 +68,6 @@ from synthorg.tools.web.config import WebToolsConfig
 from synthorg.workers.config import QueueConfig
 
 logger = get_logger(__name__)
-
-
-from synthorg.config.provider_schema import (  # noqa: E402
-    LocalModelParams,
-    ProviderConfig,
-    ProviderModelConfig,
-)
 
 __all__ = [
     "LocalModelParams",
@@ -167,11 +165,10 @@ class RoutingConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Agent configuration from YAML.
 
-    Uses raw dicts for personality, model, memory, tools, and authority
-    because :class:`~synthorg.core.agent.AgentIdentity` has runtime
-    fields (``id``, ``hiring_date``, ``status``) that are not present in
-    config.  The engine constructs full ``AgentIdentity`` objects at
-    startup.
+    Personality, model, memory, tools, and authority stay raw dicts so
+    wizard-emitted intermediate keys (e.g. a resolved ``tier``) round-trip
+    through validation that ``extra="forbid"`` sub-models would reject; the
+    engine rehydrates each into its typed form at startup.
 
     Attributes:
         name: Agent display name.
@@ -230,7 +227,7 @@ class AgentConfig(BaseModel):
     )
     autonomy_level: AutonomyLevel | None = Field(
         default=None,
-        description="Per-agent autonomy level override (D6)",
+        description="Per-agent autonomy level override; None inherits the default.",
     )
     strategic_output_mode: StrategicOutputMode | None = Field(
         default=None,

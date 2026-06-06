@@ -1,6 +1,8 @@
 """Property-based tests for config utility functions (deep_merge, to_float)."""
 
 import copy
+from decimal import Decimal
+from types import MappingProxyType
 
 import pytest
 from hypothesis import given
@@ -112,6 +114,21 @@ class TestDeepMergeProperties:
             if not (key in a and isinstance(a[key], dict) and isinstance(value, dict)):
                 assert result[key] == value
 
+    def test_accepts_non_dict_mapping(self) -> None:
+        """Inputs may be any read-only ``Mapping``, not just ``dict``.
+
+        Guards the signature widening from ``dict`` to ``Mapping``: a
+        ``MappingProxyType`` at the top level merges and yields a plain
+        ``dict`` result.
+        """
+        base = MappingProxyType({"a": 1, "nested": {"x": 1}})
+        override = MappingProxyType({"b": 2})
+
+        result = deep_merge(base, override)
+
+        assert result == {"a": 1, "nested": {"x": 1}, "b": 2}
+        assert isinstance(result, dict)
+
 
 # ── to_float ────────────────────────────────────────────────────
 
@@ -163,3 +180,24 @@ class TestToFloatProperties:
         """
         result = to_float(value)
         assert isinstance(result, float)
+
+    @pytest.mark.parametrize("value", [True, False])
+    def test_bool_rejected(self, value: bool) -> None:
+        """``bool`` is rejected though it is an ``int`` subclass.
+
+        A YAML boolean landing in a numeric field is almost always a
+        mistake; rejecting it matches the rate-limit override validators.
+        """
+        with pytest.raises(ValueError, match="numeric value"):
+            to_float(value)
+
+    @pytest.mark.parametrize("value", [Decimal("1.5"), Decimal(0)])
+    def test_decimal_rejected(self, value: Decimal) -> None:
+        """``Decimal`` is rejected by the ``str``/``int``/``float`` gate.
+
+        The old ``float(value)`` accepted any ``__float__`` implementer;
+        the narrowed contract no longer does.  No config caller passes a
+        ``Decimal`` (YAML yields only str/int/float/bool/None).
+        """
+        with pytest.raises(ValueError, match="numeric value"):
+            to_float(value)

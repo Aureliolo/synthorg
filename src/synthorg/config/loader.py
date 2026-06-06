@@ -228,7 +228,7 @@ def _validate_config_dict(
     """Validate a raw config dict against :class:`RootConfig`.
 
     Args:
-        data: Merged configuration dict.
+        data: Merged configuration mapping.
         source_file: File path label for error messages.
         line_map: Dot-path to (line, col) mapping for error enrichment.
 
@@ -336,10 +336,10 @@ def _substitute_env_vars(
 ) -> dict[str, object]:
     """Substitute ``${VAR}`` and ``${VAR:-default}`` in string values.
 
-    Walks the dict recursively, replacing environment variable
-    placeholders in string values.  Non-string values (int, float,
-    bool, None) are passed through unchanged.  Returns a new dict;
-    the input is never mutated.
+    Delegates recursive traversal to :func:`_walk_substitute`, replacing
+    environment variable placeholders in string values.  Non-string
+    values (int, float, bool, None) are passed through unchanged.
+    Returns a new dict; the input is never mutated.
 
     Args:
         data: Configuration dict to process.

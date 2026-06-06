@@ -1,6 +1,6 @@
 """Unit tests for agent bootstrap from persisted config."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,7 +11,7 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-from tests._shared import make_app_state, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of
 
 
 def _make_agent_config(
@@ -43,10 +43,15 @@ def registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-def config_resolver() -> AsyncMock:
-    """Create a mock ConfigResolver."""
-    resolver = AsyncMock()
-    resolver.get_agents = AsyncMock(return_value=())
+def config_resolver() -> ConfigResolver:
+    """Create a spec'd mock ConfigResolver.
+
+    Autospec via ``mock_of`` makes a method-name typo (``get_agnts``)
+    raise loudly instead of silently producing a truthy child mock.
+    """
+    resolver: ConfigResolver = mock_of[ConfigResolver](
+        get_agents=AsyncMock(return_value=()),
+    )
     return resolver
 
 
@@ -139,21 +144,26 @@ class TestBootstrapAgents:
         assert count == 1
         assert await registry.agent_count() == 1
 
-    async def test_sets_hiring_date_to_today(
+    async def test_sets_hiring_date_from_clock(
         self,
         registry: AgentRegistryService,
         config_resolver: AsyncMock,
     ) -> None:
-        """Bootstrapped agents have hiring_date set to today."""
+        """Hiring date is read from the injected clock, not wall time.
+
+        Pinning the clock removes the midnight-boundary race that a
+        direct ``datetime.now()`` read would otherwise carry.
+        """
         from synthorg.api.bootstrap import bootstrap_agents
 
         config_resolver.get_agents.return_value = (_make_agent_config(name="alice"),)
+        clock = FakeClock(start=datetime(2026, 3, 14, 9, 0, tzinfo=UTC))
 
-        await bootstrap_agents(config_resolver, registry)
+        await bootstrap_agents(config_resolver, registry, clock=clock)
 
         agents = await registry.list_active()
         assert len(agents) == 1
-        assert agents[0].hiring_date == datetime.now(UTC).date()
+        assert agents[0].hiring_date == date(2026, 3, 14)
 
     async def test_preserves_agent_level(
         self,

@@ -265,6 +265,24 @@ class TestAgentConfig:
         assert a.level == SeniorityLevel.SENIOR
         assert a.personality == {"traits": ["analytical"]}
 
+    def test_non_json_value_in_raw_field_rejected(self) -> None:
+        """A non-JSON value in a raw-config field is rejected.
+
+        Guards the ``dict[str, Any]`` to ``dict[str, JsonValue]``
+        tightening: an arbitrary object is not a ``JsonValue`` and must
+        fail at the model boundary instead of slipping through to the
+        sub-model rehydration at bootstrap time.  A bare ``object()`` is
+        used because it cannot be coerced to any ``JsonValue`` member
+        (a tuple, by contrast, Pydantic would coerce to a list).
+        """
+        with pytest.raises(ValidationError):
+            AgentConfig(
+                name="Alice",
+                role="dev",
+                department="eng",
+                personality={"traits": object()},  # type: ignore[dict-item]
+            )
+
     def test_blank_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AgentConfig(name="", role="dev", department="eng")

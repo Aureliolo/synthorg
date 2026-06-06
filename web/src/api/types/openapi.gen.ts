@@ -5237,7 +5237,7 @@ export type components = {
                 } | string | boolean | number | null;
             };
             /**
-             * @description Per-agent autonomy level override (D6)
+             * @description Per-agent autonomy level override; None inherits the default.
              * @enum {string|null}
              */
             readonly autonomy_level: "full" | "semi" | "supervised" | "locked" | null;
