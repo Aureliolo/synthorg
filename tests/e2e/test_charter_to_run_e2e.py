@@ -18,7 +18,7 @@ from collections.abc import AsyncGenerator
 from datetime import date
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import uuid4, uuid5
 
 import pytest
 
@@ -50,7 +50,7 @@ from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.charter.config import CharterConfig
-from synthorg.meta.charter.dispatch import CharterDispatcher, charter_project_id
+from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.models import InterviewTurnArgs, ProjectCharter
 from synthorg.meta.charter.service import CharterInterviewService
 from synthorg.meta.charter.strategy import LLMCharterInterviewer
@@ -445,7 +445,7 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     assert result.charter.task_id == result.task_id
 
     # A new project was created at the deterministic charter-derived id.
-    expected_project = str(charter_project_id(charter_id))
+    expected_project = str(uuid5(PROJECT_NAMESPACE, f"charter-{charter_id}"))
     assert result.project_id == expected_project
     project = await persistence.projects.get(NotBlankStr(expected_project))
     assert project is not None

@@ -10376,7 +10376,7 @@
     },
     {
       "kind": "code",
-      "loc": 401,
+      "loc": 389,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"

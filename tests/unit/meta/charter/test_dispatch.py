@@ -16,7 +16,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem
 from synthorg.engine.pipeline.protocol import WorkPipeline
-from synthorg.meta.charter.dispatch import _PROJECT_NAMESPACE, CharterDispatcher
+from synthorg.meta.charter.dispatch import PROJECT_NAMESPACE, CharterDispatcher
 from synthorg.meta.charter.models import (
     BudgetEnvelope,
     ProjectCharter,
@@ -35,9 +35,9 @@ pytestmark = pytest.mark.unit
 _START = datetime(2026, 5, 22, 9, 0, 0, tzinfo=UTC)
 _CURRENCY = "USD"
 # The dispatcher derives a new project's id deterministically as
-# ``uuid5(_PROJECT_NAMESPACE, f"charter-{charter.id}")`` so a retried
+# ``uuid5(PROJECT_NAMESPACE, f"charter-{charter.id}")`` so a retried
 # approval upserts the same project row.
-_EXPECTED_NEW_PROJECT_ID = str(uuid5(_PROJECT_NAMESPACE, "charter-charter-1"))
+_EXPECTED_NEW_PROJECT_ID = str(uuid5(PROJECT_NAMESPACE, "charter-charter-1"))
 
 
 def _charter(**overrides: object) -> ProjectCharter:

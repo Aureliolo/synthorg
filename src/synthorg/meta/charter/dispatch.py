@@ -75,24 +75,10 @@ _ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("charter-interview")
 # uniqueness. Rotating this constant would orphan in-flight forecasts;
 # treat it as part of the persistence contract.
 _FORECAST_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000001")
-_PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000002")
-
-
-def charter_project_id(charter_id: str) -> uuid.UUID:
-    """Return the project id a charter approval derives for its project.
-
-    The id is a deterministic ``uuid5`` of the charter id, so a retried
-    approval upserts one project rather than minting duplicates. Exposed
-    publicly so callers (and tests) can reproduce the mapping without
-    reaching into module internals.
-
-    Args:
-        charter_id: The charter's unique id.
-
-    Returns:
-        The derived project ``UUID``.
-    """
-    return uuid.uuid5(_PROJECT_NAMESPACE, f"charter-{charter_id}")
+# Public so callers and tests can reproduce the charter-to-project id
+# derivation (``uuid5(PROJECT_NAMESPACE, f"charter-{charter_id}")``)
+# without importing a module-private symbol.
+PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000002")
 
 
 def _charter_brief_signal(brief: str, currency: str) -> BriefSignal:
@@ -321,7 +307,7 @@ class CharterDispatcher:
             if existing is None:
                 raise WorkProjectNotFoundError
             return charter.project_id
-        project_uuid = charter_project_id(charter.id)
+        project_uuid = uuid.uuid5(PROJECT_NAMESPACE, f"charter-{charter.id}")
         project_id = NotBlankStr(str(project_uuid))
         deadline = (
             charter.envelope.deadline.isoformat()
