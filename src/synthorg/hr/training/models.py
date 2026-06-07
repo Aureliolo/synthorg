@@ -18,8 +18,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)

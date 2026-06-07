@@ -23,12 +23,7 @@ from synthorg.core.company import (
     EscalationPath,
     WorkflowHandoff,
 )
-from synthorg.core.enums import (
-    AutonomyLevel,
-    CompanyType,
-    SeniorityLevel,
-    StrategicOutputMode,
-)
+from synthorg.core.enums import AutonomyLevel, CompanyType
 from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
@@ -38,6 +33,8 @@ from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.hr.training.config import TrainingConfig
 from synthorg.integrations.config import IntegrationsConfig
 from synthorg.memory.config import CompanyMemoryConfig

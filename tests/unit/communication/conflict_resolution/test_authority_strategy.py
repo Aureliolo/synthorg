@@ -13,7 +13,7 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 

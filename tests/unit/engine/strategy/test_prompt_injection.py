@@ -2,12 +2,13 @@
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.strategy.prompt_injection import (
     build_strategic_prompt_sections,
     should_inject_strategy,
 )
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 from .conftest import make_agent
 

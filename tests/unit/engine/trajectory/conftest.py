@@ -11,9 +11,9 @@ from synthorg.core.agent import (
     PersonalityConfig,
     SkillSet,
 )
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role import Authority
 from synthorg.engine.context import AgentContext
+from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.fixture

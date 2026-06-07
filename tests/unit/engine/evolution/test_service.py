@@ -8,7 +8,6 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.evolution.config import (
     AdapterConfig,
     EvolutionConfig,
@@ -26,6 +25,7 @@ from synthorg.engine.evolution.protocols import (
 )
 from synthorg.engine.evolution.service import EvolutionService
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.seniority import SeniorityLevel
 
 _AGENT_ID = str(uuid4())
 

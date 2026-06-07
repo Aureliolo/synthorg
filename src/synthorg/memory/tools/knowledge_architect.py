@@ -15,12 +15,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import BaseModel
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    AutonomyLevel,
-    OrgFactCategory,
-    SeniorityLevel,
-    ToolCategory,
-)
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory, ToolCategory
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.models import (
     OrgFactAuthor,
     OrgFactWriteRequest,

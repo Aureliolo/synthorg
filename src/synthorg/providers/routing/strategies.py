@@ -9,8 +9,8 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol, runtime_checkable
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role_catalog import get_seniority_info
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
     ROUTING_BUDGET_EXCEEDED,

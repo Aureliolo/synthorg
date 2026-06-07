@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.approval.protocol import ApprovalStoreProtocol
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.guards.review_gate import ReviewGateGuard
 from synthorg.hr.training.guards.sanitization import SanitizationGuard
 from synthorg.hr.training.guards.volume_cap import VolumeCapGuard

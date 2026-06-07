@@ -11,9 +11,9 @@ from psycopg.rows import DictRow, dict_row
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,

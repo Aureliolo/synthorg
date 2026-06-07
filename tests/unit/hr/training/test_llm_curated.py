@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.llm_curated import LLMCurated
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.providers.errors import ProviderError

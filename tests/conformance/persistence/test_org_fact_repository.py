@@ -12,8 +12,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import OrgFactCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.persistence.protocol import PersistenceBackend
 

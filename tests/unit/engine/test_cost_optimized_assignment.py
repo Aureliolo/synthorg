@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.core.enums import Complexity
 from synthorg.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
@@ -11,6 +11,7 @@ from synthorg.engine.assignment.pool_filters import IdentityPoolFilter
 from synthorg.engine.assignment.rankers import CostDescendingRanker
 from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrategy
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_assignment_agent, make_assignment_task
 

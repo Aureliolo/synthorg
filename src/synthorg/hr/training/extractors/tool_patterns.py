@@ -19,8 +19,8 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import SeniorityLevel
     from synthorg.core.types import NotBlankStr
+    from synthorg.hr.seniority import SeniorityLevel
     from synthorg.tools.invocation_record import ToolInvocationRecord
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
 

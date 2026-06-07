@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ApprovalStatus, SeniorityLevel
+from synthorg.core.enums import ApprovalStatus
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.promotion.models import (
     CriterionResult,
@@ -14,6 +14,7 @@ from synthorg.hr.promotion.models import (
     PromotionRecord,
     PromotionRequest,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

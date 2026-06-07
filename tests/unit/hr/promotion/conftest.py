@@ -5,7 +5,6 @@ from datetime import UTC, date, datetime
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
     AgentPerformanceSnapshot,
@@ -18,6 +17,7 @@ from synthorg.hr.promotion.config import (
     PromotionCriteriaConfig,
 )
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 
 # ── Builder Functions ───────────────────────────────────────────
 

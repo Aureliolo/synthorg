@@ -8,8 +8,8 @@ import pytest
 from pydantic import JsonValue
 
 from synthorg.config.schema import AgentConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from tests._shared import FakeClock, make_app_state, mock_of

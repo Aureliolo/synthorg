@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.promotion.threshold_evaluator import ThresholdEvaluator
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_performance_snapshot
 

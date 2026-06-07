@@ -5,9 +5,9 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_agent() -> AgentIdentity:

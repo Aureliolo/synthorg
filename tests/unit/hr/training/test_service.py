@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingGuardDecision,

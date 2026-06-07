@@ -14,11 +14,12 @@ from synthorg.core.agent import (
     ModelConfig,
     PersonalityConfig,
 )
-from synthorg.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_execution import TaskExecution
+from synthorg.hr.seniority import SeniorityLevel
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping

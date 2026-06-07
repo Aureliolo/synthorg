@@ -5,7 +5,6 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
 from synthorg.engine.strategy.models import (
     ConfidenceMetadata,
     ProgressiveConfig,
@@ -13,6 +12,8 @@ from synthorg.engine.strategy.models import (
     StrategicContext,
     StrategyConfig,
 )
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
 @pytest.fixture

@@ -41,7 +41,6 @@ from synthorg.core.enums import (
     ConversationalProposalStatus,
     ConversationStatus,
     Priority,
-    SeniorityLevel,
     TaskStatus,
     TaskType,
 )
@@ -53,6 +52,7 @@ from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,

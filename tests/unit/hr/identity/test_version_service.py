@@ -8,9 +8,9 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.identity.version_service import AgentVersionService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.agent_identity_version import (
     AGENT_IDENTITY_INVALID_REQUEST,
 )

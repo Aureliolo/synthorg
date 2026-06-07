@@ -9,7 +9,6 @@ from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
     Priority,
-    SeniorityLevel,
     TaskStatus,
     TaskType,
 )
@@ -30,6 +29,7 @@ from synthorg.engine.routing.models import (
     RoutingResult,
 )
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_identity(name: str = "test-agent", **kwargs: object) -> AgentIdentity:

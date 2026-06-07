@@ -15,9 +15,10 @@ from pydantic import (
 )
 
 from synthorg.core.company import Team
-from synthorg.core.enums import AutonomyLevel, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import CeremonyPolicyConfig
+from synthorg.hr.seniority import SeniorityLevel
 
 
 class UpdateCompanyRequest(BaseModel):

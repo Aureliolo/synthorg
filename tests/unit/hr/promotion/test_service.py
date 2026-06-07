@@ -7,12 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.core.enums import (
-    ApprovalStatus,
-    Complexity,
-    SeniorityLevel,
-    TaskType,
-)
+from synthorg.core.enums import ApprovalStatus, Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     PromotionApprovalRequiredError,
@@ -31,6 +26,7 @@ from synthorg.hr.promotion.seniority_model_mapping import (
 )
 from synthorg.hr.promotion.service import PromotionService
 from synthorg.hr.promotion.threshold_evaluator import ThresholdEvaluator
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_agent_identity
 

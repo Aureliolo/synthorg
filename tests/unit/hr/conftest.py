@@ -8,13 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import (
-    AgentStatus,
-    AutonomyLevel,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import AgentStatus, AutonomyLevel, TaskStatus, TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -23,6 +17,7 @@ from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import CandidateCard, FiringRequest, HiringRequest
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 
 # ── Model Config Helper ────────────────────────────────────────
 

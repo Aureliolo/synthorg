@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Final, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
@@ -18,6 +17,7 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_SUMMARY,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator, PromptTokenEstimator
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 

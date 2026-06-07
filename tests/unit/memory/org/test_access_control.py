@@ -2,7 +2,8 @@
 
 import pytest
 
-from synthorg.core.enums import OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import OrgFactCategory
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.access_control import (
     CategoryWriteRule,
     WriteAccessConfig,

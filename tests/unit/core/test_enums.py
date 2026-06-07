@@ -21,14 +21,13 @@ from synthorg.core.enums import (
     Priority,
     ProjectStatus,
     RiskTolerance,
-    SeniorityLevel,
     SkillPattern,
     TaskStatus,
     TaskType,
     WorkflowEdgeType,
     WorkflowNodeType,
-    compare_seniority,
 )
+from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 
 # ── Member Counts ──────────────────────────────────────────────────
 

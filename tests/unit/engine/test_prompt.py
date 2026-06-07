@@ -17,7 +17,6 @@ from synthorg.core.enums import (
     CreativityLevel,
     DecisionMakingStyle,
     RiskTolerance,
-    SeniorityLevel,
 )
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt import (
@@ -32,6 +31,7 @@ from synthorg.engine.prompt_template import (
     PROMPT_TEMPLATE_VERSION,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,

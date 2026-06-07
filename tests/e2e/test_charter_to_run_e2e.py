@@ -37,7 +37,6 @@ from synthorg.core.enums import (
     Complexity,
     ConversationStatus,
     Priority,
-    SeniorityLevel,
     TaskStatus,
     TaskType,
 )
@@ -49,6 +48,7 @@ from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.charter.dispatch import CharterDispatcher
 from synthorg.meta.charter.models import InterviewTurnArgs, ProjectCharter

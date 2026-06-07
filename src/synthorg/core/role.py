@@ -2,12 +2,13 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from synthorg.core.enums import DepartmentName, SeniorityLevel
+from synthorg.core.enums import DepartmentName
 from synthorg.core.types import (
     ModelTier,
     NotBlankStr,
     validate_unique_strings,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.ontology.decorator import ontology_entity
 
 

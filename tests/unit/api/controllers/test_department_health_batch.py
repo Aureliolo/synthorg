@@ -17,10 +17,11 @@ from synthorg.api.controllers._department_health import (
     _resolve_snapshots,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.hr.performance.models import AgentPerformanceSnapshot
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import make_app_state
 from tests.unit.hr.pruning.conftest import make_performance_snapshot
 

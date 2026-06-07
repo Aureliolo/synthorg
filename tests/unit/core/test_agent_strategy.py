@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import StrategicOutputMode
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
 def _make_agent(**kwargs: Any) -> AgentIdentity:

@@ -40,7 +40,7 @@ from synthorg.providers.models import (
 from synthorg.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import SeniorityLevel
+    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 _DEFAULT_TEMPERATURE: Final[float] = 0.3

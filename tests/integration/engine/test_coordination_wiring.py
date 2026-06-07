@@ -20,15 +20,12 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.auth.config import AuthConfig
-from synthorg.core.enums import (
-    AgentStatus,
-    CoordinationTopology,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AgentStatus, CoordinationTopology
 from synthorg.core.role import Authority, Skill
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,

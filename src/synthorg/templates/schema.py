@@ -14,18 +14,14 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import (
-    CompanyType,
-    SeniorityLevel,
-    SkillPattern,
-    StrategicOutputMode,
-    WorkflowType,
-)
+from synthorg.core.enums import CompanyType, SkillPattern, WorkflowType
 from synthorg.core.normalization import (
     normalize_ascii_lowercase,
     normalize_identifier,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.memory.config import EmbedderOverrideConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR

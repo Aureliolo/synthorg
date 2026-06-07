@@ -8,14 +8,11 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    MemoryCategory,
-    OrgFactCategory,
-    SeniorityLevel,
-)
+from synthorg.core.enums import MemoryCategory, OrgFactCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult
 from synthorg.hr.errors import MemoryArchivalError
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryQuery

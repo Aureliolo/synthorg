@@ -7,10 +7,11 @@ from unittest.mock import patch
 import pytest
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import MemoryCategory, SeniorityLevel
+from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import MemoryArchivalError
 from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest

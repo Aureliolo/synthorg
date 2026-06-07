@@ -32,7 +32,6 @@ from synthorg.core.enums import (
     Complexity,
     Priority,
     ProjectStatus,
-    SeniorityLevel,
     TaskStatus,
     TaskType,
 )
@@ -49,6 +48,7 @@ from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.state import EngineStateSlice, task_board_entry_adapter_of
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (

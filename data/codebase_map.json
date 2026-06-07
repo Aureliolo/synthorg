@@ -1199,7 +1199,7 @@
     },
     {
       "kind": "code",
-      "loc": 364,
+      "loc": 365,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/setup_models.py",
       "owning_feature": "api_core"
@@ -3621,7 +3621,7 @@
     },
     {
       "kind": "code",
-      "loc": 758,
+      "loc": 755,
       "loc_cap": 500,
       "module": "src/synthorg/config/schema.py",
       "owning_feature": null
@@ -3831,7 +3831,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 763,
+      "loc": 707,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
@@ -3971,14 +3971,14 @@
     },
     {
       "kind": "code",
-      "loc": 205,
+      "loc": 206,
       "loc_cap": 500,
       "module": "src/synthorg/core/role.py",
       "owning_feature": null
     },
     {
       "kind": "code",
-      "loc": 417,
+      "loc": 414,
       "loc_cap": 500,
       "module": "src/synthorg/core/role_catalog.py",
       "owning_feature": null
@@ -6211,7 +6211,7 @@
     },
     {
       "kind": "code",
-      "loc": 285,
+      "loc": 286,
       "loc_cap": 500,
       "module": "src/synthorg/engine/routing/scorer.py",
       "owning_feature": "engine"
@@ -6484,7 +6484,7 @@
     },
     {
       "kind": "code",
-      "loc": 97,
+      "loc": 98,
       "loc_cap": 500,
       "module": "src/synthorg/engine/strategy/output.py",
       "owning_feature": "engine"
@@ -7716,7 +7716,7 @@
     },
     {
       "kind": "code",
-      "loc": 235,
+      "loc": 232,
       "loc_cap": 500,
       "module": "src/synthorg/hr/full_snapshot_strategy.py",
       "owning_feature": "hr"
@@ -7737,7 +7737,7 @@
     },
     {
       "kind": "code",
-      "loc": 464,
+      "loc": 460,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -7968,7 +7968,7 @@
     },
     {
       "kind": "code",
-      "loc": 228,
+      "loc": 229,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/models.py",
       "owning_feature": "hr"
@@ -7989,7 +7989,7 @@
     },
     {
       "kind": "code",
-      "loc": 547,
+      "loc": 544,
       "loc_cap": 500,
       "module": "src/synthorg/hr/promotion/service.py",
       "owning_feature": "hr"
@@ -8276,9 +8276,23 @@
     },
     {
       "kind": "code",
+      "loc": 44,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/seniority.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
       "loc": 106,
       "loc_cap": 500,
       "module": "src/synthorg/hr/state.py",
+      "owning_feature": "hr"
+    },
+    {
+      "kind": "code",
+      "loc": 16,
+      "loc_cap": 500,
+      "module": "src/synthorg/hr/strategy_mode.py",
       "owning_feature": "hr"
     },
     {
@@ -9662,7 +9676,7 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 123,
       "loc_cap": 500,
       "module": "src/synthorg/memory/org/access_control.py",
       "owning_feature": "memory"
@@ -9690,7 +9704,7 @@
     },
     {
       "kind": "code",
-      "loc": 290,
+      "loc": 287,
       "loc_cap": 500,
       "module": "src/synthorg/memory/org/models.py",
       "owning_feature": "memory"
@@ -10159,7 +10173,7 @@
     },
     {
       "kind": "code",
-      "loc": 507,
+      "loc": 503,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/knowledge_architect.py",
       "owning_feature": "memory"
@@ -10656,7 +10670,7 @@
     },
     {
       "kind": "service",
-      "loc": 470,
+      "loc": 471,
       "loc_cap": 600,
       "module": "src/synthorg/meta/chief_of_staff/routing.py",
       "owning_feature": "meta"
@@ -14051,7 +14065,7 @@
     },
     {
       "kind": "code",
-      "loc": 100,
+      "loc": 101,
       "loc_cap": 500,
       "module": "src/synthorg/ontology/sync.py",
       "owning_feature": "ontology"
@@ -14079,7 +14093,7 @@
     },
     {
       "kind": "code",
-      "loc": 125,
+      "loc": 126,
       "loc_cap": 500,
       "module": "src/synthorg/organization/models.py",
       "owning_feature": "organization"
@@ -14177,7 +14191,7 @@
     },
     {
       "kind": "code",
-      "loc": 172,
+      "loc": 173,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/org_fact_marshalling.py",
       "owning_feature": "persistence"
@@ -14989,7 +15003,7 @@
     },
     {
       "kind": "repository",
-      "loc": 487,
+      "loc": 488,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -15794,7 +15808,7 @@
     },
     {
       "kind": "repository",
-      "loc": 478,
+      "loc": 475,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -16998,7 +17012,7 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 163,
       "loc_cap": 500,
       "module": "src/synthorg/security/autonomy/resolver.py",
       "owning_feature": "security"
@@ -18264,6 +18278,13 @@
       "owning_feature": null
     },
     {
+      "kind": "declarative",
+      "loc": 382,
+      "loc_cap": null,
+      "module": "src/synthorg/templates/_preset_data.py",
+      "owning_feature": null
+    },
+    {
       "kind": "code",
       "loc": 113,
       "loc_cap": 500,
@@ -18356,7 +18377,7 @@
     },
     {
       "kind": "code",
-      "loc": 558,
+      "loc": 182,
       "loc_cap": 500,
       "module": "src/synthorg/templates/presets.py",
       "owning_feature": null
@@ -18370,7 +18391,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 527,
+      "loc": 523,
       "loc_cap": null,
       "module": "src/synthorg/templates/schema.py",
       "owning_feature": null

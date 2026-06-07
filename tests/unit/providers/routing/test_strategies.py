@@ -8,7 +8,7 @@ from synthorg.config.schema import (
     RoutingConfig,
     RoutingRuleConfig,
 )
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.routing.errors import (
     ModelResolutionError,
     NoAvailableModelError,

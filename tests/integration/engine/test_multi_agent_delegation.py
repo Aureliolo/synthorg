@@ -31,13 +31,7 @@ from synthorg.core.company import (
     Department,
     Team,
 )
-from synthorg.core.enums import (
-    Complexity,
-    SeniorityLevel,
-    TaskStatus,
-    TaskStructure,
-    TaskType,
-)
+from synthorg.core.enums import Complexity, TaskStatus, TaskStructure, TaskType
 from synthorg.core.role import Authority, Skill
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
@@ -69,6 +63,7 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
     ChatMessage,

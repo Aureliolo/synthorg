@@ -12,12 +12,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import (
-    ActionType,
-    AgentStatus,
-    ApprovalRiskLevel,
-    SeniorityLevel,
-)
+from synthorg.core.enums import ActionType, AgentStatus, ApprovalRiskLevel
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import HiringRequestStatus
@@ -31,6 +26,7 @@ from synthorg.hr.errors import (
 )
 from synthorg.hr.models import CandidateCard, HiringRequest
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
     HIRING_REQUEST_STATUS_TRANSITIONED,

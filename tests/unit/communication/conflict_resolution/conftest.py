@@ -18,7 +18,7 @@ from synthorg.communication.enums import (
     ConflictType,
 )
 from synthorg.core.company import Company, CompanyConfig, Department, Team
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 
 _NOW = datetime(2026, 3, 8, 12, 0, tzinfo=UTC)
 

@@ -4,7 +4,7 @@ import pytest
 import structlog
 
 from synthorg.config.schema import ProviderConfig, RoutingConfig
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.routing import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,

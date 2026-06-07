@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.enums import OnboardingStep
 from synthorg.hr.onboarding_service import OnboardingService
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import TrainingResult
 from synthorg.hr.training.onboarding_integration import (
     TrainingOnboardingBridge,

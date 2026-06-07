@@ -12,7 +12,8 @@ from synthorg.config.schema import (
     RoutingRuleConfig,
     TaskAssignmentConfig,
 )
-from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
     AgentConfigFactory,

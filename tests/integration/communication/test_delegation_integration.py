@@ -32,9 +32,10 @@ from synthorg.core.company import (
     Department,
     Team,
 )
-from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _model_config() -> ModelConfig:

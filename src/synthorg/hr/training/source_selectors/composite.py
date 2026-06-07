@@ -14,7 +14,7 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import SeniorityLevel
+    from synthorg.hr.seniority import SeniorityLevel
     from synthorg.hr.training.protocol import SourceSelector
 
 logger = get_logger(__name__)

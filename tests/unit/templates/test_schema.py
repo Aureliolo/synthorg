@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
+from synthorg.core.enums import CompanyType, SkillPattern
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,

@@ -22,8 +22,8 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.protocol import PersistenceBackend
 
 pytestmark = pytest.mark.integration

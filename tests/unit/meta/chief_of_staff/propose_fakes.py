@@ -19,10 +19,10 @@ from synthorg.core.enums import (
     AgentStatus,
     ConversationalProposalStatus,
     ConversationStatus,
-    SeniorityLevel,
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import (
     Conversation,

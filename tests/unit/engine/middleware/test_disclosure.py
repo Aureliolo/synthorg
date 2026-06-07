@@ -5,11 +5,12 @@ from datetime import UTC, date, datetime
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import Priority, SeniorityLevel, TaskType
+from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.middleware.disclosure import DisclosureMiddleware
 from synthorg.engine.middleware.models import AgentMiddlewareContext, ToolCallResult
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
 
 

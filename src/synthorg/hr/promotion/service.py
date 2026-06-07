@@ -11,11 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import (
-    ApprovalRiskLevel,
-    ApprovalStatus,
-    SeniorityLevel,
-)
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.errors import (
@@ -28,6 +24,7 @@ from synthorg.hr.promotion.models import (
     PromotionRecord,
     PromotionRequest,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.promotion import (
     DEMOTION_APPLIED,

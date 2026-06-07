@@ -11,12 +11,9 @@ from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import (
-    AutonomyLevel,
-    OrgFactCategory,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.org_memory import ORG_MEMORY_MODEL_INVALID
 from synthorg.ontology.decorator import ontology_entity

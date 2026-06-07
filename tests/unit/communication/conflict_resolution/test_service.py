@@ -30,7 +30,7 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.errors import ConflictResolutionError
 from synthorg.communication.event_stream.stream import EventStreamHub
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import mock_of
 
 from .conftest import make_position

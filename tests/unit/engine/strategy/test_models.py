@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import StrategicOutputMode
 from synthorg.engine.strategy.models import (
     BlastRadius,
     ConfidenceMetadata,
@@ -20,6 +19,7 @@ from synthorg.engine.strategy.models import (
     StrategyConfig,
     TimeHorizon,
 )
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
 class TestStrategicOutputMode:

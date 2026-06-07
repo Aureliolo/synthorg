@@ -3,13 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.promotion.config import (
     ModelMappingConfig,
     PromotionApprovalConfig,
     PromotionConfig,
     PromotionCriteriaConfig,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

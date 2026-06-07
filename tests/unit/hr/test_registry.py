@@ -4,9 +4,10 @@
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.hr.errors import AgentAlreadyRegisteredError, AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from tests.unit.hr.conftest import make_agent_identity
 
 

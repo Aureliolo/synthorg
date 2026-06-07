@@ -18,7 +18,7 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.event_stream.types import AgUiEventType
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.mark.unit

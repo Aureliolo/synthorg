@@ -8,7 +8,8 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import STRATEGY_OUTPUT_HANDLED
 

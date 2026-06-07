@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
+from synthorg.core.enums import AgentStatus, Complexity
 from synthorg.core.normalization import compare_ci
 from synthorg.engine.routing.models import RoutingCandidate
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.task_routing import (
     TASK_ROUTING_AGENT_SCORED,

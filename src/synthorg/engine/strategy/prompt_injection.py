@@ -6,7 +6,6 @@ into agent system prompts when strategy configuration is active.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
     untrusted_content_directive,
@@ -14,6 +13,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.engine.strategy.lenses import get_lens_definitions
 from synthorg.engine.strategy.output import build_output_instructions
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.strategy import (
     STRATEGY_LENS_LOOKUP_FAILED,

@@ -24,7 +24,7 @@ from synthorg.communication.delegation.hierarchy import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.core.enums import compare_seniority
+from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import (
     CONFLICT_AUTHORITY_DECIDED,

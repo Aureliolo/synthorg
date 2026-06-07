@@ -20,8 +20,8 @@ from synthorg.communication.enums import (
     ConflictResolutionStrategy,
     ConflictType,
 )
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 
 _MIN_POSITIONS: Final[int] = 2
 

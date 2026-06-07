@@ -15,12 +15,9 @@ from typing import Literal
 
 import aiosqlite
 
-from synthorg.core.enums import (
-    AutonomyLevel,
-    OrgFactCategory,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
     OrgMemoryWriteError,

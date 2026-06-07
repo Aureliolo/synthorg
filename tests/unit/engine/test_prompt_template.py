@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
     DEFAULT_TEMPLATE,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.mark.unit

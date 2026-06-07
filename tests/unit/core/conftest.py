@@ -33,13 +33,13 @@ from synthorg.core.enums import (
     DepartmentName,
     MemoryLevel,
     Priority,
-    SeniorityLevel,
     TaskStatus,
     TaskType,
 )
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
 from synthorg.core.task import AcceptanceCriterion, Task
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import WaitForeverConfig
 
