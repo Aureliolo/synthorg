@@ -3831,7 +3831,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 707,
+      "loc": 704,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null

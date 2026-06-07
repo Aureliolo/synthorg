@@ -68,8 +68,8 @@
     },
     "src/synthorg/api/controllers/artifacts.py": {
       "cap": 500,
-      "loc": 496,
-      "ratio": 0.992,
+      "loc": 498,
+      "ratio": 0.996,
       "tier": "code"
     },
     "src/synthorg/api/controllers/clients.py": {
@@ -944,8 +944,8 @@
     },
     "src/synthorg/persistence/postgres/conversation_repo.py": {
       "cap": 500,
-      "loc": 466,
-      "ratio": 0.932,
+      "loc": 468,
+      "ratio": 0.936,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/escalation_repo.py": {
@@ -956,8 +956,8 @@
     },
     "src/synthorg/persistence/postgres/hr_repositories.py": {
       "cap": 500,
-      "loc": 422,
-      "ratio": 0.844,
+      "loc": 426,
+      "ratio": 0.852,
       "tier": "code"
     },
     "src/synthorg/persistence/postgres/ontology_entity_repo.py": {
@@ -1034,8 +1034,8 @@
     },
     "src/synthorg/persistence/sqlite/hr_repositories.py": {
       "cap": 500,
-      "loc": 413,
-      "ratio": 0.826,
+      "loc": 417,
+      "ratio": 0.834,
       "tier": "code"
     },
     "src/synthorg/persistence/sqlite/ontology_entity_repo.py": {
@@ -1434,7 +1434,6 @@
     "synthorg.observability.events.memory": 46,
     "synthorg.observability.events.meta": 55,
     "synthorg.observability.events.ontology": 20,
-    "synthorg.observability.events.persistence": 122,
     "synthorg.observability.events.provider": 26,
     "synthorg.observability.events.security": 63,
     "synthorg.observability.events.settings": 32,
