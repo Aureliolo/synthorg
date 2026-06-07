@@ -10,7 +10,7 @@ allowed-tools:
   - Task
 ---
 
-# Fan-Out Planner
+# Plan Work
 
 Answer, in one pass, the questions we ask every time we pick up work:
 
@@ -26,6 +26,20 @@ This skill is planning plus orchestration. It does not create worktrees itself: 
 
 ---
 
+## Optimisation objective: least TOTAL work (criticality is NEVER a factor)
+
+The goal is to minimise **total work across the whole backlog**, not to maximise parallelism for its own sake, and never to chase "important" issues first. Criticality / `prio:*` / "how urgent it looks" is NEVER an input to what we start or in what order. Ignore it completely.
+
+What we actually optimise: the sequence with the **smallest sum of touched files / redone work** to clear the backlog. That changes ordering whenever issues overlap:
+
+- **Rework-first.** If one issue rewrites, renames, moves, or deletes code that other open issues also touch or depend on, schedule that rework FIRST and let the others land on the finished surface. Doing the others first means redoing them (or resolving conflicts) after the rework lands, which is strictly more total work. A high-overlap foundational change is worth blocking a whole wave for, because it makes every downstream issue edit each file once instead of twice.
+- **Don't parallelise work that will be reworked.** A candidate that is file-disjoint today but sits on a surface a pending rework will churn is NOT free to start: starting it just buys a future rebase/redo. Treat "will be reworked by an inflight or queued foundational change" as a **soft dependency** and hold it, even though the conflict scan says "safe".
+- **Least-total-work can beat most-worktrees-now.** Sometimes the right plan is "land one foundational rework alone, then fan out wide" rather than "start five overlapping things now and merge-resolve forever." Prefer the smaller total even if it means fewer worktrees this instant.
+
+This is exactly why a program that sequences a sweeping rework (an identifier or enum migration that touches every package, say) ahead of per-package polish is correct: the rework touches what the polish touches, so rework-first means each package is edited once, not twice. When you report the plan, justify the ordering by total-work, never by criticality.
+
+---
+
 ## Hard rules (INVARIANTS, never violate)
 
 1. **Every proposed worktree must FULLY close at least one issue.** No exploratory, "groundwork", or partial worktrees. If a candidate can't be driven to an issue's full acceptance criteria, it is not proposed. (Epic-validation worktrees satisfy this by closing the epic; see Step 6.)
@@ -34,7 +48,7 @@ This skill is planning plus orchestration. It does not create worktrees itself: 
 4. **Conflict-free.** A proposed worktree's file/package footprint must be disjoint from (a) every inflight worktree and (b) every other proposed worktree in the same wave. Any shared `src/`, `web/`, or `cli/` file is a conflict (be conservative; shared generated `data/*.json` also counts).
 5. **Respect declared dependencies.** Only the head of a sequential chain is startable. A candidate is "unblocked" only when every `#N` in its `## Dependencies` section is closed, or is an inflight worktree expected to land first (surface that assumption explicitly).
 6. **Exclusions (standing).** Drop `renovate`, `label:backlog`, `label:maybe`, `label:maybe-future`, and Renovate/dependency-update PRs from the candidate pool unless the user explicitly asks for them. Epics/trackers are NOT startable issues: they're used only for grouping and epic-completion detection (Step 6).
-7. **Never group, sort, lead, or recommend by `prio:*` criticality.** Group by theme, epic, or dependency. Recommend the next set by what's unblocked plus parallelisable, never by how "critical" an issue is labelled.
+7. **Criticality is NEVER a factor.** Never group, sort, lead, recommend, or sequence by `prio:*` or any notion of "importance" or "urgency". Ignore it completely. Order purely by least total work (see Optimisation objective) plus what's unblocked and parallelisable. Group by theme, epic, or dependency.
 
 ---
 
@@ -139,9 +153,10 @@ Record per candidate: unblocked?, package set, estimated file count, the issue(s
 
 Start from the **unblocked** candidates only (Rule 5). Then:
 
-1. **Drop anything conflicting with inflight** (Rule 4): if a candidate's package set intersects ANY inflight worktree's package set, it's not startable this wave. Say so, and name the blocking inflight branch.
-2. **Greedy maximal disjoint set** among survivors: sort by footprint ascending; add a candidate to the wave iff its package set is disjoint from every already-selected candidate. Repeat until none fit. This greedy pass over a low-conflict, package-partitioned pool yields the maximum (the per-package hardening slices are disjoint by construction, so greedy is optimal there).
-3. **Enforce 300-file cap** (Rule 2): any single candidate estimated above 300 is set aside as "split first", not proposed.
+1. **Hold soft-dependents (rework-first).** Drop any candidate that touches, or builds on, a surface that a pending foundational rework (inflight, or queued ahead of it) will churn, even if it is file-disjoint today. Starting it just buys a future redo/rebase, which is more total work, not less. Hold it until the rework lands. (See the Optimisation objective.)
+2. **Drop anything conflicting with inflight** (Rule 4): if a candidate's package set intersects ANY inflight worktree's package set, it's not startable this wave. Say so, and name the blocking inflight branch.
+3. **Greedy maximal disjoint set** among survivors: sort by footprint ascending; add a candidate to the wave iff its package set is disjoint from every already-selected candidate. Repeat until none fit. This greedy pass over a low-conflict, package-partitioned pool yields the maximum (the per-package hardening slices are disjoint by construction, so greedy is optimal there).
+4. **Enforce 300-file cap** (Rule 2): any single candidate estimated above 300 is set aside as "split first", not proposed.
 
 The size of the resulting set is the **max safe parallelism right now**. Also compute the **post-unlock** number: if a sequential chain or an inflight worktree is the only blocker, state what lands first and how many worktrees fan out immediately after (for example, "1 now; 11 once #2245 lands").
 
