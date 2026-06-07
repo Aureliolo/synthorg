@@ -73,8 +73,7 @@ monotonically (enforced by `check_baseline_growth.py`).
 In addition, an explicit god-module allowlist (`core/enums.py`) must
 net-shrink on every PR. This gate (`check_no_growth_in_god_modules.py`)
 prevents the central files from absorbing more responsibility while PR 4
-decomposes them. (`observability/events/persistence.py` left the allowlist
-in #2246 when it dissolved into a per-subdomain package.)
+decomposes them.
 The five `api/` entries (`app.py`, `state.py`, `auto_wire.py`,
 `lifecycle.py`, `lifecycle_builder.py`) drained from the allowlist in
 PR 3 (#2049) once the controller decomposition brought each under its
@@ -120,9 +119,8 @@ All baseline-driven, all wired into `.pre-commit-config.yaml`:
 1. `check_module_size_budget.py` -- the tier-cap enforcer above.
 2. `check_no_growth_in_god_modules.py` -- god-module net-shrink rule.
 3. `check_no_central_junk_drawer.py` -- no new entries in
-   `core/enums.py` / `AppState.__slots__` (`events/persistence.py`
-   dissolved into a per-subdomain package in #2246). Remaining
-   dissolution tracked in #2051.
+   `core/enums.py` / `AppState.__slots__`. Dissolution tracked in
+   #2051.
 4. `check_no_circular_imports.py` -- AST-driven Tarjan SCC detection
    across `src/synthorg/`. Excludes `TYPE_CHECKING` and function-local
    imports.
@@ -274,8 +272,7 @@ British dictionary).
   `settings/definitions/*.py` >500 LOC). Group-F audit (#2052) tags
   the rest.
 - Dissolution of `core/enums.py` into per-domain files is tracked in
-  #2051 (out of scope of this EPIC); `events/persistence.py` was
-  dissolved into a per-subdomain package in #2246.
+  #2051 (out of scope of this EPIC).
 
 ## Alternatives considered
 
@@ -330,9 +327,7 @@ into per-sub-domain packages; `api/auto_wire.py`, `api/lifecycle.py`, and
 five `api/` entries (`app.py`, `state.py`, `auto_wire.py`, `lifecycle.py`,
 `lifecycle_builder.py`) drained from the `check_no_growth_in_god_modules.py`
 allowlist and are now governed at their tier cap by
-`check_module_size_budget.py`; `core/enums.py` remains net-shrink until #2051
-(`observability/events/persistence.py` dissolved into a per-subdomain package
-in #2246).
+`check_module_size_budget.py`; `core/enums.py` remains net-shrink until #2051.
 `api/state.py` (354 LOC) is governed by the code-tier 500 cap (the EPIC's
 `<150` figure was descriptive, not a #2049 gate). The decomposed sub-package
 files carry no baseline entries, so they are enforced at the controller-tier
@@ -380,8 +375,8 @@ is EPIC #2056's charter (Section F), not PR 4's. Import-layering contracts
 
 | Exemption | Mechanism |
 |-----------|-----------|
-| `_central_junk_drawer_baseline.json` (62 enums + 176 AppState slots; the 380-events entry was lifted in #2246) | #2051 dissolves the remaining two files per-domain |
-| `# module-kind: declarative` header on `core/enums.py` (`events/persistence.py`'s header was removed with its #2246 dissolution) | File deleted by #2051 |
+| `_central_junk_drawer_baseline.json` (62 enums + 176 AppState slots) | #2051 dissolves the remaining two files per-domain |
+| `# module-kind: declarative` header on `core/enums.py` | File deleted by #2051 |
 
 ### E. Lifted by #2052 (Group-F audit)
 
@@ -455,8 +450,7 @@ entries until their upstream blocker clears.
 - EPIC #2046: the umbrella program this PR opens.
 - Sub-issues #2048 (manifest substrate), #2049 (controller
   decomposition), #2050 (repos/services + import-layering).
-- Follow-up #2051 (dissolve `core/enums.py`; `events/persistence.py`
-  dissolved in #2246).
+- Follow-up #2051 (dissolve `core/enums.py`).
 - Follow-up #2052 (audit Group-F legitimately-complex files).
 - Follow-ups required by Section F of the Exemption Ledger above;
   filed under the EPIC #2046 master ledger.
