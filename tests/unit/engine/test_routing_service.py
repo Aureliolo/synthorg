@@ -6,13 +6,7 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    AgentStatus,
-    Complexity,
-    Priority,
-    SeniorityLevel,
-    TaskType,
-)
+from synthorg.core.enums import AgentStatus, Complexity, Priority, TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.models import (
@@ -23,6 +17,7 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.routing.scorer import AgentTaskScorer
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.routing.topology_selector import TopologySelector
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_agent(  # noqa: PLR0913

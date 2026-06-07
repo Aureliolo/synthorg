@@ -21,13 +21,11 @@ from synthorg.core.enums import (
     Priority,
     ProjectStatus,
     RiskTolerance,
-    SeniorityLevel,
     SkillPattern,
     TaskStatus,
     TaskType,
     WorkflowEdgeType,
     WorkflowNodeType,
-    compare_seniority,
 )
 
 # ── Member Counts ──────────────────────────────────────────────────
@@ -35,9 +33,6 @@ from synthorg.core.enums import (
 
 @pytest.mark.unit
 class TestEnumMemberCounts:
-    def test_seniority_level_has_8_members(self) -> None:
-        assert len(SeniorityLevel) == 8
-
     def test_agent_status_has_4_members(self) -> None:
         assert len(AgentStatus) == 4
 
@@ -136,10 +131,6 @@ class TestEnumMemberCounts:
 
 @pytest.mark.unit
 class TestEnumStringValues:
-    def test_seniority_levels_are_lowercase(self) -> None:
-        for member in SeniorityLevel:
-            assert member.value == member.value.lower()
-
     def test_agent_status_values(self) -> None:
         assert AgentStatus.ACTIVE.value == "active"
         assert AgentStatus.ON_LEAVE.value == "on_leave"
@@ -333,25 +324,25 @@ class TestEnumStringValues:
 @pytest.mark.unit
 class TestStrEnumBehavior:
     def test_strenum_is_string(self) -> None:
-        assert isinstance(SeniorityLevel.JUNIOR, str)
+        assert isinstance(AgentStatus.ACTIVE, str)
 
     def test_strenum_equality_with_string(self) -> None:
-        assert SeniorityLevel.JUNIOR == "junior"  # type: ignore[comparison-overlap]
+        assert AgentStatus.ACTIVE == "active"  # type: ignore[comparison-overlap]
 
     def test_strenum_iteration(self) -> None:
-        levels = list(SeniorityLevel)
-        assert len(levels) == 8
-        assert levels[0] == SeniorityLevel.JUNIOR
+        statuses = list(AgentStatus)
+        assert len(statuses) == 4
+        assert statuses[0] == AgentStatus.ACTIVE
 
     def test_strenum_membership(self) -> None:
-        assert "senior" in SeniorityLevel.__members__.values()
+        assert "terminated" in AgentStatus.__members__.values()
 
     def test_strenum_from_value(self) -> None:
-        assert SeniorityLevel("junior") is SeniorityLevel.JUNIOR
+        assert AgentStatus("active") is AgentStatus.ACTIVE
 
     def test_strenum_invalid_value_raises(self) -> None:
-        with pytest.raises(ValueError, match="not_a_level"):
-            SeniorityLevel("not_a_level")
+        with pytest.raises(ValueError, match="not_a_status"):
+            AgentStatus("not_a_status")
 
 
 # ── Pydantic Integration ──────────────────────────────────────────
@@ -363,29 +354,29 @@ class TestEnumPydanticIntegration:
         from pydantic import BaseModel
 
         class _M(BaseModel):
-            level: SeniorityLevel
+            status: AgentStatus
 
-        m = _M(level=SeniorityLevel.SENIOR)
+        m = _M(status=AgentStatus.ACTIVE)
         dumped = m.model_dump()
-        assert dumped["level"] == "senior"
+        assert dumped["status"] == "active"
 
     def test_enum_deserializes_from_string(self) -> None:
         from pydantic import BaseModel
 
         class _M(BaseModel):
-            level: SeniorityLevel
+            status: AgentStatus
 
-        m = _M.model_validate({"level": "senior"})
-        assert m.level is SeniorityLevel.SENIOR
+        m = _M.model_validate({"status": "active"})
+        assert m.status is AgentStatus.ACTIVE
 
     def test_enum_invalid_value_rejected(self) -> None:
         from pydantic import BaseModel, ValidationError
 
         class _M(BaseModel):
-            level: SeniorityLevel
+            status: AgentStatus
 
         with pytest.raises(ValidationError):
-            _M.model_validate({"level": "invalid"})
+            _M.model_validate({"status": "invalid"})
 
     def test_enum_json_roundtrip(self) -> None:
         from pydantic import BaseModel
@@ -399,37 +390,6 @@ class TestEnumPydanticIntegration:
         restored = _M.model_validate_json(json_str)
         assert restored.status is AgentStatus.ACTIVE
         assert restored.tier is CostTier.PREMIUM
-
-
-# ── compare_seniority ────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestCompareSeniority:
-    def test_higher_is_positive(self) -> None:
-        assert compare_seniority(SeniorityLevel.C_SUITE, SeniorityLevel.JUNIOR) > 0
-
-    def test_lower_is_negative(self) -> None:
-        assert compare_seniority(SeniorityLevel.JUNIOR, SeniorityLevel.SENIOR) < 0
-
-    def test_equal_is_zero(self) -> None:
-        assert compare_seniority(SeniorityLevel.LEAD, SeniorityLevel.LEAD) == 0
-
-    def test_adjacent_levels(self) -> None:
-        assert compare_seniority(SeniorityLevel.MID, SeniorityLevel.JUNIOR) > 0
-        assert compare_seniority(SeniorityLevel.SENIOR, SeniorityLevel.MID) > 0
-
-    @pytest.mark.parametrize(
-        ("a", "b"),
-        [
-            (SeniorityLevel.VP, SeniorityLevel.DIRECTOR),
-            (SeniorityLevel.C_SUITE, SeniorityLevel.VP),
-            (SeniorityLevel.PRINCIPAL, SeniorityLevel.LEAD),
-        ],
-    )
-    def test_ordering_pairs(self, a: SeniorityLevel, b: SeniorityLevel) -> None:
-        assert compare_seniority(a, b) > 0
-        assert compare_seniority(b, a) < 0
 
 
 # ── Package layout ───────────────────────────────────────────────

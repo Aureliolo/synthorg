@@ -8,12 +8,12 @@ human approval.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import SeniorityLevel, compare_seniority
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.promotion.models import (
     PromotionApprovalDecision,
     PromotionEvaluation,
 )
+from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.promotion import PROMOTION_APPROVAL_DECIDED
 

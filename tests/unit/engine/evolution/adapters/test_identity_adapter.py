@@ -6,10 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import (
-    AgentStatus,
-    SeniorityLevel,
-)
+from synthorg.core.enums import AgentStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.adapters.identity_adapter import IdentityAdapter
 from synthorg.engine.evolution.models import (
@@ -18,6 +15,7 @@ from synthorg.engine.evolution.models import (
     AdaptationSource,
 )
 from synthorg.engine.identity.store.protocol import IdentityVersionStore
+from synthorg.hr.seniority import SeniorityLevel
 
 
 @pytest.mark.unit

@@ -13,12 +13,12 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     PersonalityNotFoundError,
     TrainingSessionNotFoundError,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.state import (
     HrStateSlice,
     personality_service_of,

@@ -17,8 +17,8 @@ from synthorg.observability.events.training import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import SeniorityLevel
     from synthorg.core.types import NotBlankStr
+    from synthorg.hr.seniority import SeniorityLevel
     from synthorg.memory.models import MemoryEntry
     from synthorg.memory.protocol import MemoryBackend
 

@@ -5,12 +5,7 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    Complexity,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import Complexity, TaskStatus, TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.assignment.manual import ManualAssignmentStrategy
@@ -23,6 +18,7 @@ from synthorg.engine.assignment.scoring_based import ScoringBasedAssignmentStrat
 from synthorg.engine.assignment.service import TaskAssignmentService
 from synthorg.engine.errors import TaskAssignmentError
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

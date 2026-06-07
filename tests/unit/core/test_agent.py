@@ -25,9 +25,9 @@ from synthorg.core.enums import (
     MemoryCategory,
     MemoryLevel,
     RiskTolerance,
-    SeniorityLevel,
 )
 from synthorg.core.role import Authority, Skill
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
     AgentIdentityFactory,

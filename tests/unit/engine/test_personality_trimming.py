@@ -14,7 +14,6 @@ from synthorg.core.enums import (
     CreativityLevel,
     DecisionMakingStyle,
     RiskTolerance,
-    SeniorityLevel,
 )
 from synthorg.engine._prompt_helpers import (
     PersonalityTrimInfo,
@@ -26,6 +25,7 @@ from synthorg.engine._prompt_helpers import (
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
 from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 
 

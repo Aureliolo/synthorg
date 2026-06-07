@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import SeniorityLevel
+    from synthorg.hr.seniority import SeniorityLevel
 
 
 # Pluggable model-mapping seam: SeniorityModelMapping in

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.curation.relevance import (
     RelevanceScoreCuration,
 )

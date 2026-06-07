@@ -2,9 +2,10 @@
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel, StrategicOutputMode
 from synthorg.engine.strategy.lenses import DEFAULT_LENSES, LENS_DEFINITIONS
 from synthorg.engine.strategy.output import build_output_instructions
+from synthorg.hr.seniority import SeniorityLevel
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 from .conftest import make_agent
 

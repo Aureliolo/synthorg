@@ -28,8 +28,9 @@ from synthorg.core.agent import (
     PersonalityConfig,
     ToolPermissions,
 )
-from synthorg.core.enums import Priority, SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.scripted import (
     ScriptedResponseStrategy,

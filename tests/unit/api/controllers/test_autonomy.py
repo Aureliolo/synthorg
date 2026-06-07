@@ -13,8 +13,8 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 

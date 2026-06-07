@@ -4,86 +4,6 @@
 from enum import StrEnum
 
 
-class SeniorityLevel(StrEnum):
-    """Seniority levels for agents within the organization.
-
-    Each level corresponds to an authority scope, typical model tier, and
-    cost tier defined in ``synthorg.core.role_catalog.SENIORITY_INFO``.
-    """
-
-    # Agents page lists "Intern/Junior" -- collapsed to JUNIOR.
-    JUNIOR = "junior"
-    MID = "mid"
-    SENIOR = "senior"
-    LEAD = "lead"
-    PRINCIPAL = "principal"
-    DIRECTOR = "director"
-    VP = "vp"
-    C_SUITE = "c_suite"
-
-
-_SENIORITY_ORDER: tuple[SeniorityLevel, ...] = tuple(SeniorityLevel)
-
-# Validate that _SENIORITY_ORDER contains every SeniorityLevel member
-# exactly once and preserves enum declaration order.  This guards
-# against silent breakage if the enum is reordered or extended without
-# updating the ordering tuple.
-_all_members = set(SeniorityLevel)
-_order_set = set(_SENIORITY_ORDER)
-if _order_set != _all_members:
-    _missing = _all_members - _order_set
-    _extra = _order_set - _all_members
-    _msg = (
-        f"_SENIORITY_ORDER is out of sync with SeniorityLevel: "
-        f"missing={_missing}, extra={_extra}"
-    )
-    raise RuntimeError(_msg)
-if len(_SENIORITY_ORDER) != len(_order_set):
-    _msg = "_SENIORITY_ORDER contains duplicate entries"
-    raise RuntimeError(_msg)
-del _all_members, _order_set
-
-# Precomputed rank lookup for O(1) seniority comparison.
-_SENIORITY_RANK: dict[SeniorityLevel, int] = {
-    level: idx for idx, level in enumerate(_SENIORITY_ORDER)
-}
-
-
-def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
-    """Compare two seniority levels.
-
-    Returns negative if *a* is junior to *b*, zero if equal,
-    positive if *a* is senior to *b*.
-
-    Args:
-        a: First seniority level.
-        b: Second seniority level.
-
-    Returns:
-        Integer indicating relative seniority.
-    """
-    return _SENIORITY_RANK[a] - _SENIORITY_RANK[b]
-
-
-class StrategicOutputMode(StrEnum):
-    """Controls how strategic agents frame their recommendations.
-
-    Applies to any agent with a strategic output mode set (C-suite, VP,
-    Director, or any agent with an explicit override).
-
-    - ``option_expander``: Present all options with analysis through each lens.
-    - ``advisor``: Recommend top 2-3 options with reasoning and caveats.
-    - ``decision_maker``: Make a final recommendation with full justification.
-    - ``context_dependent``: Resolves based on agent seniority -- C-suite/VP
-      maps to ``decision_maker``, others to ``advisor``.
-    """
-
-    OPTION_EXPANDER = "option_expander"
-    ADVISOR = "advisor"
-    DECISION_MAKER = "decision_maker"
-    CONTEXT_DEPENDENT = "context_dependent"
-
-
 class AgentStatus(StrEnum):
     """Lifecycle status of an agent."""
 
@@ -421,22 +341,21 @@ class Stakes(StrEnum):
     CRITICAL = "critical"
 
 
-# Ordering: LOW (least consequential) < NORMAL < HIGH < CRITICAL.
-_STAKES_ORDER: tuple[Stakes, ...] = tuple(Stakes)
+# Ordering: LOW < NORMAL < HIGH < CRITICAL. Explicit literal (not a
+# dynamic tuple(Stakes)) so the sync guard below is not tautological and
+# a new member forces a conscious placement here.
+_STAKES_ORDER: tuple[Stakes, ...] = (
+    Stakes.LOW,
+    Stakes.NORMAL,
+    Stakes.HIGH,
+    Stakes.CRITICAL,
+)
 
-# Guard against silent breakage if the enum is reordered or extended
-# without updating the ordering tuple (mirrors _SENIORITY_ORDER).
-_stakes_members = set(Stakes)
-_stakes_order_set = set(_STAKES_ORDER)
-if _stakes_order_set != _stakes_members:
-    _missing_stakes = _stakes_members - _stakes_order_set
-    _extra_stakes = _stakes_order_set - _stakes_members
-    _stakes_msg = (
-        f"_STAKES_ORDER is out of sync with Stakes: "
-        f"missing={_missing_stakes}, extra={_extra_stakes}"
-    )
+# Fail loudly if the ordering tuple drifts from the enum membership.
+# The symmetric difference names whichever members are out of sync.
+if set(_STAKES_ORDER) != set(Stakes):
+    _stakes_msg = f"_STAKES_ORDER out of sync: {set(_STAKES_ORDER) ^ set(Stakes)}"
     raise RuntimeError(_stakes_msg)
-del _stakes_members, _stakes_order_set
 
 _STAKES_RANK: dict[Stakes, int] = {
     level: idx for idx, level in enumerate(_STAKES_ORDER)

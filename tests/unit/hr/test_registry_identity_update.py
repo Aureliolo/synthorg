@@ -13,9 +13,10 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import AgentStatus, AutonomyLevel, SeniorityLevel
+from synthorg.core.enums import AgentStatus, AutonomyLevel
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.hr import HR_REGISTRY_IDENTITY_UPDATED
 from tests.unit.hr.conftest import make_agent_identity
 

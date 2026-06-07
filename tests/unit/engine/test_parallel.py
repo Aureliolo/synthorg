@@ -7,13 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
@@ -28,6 +22,7 @@ from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.resource_lock import InMemoryResourceLock
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import ShutdownManager
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.parallel import PARALLEL_AGENT_CANCELLED
 
 

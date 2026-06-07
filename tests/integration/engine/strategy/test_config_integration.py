@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.config.schema import RootConfig
-from synthorg.core.enums import StrategicOutputMode
 from synthorg.engine.strategy.models import CostTierPreset, StrategyConfig
+from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
 class TestRootConfigStrategy:

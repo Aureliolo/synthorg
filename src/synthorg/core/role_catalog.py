@@ -4,13 +4,10 @@ Provides the canonical set of built-in roles from the Agents design page
 (Role Catalog) and the seniority mapping (Seniority & Authority Levels).
 """
 
-from synthorg.core.enums import (
-    CostTier,
-    DepartmentName,
-    SeniorityLevel,
-)
+from synthorg.core.enums import CostTier, DepartmentName
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Role, SeniorityInfo
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.role import ROLE_LOOKUP_MISS
 

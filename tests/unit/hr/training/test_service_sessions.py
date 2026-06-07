@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import (
     ContentType,
     TrainingPlan,

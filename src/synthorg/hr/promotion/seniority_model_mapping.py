@@ -13,8 +13,8 @@ from synthorg.observability.events.promotion import PROMOTION_MODEL_CHANGED
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import SeniorityLevel
     from synthorg.hr.promotion.config import ModelMappingConfig
+    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 

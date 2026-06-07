@@ -11,7 +11,7 @@ from synthorg.communication.delegation.hierarchy import (
 from synthorg.communication.errors import (
     ConflictStrategyError,
 )
-from synthorg.core.enums import compare_seniority
+from synthorg.hr.seniority import compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.conflict import CONFLICT_STRATEGY_ERROR
 

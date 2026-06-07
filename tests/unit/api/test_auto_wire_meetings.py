@@ -308,8 +308,9 @@ class TestAutoWireMeetings:
             ModelConfig,
             PersonalityConfig,
         )
-        from synthorg.core.enums import AgentStatus, SeniorityLevel
+        from synthorg.core.enums import AgentStatus
         from synthorg.core.types import NotBlankStr
+        from synthorg.hr.seniority import SeniorityLevel
         from synthorg.providers.enums import FinishReason
         from synthorg.providers.models import CompletionResponse, TokenUsage
 

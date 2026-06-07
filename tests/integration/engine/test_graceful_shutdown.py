@@ -109,13 +109,9 @@ class TestGracefulShutdownFlow:
         from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
-        from synthorg.core.enums import (
-            Complexity,
-            Priority,
-            SeniorityLevel,
-            TaskType,
-        )
+        from synthorg.core.enums import Complexity, Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.hr.seniority import SeniorityLevel
 
         identity = AgentIdentity(
             id=uuid4(),
@@ -172,13 +168,9 @@ class TestGracefulShutdownFlow:
         from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
-        from synthorg.core.enums import (
-            Complexity,
-            Priority,
-            SeniorityLevel,
-            TaskType,
-        )
+        from synthorg.core.enums import Complexity, Priority, TaskType
         from synthorg.core.task import Task
+        from synthorg.hr.seniority import SeniorityLevel
 
         identity = AgentIdentity(
             id=uuid4(),

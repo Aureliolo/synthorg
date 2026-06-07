@@ -18,8 +18,8 @@ from synthorg.core.company import (
     Department,
     Team,
 )
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role import Authority
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_agent(

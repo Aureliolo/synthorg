@@ -6,8 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.context import AgentContext
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_context(**overrides: object) -> AgentContext:

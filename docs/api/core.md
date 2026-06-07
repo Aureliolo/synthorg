@@ -13,6 +13,10 @@ Shared domain models, base types, and enums used across the framework.
 
 ## Enums
 
+Domain-specific enums live with their owning package: seniority and
+strategic output mode are documented under [HR](hr.md) (`synthorg.hr.seniority`,
+`synthorg.hr.strategy_mode`).
+
 ::: synthorg.core.enums
 
 ## Agent

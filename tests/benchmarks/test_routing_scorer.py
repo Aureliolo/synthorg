@@ -12,10 +12,11 @@ import pytest
 from pytest_codspeed import BenchmarkFixture
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import AgentStatus, Complexity, SeniorityLevel
+from synthorg.core.enums import AgentStatus, Complexity
 from synthorg.core.role import Skill
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.routing.scorer import AgentTaskScorer
+from synthorg.hr.seniority import SeniorityLevel
 
 
 def _make_skill(idx: int) -> Skill:

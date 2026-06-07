@@ -14,8 +14,9 @@ from typing import TYPE_CHECKING, Literal
 from psycopg.rows import TupleRow, dict_row
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.errors import (
     OrgMemoryQueryError,
     OrgMemoryWriteError,

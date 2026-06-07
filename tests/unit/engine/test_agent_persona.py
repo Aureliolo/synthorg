@@ -13,7 +13,7 @@ import pytest
 
 from synthorg.communication.meeting.agent_caller import _render_system_prompt
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
 from synthorg.engine.prompt_safety import (
@@ -21,6 +21,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
     untrusted_content_directive,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

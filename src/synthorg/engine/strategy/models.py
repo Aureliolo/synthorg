@@ -3,9 +3,10 @@
 
 Config models (frozen Pydantic) for strategy configuration and domain
 models for runtime strategic analysis.  All enums that are specific
-to the strategy domain are defined here; only
-:class:`~synthorg.core.enums.StrategicOutputMode` lives in ``core``
-because :class:`~synthorg.core.agent.AgentIdentity` references it.
+to the strategy domain are defined here;
+:class:`~synthorg.hr.strategy_mode.StrategicOutputMode` is imported from
+the HR package because :class:`~synthorg.core.agent.AgentIdentity`
+references it.
 """
 
 import copy
@@ -15,8 +16,8 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import StrategicOutputMode
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import STRATEGY_CONFIG_VALIDATED
 

@@ -7,9 +7,10 @@ from typing import override
 
 import pytest
 
-from synthorg.core.enums import ConversationRole, SeniorityLevel
+from synthorg.core.enums import ConversationRole
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig, KeywordRoleRule
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.responder import (

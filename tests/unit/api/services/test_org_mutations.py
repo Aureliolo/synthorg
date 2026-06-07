@@ -17,7 +17,8 @@ from synthorg.api.dto_org import (
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.core.enums import AutonomyLevel, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend

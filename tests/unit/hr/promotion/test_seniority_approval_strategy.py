@@ -4,13 +4,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.enums import PromotionDirection
 from synthorg.hr.promotion.config import PromotionApprovalConfig
 from synthorg.hr.promotion.models import PromotionEvaluation
 from synthorg.hr.promotion.seniority_approval_strategy import (
     SeniorityApprovalStrategy,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_agent_identity
 

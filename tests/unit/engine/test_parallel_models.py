@@ -6,13 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from synthorg.engine.loop_protocol import (
@@ -28,6 +22,7 @@ from synthorg.engine.parallel_models import (
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 

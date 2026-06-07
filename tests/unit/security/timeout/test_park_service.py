@@ -7,8 +7,8 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.context import AgentContext
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.security.timeout.park_service import ParkService
 
 

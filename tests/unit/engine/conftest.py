@@ -22,7 +22,6 @@ from synthorg.core.enums import (
     DepartmentName,
     Priority,
     RiskTolerance,
-    SeniorityLevel,
     TaskStatus,
     TaskStructure,
     TaskType,
@@ -53,6 +52,7 @@ from synthorg.engine.workspace.models import (
     MergeResult,
     Workspace,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (

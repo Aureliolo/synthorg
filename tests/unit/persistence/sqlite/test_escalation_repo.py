@@ -18,7 +18,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictPosition,
 )
 from synthorg.communication.enums import ConflictType
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationRepository

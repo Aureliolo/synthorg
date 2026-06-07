@@ -6,10 +6,10 @@ Defines the pluggable interface for evaluating promotion/demotion criteria.
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import SeniorityLevel
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.promotion.models import PromotionEvaluation
+    from synthorg.hr.seniority import SeniorityLevel
 
 
 # Pluggable criteria seam: ThresholdEvaluator in threshold_evaluator.py

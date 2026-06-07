@@ -31,6 +31,14 @@ Agent lifecycle management: hiring, firing, onboarding, offboarding, performance
 
 ::: synthorg.hr.enums
 
+## Seniority
+
+::: synthorg.hr.seniority
+
+## Strategy Mode
+
+::: synthorg.hr.strategy_mode
+
 ## Errors
 
 ::: synthorg.hr.errors

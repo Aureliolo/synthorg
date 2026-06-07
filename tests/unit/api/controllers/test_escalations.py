@@ -14,7 +14,7 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.state import CommunicationStateSlice
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 

@@ -25,7 +25,7 @@ from synthorg.api.dto_org import (
 from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService

@@ -7,9 +7,9 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.identity.store.append_only import AppendOnlyIdentityStore
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.versioning.models import VersionSnapshot
 from synthorg.versioning.service import VersioningService
 

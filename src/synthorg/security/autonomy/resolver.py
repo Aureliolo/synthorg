@@ -1,6 +1,7 @@
 """Autonomy resolver -- three-level chain and category expansion."""
 
-from synthorg.core.enums import AutonomyLevel, SeniorityLevel, compare_seniority
+from synthorg.core.enums import AutonomyLevel
+from synthorg.hr.seniority import SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
 from synthorg.observability.events.autonomy import (
     AUTONOMY_PRESET_EXPANDED,

@@ -14,13 +14,7 @@ import pytest
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -30,6 +24,7 @@ from synthorg.engine.parallel_models import (
 )
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

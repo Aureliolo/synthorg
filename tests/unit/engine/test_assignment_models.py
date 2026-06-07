@@ -6,10 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    SeniorityLevel,
-    TaskType,
-)
+from synthorg.core.enums import TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.assignment.models import (
@@ -18,6 +15,7 @@ from synthorg.engine.assignment.models import (
     AssignmentRequest,
     AssignmentResult,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 pytestmark = pytest.mark.unit
 

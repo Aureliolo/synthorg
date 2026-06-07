@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.models import ContentType, TrainingPlan, TrainingPlanStatus
 from synthorg.persistence.sqlite.training_plan_repo import (
     SQLiteTrainingPlanRepository,

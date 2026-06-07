@@ -18,7 +18,7 @@ reference ``{{ tools }}`` when explicitly needed.
 from types import MappingProxyType
 from typing import Final
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.hr.seniority import SeniorityLevel
 
 # Version tracks incompatible template changes.  Bump when the template
 # structure changes in ways that affect caching, snapshots, or migrations.

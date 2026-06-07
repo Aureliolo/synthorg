@@ -15,15 +15,12 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
 from synthorg.core.domain_errors import NotFoundError
-from synthorg.core.enums import (
-    AutonomyLevel,
-    SeniorityLevel,
-    ToolAccessLevel,
-)
+from synthorg.core.enums import AutonomyLevel, ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult, ExecutedToolCall
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.meta.chief_of_staff.actor import (
     ConversationalActArgs,
     ConversationalActor,

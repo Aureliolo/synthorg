@@ -2,7 +2,8 @@
 
 from datetime import UTC, datetime
 
-from synthorg.core.enums import AutonomyLevel, OrgFactCategory, SeniorityLevel
+from synthorg.core.enums import AutonomyLevel, OrgFactCategory
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 
 _NOW = datetime.now(UTC)

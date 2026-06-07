@@ -5,9 +5,10 @@ from uuid import uuid4
 
 import pytest
 
-from synthorg.core.enums import AgentStatus, SeniorityLevel
+from synthorg.core.enums import AgentStatus
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.training.source_selectors.composite import (
     CompositeSelector,
 )

@@ -7,12 +7,13 @@ from uuid import uuid4
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
+from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.role import Skill
 from synthorg.core.task import Task
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,

@@ -26,12 +26,13 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.agent import AgentIdentity, ModelConfig, ToolPermissions
-from synthorg.core.enums import SeniorityLevel, ToolAccessLevel
+from synthorg.core.enums import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,

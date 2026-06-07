@@ -5,11 +5,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    CostTier,
-    DepartmentName,
-    SeniorityLevel,
-)
+from synthorg.core.enums import CostTier, DepartmentName
 from synthorg.core.role import Role, SeniorityInfo
 from synthorg.core.role_catalog import (
     BUILTIN_ROLES,
@@ -17,6 +13,7 @@ from synthorg.core.role_catalog import (
     get_builtin_role,
     get_seniority_info,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 # ── Seniority Info ─────────────────────────────────────────────────
 

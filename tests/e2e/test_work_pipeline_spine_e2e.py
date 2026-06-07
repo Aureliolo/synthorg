@@ -34,14 +34,7 @@ from synthorg.budget.tracker import CostTracker
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.enums import (
-    AgentStatus,
-    Complexity,
-    Priority,
-    SeniorityLevel,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import AgentStatus, Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.role import Authority, Skill
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
@@ -55,6 +48,7 @@ from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (

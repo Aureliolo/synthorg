@@ -5,11 +5,12 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
-from synthorg.core.enums import Complexity, SeniorityLevel
+from synthorg.core.enums import Complexity
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
 from synthorg.engine.context import AgentContext
 from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 

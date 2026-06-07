@@ -3,8 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import DepartmentName, SeniorityLevel
+from synthorg.core.enums import DepartmentName
 from synthorg.core.role import Authority, CustomRole, Role, SeniorityInfo, Skill
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import (
     AuthorityFactory,

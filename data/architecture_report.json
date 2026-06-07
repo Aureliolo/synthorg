@@ -350,8 +350,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 758,
-      "ratio": 1.516,
+      "loc": 755,
+      "ratio": 1.51,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -374,8 +374,8 @@
     },
     "src/synthorg/core/role_catalog.py": {
       "cap": 500,
-      "loc": 417,
-      "ratio": 0.834,
+      "loc": 414,
+      "ratio": 0.828,
       "tier": "code"
     },
     "src/synthorg/docs_engine/service.py": {
@@ -530,8 +530,8 @@
     },
     "src/synthorg/engine/strategy/models.py": {
       "cap": 700,
-      "loc": 630,
-      "ratio": 0.9,
+      "loc": 631,
+      "ratio": 0.901,
       "tier": "adapter"
     },
     "src/synthorg/engine/task_engine_apply.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 464,
-      "ratio": 0.928,
+      "loc": 460,
+      "ratio": 0.92,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {
@@ -656,8 +656,8 @@
     },
     "src/synthorg/hr/promotion/service.py": {
       "cap": 500,
-      "loc": 547,
-      "ratio": 1.094,
+      "loc": 544,
+      "ratio": 1.088,
       "tier": "code"
     },
     "src/synthorg/hr/scaling/service.py": {
@@ -806,8 +806,8 @@
     },
     "src/synthorg/memory/tools/knowledge_architect.py": {
       "cap": 500,
-      "loc": 507,
-      "ratio": 1.014,
+      "loc": 503,
+      "ratio": 1.006,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
@@ -968,8 +968,8 @@
     },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 487,
-      "ratio": 0.974,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
@@ -1046,8 +1046,8 @@
     },
     "src/synthorg/persistence/sqlite/org_fact_repo.py": {
       "cap": 500,
-      "loc": 478,
-      "ratio": 0.956,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
@@ -1260,12 +1260,6 @@
       "ratio": 0.896,
       "tier": "code"
     },
-    "src/synthorg/templates/presets.py": {
-      "cap": 500,
-      "loc": 558,
-      "ratio": 1.116,
-      "tier": "code"
-    },
     "src/synthorg/templates/renderer.py": {
       "cap": 500,
       "loc": 658,
@@ -1383,7 +1377,7 @@
     "synthorg.core.clock": 154,
     "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 493,
+    "synthorg.core.enums": 461,
     "synthorg.core.error_taxonomy": 60,
     "synthorg.core.normalization": 73,
     "synthorg.core.persistence_errors": 190,
@@ -1404,6 +1398,7 @@
     "synthorg.hr.performance.tracker": 26,
     "synthorg.hr.registry": 40,
     "synthorg.hr.scaling.models": 21,
+    "synthorg.hr.seniority": 54,
     "synthorg.hr.state": 32,
     "synthorg.hr.training.models": 23,
     "synthorg.integrations.connections.catalog": 21,

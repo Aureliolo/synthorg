@@ -11,8 +11,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.seniority import SeniorityLevel
 
 
 class PromotionCriteriaConfig(BaseModel):

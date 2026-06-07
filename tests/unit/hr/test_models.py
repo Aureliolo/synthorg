@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.enums import (
     FiringReason,
     HiringRequestStatus,
@@ -20,6 +19,7 @@ from synthorg.hr.models import (
     OnboardingChecklist,
     OnboardingStepRecord,
 )
+from synthorg.hr.seniority import SeniorityLevel
 from tests.unit.hr.conftest import (
     make_candidate_card,
     make_firing_request,

@@ -16,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role import Skill
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import (
@@ -25,6 +24,7 @@ from synthorg.hr.enums import (
     LifecycleEventType,
     OnboardingStep,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 
 class CandidateCard(BaseModel):

@@ -15,8 +15,8 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ValidationError,
 )
-from synthorg.core.enums import SeniorityLevel
 from synthorg.core.normalization import compare_ci, normalize_identifier
+from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_CREATED,

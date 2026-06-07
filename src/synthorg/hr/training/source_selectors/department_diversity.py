@@ -20,10 +20,10 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.core.agent import AgentIdentity
-    from synthorg.core.enums import SeniorityLevel
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.hr.registry import AgentRegistryService
+    from synthorg.hr.seniority import SeniorityLevel
 
 logger = get_logger(__name__)
 

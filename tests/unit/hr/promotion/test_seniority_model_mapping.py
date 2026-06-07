@@ -2,11 +2,11 @@
 
 import pytest
 
-from synthorg.core.enums import SeniorityLevel
 from synthorg.hr.promotion.config import ModelMappingConfig
 from synthorg.hr.promotion.seniority_model_mapping import (
     SeniorityModelMapping,
 )
+from synthorg.hr.seniority import SeniorityLevel
 
 from .conftest import make_agent_identity
 

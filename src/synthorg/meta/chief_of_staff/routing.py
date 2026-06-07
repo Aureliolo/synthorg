@@ -32,12 +32,13 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ConversationRole, compare_seniority
+from synthorg.core.enums import ConversationRole
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.role_catalog import get_builtin_role
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.hr.seniority import compare_seniority
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.chief_of_staff.models import ConversationTurn
 from synthorg.meta.chief_of_staff.prompts import CONCERN_ROUTING_PROMPT
