@@ -2928,7 +2928,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 252,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_history.py",
       "owning_feature": "communication"
@@ -4993,7 +4993,7 @@
     },
     {
       "kind": "code",
-      "loc": 433,
+      "loc": 442,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/llm_prompt.py",
       "owning_feature": "engine"
@@ -5028,7 +5028,7 @@
     },
     {
       "kind": "code",
-      "loc": 186,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/service.py",
       "owning_feature": "engine"
@@ -13715,7 +13715,7 @@
     },
     {
       "kind": "code",
-      "loc": 169,
+      "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/observability/processors.py",
       "owning_feature": "observability"
