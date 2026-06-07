@@ -6484,7 +6484,7 @@
     },
     {
       "kind": "code",
-      "loc": 98,
+      "loc": 96,
       "loc_cap": 500,
       "module": "src/synthorg/engine/strategy/output.py",
       "owning_feature": "engine"
@@ -8276,7 +8276,7 @@
     },
     {
       "kind": "code",
-      "loc": 44,
+      "loc": 53,
       "loc_cap": 500,
       "module": "src/synthorg/hr/seniority.py",
       "owning_feature": "hr"
