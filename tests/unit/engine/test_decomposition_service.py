@@ -12,7 +12,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.errors import DecompositionCycleError
+from synthorg.engine.errors import DecompositionCycleError, DecompositionError
 from tests._shared import as_uuid, sid
 
 
@@ -87,6 +87,31 @@ class TestDecompositionService:
             assert child_task.assigned_to is None
             assert child_task.project == task.project
             assert child_task.created_by == task.created_by
+
+    @pytest.mark.unit
+    async def test_decompose_non_uuid_subtask_id_raises(self) -> None:
+        """A plan with a non-UUID subtask id raises a clear domain error.
+
+        The LLM strategy remaps its labels to UUIDs upstream; a custom
+        strategy that hands the service a plain label must fail with a
+        ``DecompositionError`` rather than an opaque ``ValueError``.
+        """
+        task = _make_task()
+        plan = DecompositionPlan(
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(
+                    id="plain-label",
+                    title="Child",
+                    description="Child task",
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        with pytest.raises(DecompositionError, match="not a valid UUID"):
+            await service.decompose_task(task, DecompositionContext())
 
     @pytest.mark.unit
     async def test_decompose_builds_edges(self) -> None:

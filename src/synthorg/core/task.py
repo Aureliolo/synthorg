@@ -56,7 +56,7 @@ class Task(BaseModel):
     Field schema matches the Engine design page.
 
     Attributes:
-        id: Unique task identifier (e.g. ``"task-123"``).
+        id: Unique task identifier (auto-generated UUID).
         title: Short task title.
         description: Detailed task description.
         type: Classification of the task's work type.

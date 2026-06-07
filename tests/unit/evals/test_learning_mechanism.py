@@ -23,7 +23,6 @@ tests the learning MACHINERY end to end, not "do LLMs get smarter".
 import json
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -80,7 +79,7 @@ _PROPOSAL_JSON: Final[str] = json.dumps(
     },
 )
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("learning-mechanism-agent")
 
 
 class LearningSensitiveStrategy:

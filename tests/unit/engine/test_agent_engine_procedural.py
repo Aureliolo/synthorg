@@ -3,7 +3,6 @@
 import json
 from datetime import date
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -24,7 +23,7 @@ from synthorg.providers.models import (
 )
 from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("procedural-agent")
 
 
 def _make_identity() -> AgentIdentity:

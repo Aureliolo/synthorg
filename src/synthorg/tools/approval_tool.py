@@ -210,7 +210,7 @@ class RequestHumanApprovalTool(BaseTool):
         """
         logger.info(
             APPROVAL_GATE_ESCALATION_DETECTED,
-            approval_id=UUID(approval_id),
+            approval_id=approval_id,
             agent_id=self._agent_id,
             action_type=action_type,
             risk_level=risk_level.value,

@@ -555,7 +555,7 @@ class ExternalApiTool(BaseTool):
         logger.info(
             EXTERNAL_API_APPROVAL_REQUIRED,
             connection=args.connection,
-            approval_id=UUID(approval_id),
+            approval_id=approval_id,
             risk_level=risk_level.value,
         )
         return ToolExecutionResult(

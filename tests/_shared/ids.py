@@ -1,7 +1,7 @@
 """Deterministic UUID helpers for tests.
 
-Domain entity PKs are typed ``UUID`` while their foreign-key reference
-fields stay ``NotBlankStr`` holding the canonical UUID string. A test
+An entity primary key is a ``UUID``; a foreign-key reference to that
+entity, and its JSON wire form, is the canonical UUID string. A test
 that threads one identifier from a PK through an FK and into a wire
 assertion therefore needs the same value in two shapes. ``as_uuid``
 maps a readable label to a stable ``UUID`` (so ``as_uuid("task-1")``

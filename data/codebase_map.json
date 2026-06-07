@@ -5028,7 +5028,7 @@
     },
     {
       "kind": "code",
-      "loc": 162,
+      "loc": 186,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/service.py",
       "owning_feature": "engine"
@@ -10376,7 +10376,7 @@
     },
     {
       "kind": "code",
-      "loc": 390,
+      "loc": 401,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"
@@ -13715,7 +13715,7 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 169,
       "loc_cap": 500,
       "module": "src/synthorg/observability/processors.py",
       "owning_feature": "observability"
@@ -13820,7 +13820,7 @@
     },
     {
       "kind": "code",
-      "loc": 326,
+      "loc": 328,
       "loc_cap": 500,
       "module": "src/synthorg/observability/setup.py",
       "owning_feature": "observability"
@@ -14135,7 +14135,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_generics.py",
       "owning_feature": "persistence"

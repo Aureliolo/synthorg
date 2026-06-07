@@ -2,7 +2,6 @@
 
 from datetime import date
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 
@@ -18,7 +17,7 @@ from synthorg.providers.enums import FinishReason
 from synthorg.providers.protocol import CompletionProvider
 from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("distillation-agent")
 
 
 def _make_identity() -> AgentIdentity:

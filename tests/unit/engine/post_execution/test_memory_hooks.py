@@ -2,7 +2,6 @@
 
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -23,7 +22,7 @@ from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("memory-hooks-agent")
 
 
 def _make_identity() -> AgentIdentity:

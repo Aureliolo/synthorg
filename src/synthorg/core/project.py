@@ -21,7 +21,7 @@ class Project(BaseModel):
     and entity relationship tree.
 
     Attributes:
-        id: Unique project identifier (e.g. ``"proj-456"``).
+        id: Unique project identifier (auto-generated UUID).
         name: Project display name.
         description: Detailed project description.
         team: Agent IDs assigned to this project.

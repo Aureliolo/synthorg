@@ -103,16 +103,18 @@ stateDiagram-v2
 
 ```yaml
 task:
-  id: "task-123"
+  id: "3f6c1e2a-4b5c-6d7e-8f9a-0b1c2d3e4f50"   # UUID, auto-generated
   title: "Implement user authentication API"
   description: "Create REST endpoints for login, register, logout with JWT tokens"
   type: "development"           # development, design, research, review, meeting, admin
   priority: "high"              # critical, high, medium, low
-  project: "proj-456"
+  project: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"   # references Project.id (UUID)
   created_by: "product_manager_1"
   assigned_to: "sarah_chen"
   reviewers: ["engineering_lead", "security_engineer"]
-  dependencies: ["task-120", "task-121"]
+  dependencies:                 # other task ids (UUIDs)
+    - "5d8e9f0a-1b2c-3d4e-5f6a-7b8c9d0e1f20"
+    - "6e9f0a1b-2c3d-4e5f-6a7b-8c9d0e1f2031"
   artifacts_expected:
     - type: "code"
       path: "src/auth/"

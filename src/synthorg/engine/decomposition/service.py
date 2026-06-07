@@ -16,6 +16,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
@@ -33,6 +34,35 @@ if TYPE_CHECKING:
     from synthorg.engine.stakes.protocol import StakesAssessor
 
 logger = get_logger(__name__)
+
+
+def _subtask_uuid(subtask_id: str) -> UUID:
+    """Parse a subtask id into the UUID used for the child task.
+
+    The LLM strategy emits throwaway labels and remaps them to UUID
+    strings before the plan reaches this service, so its ids always
+    parse. A hand-built plan from a custom ``DecompositionStrategy`` is
+    responsible for supplying UUID-string subtask ids; surface a clear
+    domain error if it does not, rather than letting an opaque
+    ``ValueError`` escape from deep in task construction.
+
+    Args:
+        subtask_id: The plan subtask id to convert.
+
+    Returns:
+        The id as a ``UUID``.
+
+    Raises:
+        DecompositionError: When ``subtask_id`` is not a UUID string.
+    """
+    try:
+        return UUID(subtask_id)
+    except ValueError as exc:
+        msg = (
+            f"Subtask id {subtask_id!r} is not a valid UUID string; "
+            "decomposition strategies must supply UUID-string subtask ids"
+        )
+        raise DecompositionError(msg) from exc
 
 
 class DecompositionService:
@@ -78,7 +108,7 @@ class DecompositionService:
         """
         logger.info(
             DECOMPOSITION_STARTED,
-            task_id=task.id,
+            task_id=str(task.id),
             strategy=self._strategy.get_strategy_name(),
             current_depth=context.current_depth,
         )
@@ -89,7 +119,7 @@ class DecompositionService:
             reraise_critical(exc)
             logger.warning(
                 DECOMPOSITION_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self._strategy.get_strategy_name(),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -139,7 +169,7 @@ class DecompositionService:
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
             child_task = Task(
-                id=UUID(subtask_def.id),
+                id=_subtask_uuid(subtask_def.id),
                 title=subtask_def.title,
                 description=subtask_def.description,
                 type=task.type,
@@ -176,7 +206,7 @@ class DecompositionService:
 
         logger.info(
             DECOMPOSITION_COMPLETED,
-            task_id=task.id,
+            task_id=str(task.id),
             subtask_count=len(created_tasks),
             structure=plan.task_structure.value,
             edge_count=len(edges),

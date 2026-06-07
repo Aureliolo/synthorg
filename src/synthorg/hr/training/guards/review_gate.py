@@ -110,7 +110,7 @@ class ReviewGateGuard:
                 HR_TRAINING_REVIEW_GATE_FAILED,
                 plan_id=str(plan.id),
                 content_type=content_type.value,
-                approval_id=UUID(approval_id),
+                approval_id=approval_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -121,7 +121,7 @@ class ReviewGateGuard:
             plan_id=str(plan.id),
             content_type=content_type.value,
             item_count=len(items),
-            approval_id=UUID(approval_id),
+            approval_id=approval_id,
         )
 
         rejection_reason = f"Held for review in approval item {approval_id}"

@@ -1,7 +1,6 @@
 """Shared fixtures and factories for pruning unit tests."""
 
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from pydantic import AwareDatetime
 
@@ -112,7 +111,7 @@ def make_approval_item(  # noqa: PLR0913
 ) -> ApprovalItem:
     """Build an ApprovalItem for pruning with sensible defaults."""
     return ApprovalItem(
-        id=as_uuid(approval_id) if approval_id else uuid4(),
+        id=as_uuid(approval_id) if approval_id else as_uuid("pruning-approval-default"),
         action_type=NotBlankStr(action_type),
         title=NotBlankStr(title),
         description=NotBlankStr(description),

@@ -18,7 +18,6 @@ deterministic stand-in, and it keys ONLY on the generic injected-lesson marker
 
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -52,7 +51,7 @@ pytestmark = pytest.mark.unit
 # its mere presence, never on the lesson text inside it.
 _MEMORY_MARKER: Final[str] = f"<{TAG_MEMORY_ENTRY}>"
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("memory-injection-agent")
 
 # The task title doubles as the retrieval query (the engine queries on it) and
 # -- because the InMemoryBackend matches by whole-string substring -- must

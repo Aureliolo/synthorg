@@ -20,7 +20,6 @@ import copy
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import date
 from typing import Any
-from uuid import uuid4
 
 from synthorg.core.agent import (
     AgentIdentity,
@@ -48,6 +47,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider
+from tests._shared.ids import as_uuid
 
 _TEST_MODEL = "test-model-001"
 _TEST_PROVIDER = "test-provider"
@@ -242,10 +242,15 @@ def make_text_response(
 def make_e2e_identity(
     *,
     tools: ToolPermissions | None = None,
+    label: str = "e2e-agent",
 ) -> AgentIdentity:
-    """Create an ``AgentIdentity`` with sensible e2e defaults."""
+    """Create an ``AgentIdentity`` with sensible e2e defaults.
+
+    ``label`` derives a deterministic id so a test that needs distinct
+    agents can request them and the id stays legible in logs.
+    """
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid(label),
         name="E2E Agent",
         role="Developer",
         department="Engineering",
@@ -262,10 +267,15 @@ def make_e2e_task(
     identity: AgentIdentity,
     title: str = "E2E test task",
     description: str = "End-to-end test task.",
+    label: str = "e2e-task",
 ) -> Task:
-    """Create a ``Task`` assigned to the given identity."""
+    """Create a ``Task`` assigned to the given identity.
+
+    ``label`` derives a deterministic id so a test can correlate the
+    task across a create/fetch round-trip and read it legibly in logs.
+    """
     return Task(
-        id=uuid4(),
+        id=as_uuid(label),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

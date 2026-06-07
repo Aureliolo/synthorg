@@ -17,7 +17,6 @@ backend, proposer, capture strategy, and post-execution dispatch are all real.
 import json
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -64,7 +63,7 @@ _SUCCESS_PROPOSAL_JSON: Final[str] = json.dumps(
     },
 )
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("success-capture-agent")
 
 
 class SuccessScriptedStrategy:

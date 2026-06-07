@@ -12,7 +12,10 @@ The six categories cover every persistence pattern in the codebase:
 
 * ``SingletonRepository[T]`` -- one-row global state.
 * ``IdKeyedRepository[T, ID]`` -- CRUD by primary key (composite keys
-  use ``ID = tuple[str, ...]``).
+  use ``ID = tuple[str, ...]``). ``ID`` is the lookup-key type, not
+  necessarily the entity's ``.id`` type: entities with a ``UUID`` ``.id``
+  are looked up by its canonical string form, so ``ID`` is ``NotBlankStr``
+  and callers pass ``str(entity.id)``.
 * ``FilteredQueryRepository[T, FilterSpec]`` -- multi-row queries with
   a typed ``FilterSpec`` args model; always composed alongside
   ``IdKeyedRepository``.
