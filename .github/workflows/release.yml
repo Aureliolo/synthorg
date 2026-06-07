@@ -10,7 +10,9 @@ permissions: {}
 # branch. Two overlapping runs racing the BSL Change Date Contents-API
 # commit on that branch produced HTTP 409 "does not match" conflicts.
 # Queue rather than cancel so an in-flight run always finishes creating
-# the release PR and posting its required-check statuses.
+# the release PR and posting its required-check statuses. GitHub keeps
+# only the newest queued run; dropping older ones is safe because each
+# run reconciles full main state from scratch.
 concurrency:
   group: release-please
   cancel-in-progress: false
@@ -90,10 +92,9 @@ jobs:
           # PUT's optimistic-lock check consults -- the Contents API on the
           # release branch -- so the sha we send always matches the sha the
           # API holds. This is the canonical read-sha-then-conditional-write
-          # pattern and lets the workflow drop a full-branch checkout that
-          # existed only to give this step a working-tree LICENSE.
+          # pattern; no branch checkout is needed.
           api_json=$(gh api "repos/$GITHUB_REPOSITORY/contents/LICENSE?ref=$BRANCH")
-          cur_sha=$(printf '%s' "$api_json" | jq -r '.sha')
+          cur_sha=$(printf '%s' "$api_json" | jq -re '.sha')
           printf '%s' "$api_json" | jq -r '.content' | tr -d '\n' | base64 -d > LICENSE
 
           sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
@@ -101,7 +102,7 @@ jobs:
             echo "::error::sed pattern did not match; Change Date was not updated"
             exit 1
           }
-          if [ "$(git hash-object LICENSE)" = "$cur_sha" ]; then
+          if [ "$(git hash-object --no-filters LICENSE)" = "$cur_sha" ]; then
             echo "Change Date already up to date -- skipping commit"
             exit 0
           fi
