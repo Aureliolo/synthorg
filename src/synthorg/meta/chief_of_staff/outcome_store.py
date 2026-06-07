@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
 from synthorg.meta.chief_of_staff.models import OutcomeStats, ProposalOutcome

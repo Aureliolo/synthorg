@@ -2,12 +2,12 @@
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.validation import (
     ValidationErrorCode,
     validate_workflow,

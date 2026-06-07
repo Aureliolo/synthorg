@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.protocol import MemoryBackend

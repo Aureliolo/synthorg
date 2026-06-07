@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.backends.mem0.adapter import Mem0MemoryBackend
 from synthorg.memory.backends.mem0.config import (
     Mem0BackendConfig,

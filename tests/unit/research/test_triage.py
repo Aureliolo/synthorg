@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ResearchSourceType
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import (
     AcademicSourceLocator,
     ResearchBrief,

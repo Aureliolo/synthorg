@@ -8,7 +8,7 @@ policy that bare mocks at typed boundaries are forbidden.
 
 import pytest
 
-from synthorg.core.enums import DocType, MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_MEMORY_NAMESPACE,
@@ -16,6 +16,7 @@ from synthorg.docs_engine.constants import (
     DOCS_SLUG_TAG_PREFIX,
     SYSTEM_DOCS_AGENT_ID,
 )
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.indexer import DocIndexer
 from synthorg.docs_engine.models import DocChunk
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend

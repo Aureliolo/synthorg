@@ -16,7 +16,6 @@ from typing import LiteralString
 
 from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -24,6 +23,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.workflow_def import (
     PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,

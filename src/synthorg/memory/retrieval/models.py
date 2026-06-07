@@ -6,7 +6,7 @@ pipelines.  All models are frozen Pydantic with ``allow_inf_nan=False``.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry
 

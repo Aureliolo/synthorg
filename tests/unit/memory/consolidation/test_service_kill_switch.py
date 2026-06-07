@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.consolidation.service import MemoryConsolidationService

@@ -2,7 +2,6 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import SourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
@@ -10,6 +9,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
+from synthorg.knowledge.enums import SourceType
 
 
 class KnowledgeSearchArgs(BaseModel):

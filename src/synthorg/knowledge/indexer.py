@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.constants import (
     KNOWLEDGE_CHUNK_TAG_PREFIX,

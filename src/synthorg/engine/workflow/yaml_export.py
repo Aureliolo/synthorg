@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.graph_utils import (
     build_adjacency_maps,
     topological_sort,

@@ -11,13 +11,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    ClaimType,
-    ResearchRunStatus,
-    ResearchSourceType,
-    SourceType,
-)
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, WebLocator
+from synthorg.research.enums import ClaimType, ResearchRunStatus, ResearchSourceType
 from synthorg.research.models import (
     AcademicSourceLocator,
     CodeSourceLocator,

@@ -11,22 +11,20 @@ from synthorg.core.enums import (
     CompanyType,
     Complexity,
     ConflictApproach,
-    ConsolidationInterval,
     CostTier,
     CreativityLevel,
     DecisionMakingStyle,
     DepartmentName,
-    MemoryCategory,
-    MemoryLevel,
     Priority,
     ProjectStatus,
     RiskTolerance,
     SkillPattern,
     TaskStatus,
     TaskType,
-    WorkflowEdgeType,
-    WorkflowNodeType,
 )
+from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.memory.enums import ConsolidationInterval
 
 # ── Member Counts ──────────────────────────────────────────────────
 

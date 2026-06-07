@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocNotFoundError
 from synthorg.docs_engine.models import (
     DocSearchHit,

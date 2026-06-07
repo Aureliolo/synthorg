@@ -252,7 +252,7 @@ def _extract_metadata(
     Returns:
         Tuple of (category, confidence, source, tags).
     """
-    from synthorg.core.enums import MemoryCategory  # noqa: PLC0415
+    from synthorg.core.memory_enums import MemoryCategory  # noqa: PLC0415
 
     category_str = metadata_raw.get(f"{_SYNTHORG_PREFIX}category", "episodic")
     try:

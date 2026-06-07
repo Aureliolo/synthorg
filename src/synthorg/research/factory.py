@@ -9,7 +9,7 @@ means that source family does not fan out.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ResearchSourceType
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.errors import ResearchUnavailableError
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
 from synthorg.research.retrieval.dedup import (

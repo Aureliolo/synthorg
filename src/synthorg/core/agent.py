@@ -15,11 +15,10 @@ from synthorg.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
-    MemoryCategory,
-    MemoryLevel,
     RiskTolerance,
     ToolAccessLevel,
 )
+from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
 from synthorg.core.tool_constraints import ToolSubConstraints

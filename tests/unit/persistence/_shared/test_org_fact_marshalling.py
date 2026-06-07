@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import AutonomyLevel, OrgFactCategory
+from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import OrgMemoryQueryError
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.persistence._shared.org_fact_marshalling import (

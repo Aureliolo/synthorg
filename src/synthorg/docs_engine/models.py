@@ -28,8 +28,8 @@ from pydantic import (
     field_validator,
 )
 
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 
 # ── Block payload constraints ────────────────────────────────────────
 

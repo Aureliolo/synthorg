@@ -2,12 +2,12 @@
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.kanban_board import KanbanConfig, KanbanWipLimit
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
 

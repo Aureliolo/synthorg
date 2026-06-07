@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     RecordNotFoundError,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
 )
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,

@@ -16,7 +16,8 @@ from typing import Final
 import pytest
 
 from synthorg.core.artifact import Artifact
-from synthorg.core.enums import ArtifactType, MemoryCategory, TaskStatus, TaskType
+from synthorg.core.enums import ArtifactType, TaskStatus, TaskType
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend

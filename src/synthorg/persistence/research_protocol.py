@@ -17,15 +17,13 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import (
-    ResearchRunStatus,
-)
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,
     IdKeyedRepository,
 )
+from synthorg.research.enums import ResearchRunStatus
 from synthorg.research.models import ResearchRun
 
 ResearchRunKey = NotBlankStr

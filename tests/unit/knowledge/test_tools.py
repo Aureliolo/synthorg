@@ -11,9 +11,10 @@ from typing import Any, cast
 
 import pytest
 
-from synthorg.core.enums import ActionType, SourceType
+from synthorg.core.enums import ActionType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.knowledge.service import KnowledgeService

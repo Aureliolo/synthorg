@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ResearchRunStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.research import (
@@ -32,6 +31,7 @@ from synthorg.observability.events.research import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
+from synthorg.research.enums import ResearchRunStatus
 from synthorg.research.errors import (
     ResearchBudgetExceededError,
     ResearchError,
@@ -47,11 +47,11 @@ from synthorg.research.models import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from synthorg.core.enums import ResearchSourceType
     from synthorg.persistence.research_protocol import (
         ResearchRunFilter,
         ResearchRunRepository,
     )
+    from synthorg.research.enums import ResearchSourceType
     from synthorg.research.models import ResearchBrief
     from synthorg.research.planning.protocol import QueryPlanner
     from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource

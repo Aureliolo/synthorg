@@ -6,9 +6,9 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.errors import SubworkflowIOError
 from synthorg.engine.workflow.definition import WorkflowIODeclaration
+from synthorg.engine.workflow.enums import WorkflowValueType
 from synthorg.engine.workflow.subworkflow_binding import (
     project_output_bindings,
     resolve_input_bindings,

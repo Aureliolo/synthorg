@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.config import (
     ArchivalConfig,

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.tools._args import (
     KnowledgeArchitectBrowseWikiArgs,
     KnowledgeArchitectDeleteArgs,

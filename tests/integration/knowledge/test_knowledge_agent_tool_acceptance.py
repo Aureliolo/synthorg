@@ -21,10 +21,10 @@ from typing import Any, cast, override
 
 import pytest
 
-from synthorg.core.enums import SourceType
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.factory import build_knowledge_service
 from synthorg.knowledge.loaders.ticket import (
     TicketComment,

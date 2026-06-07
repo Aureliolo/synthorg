@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.procedural.propagation.role_scoped import (

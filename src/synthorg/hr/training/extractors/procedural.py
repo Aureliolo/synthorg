@@ -7,7 +7,7 @@ source agents and converts them to training items.
 import asyncio
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.hr.training.models import ContentType, TrainingItem
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger, safe_error_description

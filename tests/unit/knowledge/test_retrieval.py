@@ -9,8 +9,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import ContentKind, SourceStatus, SourceType
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 from synthorg.knowledge.freshness import make_chunk_id
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.models import (

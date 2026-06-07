@@ -2,9 +2,9 @@
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.blueprint_loader import load_blueprint
 from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.engine.workflow.validation import validate_workflow
 
 

@@ -8,7 +8,7 @@ brain entries from another's at retrieval.
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest

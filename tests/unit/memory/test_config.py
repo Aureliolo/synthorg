@@ -3,13 +3,14 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import ConsolidationInterval, MemoryLevel
+from synthorg.core.memory_enums import MemoryLevel
 from synthorg.memory.config import (
     CompanyMemoryConfig,
     EmbedderOverrideConfig,
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
+from synthorg.memory.enums import ConsolidationInterval
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 # ── MemoryStorageConfig ──────────────────────────────────────────

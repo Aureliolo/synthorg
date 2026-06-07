@@ -23,12 +23,8 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import (
-    ContentKind,
-    SourceStatus,
-    SourceType,
-)
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind, SourceStatus, SourceType
 
 # ── Field constraints ────────────────────────────────────────────────
 

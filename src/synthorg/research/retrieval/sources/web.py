@@ -10,9 +10,9 @@ are untrusted and are wrapped only where they enter a prompt (in synthesis).
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import ResearchSourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
+from synthorg.research.enums import ResearchSourceType
 from synthorg.research.models import (
     ResearchCitation,
     RetrievedItem,

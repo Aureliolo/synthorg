@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 

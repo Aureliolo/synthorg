@@ -35,7 +35,6 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
-from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkflowDefinitionValidationError,
@@ -49,6 +48,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.service import (
     WorkflowDefinitionNotFoundError,
     WorkflowService,

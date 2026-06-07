@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
+from synthorg.engine.workflow.enums import WorkflowEdgeType, WorkflowNodeType
 
 _TASK_CONFIG_KEYS: Final = (
     "title",

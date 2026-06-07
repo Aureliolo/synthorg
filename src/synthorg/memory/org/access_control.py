@@ -10,8 +10,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import OrgFactCategory
 from synthorg.hr.seniority import SeniorityLevel, compare_seniority
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
 from synthorg.memory.org.models import OrgFactAuthor
 from synthorg.observability import get_logger

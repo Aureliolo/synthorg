@@ -4,12 +4,16 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.persistence._shared.workflow_definition_marshalling import (
     build_workflow_definition_where,

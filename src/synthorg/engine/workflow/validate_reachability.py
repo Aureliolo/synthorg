@@ -3,7 +3,7 @@
 from collections import deque
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import WorkflowNodeType
+from synthorg.engine.workflow.enums import WorkflowNodeType
 from synthorg.engine.workflow.validation_types import (
     ValidationErrorCode,
     WorkflowValidationError,

@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
-from synthorg.core.enums import SourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
 )
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
 from synthorg.knowledge.state import KnowledgeStateSlice
 from synthorg.meta.mcp.errors import ArgumentValidationError

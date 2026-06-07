@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.enums import DocType
 from synthorg.core.persistence_errors import QueryError
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.project_doc import (

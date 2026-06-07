@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.errors import KnowledgeSourceUnavailableError
 from synthorg.knowledge.models import CodeLocator, RawDocument, RawUnit
 from synthorg.observability import get_logger, safe_error_description

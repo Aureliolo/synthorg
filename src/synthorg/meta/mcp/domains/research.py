@@ -8,7 +8,6 @@ record.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ResearchRunStatus
 from synthorg.meta.mcp.domains._research_args import (
     ResearchGetArgs,
     ResearchListArgs,
@@ -16,6 +15,7 @@ from synthorg.meta.mcp.domains._research_args import (
 )
 from synthorg.meta.mcp.tool_builder import read_tool, write_tool
 from synthorg.research.constants import RESEARCH_LIST_MAX_LIMIT
+from synthorg.research.enums import ResearchRunStatus
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef

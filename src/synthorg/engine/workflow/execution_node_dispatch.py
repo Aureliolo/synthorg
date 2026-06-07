@@ -10,12 +10,9 @@ management.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import (
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
 from synthorg.core.registry import StrategyRegistry
 from synthorg.engine.quality.verification import VerificationVerdict
+from synthorg.engine.workflow.enums import WorkflowNodeExecutionStatus, WorkflowNodeType
 from synthorg.engine.workflow.execution_activation_helpers import (
     find_downstream_task_ids,
     process_conditional_node,
@@ -30,8 +27,8 @@ from synthorg.observability.events.workflow_execution import (
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
-    from synthorg.core.enums import WorkflowEdgeType
     from synthorg.engine.workflow.definition import WorkflowNode
+    from synthorg.engine.workflow.enums import WorkflowEdgeType
     from synthorg.engine.workflow.execution_models import ExecutionFrame
     from synthorg.engine.workflow.execution_service import (
         WorkflowExecutionService,

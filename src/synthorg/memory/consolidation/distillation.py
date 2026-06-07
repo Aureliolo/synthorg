@@ -15,7 +15,7 @@ from enum import StrEnum
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.loop_protocol import (
     ExecutionResult,

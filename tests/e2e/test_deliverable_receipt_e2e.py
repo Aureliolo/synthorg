@@ -38,12 +38,7 @@ import pytest
 
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import ToolPermissions
-from synthorg.core.enums import (
-    GitBackendType,
-    SourceStatus,
-    SourceType,
-    TaskStatus,
-)
+from synthorg.core.enums import GitBackendType, TaskStatus
 from synthorg.core.task import Task
 from synthorg.deliverable_receipts.factory import build_deliverable_receipt_service
 from synthorg.docs_engine.factory import build_docs_service
@@ -63,6 +58,7 @@ from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.models import (
     Citation,

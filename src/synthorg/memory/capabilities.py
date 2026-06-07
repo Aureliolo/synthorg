@@ -6,7 +6,7 @@ they support, enabling runtime capability checks.
 
 from typing import Protocol, runtime_checkable
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 
 
 @runtime_checkable

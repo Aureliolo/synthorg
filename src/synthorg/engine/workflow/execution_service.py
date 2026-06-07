@@ -12,12 +12,6 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-)
 from synthorg.core.registry import (
     StrategyFactoryNotFoundError,
 )
@@ -28,6 +22,12 @@ from synthorg.engine.errors import (
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.workflow import execution_lifecycle as lifecycle
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+)
 from synthorg.engine.workflow.execution_activation_helpers import (
     process_task_node,
 )

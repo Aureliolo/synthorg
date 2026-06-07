@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
 from synthorg.knowledge.indexer import KnowledgeIndexer
 from synthorg.knowledge.models import CodeLocator, WebLocator

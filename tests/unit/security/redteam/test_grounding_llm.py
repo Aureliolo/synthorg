@@ -190,7 +190,7 @@ class TestPromptFencing:
         assert content.count("x") == MAX_DELIVERABLE_CHARS
 
     def test_entailment_user_message_fences_claim_and_evidence(self) -> None:
-        from synthorg.core.enums import SourceType
+        from synthorg.knowledge.enums import SourceType
         from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
 
         hit = KnowledgeHit(

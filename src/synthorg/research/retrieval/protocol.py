@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import ResearchSourceType
     from synthorg.core.types import NotBlankStr
+    from synthorg.research.enums import ResearchSourceType
     from synthorg.research.models import RetrievedItem, SubQuery
 
 

@@ -14,8 +14,8 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import SourceStatus, SourceType
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.knowledge.state import KnowledgeStateSlice
 from tests._shared import LoopAsyncClient

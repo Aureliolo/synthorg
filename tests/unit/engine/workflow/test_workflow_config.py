@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowType
 from synthorg.engine.workflow.config import WorkflowConfig
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.kanban_board import KanbanConfig
 from synthorg.engine.workflow.sprint_config import SprintConfig
 

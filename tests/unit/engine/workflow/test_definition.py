@@ -3,15 +3,15 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from tests.unit.engine.workflow.conftest import (
     make_edge as _edge,

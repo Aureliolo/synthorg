@@ -3712,7 +3712,7 @@
     },
     {
       "kind": "code",
-      "loc": 488,
+      "loc": 487,
       "loc_cap": 500,
       "module": "src/synthorg/core/agent.py",
       "owning_feature": null
@@ -3831,7 +3831,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 704,
+      "loc": 517,
       "loc_cap": null,
       "module": "src/synthorg/core/enums.py",
       "owning_feature": null
@@ -3876,6 +3876,13 @@
       "loc": 144,
       "loc_cap": 500,
       "module": "src/synthorg/core/json_parsing.py",
+      "owning_feature": null
+    },
+    {
+      "kind": "code",
+      "loc": 32,
+      "loc_cap": 500,
+      "module": "src/synthorg/core/memory_enums.py",
       "owning_feature": null
     },
     {
@@ -4153,6 +4160,13 @@
     },
     {
       "kind": "code",
+      "loc": 16,
+      "loc_cap": 500,
+      "module": "src/synthorg/docs_engine/enums.py",
+      "owning_feature": "docs"
+    },
+    {
+      "kind": "code",
       "loc": 52,
       "loc_cap": 500,
       "module": "src/synthorg/docs_engine/errors.py",
@@ -4201,9 +4215,9 @@
       "owning_feature": "docs"
     },
     {
-      "kind": "code",
-      "loc": 574,
-      "loc_cap": 500,
+      "kind": "service",
+      "loc": 575,
+      "loc_cap": 600,
       "module": "src/synthorg/docs_engine/service.py",
       "owning_feature": "docs"
     },
@@ -5203,7 +5217,7 @@
     },
     {
       "kind": "code",
-      "loc": 413,
+      "loc": 411,
       "loc_cap": 500,
       "module": "src/synthorg/engine/evolution/service.py",
       "owning_feature": "engine"
@@ -6673,7 +6687,7 @@
     },
     {
       "kind": "code",
-      "loc": 154,
+      "loc": 158,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/blueprint_models.py",
       "owning_feature": "engine"
@@ -6750,7 +6764,14 @@
     },
     {
       "kind": "code",
-      "loc": 428,
+      "loc": 72,
+      "loc_cap": 500,
+      "module": "src/synthorg/engine/workflow/enums.py",
+      "owning_feature": "engine"
+    },
+    {
+      "kind": "code",
+      "loc": 426,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/execution_activation_helpers.py",
       "owning_feature": "engine"
@@ -6771,7 +6792,7 @@
     },
     {
       "kind": "code",
-      "loc": 227,
+      "loc": 224,
       "loc_cap": 500,
       "module": "src/synthorg/engine/workflow/execution_node_dispatch.py",
       "owning_feature": "engine"
@@ -7716,7 +7737,7 @@
     },
     {
       "kind": "code",
-      "loc": 232,
+      "loc": 233,
       "loc_cap": 500,
       "module": "src/synthorg/hr/full_snapshot_strategy.py",
       "owning_feature": "hr"
@@ -9102,6 +9123,13 @@
     },
     {
       "kind": "code",
+      "loc": 30,
+      "loc_cap": 500,
+      "module": "src/synthorg/knowledge/enums.py",
+      "owning_feature": "knowledge"
+    },
+    {
+      "kind": "code",
       "loc": 69,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/errors.py",
@@ -9186,7 +9214,7 @@
     },
     {
       "kind": "code",
-      "loc": 236,
+      "loc": 232,
       "loc_cap": 500,
       "module": "src/synthorg/knowledge/models.py",
       "owning_feature": "knowledge"
@@ -9354,7 +9382,7 @@
     },
     {
       "kind": "code",
-      "loc": 320,
+      "loc": 318,
       "loc_cap": 500,
       "module": "src/synthorg/memory/config.py",
       "owning_feature": "memory"
@@ -9403,7 +9431,7 @@
     },
     {
       "kind": "code",
-      "loc": 458,
+      "loc": 459,
       "loc_cap": 500,
       "module": "src/synthorg/memory/consolidation/config.py",
       "owning_feature": "memory"
@@ -9585,7 +9613,7 @@
     },
     {
       "kind": "code",
-      "loc": 379,
+      "loc": 380,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/training_sources.py",
       "owning_feature": "memory"
@@ -9595,6 +9623,13 @@
       "loc": 56,
       "loc_cap": 500,
       "module": "src/synthorg/memory/embedding/training_writer.py",
+      "owning_feature": "memory"
+    },
+    {
+      "kind": "code",
+      "loc": 18,
+      "loc_cap": 500,
+      "module": "src/synthorg/memory/enums.py",
       "owning_feature": "memory"
     },
     {
@@ -9704,7 +9739,7 @@
     },
     {
       "kind": "code",
-      "loc": 287,
+      "loc": 288,
       "loc_cap": 500,
       "module": "src/synthorg/memory/org/models.py",
       "owning_feature": "memory"
@@ -10173,7 +10208,7 @@
     },
     {
       "kind": "code",
-      "loc": 503,
+      "loc": 504,
       "loc_cap": 500,
       "module": "src/synthorg/memory/tools/knowledge_architect.py",
       "owning_feature": "memory"
@@ -14191,7 +14226,7 @@
     },
     {
       "kind": "code",
-      "loc": 173,
+      "loc": 174,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_shared/org_fact_marshalling.py",
       "owning_feature": "persistence"
@@ -14499,7 +14534,7 @@
     },
     {
       "kind": "code",
-      "loc": 204,
+      "loc": 201,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/knowledge_protocol.py",
       "owning_feature": "persistence"
@@ -15003,7 +15038,7 @@
     },
     {
       "kind": "repository",
-      "loc": 488,
+      "loc": 489,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -15332,7 +15367,7 @@
     },
     {
       "kind": "code",
-      "loc": 88,
+      "loc": 86,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/research_protocol.py",
       "owning_feature": "persistence"
@@ -15808,7 +15843,7 @@
     },
     {
       "kind": "repository",
-      "loc": 475,
+      "loc": 476,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/org_fact_repo.py",
       "owning_feature": "persistence"
@@ -16095,7 +16130,7 @@
     },
     {
       "kind": "code",
-      "loc": 155,
+      "loc": 153,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/workflow_execution_protocol.py",
       "owning_feature": "persistence"
@@ -16655,7 +16690,7 @@
     },
     {
       "kind": "code",
-      "loc": 73,
+      "loc": 70,
       "loc_cap": 500,
       "module": "src/synthorg/research/_args.py",
       "owning_feature": "research"
@@ -16679,6 +16714,13 @@
       "loc": 71,
       "loc_cap": 500,
       "module": "src/synthorg/research/constants.py",
+      "owning_feature": "research"
+    },
+    {
+      "kind": "code",
+      "loc": 36,
+      "loc_cap": 500,
+      "module": "src/synthorg/research/enums.py",
       "owning_feature": "research"
     },
     {
@@ -18391,7 +18433,7 @@
     },
     {
       "kind": "declarative",
-      "loc": 523,
+      "loc": 524,
       "loc_cap": null,
       "module": "src/synthorg/templates/schema.py",
       "owning_feature": null

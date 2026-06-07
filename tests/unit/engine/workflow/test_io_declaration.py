@@ -8,11 +8,11 @@ name uniqueness, default compatibility, and semver validation on
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowValueType
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowIODeclaration,
 )
+from synthorg.engine.workflow.enums import WorkflowValueType
 from tests.unit.engine.workflow.conftest import (
     make_edge,
     make_end_node,

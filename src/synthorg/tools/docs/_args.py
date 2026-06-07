@@ -10,8 +10,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     BulletListBlock,
     CodeBlock,

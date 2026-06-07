@@ -2,12 +2,12 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import ResearchRunStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.research.constants import (
     RESEARCH_LIST_DEFAULT_LIMIT,
     RESEARCH_LIST_MAX_LIMIT,
 )
+from synthorg.research.enums import ResearchRunStatus
 from synthorg.research.tool import ResearchBriefArgs
 
 

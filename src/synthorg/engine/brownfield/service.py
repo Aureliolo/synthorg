@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.enums import SourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.errors import BrownfieldWorkspaceNotEmptyError
 from synthorg.engine.brownfield.models import (
@@ -24,6 +23,7 @@ from synthorg.engine.brownfield.models import (
     CodebaseImportSubmission,
 )
 from synthorg.engine.brownfield.scanner import scan_codebase
+from synthorg.knowledge.enums import SourceType
 from synthorg.observability import get_logger
 from synthorg.observability.events.brownfield import (
     BROWNFIELD_CODEBASE_INDEXED,

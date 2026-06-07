@@ -12,8 +12,8 @@ import asyncio
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.errors import (
     KnowledgeIngestError,
     KnowledgeSourceUnavailableError,

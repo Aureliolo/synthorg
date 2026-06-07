@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
-from synthorg.core.enums import WorkflowType
 from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
 from synthorg.engine.workflow.config import WorkflowConfig
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.kanban_board import KanbanConfig
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
 from synthorg.engine.workflow.sprint_config import SprintConfig

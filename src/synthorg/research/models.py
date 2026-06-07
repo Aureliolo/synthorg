@@ -25,7 +25,6 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import ClaimType, ResearchRunStatus, ResearchSourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.models import (
     Citation,
@@ -39,6 +38,7 @@ from synthorg.research.constants import (
     RESEARCH_DEFAULT_MIN_CREDIBILITY,
     RESEARCH_MAX_SUBQUERIES_CEILING,
 )
+from synthorg.research.enums import ClaimType, ResearchRunStatus, ResearchSourceType
 
 # ── Field constraints ────────────────────────────────────────────────
 

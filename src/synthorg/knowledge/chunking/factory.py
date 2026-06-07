@@ -9,9 +9,9 @@ freshness diffing stays stable across re-ingests.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ContentKind
 from synthorg.knowledge.chunking.code import CodeChunker
 from synthorg.knowledge.chunking.document import OffsetChunker
+from synthorg.knowledge.enums import ContentKind
 from synthorg.knowledge.freshness import make_chunk_id
 from synthorg.knowledge.models import KnowledgeChunk
 from synthorg.versioning.hashing import compute_text_hash

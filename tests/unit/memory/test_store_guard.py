@@ -3,7 +3,7 @@
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.filter import NON_INFERABLE_TAG
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.memory.store_guard import validate_memory_tags

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
 from synthorg.memory.models import MemoryQuery

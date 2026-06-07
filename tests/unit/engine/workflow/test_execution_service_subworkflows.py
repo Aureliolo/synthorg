@@ -15,17 +15,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    TaskStatus,
-    TaskType,
-    WorkflowEdgeType,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-    WorkflowType,
-    WorkflowValueType,
-)
+from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.errors import SubworkflowDepthExceededError
 from synthorg.engine.workflow.definition import (
@@ -33,6 +23,13 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,

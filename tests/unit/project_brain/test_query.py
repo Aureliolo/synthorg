@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.project_brain.constants import (

@@ -5,16 +5,16 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-)
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,

@@ -6,7 +6,7 @@ by ``ToolBasedInjectionStrategy`` and its reformulation loop.
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
 

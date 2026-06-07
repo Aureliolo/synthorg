@@ -11,8 +11,8 @@ doc. It also serves reads and validation for the REST controller.
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.enums import DocType
 from synthorg.deliverable_receipts.errors import DeliverableReceiptNotFoundError
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocNotFoundError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (

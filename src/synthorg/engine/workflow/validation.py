@@ -37,8 +37,8 @@ from synthorg.observability.events.workflow_definition import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowEdgeType
     from synthorg.engine.workflow.definition import WorkflowDefinition
+    from synthorg.engine.workflow.enums import WorkflowEdgeType
 
 logger = get_logger(__name__)
 

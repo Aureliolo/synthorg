@@ -32,7 +32,7 @@ class TestMemoryConsolidationLLMStrategy:
 
     def test_user_prompt_wraps_entries_in_memory_entry_tag(self) -> None:
         """Each entry appears inside ``<memory-entry>...</memory-entry>``."""
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
         from synthorg.memory.consolidation.llm_op import (
@@ -79,7 +79,7 @@ class TestMemoryConsolidationLLMStrategy:
 
     def test_user_prompt_escapes_closing_tag_breakout(self) -> None:
         """A literal ``</memory-entry>`` inside content is rewritten."""
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
         from synthorg.memory.consolidation.llm_op import (
@@ -124,7 +124,7 @@ class TestMemoryConsolidationLLMStrategy:
 
     def test_system_prompt_with_trajectory_wraps_each_entry(self) -> None:
         """Trajectory-context entries are wrapped under TAG_MEMORY_ENTRY."""
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.core.types import NotBlankStr
         from synthorg.memory.consolidation.config import LLMConsolidationConfig
         from synthorg.memory.consolidation.llm_op import (

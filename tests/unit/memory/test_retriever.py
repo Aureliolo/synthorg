@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.errors import MemoryRetrievalError
 from synthorg.memory.filter import (

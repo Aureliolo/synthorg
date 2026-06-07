@@ -199,7 +199,7 @@ class TestGetStats:
         for _ in range(3):
             await store.record_outcome(_make_outcome(decision="approved"))
         # Inject a corrupted entry directly via the backend.
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 
         await backend.store(
@@ -233,7 +233,7 @@ class TestGetStats:
             agent_id=_AGENT_ID,
             min_outcomes=1,
         )
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 
         await backend.store(

@@ -8,12 +8,12 @@ fallback, and the document orchestrator's positional chunk ids.
 
 import pytest
 
-from synthorg.core.enums import ContentKind, SourceType
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.chunking import build_chunker, chunk_raw_document
 from synthorg.knowledge.chunking.code import CodeChunker
 from synthorg.knowledge.chunking.document import OffsetChunker
 from synthorg.knowledge.config import KnowledgeConfig
+from synthorg.knowledge.enums import ContentKind, SourceType
 from synthorg.knowledge.models import (
     CodeLocator,
     PdfLocator,

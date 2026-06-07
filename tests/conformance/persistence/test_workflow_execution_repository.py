@@ -8,13 +8,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowExecutionStatus,
-    WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
-    WorkflowType,
-)
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -24,6 +17,13 @@ from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,

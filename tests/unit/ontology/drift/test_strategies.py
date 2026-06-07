@@ -64,7 +64,7 @@ def _make_memory(
     entries_by_agent: dict[str, tuple[str, ...]] | None = None,
 ) -> AsyncMock:
     """Create a mock MemoryBackend with optional stored entries."""
-    from synthorg.core.enums import MemoryCategory
+    from synthorg.core.memory_enums import MemoryCategory
     from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
     memory = AsyncMock()

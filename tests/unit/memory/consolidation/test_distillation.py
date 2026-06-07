@@ -11,7 +11,7 @@ import structlog.testing
 from pydantic import ValidationError
 from typeguard import suppress_type_checks
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,

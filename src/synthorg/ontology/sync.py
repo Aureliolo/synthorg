@@ -8,9 +8,9 @@ to OrgMemory), idempotent via SHA-256 content hashing.
 import hashlib
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import OrgFactCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
     ONTOLOGY_SYNC_PUBLISHED,

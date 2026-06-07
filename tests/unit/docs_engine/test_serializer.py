@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import DocType
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.errors import DocValidationError
 from synthorg.docs_engine.models import (
     BulletListBlock,

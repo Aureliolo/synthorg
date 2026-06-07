@@ -13,20 +13,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import (
-    DocType,
-    SourceStatus,
-    SourceType,
-    TaskStatus,
-    TaskType,
-)
+from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.deliverable_receipts.builder import ReceiptBuilder
 from synthorg.deliverable_receipts.renderer import ReceiptRenderer
 from synthorg.deliverable_receipts.service import DeliverableReceiptService
 from synthorg.deliverable_receipts.validator import ReceiptValidator
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import DocMetadata, LivingDocument
 from synthorg.docs_engine.service import DocsService
+from synthorg.knowledge.enums import SourceStatus, SourceType
 from synthorg.knowledge.models import KnowledgeSource
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,

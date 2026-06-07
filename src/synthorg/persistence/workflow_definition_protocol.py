@@ -4,9 +4,9 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.definition import WorkflowDefinition
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.persistence._generics import (
     DEFAULT_PAGE_SIZE,
     FilteredQueryRepository,

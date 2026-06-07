@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import SourceType
 from synthorg.core.execution_identity import (
     ExecutionIdentity,
     execution_identity_scope,
 )
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.models import Citation, CodeLocator, KnowledgeHit
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec

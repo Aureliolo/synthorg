@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.engine.prompt_safety import (
     TAG_MEMORY_ENTRY,
     untrusted_content_directive,

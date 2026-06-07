@@ -389,7 +389,7 @@ class TestBuildUserMessageContentSummaries:
     ) -> MemoryEntry:
         from datetime import UTC, datetime
 
-        from synthorg.core.enums import MemoryCategory
+        from synthorg.core.memory_enums import MemoryCategory
         from synthorg.memory.models import MemoryEntry
 
         return MemoryEntry(

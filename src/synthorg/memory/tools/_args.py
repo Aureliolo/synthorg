@@ -41,7 +41,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 
 _ARGS_CONFIG = ConfigDict(

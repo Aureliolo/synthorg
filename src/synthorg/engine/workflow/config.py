@@ -8,7 +8,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import WorkflowType
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.engine.workflow.kanban_board import KanbanConfig
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.observability import get_logger

@@ -7,8 +7,8 @@ dynamic extended store for searchable organizational facts.
 import uuid
 from datetime import UTC, datetime
 
-from synthorg.core.enums import OrgFactCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.access_control import WriteAccessConfig, require_write_access
 from synthorg.memory.org.errors import (
     OrgMemoryConnectionError,

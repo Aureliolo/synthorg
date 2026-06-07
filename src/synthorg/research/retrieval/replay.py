@@ -9,8 +9,8 @@ reproduces identical retrieval without touching any external provider.
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import ResearchSourceType
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
+from synthorg.research.enums import ResearchSourceType
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr

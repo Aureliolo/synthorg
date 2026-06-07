@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import DocType
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     BulletListBlock,
     CodeBlock,

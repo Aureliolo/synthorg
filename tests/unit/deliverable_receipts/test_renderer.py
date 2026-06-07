@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.core.enums import DocType
 from synthorg.deliverable_receipts.models import (
     DeliverableReceipt,
     ReceiptDecisionEntry,
@@ -14,6 +13,7 @@ from synthorg.deliverable_receipts.models import (
     ReceiptTestEntry,
 )
 from synthorg.deliverable_receipts.renderer import RECEIPT_HEADING, ReceiptRenderer
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.models import (
     DocBlock,
     HeadingBlock,

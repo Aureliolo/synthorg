@@ -21,7 +21,7 @@ from synthorg.observability.events.ontology import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import MemoryCategory
+    from synthorg.core.memory_enums import MemoryCategory
     from synthorg.core.types import NotBlankStr
     from synthorg.memory.models import MemoryEntry, MemoryQuery, MemoryStoreRequest
     from synthorg.memory.protocol import MemoryBackend

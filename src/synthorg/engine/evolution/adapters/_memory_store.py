@@ -3,7 +3,7 @@
 import json
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evolution import EVOLUTION_ADAPTATION_FAILED

@@ -22,7 +22,7 @@ from pydantic import JsonValue, ValidationError
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
 from synthorg.config.utils import deep_merge, to_float
-from synthorg.core.enums import WorkflowType
+from synthorg.engine.workflow.enums import WorkflowType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.template import (
     TEMPLATE_PACK_CIRCULAR,

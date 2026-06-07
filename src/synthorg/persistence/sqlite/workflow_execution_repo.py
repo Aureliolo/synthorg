@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import aiosqlite
 
-from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.persistence_errors import (
     DuplicateRecordError,
     PersistenceVersionConflictError,
@@ -22,6 +21,7 @@ from synthorg.core.persistence_errors import (
     RecordNotFoundError,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.enums import WorkflowExecutionStatus
 from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence.workflow_exec import (

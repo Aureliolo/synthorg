@@ -21,10 +21,11 @@ from unittest.mock import AsyncMock
 import pytest
 import structlog
 
-from synthorg.core.enums import DocType, GitBackendType, Priority, TaskStatus, TaskType
+from synthorg.core.enums import GitBackendType, Priority, TaskStatus, TaskType
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.enums import DocType
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.models import (
     DecisionBlock,

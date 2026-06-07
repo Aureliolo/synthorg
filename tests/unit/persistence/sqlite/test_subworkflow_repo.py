@@ -6,17 +6,17 @@ from datetime import UTC, datetime
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowNodeType,
-    WorkflowType,
-    WorkflowValueType,
-)
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowIODeclaration,
     WorkflowNode,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowNodeType,
+    WorkflowType,
+    WorkflowValueType,
 )
 from synthorg.persistence.sqlite.subworkflow_repo import (
     SQLiteSubworkflowRepository,

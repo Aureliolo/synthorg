@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import AutonomyLevel, OrgFactCategory
+from synthorg.core.enums import AutonomyLevel
 from synthorg.hr.seniority import SeniorityLevel
+from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.org.models import (
     OperationLogEntry,
     OperationLogSnapshot,

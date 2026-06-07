@@ -4,11 +4,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from synthorg.core.enums import (
-    WorkflowEdgeType,
-    WorkflowNodeType,
-    WorkflowType,
-)
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
@@ -20,6 +15,11 @@ from synthorg.engine.workflow.diff import (
     NodeChange,
     WorkflowDiff,
     compute_diff,
+)
+from synthorg.engine.workflow.enums import (
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    WorkflowType,
 )
 from synthorg.versioning import VersionSnapshot, compute_content_hash
 

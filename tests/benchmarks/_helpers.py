@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from synthorg.budget.cost_record import CostRecord
-from synthorg.core.enums import MemoryCategory
+from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 

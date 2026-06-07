@@ -10,7 +10,7 @@ do not implement.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.enums import SourceType
+from synthorg.knowledge.enums import SourceType
 from synthorg.knowledge.errors import KnowledgeValidationError
 from synthorg.knowledge.loaders.pdf import PdfLoader
 from synthorg.knowledge.loaders.repo import RepoLoader

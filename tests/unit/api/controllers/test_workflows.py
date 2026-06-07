@@ -6,12 +6,12 @@ from typing import Any, cast
 import pytest
 import structlog.testing
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.observability.events.api import WORKFLOW_DEFINITION_CHANGED
 from synthorg.persistence.state import persistence_of
 from tests._shared import LoopAsyncClient

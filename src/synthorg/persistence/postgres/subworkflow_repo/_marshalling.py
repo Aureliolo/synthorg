@@ -7,7 +7,6 @@ from packaging.version import InvalidVersion, Version
 from psycopg.rows import DictRow
 from pydantic import ValidationError
 
-from synthorg.core.enums import WorkflowNodeType, WorkflowType
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
@@ -15,6 +14,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowIODeclaration,
     WorkflowNode,
 )
+from synthorg.engine.workflow.enums import WorkflowNodeType, WorkflowType
 from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,

@@ -51,6 +51,7 @@ _IMPORT_TIMEOUT_SECONDS: Final[int] = 20
 COLD_IMPORT_LEAVES: Final[tuple[str, ...]] = (
     "synthorg.providers.enums",
     "synthorg.core.agent",
+    "synthorg.core.memory_enums",
     "synthorg.persistence._shared",
     "synthorg.core.tool_constraints",
     "synthorg.config.schema",
