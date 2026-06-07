@@ -444,7 +444,7 @@ class TestInviteResume:
         )
         app_state = make_app_state(approval_store=store, clock=FakeClock(start=START))
         handled = await try_conversational_invite_resume(
-            app_state, "a-other", approved=True, decided_by=_DECIDED_BY
+            app_state, sid("a-other"), approved=True, decided_by=_DECIDED_BY
         )
         assert handled is False
 

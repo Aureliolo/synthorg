@@ -97,7 +97,7 @@ class TestConcurrentWrites:
         records = [
             CostRecord(
                 agent_id=f"agent-{i}",
-                task_id=sid("cost-parent"),
+                task_id=NotBlankStr(sid("cost-parent")),
                 provider="test-provider",
                 model="test-small-001",
                 input_tokens=10,
@@ -230,7 +230,7 @@ class TestNativePostgresTypes:
         precise_ts = datetime(2026, 4, 10, 12, 34, 56, 789012, tzinfo=UTC)
         record = CostRecord(
             agent_id="tz-agent",
-            task_id=sid("tz-parent"),
+            task_id=NotBlankStr(sid("tz-parent")),
             provider="test-provider",
             model="test-small-001",
             input_tokens=1,

@@ -2,15 +2,12 @@
 
 import re
 import sys
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, MutableMapping
+from typing import Any
 from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.redaction import scrub_secret_tokens
-
-if TYPE_CHECKING:
-    from collections.abc import MutableMapping
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(password|secret|token|api_key|api_secret|authorization"

@@ -114,6 +114,33 @@ class TestDecompositionService:
             await service.decompose_task(task, DecompositionContext())
 
     @pytest.mark.unit
+    async def test_decompose_non_canonical_subtask_id_raises(self) -> None:
+        """A parseable but non-canonical UUID subtask id is rejected.
+
+        The plan keeps the original id string while the child Task
+        canonicalises via ``UUID``; an uppercase (non-canonical) input
+        would yield two textual ids for one subtask, so the service must
+        reject it rather than silently diverge.
+        """
+        task = _make_task()
+        non_canonical = str(as_uuid("sub-upper")).upper()
+        plan = DecompositionPlan(
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(
+                    id=non_canonical,
+                    title="Child",
+                    description="Child task",
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        with pytest.raises(DecompositionError, match="canonical UUID form"):
+            await service.decompose_task(task, DecompositionContext())
+
+    @pytest.mark.unit
     async def test_decompose_builds_edges(self) -> None:
         """Service builds dependency edges from subtask definitions."""
         task = _make_task()

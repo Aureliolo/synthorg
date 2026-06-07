@@ -335,7 +335,18 @@ def _args_to_plan(
     # child task carries a globally unique identifier while preserving the
     # dependency edges between siblings.
     parsed = tuple(_parse_subtask(s) for s in raw_subtasks)
-    id_map = {sub.id: str(uuid4()) for sub in parsed}
+    # Duplicate LLM ids would collapse to a single UUID and corrupt the
+    # dependency DAG (distinct subtasks sharing one id), so reject them.
+    id_map: dict[str, str] = {}
+    for sub in parsed:
+        if sub.id in id_map:
+            msg = f"Duplicate subtask id: {sub.id!r}"
+            logger.warning(
+                DECOMPOSITION_LLM_PARSE_ERROR,
+                error=msg,
+            )
+            raise DecompositionError(msg)
+        id_map[sub.id] = str(uuid4())
     subtasks = tuple(
         sub.model_copy(
             update={

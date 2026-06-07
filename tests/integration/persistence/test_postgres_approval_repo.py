@@ -105,7 +105,7 @@ async def test_pydantic_invalid_row_raises_query_error(
             "(%s, %s, %s, %s, %s, %s, %s, %s, %s, "
             " %s, %s, %s, %s, %s, %s)",
             (
-                "approval-invalid-001",
+                str(as_uuid("approval-invalid-001")),
                 "deploy:production",
                 "Invalid metadata",
                 "metadata dict carries a non-string value",
@@ -127,7 +127,7 @@ async def test_pydantic_invalid_row_raises_query_error(
         await conn.commit()
 
     with pytest.raises(QueryError):
-        await repo.get("approval-invalid-001")
+        await repo.get(str(as_uuid("approval-invalid-001")))
 
 
 async def test_save_duplicate_primary_key_raises_constraint(

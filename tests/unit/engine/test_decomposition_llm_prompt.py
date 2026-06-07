@@ -439,6 +439,31 @@ class TestParseToolCallResponse:
         with pytest.raises(DecompositionError, match="object"):
             parse_tool_call_response(response, "task-1")
 
+    @pytest.mark.unit
+    def test_duplicate_subtask_id_raises(self) -> None:
+        """Duplicate LLM subtask ids raise rather than collapse to one UUID."""
+        args: dict[str, Any] = {
+            "subtasks": [
+                {
+                    "id": "sub-dup",
+                    "title": "First",
+                    "description": "Do step 1",
+                    "dependencies": [],
+                },
+                {
+                    "id": "sub-dup",
+                    "title": "Second",
+                    "description": "Do step 2",
+                    "dependencies": [],
+                },
+            ],
+            "task_structure": "sequential",
+            "coordination_topology": "auto",
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="Duplicate subtask id"):
+            parse_tool_call_response(response, "task-1")
+
 
 class TestParseContentResponse:
     """Tests for parse_content_response."""

@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from synthorg.communication.delegation.service import DelegationService
 from synthorg.core.enums import TaskSource, TaskStatus, TaskType
 from synthorg.core.task import Task
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -28,7 +28,7 @@ class TestTaskSourceField:
 
     def _make_task(self, **overrides: object) -> Task:
         defaults: dict[str, object] = {
-            "id": sid("task-001"),
+            "id": as_uuid("task-001"),
             "title": "Test task",
             "description": "A test task",
             "type": TaskType.DEVELOPMENT,

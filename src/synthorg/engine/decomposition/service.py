@@ -53,16 +53,28 @@ def _subtask_uuid(subtask_id: str) -> UUID:
         The id as a ``UUID``.
 
     Raises:
-        DecompositionError: When ``subtask_id`` is not a UUID string.
+        DecompositionError: When ``subtask_id`` is not a canonical UUID
+            string.
     """
     try:
-        return UUID(subtask_id)
+        parsed = UUID(subtask_id)
     except ValueError as exc:
         msg = (
             f"Subtask id {subtask_id!r} is not a valid UUID string; "
             "decomposition strategies must supply UUID-string subtask ids"
         )
         raise DecompositionError(msg) from exc
+    # The plan keeps the original string while the child Task canonicalises
+    # via UUID; a non-canonical input (uppercase, no hyphens) would yield two
+    # textual ids for one subtask and break string-based correlation.
+    canonical = str(parsed)
+    if subtask_id != canonical:
+        msg = (
+            f"Subtask id {subtask_id!r} is not in canonical UUID form; "
+            f"use {canonical!r}"
+        )
+        raise DecompositionError(msg)
+    return parsed
 
 
 class DecompositionService:

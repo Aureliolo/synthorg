@@ -16,7 +16,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import Task
 from synthorg.core.task_transitions import VALID_TRANSITIONS
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -27,7 +27,7 @@ _priorities = st.sampled_from(Priority)
 _complexities = st.sampled_from(Complexity)
 
 _TASK_DEFAULTS: dict[str, Any] = {
-    "id": sid("task-001"),
+    "id": as_uuid("task-001"),
     "title": "Test task",
     "description": "A test task",
     "type": TaskType.DEVELOPMENT,

@@ -24,7 +24,7 @@ from synthorg.engine.middleware.protocol import (
     ToolCallable,
 )
 from synthorg.providers.models import TokenUsage
-from tests._shared import as_uuid
+from tests._shared import as_uuid, sid
 
 # ── Test helpers ──────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ def _mw_context() -> AgentMiddlewareContext:
         identity=identity,
         task=_task(),
         agent_id=str(identity.id),
-        task_id="task-1",
+        task_id=sid("task-1"),
         execution_id="exec-1",
     )
 
@@ -467,7 +467,7 @@ class TestAgentMiddlewareContext:
             identity=identity,
             task=_task(),
             agent_id=str(identity.id),
-            task_id="task-1",
+            task_id=sid("task-1"),
             execution_id="exec-1",
             metadata=input_dict,
         )

@@ -4,7 +4,6 @@ import contextlib
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import patch
-from uuid import uuid4
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -28,6 +27,7 @@ from synthorg.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
 from synthorg.providers.models import TokenUsage
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared import as_uuid
 
 from .conftest import make_cost_record
 
@@ -70,7 +70,7 @@ def _make_identity(
     provider: str = "test-provider",
 ) -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("agent-001"),
         name="Test Agent",
         role="Developer",
         department="Engineering",
@@ -85,7 +85,7 @@ def _make_task(
     budget_limit: float = 0.0,
 ) -> Task:
     return Task(
-        id=uuid4(),
+        id=as_uuid("task-001"),
         title="Test task",
         description="A test task",
         type=TaskType.DEVELOPMENT,
