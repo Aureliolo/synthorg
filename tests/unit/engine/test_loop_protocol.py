@@ -18,6 +18,7 @@ from synthorg.engine.react_loop import ReactLoop
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, TokenUsage
+from tests._shared import as_uuid
 
 
 @pytest.mark.unit
@@ -468,7 +469,7 @@ class TestMakeBudgetChecker:
     @staticmethod
     def _make_task(budget_limit: float) -> Task:
         return Task(
-            id="task-budget-001",
+            id=as_uuid("task-budget-001"),
             title="Test task",
             description="A task for budget checker testing.",
             type=TaskType.DEVELOPMENT,

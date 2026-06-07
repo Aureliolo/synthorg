@@ -17,7 +17,6 @@ backend, proposer, capture strategy, and post-execution dispatch are all real.
 import json
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -42,6 +41,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -63,7 +63,7 @@ _SUCCESS_PROPOSAL_JSON: Final[str] = json.dumps(
     },
 )
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("success-capture-agent")
 
 
 class SuccessScriptedStrategy:
@@ -123,7 +123,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-success-001",
+        id=as_uuid("task-success-001"),
         title="Implement the checkout flow",
         description="Build the checkout flow end to end.",
         type=TaskType.DEVELOPMENT,

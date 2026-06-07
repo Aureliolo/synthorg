@@ -34,7 +34,7 @@ from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +114,7 @@ async def service(
         await memory.connect()
         memory_connected = True
         await persistence.projects.save(
-            Project(id=NotBlankStr("proj-1"), name=NotBlankStr("Demo"))
+            Project(id=as_uuid("proj-1"), name=NotBlankStr("Demo"))
         )
         yield build_knowledge_service(
             memory_backend=memory,
@@ -151,7 +151,7 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("App repo"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         await service.ingest(
             source_type=SourceType.WEB,
@@ -162,7 +162,7 @@ class TestKnowledgeRoundTrip:
 
         repo_hits = await service.search(
             query=NotBlankStr("run_with_backoff"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert repo_hits
         citation = repo_hits[0].citation
@@ -174,7 +174,7 @@ class TestKnowledgeRoundTrip:
 
         web_hits = await service.search(
             query=NotBlankStr("exponential backoff"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert any(h.citation.source_type is SourceType.WEB for h in web_hits)
 
@@ -184,11 +184,11 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.PDF,
             uri=NotBlankStr("memo://retry-policy.pdf"),
             title=NotBlankStr("Retry policy memo"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         pdf_hits = await service.search(
             query=NotBlankStr("deliverable receipts"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         pdf_hit = next(
             (h for h in pdf_hits if h.citation.source_type is SourceType.PDF),
@@ -205,13 +205,13 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.TICKET,
             uri=NotBlankStr("TICKET-42"),
             title=NotBlankStr("Export timeout"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         # InMemoryBackend matches whole-substring (not tokenised), so the
         # query must appear verbatim in the ticket comment.
         ticket_hits = await service.search(
             query=NotBlankStr("stale cursor in the exporter"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         ticket_hit = next(
             (h for h in ticket_hits if h.citation.source_type is SourceType.TICKET),
@@ -231,7 +231,7 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("App repo"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         # Edit one file; the other is byte-identical and must not re-embed.
         (repo / "auth.py").write_text(
@@ -241,14 +241,14 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("App repo"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert second.content_hash != first.content_hash
         assert second.chunk_count == first.chunk_count
         # New content is searchable + cited.
         hits = await service.search(
             query=NotBlankStr("issue_jwt_token"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert hits
         assert "issue_jwt_token" in hits[0].chunk_text
@@ -262,11 +262,11 @@ class TestKnowledgeRoundTrip:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("App repo"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert await service.delete_source(source.source_id) is True
         hits = await service.search(
             query=NotBlankStr("run_with_backoff"),
-            project_id=NotBlankStr("proj-1"),
+            project_id=NotBlankStr(sid("proj-1")),
         )
         assert hits == ()

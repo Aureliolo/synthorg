@@ -21,7 +21,7 @@ from synthorg.project_brain.tool_factory import ProjectBrainToolFactory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -68,7 +68,7 @@ def _elevated_identity() -> AgentIdentity:
 
 def _resume_task() -> Task:
     return Task(
-        id="task-resume-1",
+        id=as_uuid("task-resume-1"),
         title="Resume task",
         description="A development task to be resumed from a parked run.",
         type=TaskType.DEVELOPMENT,
@@ -136,7 +136,7 @@ class TestAgentEngineResumeBrainToolWiring:
         tool_invoker, _system_prompt = engine._build_resume_runtime(
             _elevated_identity(),
             task,
-            task_id=task.id,
+            task_id=str(task.id),
             effective_autonomy=None,
         )
 

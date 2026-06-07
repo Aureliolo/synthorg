@@ -62,11 +62,11 @@ class DirectIntake:
         logger.debug(
             INTAKE_DIRECT_TASK_CREATED,
             request_id=request.request_id,
-            task_id=task.id,
+            task_id=str(task.id),
         )
         return IntakeResult.accepted_result(
             request_id=request.request_id,
-            task_id=task.id,
+            task_id=str(task.id),
         )
 
     def _build_task_data(self, requirement: TaskRequirement) -> CreateTaskData:

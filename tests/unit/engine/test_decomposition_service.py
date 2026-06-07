@@ -12,7 +12,8 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.errors import DecompositionCycleError
+from synthorg.engine.errors import DecompositionCycleError, DecompositionError
+from tests._shared import as_uuid, sid
 
 
 def _make_task(
@@ -22,7 +23,7 @@ def _make_task(
 ) -> Task:
     """Helper to create a minimal task."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Service Test Task",
         description="A task for service testing",
         type=TaskType.DEVELOPMENT,
@@ -34,30 +35,30 @@ def _make_task(
 
 
 def _make_plan(
-    parent_task_id: str = "task-svc-1",
+    parent_task_id: str = sid("task-svc-1"),
 ) -> DecompositionPlan:
     """Helper to create a plan with dependencies."""
     return DecompositionPlan(
         parent_task_id=parent_task_id,
         subtasks=(
             SubtaskDefinition(
-                id="sub-1",
+                id=sid("sub-1"),
                 title="Setup",
                 description="Initialize environment",
                 required_skills=("python",),
             ),
             SubtaskDefinition(
-                id="sub-2",
+                id=sid("sub-2"),
                 title="Build",
                 description="Build the feature",
-                dependencies=("sub-1",),
+                dependencies=(sid("sub-1"),),
                 required_skills=("python", "sql"),
             ),
             SubtaskDefinition(
-                id="sub-3",
+                id=sid("sub-3"),
                 title="Test",
                 description="Write tests",
-                dependencies=("sub-2",),
+                dependencies=(sid("sub-2"),),
                 required_skills=("python", "testing"),
             ),
         ),
@@ -81,11 +82,63 @@ class TestDecompositionService:
 
         assert len(result.created_tasks) == 3
         for child_task in result.created_tasks:
-            assert child_task.parent_task_id == task.id
+            assert child_task.parent_task_id == str(task.id)
             assert child_task.status == TaskStatus.CREATED
             assert child_task.assigned_to is None
             assert child_task.project == task.project
             assert child_task.created_by == task.created_by
+
+    @pytest.mark.unit
+    async def test_decompose_non_uuid_subtask_id_raises(self) -> None:
+        """A plan with a non-UUID subtask id raises a clear domain error.
+
+        The LLM strategy remaps its labels to UUIDs upstream; a custom
+        strategy that hands the service a plain label must fail with a
+        ``DecompositionError`` rather than an opaque ``ValueError``.
+        """
+        task = _make_task()
+        plan = DecompositionPlan(
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(
+                    id="plain-label",
+                    title="Child",
+                    description="Child task",
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        with pytest.raises(DecompositionError, match="not a valid UUID"):
+            await service.decompose_task(task, DecompositionContext())
+
+    @pytest.mark.unit
+    async def test_decompose_non_canonical_subtask_id_raises(self) -> None:
+        """A parseable but non-canonical UUID subtask id is rejected.
+
+        The plan keeps the original id string while the child Task
+        canonicalises via ``UUID``; an uppercase (non-canonical) input
+        would yield two textual ids for one subtask, so the service must
+        reject it rather than silently diverge.
+        """
+        task = _make_task()
+        non_canonical = str(as_uuid("sub-upper")).upper()
+        plan = DecompositionPlan(
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(
+                    id=non_canonical,
+                    title="Child",
+                    description="Child task",
+                ),
+            ),
+        )
+        strategy = ManualDecompositionStrategy(plan)
+        service = DecompositionService(strategy, TaskStructureClassifier())
+
+        with pytest.raises(DecompositionError, match="canonical UUID form"):
+            await service.decompose_task(task, DecompositionContext())
 
     @pytest.mark.unit
     async def test_decompose_builds_edges(self) -> None:
@@ -100,15 +153,15 @@ class TestDecompositionService:
         result = await service.decompose_task(task, ctx)
 
         # sub-1 -> sub-2, sub-2 -> sub-3
-        assert ("sub-1", "sub-2") in result.dependency_edges
-        assert ("sub-2", "sub-3") in result.dependency_edges
+        assert (sid("sub-1"), sid("sub-2")) in result.dependency_edges
+        assert (sid("sub-2"), sid("sub-3")) in result.dependency_edges
         assert len(result.dependency_edges) == 2
 
     @pytest.mark.unit
     async def test_decompose_preserves_delegation_chain(self) -> None:
         """Subtasks inherit parent's delegation chain."""
         task = Task(
-            id="task-svc-1",
+            id=as_uuid("task-svc-1"),
             title="Delegated Task",
             description="Task with delegation chain",
             type=TaskType.DEVELOPMENT,
@@ -118,9 +171,11 @@ class TestDecompositionService:
             delegation_chain=("agent-a", "agent-b"),
         )
         plan = DecompositionPlan(
-            parent_task_id=task.id,
+            parent_task_id=str(task.id),
             subtasks=(
-                SubtaskDefinition(id="sub-1", title="Child", description="Child task"),
+                SubtaskDefinition(
+                    id=sid("sub-1"), title="Child", description="Child task"
+                ),
             ),
         )
         strategy = ManualDecompositionStrategy(plan)
@@ -154,7 +209,7 @@ class TestDecompositionService:
         """Classifier overrides plan's default structure when it differs."""
         # Task with sequential signals (dependencies + no parallel keywords)
         task = Task(
-            id="task-svc-1",
+            id=as_uuid("task-svc-1"),
             title="Service Test Task",
             description="A task for service testing",
             type=TaskType.DEVELOPMENT,
@@ -167,8 +222,10 @@ class TestDecompositionService:
         # SEQUENTIAL based on dependencies -- so they agree.
         # Use a plan with PARALLEL structure to test override.
         plan = DecompositionPlan(
-            parent_task_id=task.id,
-            subtasks=(SubtaskDefinition(id="sub-1", title="A", description="Desc A"),),
+            parent_task_id=str(task.id),
+            subtasks=(
+                SubtaskDefinition(id=sid("sub-1"), title="A", description="Desc A"),
+            ),
             task_structure=TaskStructure.PARALLEL,
         )
         strategy = ManualDecompositionStrategy(plan)
@@ -188,19 +245,19 @@ class TestDecompositionService:
         task = _make_task()
         # Cycle: sub-1 -> sub-2 -> sub-1
         plan = DecompositionPlan(
-            parent_task_id=task.id,
+            parent_task_id=str(task.id),
             subtasks=(
                 SubtaskDefinition(
-                    id="sub-1",
+                    id=sid("sub-1"),
                     title="A",
                     description="Desc A",
-                    dependencies=("sub-2",),
+                    dependencies=(sid("sub-2"),),
                 ),
                 SubtaskDefinition(
-                    id="sub-2",
+                    id=sid("sub-2"),
                     title="B",
                     description="Desc B",
-                    dependencies=("sub-1",),
+                    dependencies=(sid("sub-1"),),
                 ),
             ),
         )
@@ -218,7 +275,7 @@ class TestDecompositionService:
         from synthorg.core.enums import Complexity
 
         task = Task(
-            id="task-svc-1",
+            id=as_uuid("task-svc-1"),
             title="Epic Task",
             description="Parent task",
             type=TaskType.DEVELOPMENT,
@@ -228,10 +285,10 @@ class TestDecompositionService:
             estimated_complexity=Complexity.EPIC,
         )
         plan = DecompositionPlan(
-            parent_task_id=task.id,
+            parent_task_id=str(task.id),
             subtasks=(
                 SubtaskDefinition(
-                    id="sub-1",
+                    id=sid("sub-1"),
                     title="Simple Child",
                     description="Simple subtask",
                     estimated_complexity=Complexity.SIMPLE,
@@ -283,9 +340,9 @@ class TestDecompositionService:
         result = await service.decompose_task(task, ctx)
 
         tasks_by_id = {t.id: t for t in result.created_tasks}
-        assert tasks_by_id["sub-1"].dependencies == ()
-        assert tasks_by_id["sub-2"].dependencies == ("sub-1",)
-        assert tasks_by_id["sub-3"].dependencies == ("sub-2",)
+        assert tasks_by_id[as_uuid("sub-1")].dependencies == ()
+        assert tasks_by_id[as_uuid("sub-2")].dependencies == (sid("sub-1"),)
+        assert tasks_by_id[as_uuid("sub-3")].dependencies == (sid("sub-2"),)
 
     @pytest.mark.unit
     def test_rollup_status_delegates(self) -> None:

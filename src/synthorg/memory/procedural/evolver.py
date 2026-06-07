@@ -328,7 +328,7 @@ class AutonomousSkillEvolver:
             Result of type ``ApprovalItem``.
         """
         return ApprovalItem(
-            id=f"evolver-{cycle_id}-{uuid4().hex[:8]}",
+            id=uuid4(),
             action_type="skill_evolver:org_promotion",
             title=f"Org skill proposal: {proposal.discovery[:80]}",
             description=(

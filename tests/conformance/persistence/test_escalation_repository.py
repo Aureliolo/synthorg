@@ -25,6 +25,7 @@ from synthorg.communication.enums import ConflictType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -33,7 +34,7 @@ _NOW = datetime(2026, 3, 15, 10, 0, 0, tzinfo=UTC)
 
 def _conflict(conflict_id: str = "conflict-001") -> Conflict:
     return Conflict(
-        id=conflict_id,
+        id=as_uuid(conflict_id),
         type=ConflictType.ARCHITECTURE,
         subject="storage choice",
         positions=(

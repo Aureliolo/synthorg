@@ -759,7 +759,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             project_id=project_id or None,
             hard_ceiling=hard_ceiling,
             hard_ceiling_currency=cfg.currency,
-            task_id=task.id,
+            task_id=str(task.id),
             forecast_id=task.forecast_id,
         )
 

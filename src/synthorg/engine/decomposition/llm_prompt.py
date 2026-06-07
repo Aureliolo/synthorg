@@ -7,6 +7,7 @@ LLM responses into ``DecompositionPlan`` objects.
 import json
 import re
 from typing import TYPE_CHECKING, Any, Final
+from uuid import uuid4
 
 from synthorg.core.enums import (
     Complexity,
@@ -329,7 +330,32 @@ def _args_to_plan(
         )
         raise DecompositionError(msg)
 
-    subtasks = tuple(_parse_subtask(s) for s in raw_subtasks)
+    # The model assigns its own subtask ids (e.g. ``"subtask-1"``) purely
+    # to express the dependency DAG; remap them to fresh UUIDs so each
+    # child task carries a globally unique identifier while preserving the
+    # dependency edges between siblings.
+    parsed = tuple(_parse_subtask(s) for s in raw_subtasks)
+    # Duplicate LLM ids would collapse to a single UUID and corrupt the
+    # dependency DAG (distinct subtasks sharing one id), so reject them.
+    id_map: dict[str, str] = {}
+    for sub in parsed:
+        if sub.id in id_map:
+            msg = f"Duplicate subtask id: {sub.id!r}"
+            logger.warning(
+                DECOMPOSITION_LLM_PARSE_ERROR,
+                error=msg,
+            )
+            raise DecompositionError(msg)
+        id_map[sub.id] = str(uuid4())
+    subtasks = tuple(
+        sub.model_copy(
+            update={
+                "id": id_map[sub.id],
+                "dependencies": tuple(id_map.get(dep, dep) for dep in sub.dependencies),
+            }
+        )
+        for sub in parsed
+    )
 
     structure_str = args.get("task_structure", "sequential")
     structure = _TASK_STRUCTURE_MAP.get(str(structure_str).lower())

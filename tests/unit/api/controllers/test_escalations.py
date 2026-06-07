@@ -15,7 +15,7 @@ from synthorg.communication.conflict_resolution.models import (
 from synthorg.communication.enums import ConflictType
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.hr.seniority import SeniorityLevel
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.unit
@@ -38,7 +38,7 @@ def _make_escalation(
     """
     resolved_conflict_id = conflict_id or f"conflict-for-{escalation_id}"
     conflict = Conflict(
-        id=resolved_conflict_id,
+        id=as_uuid(resolved_conflict_id),
         type=ConflictType.ARCHITECTURE,
         subject="Choose backend framework",
         positions=(

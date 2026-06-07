@@ -75,6 +75,10 @@ _ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("charter-interview")
 # uniqueness. Rotating this constant would orphan in-flight forecasts;
 # treat it as part of the persistence contract.
 _FORECAST_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000001")
+# Public so callers and tests can reproduce the charter-to-project id
+# derivation (``uuid5(PROJECT_NAMESPACE, f"charter-{charter_id}")``)
+# without importing a module-private symbol.
+PROJECT_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000002")
 
 
 def _charter_brief_signal(brief: str, currency: str) -> BriefSignal:
@@ -303,14 +307,15 @@ class CharterDispatcher:
             if existing is None:
                 raise WorkProjectNotFoundError
             return charter.project_id
-        project_id = NotBlankStr(f"charter-{charter.id}")
+        project_uuid = uuid.uuid5(PROJECT_NAMESPACE, f"charter-{charter.id}")
+        project_id = NotBlankStr(str(project_uuid))
         deadline = (
             charter.envelope.deadline.isoformat()
             if charter.envelope.deadline is not None
             else None
         )
         project = Project(
-            id=project_id,
+            id=project_uuid,
             name=charter.proposed_project_name or NotBlankStr(charter.title),
             description=charter.proposed_project_description,
             budget=charter.envelope.amount,

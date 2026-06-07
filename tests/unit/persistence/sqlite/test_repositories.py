@@ -34,6 +34,7 @@ from synthorg.persistence.sqlite.message_repo import (
 from synthorg.persistence.sqlite.task_repo import (
     SQLiteTaskRepository,
 )
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 from tests.unit.persistence.conftest import make_message, make_task
 
@@ -49,7 +50,7 @@ class TestSQLiteTaskRepository:
         task = make_task()
         await repo.save(task)
 
-        result = await repo.get("task-001")
+        result = await repo.get(sid("task-001"))
         assert result is not None
         assert result.id == task.id
         assert result.title == task.title
@@ -62,7 +63,7 @@ class TestSQLiteTaskRepository:
         repo = SQLiteTaskRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        assert await repo.get("nonexistent") is None
+        assert await repo.get(sid("nonexistent")) is None
 
     async def test_save_upsert_updates_existing(
         self, migrated_db: aiosqlite.Connection
@@ -76,7 +77,7 @@ class TestSQLiteTaskRepository:
         updated = task.with_transition(TaskStatus.ASSIGNED, assigned_to="bob")
         await repo.save(updated)
 
-        result = await repo.get("task-001")
+        result = await repo.get(sid("task-001"))
         assert result is not None
         assert result.status == TaskStatus.ASSIGNED
         assert result.assigned_to == "bob"
@@ -104,7 +105,7 @@ class TestSQLiteTaskRepository:
 
         tasks = await repo.list_items()
         assert len(tasks) == 3
-        assert [t.id for t in tasks] == ["t1", "t2", "t3"]
+        assert [str(t.id) for t in tasks] == sorted(sid(x) for x in ("t1", "t2", "t3"))
 
     async def test_list_filter_by_status(
         self, migrated_db: aiosqlite.Connection
@@ -122,7 +123,7 @@ class TestSQLiteTaskRepository:
 
         created = await repo.query(TaskFilterSpec(status=TaskStatus.CREATED))
         assert len(created) == 1
-        assert created[0].id == "t1"
+        assert created[0].id == as_uuid("t1")
 
     async def test_list_filter_by_assigned_to(
         self, migrated_db: aiosqlite.Connection
@@ -159,14 +160,14 @@ class TestSQLiteTaskRepository:
             migrated_db, write_context=make_private_write_context()
         )
         await repo.save(make_task())
-        assert await repo.delete("task-001") is True
-        assert await repo.get("task-001") is None
+        assert await repo.delete(sid("task-001")) is True
+        assert await repo.get(sid("task-001")) is None
 
     async def test_delete_nonexistent(self, migrated_db: aiosqlite.Connection) -> None:
         repo = SQLiteTaskRepository(
             migrated_db, write_context=make_private_write_context()
         )
-        assert await repo.delete("nonexistent") is False
+        assert await repo.delete(sid("nonexistent")) is False
 
     async def test_list_with_combined_filters(
         self, migrated_db: aiosqlite.Connection
@@ -192,7 +193,7 @@ class TestSQLiteTaskRepository:
             TaskFilterSpec(status=TaskStatus.ASSIGNED, project="proj-a")
         )
         assert len(result) == 1
-        assert result[0].id == "t2"
+        assert result[0].id == as_uuid("t2")
 
     async def test_round_trip_with_nested_models(
         self, migrated_db: aiosqlite.Connection
@@ -201,7 +202,7 @@ class TestSQLiteTaskRepository:
         from synthorg.core.artifact import ExpectedArtifact
 
         task = Task(
-            id="task-complex",
+            id=as_uuid("task-complex"),
             title="Complex task",
             description="Task with nested models",
             type=TaskType.DEVELOPMENT,
@@ -231,7 +232,7 @@ class TestSQLiteTaskRepository:
         )
         await repo.save(task)
 
-        result = await repo.get("task-complex")
+        result = await repo.get(sid("task-complex"))
         assert result is not None
         assert result.reviewers == ("reviewer-1", "reviewer-2")
         assert result.dependencies == ("dep-1", "dep-2")

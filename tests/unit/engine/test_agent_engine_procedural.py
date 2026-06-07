@@ -3,7 +3,6 @@
 import json
 from datetime import date
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -22,8 +21,9 @@ from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )
+from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("procedural-agent")
 
 
 def _make_identity() -> AgentIdentity:
@@ -39,7 +39,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-proc-001",
+        id=as_uuid("task-proc-001"),
         title="Implement feature X",
         description="Build the X feature.",
         type=TaskType.DEVELOPMENT,

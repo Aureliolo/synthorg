@@ -217,7 +217,7 @@ class OffboardingService:
             # Persist interrupted tasks.
             for task in interrupted:
                 await self._task_repository.save(task)
-            return tuple(t.id for t in interrupted)
+            return tuple(str(t.id) for t in interrupted)
         except (TaskReassignmentError, OSError, ValueError) as exc:
             # logger.exception attaches the traceback whose
             # frame-locals could carry the in-flight task payload;

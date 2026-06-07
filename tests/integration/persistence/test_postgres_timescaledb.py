@@ -21,6 +21,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.persistence.jsonb_capability import JsonbQueryCapability
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.security.models import AuditEntry
+from tests._shared import sid
 from tests.unit.persistence.conftest import make_task
 
 pytestmark = [
@@ -135,7 +136,7 @@ class TestRepositoryTransparency:
             # actually partitions the data into multiple chunks.
             record = CostRecord(
                 agent_id=NotBlankStr(f"agent-{i % 5}"),
-                task_id=NotBlankStr(f"task-{i % 3}"),
+                task_id=NotBlankStr(sid(f"task-{i % 3}")),
                 provider=NotBlankStr("test-provider"),
                 model=NotBlankStr("test-small-001"),
                 input_tokens=100,

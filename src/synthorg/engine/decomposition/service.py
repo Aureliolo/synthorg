@@ -5,6 +5,7 @@ to decompose a parent task into executable subtasks.
 """
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
@@ -15,6 +16,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
+from synthorg.engine.errors import DecompositionError
 from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
@@ -32,6 +34,47 @@ if TYPE_CHECKING:
     from synthorg.engine.stakes.protocol import StakesAssessor
 
 logger = get_logger(__name__)
+
+
+def _subtask_uuid(subtask_id: str) -> UUID:
+    """Parse a subtask id into the UUID used for the child task.
+
+    The LLM strategy emits throwaway labels and remaps them to UUID
+    strings before the plan reaches this service, so its ids always
+    parse. A hand-built plan from a custom ``DecompositionStrategy`` is
+    responsible for supplying UUID-string subtask ids; surface a clear
+    domain error if it does not, rather than letting an opaque
+    ``ValueError`` escape from deep in task construction.
+
+    Args:
+        subtask_id: The plan subtask id to convert.
+
+    Returns:
+        The id as a ``UUID``.
+
+    Raises:
+        DecompositionError: When ``subtask_id`` is not a canonical UUID
+            string.
+    """
+    try:
+        parsed = UUID(subtask_id)
+    except ValueError as exc:
+        msg = (
+            f"Subtask id {subtask_id!r} is not a valid UUID string; "
+            "decomposition strategies must supply UUID-string subtask ids"
+        )
+        raise DecompositionError(msg) from exc
+    # The plan keeps the original string while the child Task canonicalises
+    # via UUID; a non-canonical input (uppercase, no hyphens) would yield two
+    # textual ids for one subtask and break string-based correlation.
+    canonical = str(parsed)
+    if subtask_id != canonical:
+        msg = (
+            f"Subtask id {subtask_id!r} is not in canonical UUID form; "
+            f"use {canonical!r}"
+        )
+        raise DecompositionError(msg)
+    return parsed
 
 
 class DecompositionService:
@@ -77,7 +120,7 @@ class DecompositionService:
         """
         logger.info(
             DECOMPOSITION_STARTED,
-            task_id=task.id,
+            task_id=str(task.id),
             strategy=self._strategy.get_strategy_name(),
             current_depth=context.current_depth,
         )
@@ -88,7 +131,7 @@ class DecompositionService:
             reraise_critical(exc)
             logger.warning(
                 DECOMPOSITION_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self._strategy.get_strategy_name(),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -138,14 +181,14 @@ class DecompositionService:
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
             child_task = Task(
-                id=subtask_def.id,
+                id=_subtask_uuid(subtask_def.id),
                 title=subtask_def.title,
                 description=subtask_def.description,
                 type=task.type,
                 priority=task.priority,
                 project=task.project,
                 created_by=task.created_by,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 delegation_chain=task.delegation_chain,
                 dependencies=subtask_def.dependencies,
                 status=TaskStatus.CREATED,
@@ -155,7 +198,7 @@ class DecompositionService:
             created_tasks.append(child_task)
             logger.debug(
                 DECOMPOSITION_SUBTASK_CREATED,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 subtask_id=subtask_def.id,
                 title=subtask_def.title,
             )
@@ -175,7 +218,7 @@ class DecompositionService:
 
         logger.info(
             DECOMPOSITION_COMPLETED,
-            task_id=task.id,
+            task_id=str(task.id),
             subtask_count=len(created_tasks),
             structure=plan.task_structure.value,
             edge_count=len(edges),

@@ -41,7 +41,7 @@ class FakeTaskRepo:
         self._store: dict[str, Task] = {}
 
     async def save(self, task: Task) -> None:
-        self._store[task.id] = task
+        self._store[str(task.id)] = task
 
     async def get(self, task_id: str) -> Task | None:
         return self._store.get(task_id)
@@ -137,7 +137,7 @@ class TestRegisterObserver:
         )
         await _flush_observers(started_engine)
         assert len(received) == 1
-        assert received[0].task_id == task.id
+        assert received[0].task_id == str(task.id)
         assert received[0].mutation_type == "create"
 
     @pytest.mark.unit
@@ -257,7 +257,7 @@ class TestRegisterObserver:
             TransitionTaskMutation(
                 request_id="req-2",
                 requested_by="test",
-                task_id=task.id,
+                task_id=str(task.id),
                 target_status=TaskStatus.ASSIGNED,
                 reason="assign",
                 overrides={"assigned_to": "agent-1"},

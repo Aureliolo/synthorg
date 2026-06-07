@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 
@@ -10,7 +11,14 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import LoopAsyncClient, make_app_state, mock_of
+from tests._shared import (
+    LoopAsyncClient,
+    as_uuid,
+    coerce_id,
+    make_app_state,
+    mock_of,
+    sid,
+)
 from tests.unit.api.conftest import make_approval, make_auth_headers
 
 _BASE = "/api/v1/approvals"
@@ -69,7 +77,7 @@ class TestListApprovals:
         await _seed_item(approval_store, approval_id="a1")
         now = datetime.now(UTC)
         approved = ApprovalItem(
-            id="a2",
+            id=as_uuid("a2"),
             action_type="deployment",
             title="Deploy",
             description="desc",
@@ -87,7 +95,7 @@ class TestListApprovals:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["data"][0]["id"] == "a1"
+        assert resp.json()["data"][0]["id"] == sid("a1")
 
     async def test_list_filter_by_risk_level(
         self,
@@ -110,7 +118,7 @@ class TestListApprovals:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["data"][0]["id"] == "a2"
+        assert resp.json()["data"][0]["id"] == sid("a2")
 
     async def test_list_pagination(
         self,
@@ -178,11 +186,11 @@ class TestGetApproval:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.get(
-            f"{_BASE}/approval-001",
+            f"{_BASE}/{sid('approval-001')}",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["id"] == "approval-001"
+        assert resp.json()["data"]["id"] == sid("approval-001")
 
     async def test_get_not_found(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.get(
@@ -221,7 +229,7 @@ class TestCreateApproval:
         body = resp.json()
         assert body["success"] is True
         assert body["data"]["status"] == "pending"
-        assert body["data"]["id"].startswith("approval-")
+        assert str(UUID(body["data"]["id"])) == body["data"]["id"]
 
     async def test_create_with_ttl(self, async_test_client: LoopAsyncClient) -> None:
         resp = await async_test_client.post(
@@ -293,7 +301,7 @@ class TestApproveApproval:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.post(
-            f"{_BASE}/approval-001/approve",
+            f"{_BASE}/{sid('approval-001')}/approve",
             json={"comment": "Looks good"},
             headers=_WRITE_HEADERS,
         )
@@ -310,7 +318,7 @@ class TestApproveApproval:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.post(
-            f"{_BASE}/approval-001/approve",
+            f"{_BASE}/{sid('approval-001')}/approve",
             json={},
             headers=make_auth_headers("manager"),
         )
@@ -332,7 +340,7 @@ class TestApproveApproval:
     ) -> None:
         now = datetime.now(UTC)
         item = ApprovalItem(
-            id="decided-001",
+            id=as_uuid("decided-001"),
             action_type="code_merge",
             title="Already decided",
             description="desc",
@@ -345,7 +353,7 @@ class TestApproveApproval:
         )
         await approval_store.add(item)
         resp = await async_test_client.post(
-            f"{_BASE}/decided-001/approve",
+            f"{_BASE}/{sid('decided-001')}/approve",
             json={},
             headers=_WRITE_HEADERS,
         )
@@ -358,7 +366,7 @@ class TestApproveApproval:
     ) -> None:
         now = datetime.now(UTC)
         item = ApprovalItem(
-            id="expired-001",
+            id=as_uuid("expired-001"),
             action_type="code_merge",
             title="Expired",
             description="desc",
@@ -368,9 +376,9 @@ class TestApproveApproval:
             expires_at=now - timedelta(hours=1),
         )
         # Directly insert to bypass expiry validation timing
-        approval_store._items[item.id] = item
+        approval_store._items[str(item.id)] = item
         resp = await async_test_client.post(
-            f"{_BASE}/expired-001/approve",
+            f"{_BASE}/{sid('expired-001')}/approve",
             json={},
             headers=_WRITE_HEADERS,
         )
@@ -396,7 +404,7 @@ class TestRejectApproval:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.post(
-            f"{_BASE}/approval-001/reject",
+            f"{_BASE}/{sid('approval-001')}/reject",
             json={"reason": "Too risky"},
             headers=_WRITE_HEADERS,
         )
@@ -414,7 +422,7 @@ class TestRejectApproval:
         await _seed_item(approval_store)
         # Missing reason field should fail validation
         resp = await async_test_client.post(
-            f"{_BASE}/approval-001/reject",
+            f"{_BASE}/{sid('approval-001')}/reject",
             json={},
             headers=_WRITE_HEADERS,
         )
@@ -435,7 +443,7 @@ class TestRejectApproval:
     ) -> None:
         now = datetime.now(UTC)
         item = ApprovalItem(
-            id="decided-002",
+            id=as_uuid("decided-002"),
             action_type="code_merge",
             title="Already rejected",
             description="desc",
@@ -449,7 +457,7 @@ class TestRejectApproval:
         )
         await approval_store.add(item)
         resp = await async_test_client.post(
-            f"{_BASE}/decided-002/reject",
+            f"{_BASE}/{sid('decided-002')}/reject",
             json={"reason": "nope again"},
             headers=_WRITE_HEADERS,
         )
@@ -489,7 +497,7 @@ class TestApprovalUrgencyFields:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.get(
-            f"{_BASE}/approval-001", headers=_READ_HEADERS
+            f"{_BASE}/{sid('approval-001')}", headers=_READ_HEADERS
         )
         data = resp.json()["data"]
         assert data["seconds_remaining"] is None
@@ -517,7 +525,7 @@ class TestApprovalUrgencyFields:
             ttl_seconds=ttl_seconds,
         )
         resp = await async_test_client.get(
-            f"{_BASE}/{approval_id}",
+            f"{_BASE}/{coerce_id(approval_id)}",
             headers=_READ_HEADERS,
         )
         data = resp.json()["data"]
@@ -545,7 +553,7 @@ class TestApprovalUrgencyFields:
     ) -> None:
         await _seed_item(approval_store)
         resp = await async_test_client.post(
-            f"{_BASE}/approval-001/approve",
+            f"{_BASE}/{sid('approval-001')}/approve",
             json={"comment": "ok"},
             headers=_WRITE_HEADERS,
         )
@@ -566,7 +574,7 @@ class TestApprovalUrgencyFields:
         )
         approval_id = resp.json()["data"]["id"]
         resp = await async_test_client.get(
-            f"{_BASE}/{approval_id}",
+            f"{_BASE}/{coerce_id(approval_id)}",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
@@ -581,7 +589,7 @@ class TestApprovalUrgencyFields:
     ) -> None:
         await _seed_item(approval_store, approval_id="rej-001")
         resp = await async_test_client.post(
-            f"{_BASE}/rej-001/reject",
+            f"{_BASE}/{sid('rej-001')}/reject",
             json={"reason": "Too risky"},
             headers=_WRITE_HEADERS,
         )
@@ -610,7 +618,7 @@ class TestApprovalUrgencyFields:
     ) -> None:
         frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
         item = ApprovalItem(
-            id=approval_id,
+            id=as_uuid(approval_id),
             action_type="code_merge",
             title="Boundary test",
             description="desc",
@@ -626,7 +634,7 @@ class TestApprovalUrgencyFields:
             mock_dt.now.return_value = frozen_now
             mock_dt.side_effect = datetime
             resp = await async_test_client.get(
-                f"{_BASE}/{approval_id}",
+                f"{_BASE}/{coerce_id(approval_id)}",
                 headers=_READ_HEADERS,
             )
         data = resp.json()["data"]
@@ -639,7 +647,7 @@ class TestApprovalUrgencyFields:
     ) -> None:
         now = datetime.now(UTC)
         item = ApprovalItem(
-            id="exp-001",
+            id=as_uuid("exp-001"),
             action_type="code_merge",
             title="Expired item",
             description="desc",
@@ -648,9 +656,9 @@ class TestApprovalUrgencyFields:
             created_at=now - timedelta(hours=2),
             expires_at=now - timedelta(hours=1),
         )
-        approval_store._items[item.id] = item
+        approval_store._items[str(item.id)] = item
         resp = await async_test_client.get(
-            f"{_BASE}/exp-001",
+            f"{_BASE}/{sid('exp-001')}",
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 200
@@ -670,7 +678,7 @@ class TestBoardMemberApprovalAccess:
     ) -> None:
         await _seed_item(approval_store, approval_id="bm-approve-001")
         resp = await async_test_client.post(
-            f"{_BASE}/bm-approve-001/approve",
+            f"{_BASE}/{sid('bm-approve-001')}/approve",
             json={"comment": "Approved by board"},
             headers=make_auth_headers("board_member"),
         )
@@ -685,7 +693,7 @@ class TestBoardMemberApprovalAccess:
     ) -> None:
         await _seed_item(approval_store, approval_id="bm-reject-001")
         resp = await async_test_client.post(
-            f"{_BASE}/bm-reject-001/reject",
+            f"{_BASE}/{sid('bm-reject-001')}/reject",
             json={"reason": "Board disagrees"},
             headers=make_auth_headers("board_member"),
         )

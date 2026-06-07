@@ -143,7 +143,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
             raise ValueError(msg)
         params = (
             escalation.id,
-            escalation.conflict.id,
+            str(escalation.conflict.id),
             escalation.conflict.model_dump_json(),
             escalation.status.value,
             format_iso_utc(escalation.created_at),
@@ -162,7 +162,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                     API_REQUEST_ERROR,
                     error_type="escalation_create_duplicate",
                     escalation_id=escalation.id,
-                    conflict_id=escalation.conflict.id,
+                    conflict_id=str(escalation.conflict.id),
                     error=safe_error_description(exc),
                 )
                 await self._db.rollback()
@@ -173,7 +173,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                     API_REQUEST_ERROR,
                     error_type="escalation_create_failed",
                     escalation_id=escalation.id,
-                    conflict_id=escalation.conflict.id,
+                    conflict_id=str(escalation.conflict.id),
                     error=safe_error_description(exc),
                 )
                 await self._db.rollback()

@@ -141,7 +141,7 @@ class ConflictResolutionService:
             raise ConflictResolutionError(msg)
 
         conflict = Conflict(
-            id=f"conflict-{uuid4().hex[:12]}",
+            id=uuid4(),
             type=conflict_type,
             task_id=task_id,
             subject=subject,
@@ -221,12 +221,12 @@ class ConflictResolutionService:
         for record in dissent_records:
             logger.info(
                 CONFLICT_DISSENT_RECORDED,
-                dissent_id=record.id,
-                conflict_id=conflict.id,
+                dissent_id=str(record.id),
+                conflict_id=str(conflict.id),
                 dissenting_agent=record.dissenting_agent_id,
             )
 
-        await self._publish_dissent_events(dissent_records, conflict.id)
+        await self._publish_dissent_events(dissent_records, str(conflict.id))
 
         return resolution, dissent_records
 

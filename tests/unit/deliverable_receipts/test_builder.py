@@ -23,7 +23,7 @@ from synthorg.security.redteam.models import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryKnowledgeUsageRecordRepository,
@@ -37,7 +37,7 @@ _HASH = "a" * 64
 
 def _task() -> Task:
     return Task(
-        id="t-1",
+        id=as_uuid("t-1"),
         title="Deliverable task",
         description="produces a deliverable",
         type=TaskType.DEVELOPMENT,

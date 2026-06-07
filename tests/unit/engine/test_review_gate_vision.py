@@ -28,14 +28,14 @@ from synthorg.security.visionverify.models import (
     VisionVerificationReport,
 )
 from synthorg.security.visionverify.protocol import VisionVerifierGate
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
 
 def _task() -> Task:
     return Task(
-        id="task-v-1",
+        id=as_uuid("task-v-1"),
         title="GUI app",
         description="Build a counter GUI app.",
         type=TaskType.DEVELOPMENT,

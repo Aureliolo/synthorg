@@ -20,7 +20,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import make_app_state, mock_of
+from tests._shared import as_uuid, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -42,7 +42,7 @@ class TestBuildIntakeStrategy:
     async def test_direct_strategy_files_into_default_project(self) -> None:
         task_engine = mock_of[TaskEngine]()
         task_engine.create_task.return_value = Task(
-            id="t-1",
+            id=as_uuid("t-1"),
             title="t",
             description="d",
             type=TaskType.DEVELOPMENT,

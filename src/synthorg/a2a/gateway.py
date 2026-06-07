@@ -864,7 +864,7 @@ async def _handle_message_send(
     )
 
     return {
-        "id": created.id,
+        "id": str(created.id),
         "state": to_a2a(created.status).value,
     }
 
@@ -900,7 +900,7 @@ async def _handle_tasks_get(
     _validate_task_ownership(task, peer_name)
 
     return {
-        "id": task.id,
+        "id": str(task.id),
         "state": to_a2a(task.status).value,
     }
 
@@ -962,6 +962,6 @@ async def _handle_tasks_cancel(
     )
 
     return {
-        "id": cancelled_task.id,
+        "id": str(cancelled_task.id),
         "state": to_a2a(cancelled_task.status).value,
     }

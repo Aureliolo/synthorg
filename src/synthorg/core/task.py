@@ -4,7 +4,7 @@ import copy
 from collections import Counter
 from datetime import datetime
 from typing import Any, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -56,7 +56,7 @@ class Task(BaseModel):
     Field schema matches the Engine design page.
 
     Attributes:
-        id: Unique task identifier (e.g. ``"task-123"``).
+        id: Unique task identifier (auto-generated UUID).
         title: Short task title.
         description: Detailed task description.
         type: Classification of the task's work type.
@@ -89,7 +89,7 @@ class Task(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique task identifier")
+    id: UUID = Field(default_factory=uuid4, description="Unique task identifier")
     title: NotBlankStr = Field(description="Short task title")
     description: NotBlankStr = Field(
         description="Detailed task description",
@@ -251,7 +251,7 @@ class Task(BaseModel):
             ValueError: If the task depends on itself, or ``dependencies``
                 or ``reviewers`` contain duplicate entries.
         """
-        if self.id in self.dependencies:
+        if str(self.id) in self.dependencies:
             msg = f"Task {self.id!r} cannot depend on itself"
             raise ValueError(msg)
         if len(self.dependencies) != len(set(self.dependencies)):
@@ -276,7 +276,7 @@ class Task(BaseModel):
                 has duplicates, or ``assigned_to`` also appears in the
                 delegation chain.
         """
-        if self.parent_task_id is not None and self.parent_task_id == self.id:
+        if self.parent_task_id is not None and self.parent_task_id == str(self.id):
             msg = f"Task {self.id!r} cannot be its own parent"
             raise ValueError(msg)
         if len(self.delegation_chain) != len(set(self.delegation_chain)):

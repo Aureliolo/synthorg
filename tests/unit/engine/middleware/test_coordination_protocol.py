@@ -17,6 +17,7 @@ from synthorg.engine.middleware.coordination_protocol import (
     CoordinationMiddlewareChain,
     CoordinationMiddlewareContext,
 )
+from tests._shared import as_uuid
 
 # ── Test helpers ──────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ def _identity() -> AgentIdentity:
 
 def _task() -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="A test task for coordination middleware tests",
         type=TaskType.DEVELOPMENT,

@@ -171,7 +171,7 @@ class AuthorityDeferenceCoordinationMiddleware(
             task = ctx.coordination_context.task
             logger.info(
                 MIDDLEWARE_AUTHORITY_DEFERENCE_DETECTED,
-                task_id=task.id,
+                task_id=str(task.id),
                 stripped_count=stripped_count,
                 context="coordination_rollup",
             )
@@ -325,12 +325,12 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
         if reasons:
             logger.warning(
                 MIDDLEWARE_CLARIFICATION_REQUIRED,
-                task_id=task.id,
+                task_id=str(task.id),
                 reason_count=len(reasons),
                 reasons=reasons,
             )
             raise ClarificationRequiredError(
-                task_id=task.id,
+                task_id=str(task.id),
                 reasons=tuple(reasons),
             )
 

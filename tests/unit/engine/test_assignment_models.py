@@ -16,6 +16,7 @@ from synthorg.engine.assignment.models import (
     AssignmentResult,
 )
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +46,7 @@ def _make_agent(
 
 def _make_task(**overrides: object) -> Task:
     defaults: dict[str, object] = {
-        "id": "task-001",
+        "id": as_uuid("task-001"),
         "title": "Test task",
         "description": "A test task",
         "type": TaskType.DEVELOPMENT,

@@ -10,6 +10,7 @@ from synthorg.engine.routing.models import (
     RoutingDecision,
     RoutingResult,
 )
+from tests._shared import as_uuid, coerce_id
 from tests.unit.engine.conftest import (
     make_assignment_agent,
     make_decomposition,
@@ -25,7 +26,7 @@ def _make_routing_decision(
     """Build a RoutingDecision for a subtask → agent mapping."""
     agent = make_assignment_agent(agent_name)
     return RoutingDecision(
-        subtask_id=subtask_id,
+        subtask_id=coerce_id(subtask_id),
         selected_candidate=RoutingCandidate(
             agent_identity=agent,
             score=0.9,
@@ -57,7 +58,7 @@ class TestBuildExecutionWaves:
         assert len(waves) == 1
         assert waves[0].group_id == "wave-0"
         assert len(waves[0].assignments) == 1
-        assert waves[0].assignments[0].task.id == "sub-a"
+        assert waves[0].assignments[0].task.id == as_uuid("sub-a")
 
     @pytest.mark.unit
     def test_subtask_promoted_to_assigned_for_routed_agent(self) -> None:
@@ -134,8 +135,8 @@ class TestBuildExecutionWaves:
         )
 
         assert len(waves) == 2
-        assert waves[0].assignments[0].task.id == "sub-a"
-        assert waves[1].assignments[0].task.id == "sub-b"
+        assert waves[0].assignments[0].task.id == as_uuid("sub-a")
+        assert waves[1].assignments[0].task.id == as_uuid("sub-b")
 
     @pytest.mark.unit
     def test_diamond_dag(self) -> None:
@@ -164,9 +165,9 @@ class TestBuildExecutionWaves:
 
         assert len(waves) == 2
         wave0_ids = {a.task.id for a in waves[0].assignments}
-        assert wave0_ids == {"sub-a", "sub-b"}
+        assert wave0_ids == {as_uuid("sub-a"), as_uuid("sub-b")}
         wave1_ids = {a.task.id for a in waves[1].assignments}
-        assert wave1_ids == {"sub-c"}
+        assert wave1_ids == {as_uuid("sub-c")}
 
     @pytest.mark.unit
     def test_max_concurrency_propagated(self) -> None:
@@ -250,7 +251,7 @@ class TestBuildExecutionWaves:
 
         assert len(waves) == 1
         assert len(waves[0].assignments) == 1
-        assert waves[0].assignments[0].task.id == "sub-a"
+        assert waves[0].assignments[0].task.id == as_uuid("sub-a")
 
     @pytest.mark.unit
     def test_unroutable_blocks_descendants(self) -> None:

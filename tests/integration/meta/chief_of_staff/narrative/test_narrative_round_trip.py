@@ -79,19 +79,19 @@ from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of, sid
 from tests._shared.scripted_provider import make_e2e_identity
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 
 pytestmark = pytest.mark.integration
 
 _NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
-_PROJECT = NotBlankStr("proj-1")
-_TASK = NotBlankStr("task-1")
+_PROJECT = NotBlankStr(sid("proj-1"))
+_TASK = NotBlankStr(sid("task-1"))
 
 
 def _project() -> Project:
-    return Project(id=_PROJECT, name=NotBlankStr("Demo"))
+    return Project(id=as_uuid("proj-1"), name=NotBlankStr("Demo"))
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ async def docs_service(tmp_path: Path) -> AsyncIterator[DocsService]:
 
 def _task() -> Task:
     return Task(
-        id=_TASK,
+        id=as_uuid("task-1"),
         title=NotBlankStr("Ship checkout"),
         description=NotBlankStr("Build the checkout flow end to end."),
         type=TaskType.DEVELOPMENT,

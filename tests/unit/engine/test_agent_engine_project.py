@@ -16,6 +16,7 @@ from synthorg.engine.errors import (
     ProjectNotFoundError,
 )
 from synthorg.engine.loop_protocol import TerminationReason
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -34,7 +35,7 @@ def _make_project(
     budget: float = 0.0,
 ) -> Project:
     return Project(
-        id=project_id,
+        id=as_uuid(project_id),
         name="Test Project",
         team=team,
         budget=budget,

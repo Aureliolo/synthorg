@@ -22,6 +22,7 @@ from synthorg.communication.conflict_resolution.models import (
 )
 from synthorg.communication.enums import ConflictType
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -33,7 +34,7 @@ def _make_escalation(
 ) -> Escalation:
     """Build a pending escalation with a configurable deadline."""
     conflict = Conflict(
-        id=f"conflict-for-{escalation_id}",
+        id=as_uuid(f"conflict-for-{escalation_id}"),
         type=ConflictType.ARCHITECTURE,
         subject="Backend storage engine",
         positions=(

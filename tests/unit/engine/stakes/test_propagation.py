@@ -11,6 +11,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from synthorg.engine.decomposition.service import DecompositionService
+from tests._shared import as_uuid, sid
 
 
 class _StaticStrategy:
@@ -33,7 +34,7 @@ class _StaticStrategy:
 
 def _parent_task() -> Task:
     return Task(
-        id="parent-1",
+        id=as_uuid("parent-1"),
         title="Parent",
         description="Parent task",
         type=TaskType.DEVELOPMENT,
@@ -48,22 +49,22 @@ class TestDecompositionStakesPropagation:
 
     async def test_mixed_subtasks_get_distinct_stakes(self) -> None:
         plan = DecompositionPlan(
-            parent_task_id="parent-1",
+            parent_task_id=sid("parent-1"),
             subtasks=(
                 SubtaskDefinition(
-                    id="low",
+                    id=sid("low"),
                     title="Update changelog",
                     description="Tidy the docs wording",
                     estimated_complexity=Complexity.SIMPLE,
                 ),
                 SubtaskDefinition(
-                    id="high",
+                    id=sid("high"),
                     title="Design the architecture",
                     description="Make the core architecture decision",
                     estimated_complexity=Complexity.COMPLEX,
                 ),
                 SubtaskDefinition(
-                    id="critical",
+                    id=sid("critical"),
                     title="Production migration",
                     description="Run an irreversible production deployment",
                     estimated_complexity=Complexity.MEDIUM,
@@ -78,16 +79,16 @@ class TestDecompositionStakesPropagation:
         )
 
         stakes_by_id = {t.id: t.stakes for t in result.created_tasks}
-        assert stakes_by_id["low"] is Stakes.LOW
-        assert stakes_by_id["high"] is Stakes.HIGH
-        assert stakes_by_id["critical"] is Stakes.CRITICAL
+        assert stakes_by_id[as_uuid("low")] is Stakes.LOW
+        assert stakes_by_id[as_uuid("high")] is Stakes.HIGH
+        assert stakes_by_id[as_uuid("critical")] is Stakes.CRITICAL
 
     async def test_plan_subtasks_carry_same_stakes_as_tasks(self) -> None:
         plan = DecompositionPlan(
-            parent_task_id="parent-1",
+            parent_task_id=sid("parent-1"),
             subtasks=(
                 SubtaskDefinition(
-                    id="only",
+                    id=sid("only"),
                     title="Refactor the payment flow",
                     description="Touch the billing path",
                     estimated_complexity=Complexity.SIMPLE,
@@ -102,6 +103,6 @@ class TestDecompositionStakesPropagation:
         )
 
         plan_stakes = {s.id: s.stakes for s in result.plan.subtasks}
-        task_stakes = {t.id: t.stakes for t in result.created_tasks}
+        task_stakes = {str(t.id): t.stakes for t in result.created_tasks}
         assert plan_stakes == task_stakes
-        assert task_stakes["only"] is Stakes.HIGH
+        assert task_stakes[sid("only")] is Stakes.HIGH

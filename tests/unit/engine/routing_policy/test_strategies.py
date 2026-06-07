@@ -29,6 +29,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared import as_uuid, coerce_id
 from tests._shared.scripted_provider import make_e2e_identity
 
 
@@ -89,7 +90,7 @@ def _identity(tier: ModelTier = "large") -> AgentIdentity:
 
 def _task(stakes: Stakes) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="A task",
         description="Body",
         type=TaskType.DEVELOPMENT,
@@ -202,7 +203,7 @@ class TestCoordinationNudge:
         store = CoordinationMetricsStore()
         store.record(
             CoordinationMetricsRecord(
-                task_id=task_id,
+                task_id=coerce_id(task_id),
                 computed_at=datetime.now(UTC),
                 team_size=3,
                 metrics=CoordinationMetrics(
@@ -347,7 +348,7 @@ class TestCoordinationNudgeBoundary:
         store = CoordinationMetricsStore()
         store.record(
             CoordinationMetricsRecord(
-                task_id="task-1",
+                task_id=coerce_id("task-1"),
                 computed_at=datetime.now(UTC),
                 team_size=3,
                 metrics=CoordinationMetrics(

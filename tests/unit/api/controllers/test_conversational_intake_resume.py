@@ -24,7 +24,7 @@ from synthorg.meta.state import MetaStateSlice
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
 )
-from tests._shared import make_app_state
+from tests._shared import as_uuid, make_app_state, sid
 
 pytestmark = pytest.mark.unit
 
@@ -114,7 +114,7 @@ def _approval(
     source: ApprovalSource = ApprovalSource.CONVERSATIONAL_INTAKE,
 ) -> ApprovalItem:
     return ApprovalItem(
-        id=NotBlankStr(approval_id),
+        id=as_uuid(approval_id),
         action_type=NotBlankStr("conversational:create_work"),
         title=NotBlankStr("Build landing page"),
         description=NotBlankStr("Create the marketing page"),
@@ -130,7 +130,7 @@ def _proposal(approval_id: str) -> ConversationalProposal:
     return ConversationalProposal(
         id=NotBlankStr(f"prop-{approval_id}"),
         conversation_id=NotBlankStr("conv-1"),
-        approval_id=NotBlankStr(approval_id),
+        approval_id=NotBlankStr(sid(approval_id)),
         work_item_json=NotBlankStr(_work_item_json()),
         status=ConversationalProposalStatus.PENDING,
         created_at=_NOW,
@@ -162,7 +162,7 @@ class TestConversationalIntakeResume:
         state, _ = await _seed(source=ApprovalSource.REVIEW_GATE)
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=True,
         )
         assert handled is False
@@ -172,7 +172,7 @@ class TestConversationalIntakeResume:
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=True,
         )
         assert handled is True
@@ -185,7 +185,7 @@ class TestConversationalIntakeResume:
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=False,
         )
         assert handled is True
@@ -196,7 +196,7 @@ class TestConversationalIntakeResume:
         state, _ = await _seed(with_proposal=False)
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=True,
         )
         assert handled is True
@@ -215,7 +215,7 @@ class TestConversationalIntakeResume:
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_intake_resume(
                 state,
-                "a1",
+                sid("a1"),
                 approved=True,
             )
 
@@ -234,7 +234,7 @@ class TestConversationalIntakeResume:
         with pytest.raises(ServiceUnavailableError):
             await try_conversational_intake_resume(
                 state,
-                "a1",
+                sid("a1"),
                 approved=True,
             )
 
@@ -246,7 +246,7 @@ class TestConversationalIntakeResume:
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=True,
         )
         assert handled is True
@@ -265,7 +265,7 @@ class TestConversationalIntakeResume:
         )
         handled = await try_conversational_intake_resume(
             state,
-            "a1",
+            sid("a1"),
             approved=True,
         )
         assert handled is True

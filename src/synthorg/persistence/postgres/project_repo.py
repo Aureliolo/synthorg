@@ -68,7 +68,7 @@ class PostgresProjectRepository:
             Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
-            project.id,
+            str(project.id),
             project.name,
             project.description,
             Jsonb(list(project.team)),
@@ -100,7 +100,7 @@ class PostgresProjectRepository:
         except psycopg.errors.UniqueViolation as exc:
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -110,7 +110,7 @@ class PostgresProjectRepository:
             msg = f"Failed to create project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -147,7 +147,7 @@ class PostgresProjectRepository:
                         project.deadline,
                         project.budget,
                         project.status.value,
-                        project.id,
+                        str(project.id),
                     ),
                 )
                 rowcount = cur.rowcount
@@ -156,7 +156,7 @@ class PostgresProjectRepository:
             msg = f"Failed to update project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -164,7 +164,7 @@ class PostgresProjectRepository:
         if rowcount == 0:
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type="RecordNotFoundError",
                 error="No project with matching id",
             )
@@ -201,7 +201,7 @@ class PostgresProjectRepository:
             msg = f"Failed to save project {project.id!r}"
             logger.warning(
                 PERSISTENCE_PROJECT_SAVE_FAILED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

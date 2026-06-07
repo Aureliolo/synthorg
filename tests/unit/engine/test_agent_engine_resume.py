@@ -51,7 +51,7 @@ class TestResumeParkedRun:
         assert isinstance(result, AgentRunResult)
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.agent_id == str(sample_agent_with_personality.id)
-        assert result.task_id == sample_task_with_criteria.id
+        assert result.task_id == str(sample_task_with_criteria.id)
 
     async def test_decision_message_injected_into_conversation(
         self,

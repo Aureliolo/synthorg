@@ -163,7 +163,7 @@ async def _replay_project_brain_index(
 
     try:
         projects = await persistence_of(app_state).projects.list_items(limit=10_000)
-        project_ids = tuple(project.id for project in projects)
+        project_ids = tuple(str(project.id) for project in projects)
         if not project_ids:
             return
         reindexed = await runtime.replay_unindexed(project_ids=project_ids)

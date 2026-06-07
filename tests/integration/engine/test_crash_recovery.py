@@ -20,6 +20,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
@@ -106,7 +107,7 @@ def _make_task(
     max_retries: int = 1,
 ) -> Task:
     return Task(
-        id="task-recovery",
+        id=as_uuid("task-recovery"),
         title="Crash recovery test",
         description="Test the crash recovery flow.",
         type=TaskType.DEVELOPMENT,

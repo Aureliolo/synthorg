@@ -77,7 +77,7 @@ class ApprovalExpirationMixin:
         page_cache: dict[str, ApprovalItem] = {}
         for item in page:
             checked = self._compute_expiration(item)
-            page_cache[item.id] = checked
+            page_cache[str(item.id)] = checked
             if checked is not item:
                 to_persist.append(checked)
             if status is not None and checked.status != status:
@@ -152,19 +152,19 @@ class ApprovalExpirationMixin:
             update={"status": ApprovalStatus.EXPIRED},
         )
         if self._repo is not None:
-            transitioned = await self._repo.expire_if_pending((item.id,))
-            if item.id not in transitioned:
+            transitioned = await self._repo.expire_if_pending((str(item.id),))
+            if str(item.id) not in transitioned:
                 # CAS lost: a concurrent APPROVED / REJECTED decision
                 # landed first. Reload committed state so the cache and
                 # the returned item reflect the decision that actually
                 # won, never a stale EXPIRED overwrite.
-                current = await self._repo.get(item.id)
+                current = await self._repo.get(str(item.id))
                 if current is not None:
-                    self._items[item.id] = current
+                    self._items[str(item.id)] = current
                     return current
-                self._items.pop(item.id, None)
+                self._items.pop(str(item.id), None)
                 return item
-        self._items[item.id] = expired
+        self._items[str(item.id)] = expired
         # State-transition log fires AFTER persistence + cache
         # update succeed so the audit stream only records hops
         # that actually landed. Pairs with the
@@ -175,13 +175,13 @@ class ApprovalExpirationMixin:
         # signal that an approval has expired.
         logger.info(
             APPROVAL_STATUS_TRANSITIONED,
-            approval_id=item.id,
+            approval_id=str(item.id),
             from_status=ApprovalStatus.PENDING.value,
             to_status=ApprovalStatus.EXPIRED.value,
         )
         logger.info(
             API_APPROVAL_EXPIRED,
-            approval_id=item.id,
+            approval_id=str(item.id),
         )
         record_approval_decision(outcome="expired")
         if self._on_expire is not None:
@@ -201,7 +201,7 @@ class ApprovalExpirationMixin:
                     logger,
                     API_APPROVAL_EXPIRE_CALLBACK_FAILED,
                     exc,
-                    approval_id=item.id,
+                    approval_id=str(item.id),
                 )
         return expired
 
@@ -247,5 +247,8 @@ class ApprovalExpirationMixin:
             # audit dispatch, workflow resume) is operationally
             # meaningful and operators must be able to alert on it.
             log_exception_redacted(
-                logger, API_APPROVAL_EXPIRE_CALLBACK_FAILED, exc, approval_id=expired.id
+                logger,
+                API_APPROVAL_EXPIRE_CALLBACK_FAILED,
+                exc,
+                approval_id=str(expired.id),
             )

@@ -12,6 +12,7 @@ from synthorg.engine.workspace.models import (
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
+from tests._shared import sid
 
 from .conftest import make_merge_result, make_workspace
 
@@ -131,7 +132,7 @@ class TestWorkspace:
             branch_name="workspace/task-1/ws-001",
         )
         assert ws.workspace_id == "ws-001"
-        assert ws.task_id == "task-1"
+        assert ws.task_id == sid("task-1")
         assert ws.agent_id == "agent-1"
         assert ws.branch_name == "workspace/task-1/ws-001"
         assert ws.worktree_path == "worktrees/ws-001"

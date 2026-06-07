@@ -5,12 +5,13 @@ from pydantic import ValidationError
 
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from tests._shared import as_uuid, sid
 from tests.unit.core.conftest import ProjectFactory
 
 # ── Helpers ──────────────────────────────────────────────────────
 
 _PROJECT_KWARGS: dict[str, object] = {
-    "id": "proj-456",
+    "id": sid("proj-456"),
     "name": "Auth System",
 }
 
@@ -28,12 +29,12 @@ def _make_project(**overrides: object) -> Project:
 class TestProjectConstruction:
     def test_minimal_valid_project(self) -> None:
         project = _make_project()
-        assert project.id == "proj-456"
+        assert project.id == as_uuid("proj-456")
         assert project.name == "Auth System"
 
     def test_all_fields_set(self) -> None:
         project = Project(
-            id="proj-789",
+            id=as_uuid("proj-789"),
             name="Full Project",
             description="A complete project",
             team=("agent-1", "agent-2"),
@@ -70,10 +71,6 @@ class TestProjectStringValidation:
     def test_empty_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _make_project(id="")
-
-    def test_whitespace_id_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
-            _make_project(id="   ")
 
     def test_whitespace_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
@@ -190,7 +187,7 @@ class TestProjectFactory:
 class TestProjectSerialization:
     def test_json_roundtrip(self) -> None:
         project = Project(
-            id="proj-rt",
+            id=as_uuid("proj-rt"),
             name="Roundtrip Test",
             description="Test JSON roundtrip",
             team=("agent-1", "agent-2"),
@@ -213,7 +210,7 @@ class TestProjectSerialization:
     def test_model_dump(self) -> None:
         project = _make_project()
         dumped = project.model_dump()
-        assert dumped["id"] == "proj-456"
+        assert dumped["id"] == as_uuid("proj-456")
         assert dumped["status"] == "planning"
 
 
@@ -223,7 +220,7 @@ class TestProjectSerialization:
 @pytest.mark.unit
 class TestProjectFixtures:
     def test_sample_project_fixture(self, sample_project: Project) -> None:
-        assert sample_project.id == "proj-456"
+        assert sample_project.id == as_uuid("proj-456")
         assert sample_project.name == "Auth System"
         assert sample_project.lead == "engineering_lead"
         assert len(sample_project.team) == 2

@@ -6,6 +6,7 @@ _process_one exception paths, and snapshot publishing failures.
 
 import asyncio
 import contextlib
+from uuid import UUID
 
 import pytest
 
@@ -150,7 +151,7 @@ class TestSnapshotPublishFailure:
                 make_create_data(),
                 requested_by="alice",
             )
-            assert task.id.startswith("task-")
+            assert isinstance(task.id, UUID)
         finally:
             await eng.stop(timeout=2.0)
 

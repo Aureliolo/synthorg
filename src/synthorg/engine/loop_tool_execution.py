@@ -181,7 +181,7 @@ async def _park_for_approval(
     agent_id = str(ctx.identity.id)
     task_id: str | None = None
     if ctx.task_execution is not None:
-        task_id = ctx.task_execution.task.id
+        task_id = str(ctx.task_execution.task.id)
     else:
         logger.debug(
             APPROVAL_GATE_PARK_TASKLESS,

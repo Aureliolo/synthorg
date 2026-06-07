@@ -7,7 +7,7 @@ until the approval item is approved.
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
@@ -90,7 +90,7 @@ class ReviewGateGuard:
         now = datetime.now(UTC)
         approval_id = str(uuid4())
         approval_item = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type="training_review",
             title=(f"Training plan {plan.id} - {content_type.value} items"),
             description=(

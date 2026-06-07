@@ -43,6 +43,7 @@ from synthorg.observability.events.procedural_memory import (
 )
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import TokenUsage
+from tests._shared import coerce_id, sid
 
 
 def _make_task(**overrides: Any) -> Task:
@@ -57,6 +58,7 @@ def _make_task(**overrides: Any) -> Task:
         "status": TaskStatus.ASSIGNED,
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(**defaults)
 
 
@@ -78,7 +80,7 @@ def _make_recovery_result(
     snapshot = AgentContextSnapshot(
         execution_id=exec_id,
         agent_id=agent_id,
-        task_id=t.id,
+        task_id=str(t.id),
         turn_count=3,
         accumulated_cost=TokenUsage(
             input_tokens=500,
@@ -168,7 +170,7 @@ class TestBuildPayload:
 
         payload = _build_payload(execution, recovery)
 
-        assert payload.task_id == "task-pipe-001"
+        assert payload.task_id == sid("task-pipe-001")
         assert payload.task_title == "Implement caching layer"
         assert payload.task_description == "Add Redis caching to the API."
         assert payload.task_type is TaskType.DEVELOPMENT

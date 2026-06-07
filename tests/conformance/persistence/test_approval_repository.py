@@ -29,6 +29,7 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.approval_repo import (
     SQLiteApprovalRepository,
 )
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -75,7 +76,7 @@ def _make_item(  # noqa: PLR0913
         if status == ApprovalStatus.REJECTED:
             decision_reason = "Not authorised"
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type=action_type,
         title="Approve prod deploy",
         description="Rolls service v2 to prod.",
@@ -98,7 +99,7 @@ class TestApprovalRepository:
         item = _make_item(metadata={"source_rule": "rule-A", "confidence": "0.93"})
         await repo.save(item)
 
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.id == item.id
         assert fetched.status is ApprovalStatus.PENDING
@@ -125,7 +126,7 @@ class TestApprovalRepository:
         await first.save(item)
 
         second = _approval_repo(backend)
-        fetched = await second.get(item.id)
+        fetched = await second.get(str(item.id))
         assert fetched is not None
         assert fetched.id == item.id
 
@@ -145,7 +146,7 @@ class TestApprovalRepository:
         )
         await repo.save(updated)
 
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.APPROVED
         assert fetched.decided_by == "operator-b"
@@ -159,7 +160,7 @@ class TestApprovalRepository:
 
         rows = await repo.list_items()
         ids = {r.id for r in rows}
-        assert {"a", "b"} <= ids
+        assert {as_uuid("a"), as_uuid("b")} <= ids
 
     async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
@@ -171,8 +172,8 @@ class TestApprovalRepository:
         filter_spec = ApprovalFilterSpec(status=ApprovalStatus.PENDING)
         only_pending = await repo.query(filter_spec)
         ids = {r.id for r in only_pending}
-        assert "p" in ids
-        assert "a" not in ids
+        assert as_uuid("p") in ids
+        assert as_uuid("a") not in ids
 
     async def test_query_filter_by_risk_level(
         self, backend: PersistenceBackend
@@ -186,8 +187,8 @@ class TestApprovalRepository:
         filter_spec = ApprovalFilterSpec(risk_level=ApprovalRiskLevel.CRITICAL)
         only_critical = await repo.query(filter_spec)
         ids = {r.id for r in only_critical}
-        assert "c" in ids
-        assert "h" not in ids
+        assert as_uuid("c") in ids
+        assert as_uuid("h") not in ids
 
     async def test_query_filter_by_action_type(
         self, backend: PersistenceBackend
@@ -203,8 +204,8 @@ class TestApprovalRepository:
         filter_spec = ApprovalFilterSpec(action_type=NotBlankStr("scaling:hire"))
         hires = await repo.query(filter_spec)
         ids = {r.id for r in hires}
-        assert "hire" in ids
-        assert "deploy" not in ids
+        assert as_uuid("hire") in ids
+        assert as_uuid("deploy") not in ids
 
     async def test_query_combined_filters(self, backend: PersistenceBackend) -> None:
         repo = _approval_repo(backend)
@@ -236,7 +237,7 @@ class TestApprovalRepository:
         )
         rows = await repo.query(filter_spec)
         ids = {r.id for r in rows}
-        assert ids == {"match"}
+        assert ids == {as_uuid("match")}
 
     async def test_delete_returns_true_then_false(
         self, backend: PersistenceBackend
@@ -244,12 +245,12 @@ class TestApprovalRepository:
         repo = _approval_repo(backend)
         item = _make_item(approval_id="approval-del")
         await repo.save(item)
-        assert await repo.get(item.id) is not None
+        assert await repo.get(str(item.id)) is not None
 
-        assert await repo.delete(item.id) is True
-        assert await repo.get(item.id) is None
+        assert await repo.delete(str(item.id)) is True
+        assert await repo.get(str(item.id)) is None
 
-        assert await repo.delete(item.id) is False
+        assert await repo.delete(str(item.id)) is False
 
     async def test_metadata_round_trip_preserves_keys(
         self, backend: PersistenceBackend
@@ -266,7 +267,7 @@ class TestApprovalRepository:
             _make_item(approval_id="approval-meta", metadata=meta),
         )
 
-        fetched = await repo.get("approval-meta")
+        fetched = await repo.get(sid("approval-meta"))
         assert fetched is not None
         assert fetched.metadata == meta
 
@@ -286,7 +287,7 @@ class TestApprovalRepository:
 
         fresh = _approval_repo(backend)
         for original in items:
-            fetched = await fresh.get(original.id)
+            fetched = await fresh.get(str(original.id))
             assert fetched is not None, original.id
             assert fetched.id == original.id
 
@@ -323,10 +324,10 @@ class TestApprovalRepository:
         peer = _make_item(approval_id="approval-batch-upsert-peer")
         await repo.save_many((updated, peer))
 
-        fetched = await repo.get(original.id)
+        fetched = await repo.get(str(original.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
-        peer_fetched = await repo.get(peer.id)
+        peer_fetched = await repo.get(str(peer.id))
         assert peer_fetched is not None
         assert peer_fetched.status is ApprovalStatus.PENDING
 
@@ -346,7 +347,7 @@ class TestApprovalRepository:
         second = first.model_copy(update={"status": ApprovalStatus.EXPIRED})
         await repo.save_many((first, second))
 
-        fetched = await repo.get(first.id)
+        fetched = await repo.get(str(first.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
 
@@ -373,12 +374,12 @@ class TestApprovalRepository:
         await repo.save_many((pending, approved, rejected))
 
         updated = await repo.expire_if_pending(
-            (pending.id, approved.id, rejected.id),
+            (str(pending.id), str(approved.id), str(rejected.id)),
         )
-        assert set(updated) == {pending.id}
-        assert (await repo.get(pending.id)).status is ApprovalStatus.EXPIRED  # type: ignore[union-attr]
-        assert (await repo.get(approved.id)).status is ApprovalStatus.APPROVED  # type: ignore[union-attr]
-        assert (await repo.get(rejected.id)).status is ApprovalStatus.REJECTED  # type: ignore[union-attr]
+        assert set(updated) == {str(pending.id)}
+        assert (await repo.get(str(pending.id))).status is ApprovalStatus.EXPIRED  # type: ignore[union-attr]
+        assert (await repo.get(str(approved.id))).status is ApprovalStatus.APPROVED  # type: ignore[union-attr]
+        assert (await repo.get(str(rejected.id))).status is ApprovalStatus.REJECTED  # type: ignore[union-attr]
 
     async def test_expire_if_pending_empty_input_is_noop(
         self,
@@ -410,8 +411,8 @@ class TestApprovalRepository:
         for approval_id in ids:
             await repo.save(_make_item(approval_id=approval_id))
 
-        items = await repo.get_many(tuple(NotBlankStr(i) for i in ids))
-        assert {item.id for item in items} == set(ids)
+        items = await repo.get_many(tuple(NotBlankStr(sid(i)) for i in ids))
+        assert {item.id for item in items} == {as_uuid(i) for i in ids}
         # Order is unspecified; the protocol doesn't promise it.
         assert len(items) == len(ids)
 
@@ -432,12 +433,12 @@ class TestApprovalRepository:
         await repo.save(_make_item(approval_id="approval-partial-001"))
         items = await repo.get_many(
             (
-                NotBlankStr("approval-partial-001"),
-                NotBlankStr("approval-partial-missing"),
+                NotBlankStr(sid("approval-partial-001")),
+                NotBlankStr(sid("approval-partial-missing")),
             ),
         )
         assert len(items) == 1
-        assert items[0].id == "approval-partial-001"
+        assert items[0].id == as_uuid("approval-partial-001")
 
     async def test_get_many_duplicate_ids_dedupe(
         self,
@@ -451,13 +452,13 @@ class TestApprovalRepository:
         await repo.save(_make_item(approval_id="approval-dup-001"))
         items = await repo.get_many(
             (
-                NotBlankStr("approval-dup-001"),
-                NotBlankStr("approval-dup-001"),
-                NotBlankStr("approval-dup-001"),
+                NotBlankStr(sid("approval-dup-001")),
+                NotBlankStr(sid("approval-dup-001")),
+                NotBlankStr(sid("approval-dup-001")),
             ),
         )
         assert len(items) == 1
-        assert items[0].id == "approval-dup-001"
+        assert items[0].id == as_uuid("approval-dup-001")
 
     async def test_count_returns_total(
         self,
@@ -498,13 +499,13 @@ class TestApprovalRepository:
         await repo.save(pending)
 
         result = await repo.transition_if(
-            pending.id,
+            str(pending.id),
             from_state=ApprovalStatus.PENDING,
             to_state=ApprovalStatus.EXPIRED,
         )
         assert result is True
 
-        fetched = await repo.get(pending.id)
+        fetched = await repo.get(str(pending.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.EXPIRED
 
@@ -519,13 +520,13 @@ class TestApprovalRepository:
         await repo.save(approved)
 
         result = await repo.transition_if(
-            approved.id,
+            str(approved.id),
             from_state=ApprovalStatus.PENDING,
             to_state=ApprovalStatus.EXPIRED,
         )
         assert result is False
 
-        fetched = await repo.get(approved.id)
+        fetched = await repo.get(str(approved.id))
         assert fetched is not None
         assert fetched.status is ApprovalStatus.APPROVED
 
@@ -553,10 +554,12 @@ class TestApprovalRepository:
         await repo.save(approved)
         consumed_at = datetime(2026, 3, 1, 9, 30, tzinfo=UTC)
 
-        first = await repo.consume_if_approved(approved.id, consumed_at=consumed_at)
+        first = await repo.consume_if_approved(
+            str(approved.id), consumed_at=consumed_at
+        )
         assert first is True
 
-        fetched = await repo.get(approved.id)
+        fetched = await repo.get(str(approved.id))
         assert fetched is not None
         assert fetched.consumed_at is not None
         assert fetched.consumed_at == consumed_at
@@ -565,11 +568,11 @@ class TestApprovalRepository:
 
         # Replay loses: the row is already consumed.
         replay = await repo.consume_if_approved(
-            approved.id,
+            str(approved.id),
             consumed_at=datetime(2026, 3, 1, 9, 31, tzinfo=UTC),
         )
         assert replay is False
-        unchanged = await repo.get(approved.id)
+        unchanged = await repo.get(str(approved.id))
         assert unchanged is not None
         assert unchanged.consumed_at == consumed_at
 
@@ -584,11 +587,11 @@ class TestApprovalRepository:
         await repo.save(pending)
 
         result = await repo.consume_if_approved(
-            pending.id,
+            str(pending.id),
             consumed_at=datetime(2026, 3, 1, tzinfo=UTC),
         )
         assert result is False
-        fetched = await repo.get(pending.id)
+        fetched = await repo.get(str(pending.id))
         assert fetched is not None
         assert fetched.consumed_at is None
 
@@ -615,7 +618,7 @@ class TestApprovalRepository:
         ).model_copy(update={"consumed_at": consumed_at})
         await repo.save(item)
 
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.consumed_at is not None
         assert fetched.consumed_at == consumed_at

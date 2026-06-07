@@ -38,6 +38,7 @@ from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
 from synthorg.engine.workflow.subworkflow_registry import SubworkflowRegistry
+from tests._shared import as_uuid
 from tests.unit.engine.workflow.test_subworkflow_registry import (
     FakeSubworkflowRepository,
 )
@@ -167,7 +168,7 @@ class _FakeTaskEngine:
         task_id = f"task-{len(self.created)}"
         self.created.append(task_id)
         return Task(
-            id=task_id,
+            id=as_uuid(task_id),
             title=data.title,
             description=data.description,
             type=TaskType(data.type),

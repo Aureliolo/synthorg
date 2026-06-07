@@ -24,7 +24,7 @@ from synthorg.observability.events.mcp import (
     MCP_HANDLER_GUARDRAIL_VIOLATED,
     MCP_HANDLER_INVOKE_FAILED,
 )
-from tests._shared import make_app_state
+from tests._shared import as_uuid, make_app_state, sid
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -42,7 +42,7 @@ def _make_item(
 ) -> ApprovalItem:
     """Build a minimal valid ``ApprovalItem`` for tests."""
     return ApprovalItem(
-        id=approval_id or f"approval-{uuid4().hex}",
+        id=as_uuid(approval_id) if approval_id else uuid4(),
         action_type=action_type,
         title="Test approval",
         description="Test description",
@@ -97,7 +97,7 @@ class TestApprovalsList:
 
         assert body["status"] == "ok"
         assert len(body["data"]) == 2
-        assert {d["id"] for d in body["data"]} == {"a1", "a2"}
+        assert {d["id"] for d in body["data"]} == {sid("a1"), sid("a2")}
 
     async def test_list_passes_filters_to_store(
         self,
@@ -141,7 +141,7 @@ class TestApprovalsList:
         body = json.loads(result)
 
         assert len(body["data"]) == 5
-        assert [d["id"] for d in body["data"]] == [f"a{i}" for i in range(10, 15)]
+        assert [d["id"] for d in body["data"]] == [sid(f"a{i}") for i in range(10, 15)]
         assert body["pagination"] == {"total": 25, "offset": 10, "limit": 5}
 
     async def test_list_rejects_invalid_status_filter(
@@ -179,7 +179,7 @@ class TestApprovalsGet:
         body = json.loads(result)
 
         assert body["status"] == "ok"
-        assert body["data"]["id"] == "a1"
+        assert body["data"]["id"] == sid("a1")
         fake_approval_store.get.assert_awaited_once_with("a1")
 
     async def test_get_not_found(

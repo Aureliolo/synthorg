@@ -25,6 +25,7 @@ from synthorg.engine.parallel_models import (
 from synthorg.engine.prompt import SystemPrompt
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.hr.seniority import SeniorityLevel
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -43,7 +44,7 @@ def _make_identity(name: str) -> AgentIdentity:
 
 def _make_task(slug: str) -> Task:
     return Task(
-        id=f"task-{slug}",
+        id=as_uuid(f"task-{slug}"),
         title=slug,
         description="A test task",
         type=TaskType.DEVELOPMENT,
@@ -78,7 +79,7 @@ def _make_run_result(
         ),
         duration_seconds=1.0,
         agent_id=str(identity.id),
-        task_id=task.id,
+        task_id=str(task.id),
         currency=currency,
     )
 
@@ -87,7 +88,7 @@ def _make_outcome(slug: str, *, currency: str) -> AgentOutcome:
     identity = _make_identity(slug)
     task = _make_task(slug)
     return AgentOutcome(
-        task_id=task.id,
+        task_id=str(task.id),
         agent_id=str(identity.id),
         result=_make_run_result(identity, task, currency=currency),
     )
@@ -126,7 +127,7 @@ class TestParallelExecutionResultTotalCostCurrency:
         identity = _make_identity("failed")
         task = _make_task("failed")
         failed = AgentOutcome(
-            task_id=task.id,
+            task_id=str(task.id),
             agent_id=str(identity.id),
             error="boom",
         )

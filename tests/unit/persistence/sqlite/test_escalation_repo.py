@@ -22,6 +22,7 @@ from synthorg.hr.seniority import SeniorityLevel
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.escalation_repo import SQLiteEscalationRepository
+from tests._shared import as_uuid
 from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
@@ -30,7 +31,7 @@ pytestmark = pytest.mark.unit
 def _make_conflict(conflict_id: str = "conflict-sql-0001") -> Conflict:
     """Build a two-agent conflict fixture."""
     return Conflict(
-        id=conflict_id,
+        id=as_uuid(conflict_id),
         type=ConflictType.ARCHITECTURE,
         subject="Pick a storage engine",
         positions=(

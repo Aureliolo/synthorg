@@ -30,6 +30,7 @@ from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
@@ -125,7 +126,7 @@ def _identity() -> AgentIdentity:
 
 def _task() -> Task:
     return Task(
-        id="task-x",
+        id=as_uuid("task-x"),
         title="Plan a thing",
         description="Plan it carefully.",
         type=TaskType.DEVELOPMENT,
@@ -150,7 +151,7 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
         ceiling_amount=1.5,
         accumulated_cost=1.5,
         currency="USD",
-        task_id="task-x",
+        task_id=sid("task-x"),
     )
 
     result = cast(
@@ -160,7 +161,7 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
             identity=_identity(),
             task=_task(),
             agent_id="agent-1",
-            task_id="task-x",
+            task_id=sid("task-x"),
             duration_seconds=0.1,
         ),
     )
@@ -169,7 +170,7 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
     assert len(gate.calls) == 1
     parked_call = gate.calls[0]
     assert parked_call["agent_id"] == "agent-1"
-    assert parked_call["task_id"] == "task-x"
+    assert parked_call["task_id"] == sid("task-x")
     assert parked_call["escalation"].action_type == "budget:hard_ceiling_exceeded"
 
 
@@ -185,7 +186,7 @@ async def test_park_stamps_forecast_halt_context() -> None:
         ceiling_amount=1.5,
         accumulated_cost=1.8,
         currency="USD",
-        task_id="task-x",
+        task_id=sid("task-x"),
         forecast_id=forecast_id,
     )
 
@@ -194,7 +195,7 @@ async def test_park_stamps_forecast_halt_context() -> None:
         identity=_identity(),
         task=_task(),
         agent_id="agent-1",
-        task_id="task-x",
+        task_id=sid("task-x"),
         duration_seconds=0.1,
     )
 
@@ -217,7 +218,7 @@ async def test_park_without_forecast_id_skips_stamp() -> None:
         ceiling_amount=1.5,
         accumulated_cost=1.8,
         currency="USD",
-        task_id="task-x",
+        task_id=sid("task-x"),
     )
 
     result = cast(
@@ -227,7 +228,7 @@ async def test_park_without_forecast_id_skips_stamp() -> None:
             identity=_identity(),
             task=_task(),
             agent_id="agent-1",
-            task_id="task-x",
+            task_id=sid("task-x"),
             duration_seconds=0.1,
         ),
     )
@@ -255,7 +256,7 @@ async def test_park_context_failure_falls_back_to_exhausted() -> None:
             identity=_identity(),
             task=_task(),
             agent_id="agent-1",
-            task_id="task-x",
+            task_id=sid("task-x"),
             duration_seconds=0.1,
         ),
     )
@@ -284,7 +285,7 @@ async def test_hard_ceiling_without_approval_gate_falls_back_to_exhausted() -> N
             identity=_identity(),
             task=_task(),
             agent_id="agent-1",
-            task_id="task-x",
+            task_id=sid("task-x"),
             duration_seconds=0.1,
         ),
     )
@@ -307,7 +308,7 @@ async def test_other_budget_errors_still_route_to_exhausted() -> None:
             identity=_identity(),
             task=_task(),
             agent_id="agent-1",
-            task_id="task-x",
+            task_id=sid("task-x"),
             duration_seconds=0.1,
         ),
     )

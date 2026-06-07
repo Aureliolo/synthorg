@@ -22,6 +22,7 @@ from synthorg.communication.message import MessageMetadata
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.config import PostgresConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
+from tests._shared import as_uuid, sid
 from tests.unit.persistence.conftest import make_message, make_task
 
 
@@ -41,9 +42,9 @@ class TestLifecycleIntegration:
         await postgres_backend.disconnect()
 
         await postgres_backend.connect()
-        fetched = await postgres_backend.tasks.get("lifecycle-t1")
+        fetched = await postgres_backend.tasks.get(sid("lifecycle-t1"))
         assert fetched is not None
-        assert fetched.id == "lifecycle-t1"
+        assert fetched.id == as_uuid("lifecycle-t1")
         assert fetched.project == "lifecycle-proj"
 
     async def test_health_check_round_trip(
@@ -83,7 +84,7 @@ class TestConcurrentWrites:
         all_tasks = await postgres_backend.tasks.query(TaskFilterSpec())
         saved_ids = {t.id for t in all_tasks}
         for tid in task_ids:
-            assert tid in saved_ids
+            assert as_uuid(tid) in saved_ids
 
     async def test_concurrent_cost_record_saves(
         self,
@@ -96,7 +97,7 @@ class TestConcurrentWrites:
         records = [
             CostRecord(
                 agent_id=f"agent-{i}",
-                task_id="cost-parent",
+                task_id=NotBlankStr(sid("cost-parent")),
                 provider="test-provider",
                 model="test-small-001",
                 input_tokens=10,
@@ -113,7 +114,9 @@ class TestConcurrentWrites:
             for record in records:
                 _ = tg.create_task(postgres_backend.cost_records.append(record))
 
-        total = await postgres_backend.cost_records.aggregate(task_id="cost-parent")
+        total = await postgres_backend.cost_records.aggregate(
+            task_id=sid("cost-parent")
+        )
         # Sum of 0.01 * (1..20) = 0.21 * 10 = 2.10
         expected = sum(0.01 * (i + 1) for i in range(20))
         assert abs(total - expected) < 1e-9
@@ -210,7 +213,7 @@ class TestNativePostgresTypes:
         ):
             await cur.execute(
                 "SELECT pg_typeof(reviewers)::text AS t FROM tasks WHERE id = %s",
-                ("jsonb-test",),
+                (sid("jsonb-test"),),
             )
             row = await cur.fetchone()
             assert row is not None
@@ -227,7 +230,7 @@ class TestNativePostgresTypes:
         precise_ts = datetime(2026, 4, 10, 12, 34, 56, 789012, tzinfo=UTC)
         record = CostRecord(
             agent_id="tz-agent",
-            task_id="tz-parent",
+            task_id=NotBlankStr(sid("tz-parent")),
             provider="test-provider",
             model="test-small-001",
             input_tokens=1,

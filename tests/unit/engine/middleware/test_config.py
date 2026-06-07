@@ -12,6 +12,7 @@ from synthorg.core.middleware_config import (
     CoordinationMiddlewareConfig,
     MiddlewareConfig,
 )
+from tests._shared import as_uuid
 
 
 @pytest.mark.unit
@@ -137,7 +138,7 @@ class TestTaskMiddlewareOverride:
         from synthorg.core.task import Task
 
         task = Task(
-            id="t-1",
+            id=as_uuid("t-1"),
             title="Test",
             description="desc",
             type=TaskType.DEVELOPMENT,
@@ -152,7 +153,7 @@ class TestTaskMiddlewareOverride:
         from synthorg.core.task import Task
 
         task = Task(
-            id="t-1",
+            id=as_uuid("t-1"),
             title="Test",
             description="desc",
             type=TaskType.DEVELOPMENT,

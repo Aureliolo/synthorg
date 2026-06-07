@@ -32,7 +32,7 @@ from synthorg.observability.correlation import (
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import FinishReason
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -65,7 +65,7 @@ class TestAgentEngineBasicRun:
 
         assert isinstance(result, AgentRunResult)
         assert result.agent_id == str(sample_agent_with_personality.id)
-        assert result.task_id == sample_task_with_criteria.id
+        assert result.task_id == str(sample_task_with_criteria.id)
 
     async def test_basic_run_is_success(
         self,
@@ -206,7 +206,7 @@ class TestAgentEngineInvalidInput:
     ) -> None:
         """A task already COMPLETED cannot be executed."""
         completed_task = Task(
-            id="task-done",
+            id=as_uuid("task-done"),
             title="Already done",
             description="This task is completed.",
             type=TaskType.DEVELOPMENT,
@@ -232,7 +232,7 @@ class TestAgentEngineInvalidInput:
     ) -> None:
         """A task still in CREATED status (unassigned) cannot be executed."""
         created_task = Task(
-            id="task-new",
+            id=as_uuid("task-new"),
             title="New task",
             description="Unassigned task.",
             type=TaskType.DEVELOPMENT,
@@ -256,7 +256,7 @@ class TestAgentEngineInvalidInput:
     ) -> None:
         """A BLOCKED task cannot be executed."""
         blocked_task = Task(
-            id="task-blocked",
+            id=as_uuid("task-blocked"),
             title="Blocked task",
             description="This task is blocked.",
             type=TaskType.DEVELOPMENT,
@@ -281,7 +281,7 @@ class TestAgentEngineInvalidInput:
     ) -> None:
         """A task assigned to another agent cannot be executed."""
         other_task = Task(
-            id="task-other",
+            id=as_uuid("task-other"),
             title="Other agent task",
             description="Assigned to someone else.",
             type=TaskType.DEVELOPMENT,
@@ -513,7 +513,7 @@ class TestAgentEngineBudgetChecker:
     ) -> None:
         """Task with budget_limit=0 should not create a budget checker."""
         task = Task(
-            id="task-no-budget",
+            id=as_uuid("task-no-budget"),
             title="No budget limit",
             description="A task with no budget.",
             type=TaskType.DEVELOPMENT,
@@ -590,7 +590,7 @@ class TestAgentEngineCostRecording:
         """CostTracker present but zero cost/tokens -> no record created."""
         tracker = CostTracker()
         task = Task(
-            id="task-free",
+            id=as_uuid("task-free"),
             title="Free task",
             description="Zero cost run.",
             type=TaskType.DEVELOPMENT,
@@ -620,7 +620,7 @@ class TestAgentEngineCostRecording:
         """Free provider: cost=0 but tokens>0 -> record IS created."""
         tracker = CostTracker()
         task = Task(
-            id="task-free-tokens",
+            id=as_uuid("task-free-tokens"),
             title="Free with tokens",
             description="Zero cost but nonzero tokens.",
             type=TaskType.DEVELOPMENT,
@@ -1517,7 +1517,7 @@ class TestAgentEngineCorrelationBinding:
 
             mock_scope.assert_called_once_with(
                 agent_id=str(sample_agent_with_personality.id),
-                task_id=sample_task_with_criteria.id,
+                task_id=str(sample_task_with_criteria.id),
                 project_id=sample_task_with_criteria.project,
             )
 
@@ -1607,5 +1607,5 @@ class TestAgentEngineCorrelationBinding:
         assert captured_ctx.get("agent_id") == str(
             sample_agent_with_personality.id,
         )
-        assert captured_ctx.get("task_id") == sample_task_with_criteria.id
+        assert captured_ctx.get("task_id") == str(sample_task_with_criteria.id)
         assert captured_ctx.get("request_id") == "test-request-123"

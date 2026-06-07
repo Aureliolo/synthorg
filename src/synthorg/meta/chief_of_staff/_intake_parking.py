@@ -114,7 +114,7 @@ def build_work_approval_item(  # noqa: PLR0913 -- ApprovalItem field set is broa
         ``ApprovalItem`` instance.
     """
     return ApprovalItem(
-        id=approval_id,
+        id=uuid.UUID(approval_id),
         action_type=_WORK_ACTION_TYPE,
         title=proposed.title,
         description=proposed.raw_intent,
@@ -151,7 +151,7 @@ async def park_steering(  # noqa: PLR0913 -- intake collaborators threaded in
     approval_id = _new_approval_id()
     await approval_store.add(
         ApprovalItem(
-            id=approval_id,
+            id=uuid.UUID(approval_id),
             action_type=_STEERING_ACTION_TYPE,
             title=NotBlankStr(f"Steer {project}: {steer.kind.value}"),
             description=steer.text,

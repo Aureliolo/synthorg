@@ -74,7 +74,7 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.tools.structure_map.query_structure_map import QueryStructureMapTool
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -121,7 +121,7 @@ class _TaskCreatingIntake:
         )
         return IntakeResult.accepted_result(
             request_id=request.request_id,
-            task_id=created.id,
+            task_id=str(created.id),
         )
 
 
@@ -271,7 +271,7 @@ async def test_brownfield_intake_acceptance(
     tmp_path: Path,
 ) -> None:
     await persistence.projects.create(
-        Project(id=NotBlankStr(_PROJECT), name=NotBlankStr("Acquired Co"))
+        Project(id=as_uuid(_PROJECT), name=NotBlankStr("Acquired Co"))
     )
     source = tmp_path / "source"
     await _make_source_repo(source)
@@ -291,7 +291,7 @@ async def test_brownfield_intake_acceptance(
     # ── Stage 1: import + structure map + analysis pass ──────────────
     result = await adapter.submit(
         CodebaseImportSubmission(
-            project_id=NotBlankStr(_PROJECT),
+            project_id=NotBlankStr(sid(_PROJECT)),
             source_ref=NotBlankStr(str(source)),
             title=NotBlankStr("Acquired codebase"),
             requested_by=NotBlankStr("operator"),
@@ -304,7 +304,7 @@ async def test_brownfield_intake_acceptance(
     assert result.work_item.source is WorkSource.BROWNFIELD
     assert result.work_item.task_type is TaskType.ANALYSIS
 
-    stored = await persistence.codebase_structure_maps.get(NotBlankStr(_PROJECT))
+    stored = await persistence.codebase_structure_maps.get(NotBlankStr(sid(_PROJECT)))
     assert stored is not None
     assert any(m.path == "acquired" for m in stored.modules)
     assert any(d.name == "httpx" for d in stored.dependencies)
@@ -313,7 +313,7 @@ async def test_brownfield_intake_acceptance(
     # ── Stage 2a: an agent can retrieve its own understanding ────────
     query_tool = QueryStructureMapTool(
         repository=persistence.codebase_structure_maps,
-        project_id=NotBlankStr(_PROJECT),
+        project_id=NotBlankStr(sid(_PROJECT)),
     )
     rendered = await query_tool.execute(arguments={"facet": "modules"})
     assert rendered.is_error is False
@@ -328,7 +328,7 @@ async def test_brownfield_intake_acceptance(
                 "Using the imported codebase, add a /health endpoint."
             ),
             task_type=TaskType.DEVELOPMENT,
-            project=NotBlankStr(_PROJECT),
+            project=NotBlankStr(sid(_PROJECT)),
             requested_by=NotBlankStr("operator"),
         )
     )

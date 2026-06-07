@@ -104,14 +104,16 @@ async def collect_history_batches(
     Raises:
         BusStreamError: If a batch fetch fails (non-timeout error).
     """
-    from nats.errors import TimeoutError as NatsTimeoutError  # noqa: PLC0415
-
     parsed_messages: list[Message] = []
     # lint-allow: long-running-loop-kill-switch -- one-shot history replay.
     while True:
         try:
             batch = await psub.fetch(batch=batch_size, timeout=fetch_timeout_seconds)
-        except NatsTimeoutError:
+        except TimeoutError:
+            # The pull fetch raises a timeout once the consumer is drained.
+            # nats.py may surface either its own TimeoutError (a subclass of
+            # the builtin) or a bare asyncio/builtin TimeoutError; both mean
+            # idle, so catch the builtin parent to cover every variant.
             return parsed_messages
         except Exception as exc:
             reraise_critical(exc)

@@ -108,7 +108,7 @@ class TestAgentEngineExecutionService:
         )
         with pytest.raises(AgentRuntimeNotConfiguredError, match="not"):
             await service.execute_once(
-                task_id=task.id,
+                task_id=str(task.id),
                 previous_status=None,
                 new_status="assigned",
                 idempotency_key="k",
@@ -128,7 +128,7 @@ class TestAgentEngineExecutionService:
         )
         with pytest.raises(ConflictError, match="not assigned"):
             await service.execute_once(
-                task_id=task.id,
+                task_id=str(task.id),
                 previous_status=None,
                 new_status="assigned",
                 idempotency_key="k",
@@ -150,7 +150,7 @@ class TestAgentEngineExecutionService:
 
         with capture_logs() as logs, pytest.raises(RuntimeError, match="boom"):
             await service.execute_once(
-                task_id=task.id,
+                task_id=str(task.id),
                 previous_status="assigned",
                 new_status="in_progress",
                 idempotency_key="k",
@@ -160,7 +160,7 @@ class TestAgentEngineExecutionService:
         assert any(
             entry.get("log_level") == "error"
             and entry.get("event") == WORKERS_EXECUTION_SERVICE_FAILED
-            and entry.get("task_id") == task.id
+            and entry.get("task_id") == str(task.id)
             and entry.get("agent_id") == str(identity.id)
             for entry in logs
         )
@@ -182,7 +182,7 @@ class TestAgentEngineExecutionService:
         )
 
         result = await service.execute_once(
-            task_id=task.id,
+            task_id=str(task.id),
             previous_status="assigned",
             new_status="in_progress",
             idempotency_key="k",
@@ -217,7 +217,7 @@ class TestAgentEngineExecutionService:
         )
 
         await service.execute_once(
-            task_id=task.id,
+            task_id=str(task.id),
             previous_status=None,
             new_status="assigned",
             idempotency_key="k",
@@ -245,7 +245,7 @@ class TestAgentEngineExecutionService:
         )
 
         await service.execute_once(
-            task_id=task.id,
+            task_id=str(task.id),
             previous_status="assigned",
             new_status="in_progress",
             idempotency_key="k",
@@ -273,7 +273,7 @@ class TestAgentEngineExecutionService:
         )
 
         await service.execute_once(
-            task_id=task.id,
+            task_id=str(task.id),
             previous_status=None,
             new_status="assigned",
             idempotency_key="k",
@@ -298,7 +298,7 @@ class TestAgentEngineExecutionService:
 
         with pytest.raises(NotFoundError, match="after execution"):
             await service.execute_once(
-                task_id=task.id,
+                task_id=str(task.id),
                 previous_status="assigned",
                 new_status="in_progress",
                 idempotency_key="k",
@@ -508,7 +508,7 @@ class TestSandboxOwnerRelease:
 
     async def _run(self, service: AgentEngineExecutionService, task: object) -> None:
         await service.execute_once(
-            task_id=task.id,  # type: ignore[attr-defined]
+            task_id=str(task.id),  # type: ignore[attr-defined]
             previous_status="assigned",
             new_status="in_progress",
             idempotency_key="k",
@@ -538,7 +538,7 @@ class TestSandboxOwnerRelease:
         )
         await self._run(service, task)
         release.assert_awaited_once_with(
-            task.id,  # type: ignore[attr-defined]
+            str(task.id),  # type: ignore[attr-defined]
             project_id=task.project,  # type: ignore[attr-defined]
             image_override=None,
         )
@@ -594,12 +594,12 @@ class TestSandboxOwnerRelease:
         )
         with pytest.raises(RuntimeError, match="engine boom"):
             await service.execute_once(
-                task_id=task.id,
+                task_id=str(task.id),
                 previous_status="assigned",
                 new_status="in_progress",
                 idempotency_key="k",
                 requested_by="user",
             )
         release.assert_awaited_once_with(
-            task.id, project_id=task.project, image_override=None
+            str(task.id), project_id=task.project, image_override=None
         )

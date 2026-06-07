@@ -1,5 +1,7 @@
 """Row <-> model marshalling for the Postgres approval repository."""
 
+from uuid import UUID
+
 from psycopg.rows import DictRow
 from psycopg.types.json import Jsonb
 from pydantic import ValidationError
@@ -27,7 +29,7 @@ def item_save_params(item: ApprovalItem) -> tuple[object, ...]:
         else None
     )
     return (
-        item.id,
+        str(item.id),
         item.action_type,
         item.title,
         item.description,
@@ -90,7 +92,7 @@ def row_to_item(row: DictRow) -> ApprovalItem:
             else None
         )
         return ApprovalItem(
-            id=str(row["id"]),
+            id=UUID(str(row["id"])),
             action_type=str(row["action_type"]),
             title=str(row["title"]),
             description=str(row["description"]),

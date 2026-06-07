@@ -12,12 +12,13 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
 from synthorg.engine.errors import DecompositionDepthError, DecompositionError
+from tests._shared import as_uuid, coerce_id
 
 
 def _make_task(task_id: str = "task-manual-1") -> Task:
     """Helper to create a minimal task."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Manual Test Task",
         description="A task for manual decomposition testing",
         type=TaskType.DEVELOPMENT,
@@ -41,7 +42,7 @@ def _make_plan(
         for i in range(subtask_count)
     )
     return DecompositionPlan(
-        parent_task_id=parent_task_id,
+        parent_task_id=coerce_id(parent_task_id),
         subtasks=subtasks,
     )
 

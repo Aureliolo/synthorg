@@ -11,6 +11,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared import as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -70,7 +71,7 @@ def _identity(tier: ModelTier) -> AgentIdentity:
 
 def _task(stakes: Stakes) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="A task",
         description="Body",
         type=TaskType.DEVELOPMENT,

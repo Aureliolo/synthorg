@@ -114,7 +114,7 @@ class ClientReviewStage:
         criteria = tuple(c.description for c in task.acceptance_criteria)
         deliverable = task.description or task.title
         return ReviewContext(
-            task_id=task.id,
+            task_id=str(task.id),
             task_title=task.title,
             acceptance_criteria=criteria,
             deliverable_summary=deliverable,

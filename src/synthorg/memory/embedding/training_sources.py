@@ -208,7 +208,7 @@ class TrajectoryTrainingDataSource:
             TaskFilterSpec(status=TaskStatus.FAILED),
             limit=self._max_tasks,
         )
-        title_by_id = {task.id: task.title for task in (*completed, *failed)}
+        title_by_id = {str(task.id): task.title for task in (*completed, *failed)}
         agent_ids = sorted(
             {
                 task.assigned_to
@@ -304,12 +304,12 @@ class TrajectoryTrainingDataSource:
                 cancellation.check()
             try:
                 artifacts = await self._artifact_repo.query(
-                    ArtifactFilterSpec(task_id=task.id),
+                    ArtifactFilterSpec(task_id=str(task.id)),
                     limit=self._per_agent_limit,
                 )
             except Exception as exc:
                 reraise_critical(exc)
-                self._log_degraded("artifact", task.id, exc)
+                self._log_degraded("artifact", str(task.id), exc)
                 continue
             for artifact in artifacts:
                 passage = artifact.description.strip()

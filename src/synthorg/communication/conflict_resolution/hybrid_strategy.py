@@ -95,7 +95,7 @@ class HybridResolver:
         """
         logger.info(
             CONFLICT_HYBRID_REVIEW,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             has_evaluator=self._review_evaluator is not None,
         )
 
@@ -114,7 +114,7 @@ class HybridResolver:
             reraise_critical(exc)
             logger.warning(
                 CONFLICT_STRATEGY_ERROR,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 strategy="hybrid",
                 operation="review_evaluate",
                 review_agent=self._config.review_agent,
@@ -128,12 +128,12 @@ class HybridResolver:
         if winner_pos is not None:
             logger.info(
                 CONFLICT_HYBRID_AUTO_RESOLVED,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 winner=winning_agent_id,
             )
             record_escalation_outcome(outcome="auto_resolved")
             return ConflictResolution(
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 outcome=ConflictResolutionOutcome.RESOLVED_BY_HYBRID,
                 winning_agent_id=winning_agent_id,
                 winning_position=winner_pos.position,
@@ -145,7 +145,7 @@ class HybridResolver:
         # Ambiguous result -- winner not found in positions
         logger.warning(
             CONFLICT_AMBIGUOUS_RESULT,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             returned_winner=winning_agent_id,
             reasoning=reasoning,
             participants=[p.agent_id for p in conflict.positions],
@@ -180,7 +180,7 @@ class HybridResolver:
         if resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN:
             return tuple(
                 DissentRecord(
-                    id=f"dissent-{uuid4().hex[:12]}",
+                    id=uuid4(),
                     conflict=conflict,
                     resolution=resolution,
                     dissenting_agent_id=pos.agent_id,
@@ -195,7 +195,7 @@ class HybridResolver:
         losers = find_losers(conflict, resolution)
         return tuple(
             DissentRecord(
-                id=f"dissent-{uuid4().hex[:12]}",
+                id=uuid4(),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id=loser.agent_id,
@@ -227,14 +227,14 @@ class HybridResolver:
         """
         logger.warning(
             CONFLICT_AUTHORITY_FALLBACK,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             strategy="hybrid",
             reason=reason,
         )
         best = pick_highest_seniority(conflict, hierarchy=self._hierarchy)
 
         return ConflictResolution(
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.RESOLVED_BY_HYBRID,
             winning_agent_id=best.agent_id,
             winning_position=best.position,

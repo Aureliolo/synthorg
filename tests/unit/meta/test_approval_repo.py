@@ -10,6 +10,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec
 from synthorg.persistence.sqlite.approval_repo import SQLiteApprovalRepository
+from tests._shared import as_uuid, sid
 from tests._shared.persistence import make_private_write_context
 
 pytestmark = pytest.mark.unit
@@ -52,7 +53,7 @@ def _item(
         if status == ApprovalStatus.REJECTED:
             extra["decision_reason"] = "rejected for test"
     return ApprovalItem(
-        id=item_id,
+        id=as_uuid(item_id),
         action_type=action_type,
         title="Test Proposal",
         description="Test description",
@@ -81,7 +82,7 @@ class TestSQLiteApprovalRepository:
     async def test_save_and_get(self, repo: SQLiteApprovalRepository) -> None:
         item = _item()
         await repo.save(item)
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.id == item.id
         assert fetched.action_type == item.action_type
@@ -91,7 +92,7 @@ class TestSQLiteApprovalRepository:
         self,
         repo: SQLiteApprovalRepository,
     ) -> None:
-        result = await repo.get("nonexistent")
+        result = await repo.get(sid("nonexistent"))
         assert result is None
 
     async def test_save_updates_existing(
@@ -109,7 +110,7 @@ class TestSQLiteApprovalRepository:
             },
         )
         await repo.save(updated)
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.status == ApprovalStatus.APPROVED
         assert fetched.decided_by == "admin"
@@ -131,7 +132,7 @@ class TestSQLiteApprovalRepository:
         await repo.save(_item(item_id="a2", status=ApprovalStatus.APPROVED))
         pending = await repo.query(ApprovalFilterSpec(status=ApprovalStatus.PENDING))
         assert len(pending) == 1
-        assert pending[0].id == "a1"
+        assert pending[0].id == as_uuid("a1")
 
     async def test_list_items_filter_risk_level(
         self,
@@ -145,7 +146,7 @@ class TestSQLiteApprovalRepository:
         )
         high = await repo.query(ApprovalFilterSpec(risk_level=ApprovalRiskLevel.HIGH))
         assert len(high) == 1
-        assert high[0].id == "a1"
+        assert high[0].id == as_uuid("a1")
 
     async def test_list_items_filter_action_type(
         self,
@@ -159,7 +160,7 @@ class TestSQLiteApprovalRepository:
         )
         config = await repo.query(ApprovalFilterSpec(action_type="meta.config_tuning"))
         assert len(config) == 1
-        assert config[0].id == "a1"
+        assert config[0].id == as_uuid("a1")
 
     async def test_delete_existing(
         self,
@@ -167,15 +168,15 @@ class TestSQLiteApprovalRepository:
     ) -> None:
         item = _item()
         await repo.save(item)
-        deleted = await repo.delete(item.id)
+        deleted = await repo.delete(str(item.id))
         assert deleted is True
-        assert await repo.get(item.id) is None
+        assert await repo.get(str(item.id)) is None
 
     async def test_delete_nonexistent(
         self,
         repo: SQLiteApprovalRepository,
     ) -> None:
-        deleted = await repo.delete("nonexistent")
+        deleted = await repo.delete(sid("nonexistent"))
         assert deleted is False
 
     async def test_metadata_roundtrip(
@@ -187,6 +188,6 @@ class TestSQLiteApprovalRepository:
             update={"metadata": {"key": "value", "num": "42"}},
         )
         await repo.save(item)
-        fetched = await repo.get(item.id)
+        fetched = await repo.get(str(item.id))
         assert fetched is not None
         assert fetched.metadata == {"key": "value", "num": "42"}

@@ -64,7 +64,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared import FakeClock, make_app_state, mock_of, sid
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -154,7 +154,7 @@ class _TaskCreatingIntakeStrategy:
         )
         return IntakeResult.accepted_result(
             request_id=request.request_id,
-            task_id=created.id,
+            task_id=str(created.id),
         )
 
 
@@ -268,7 +268,7 @@ async def test_work_item_flows_solo_via_spine(
         source=WorkSource.SIMULATION,
         title="Add a status endpoint",
         raw_intent="First add the route, then return a JSON status body.",
-        project="proj-solo",
+        project=sid("proj-solo"),
         requested_by="operator",
     )
     result = await pipeline.run(work_item)
@@ -309,7 +309,7 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
         source=WorkSource.SIMULATION,
         title="Financial analysis",
         raw_intent="Decompose into research and analysis work.",
-        project="proj-team",
+        project=sid("proj-team"),
         requested_by="operator",
     )
     result = await pipeline.run(work_item)
@@ -327,9 +327,10 @@ async def test_work_item_flows_team_and_records_metrics_via_spine(
 def _project(project_id: str) -> Any:
     from synthorg.core.enums import ProjectStatus
     from synthorg.core.project import Project
+    from tests._shared import as_uuid
 
     return Project(
-        id=project_id,
+        id=as_uuid(project_id),
         name=project_id,
         description="acceptance project",
         status=ProjectStatus.ACTIVE,

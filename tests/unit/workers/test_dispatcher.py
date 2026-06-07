@@ -13,7 +13,7 @@ from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.settings.bridge_configs import WorkersBridgeConfig
 from synthorg.workers.claim import TaskClaim
 from synthorg.workers.dispatcher import DistributedDispatcher
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid, sid
 
 
 class _FakeTaskQueue:
@@ -41,7 +41,7 @@ def _make_task(status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
     validator), so we set it unconditionally for the test double.
     """
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="Integration fixture for dispatcher tests.",
         type=TaskType.DEVELOPMENT,
@@ -63,7 +63,7 @@ def _make_event(
         mutation_type="transition",
         request_id="req-1",
         requested_by="engine",
-        task_id="task-1",
+        task_id=sid("task-1"),
         task=task or _make_task(status=new_status),
         previous_status=previous_status,
         new_status=new_status,
@@ -82,7 +82,7 @@ async def test_dispatcher_publishes_claim_on_ready_transition() -> None:
 
     assert len(queue.published) == 1
     claim = queue.published[0]
-    assert claim.task_id == "task-1"
+    assert claim.task_id == sid("task-1")
     assert claim.new_status == "assigned"
     assert claim.previous_status == "created"
     assert claim.project_id == "project-1"
@@ -156,7 +156,7 @@ async def test_dispatcher_builds_claim_with_task_snapshot() -> None:
         mutation_type="create",
         request_id="req-1",
         requested_by="engine",
-        task_id="task-1",
+        task_id=sid("task-1"),
         task=_make_task(status=TaskStatus.ASSIGNED),
         previous_status=None,
         new_status=TaskStatus.ASSIGNED,
@@ -179,7 +179,7 @@ async def test_dispatcher_builds_claim_without_task_snapshot() -> None:
         mutation_type="transition",
         request_id="req-1",
         requested_by="engine",
-        task_id="task-1",
+        task_id=sid("task-1"),
         task=None,
         previous_status=TaskStatus.CREATED,
         new_status=TaskStatus.ASSIGNED,
@@ -190,7 +190,7 @@ async def test_dispatcher_builds_claim_without_task_snapshot() -> None:
 
     assert len(queue.published) == 1
     claim = queue.published[0]
-    assert claim.task_id == "task-1"
+    assert claim.task_id == sid("task-1")
     assert claim.project_id is None
     assert claim.previous_status == "created"
     assert claim.new_status == "assigned"

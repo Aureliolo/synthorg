@@ -2,14 +2,12 @@
 
 import re
 import sys
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping, MutableMapping
+from typing import Any
+from uuid import UUID
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.redaction import scrub_secret_tokens
-
-if TYPE_CHECKING:
-    from collections.abc import MutableMapping
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
     r"(password|secret|token|api_key|api_secret|authorization"
@@ -73,6 +71,59 @@ def sanitize_sensitive_fields(
         )
         for key, value in event_dict.items()
     }
+
+
+def _coerce_uuid_value(value: Any) -> Any:
+    """Recursively render ``UUID`` leaves as their canonical strings.
+
+    Traverses nested mapping / list / tuple structures, replacing every
+    :class:`uuid.UUID` with ``str(value)`` and leaving all other leaves
+    untouched. Returns new containers so the original event dict is
+    never mutated.
+
+    Args:
+        value: The value to coerce.
+
+    Returns:
+        ``value`` with every UUID leaf stringified.
+    """
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {k: _coerce_uuid_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_coerce_uuid_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_coerce_uuid_value(item) for item in value)
+    return value
+
+
+def coerce_uuids(
+    logger: Any,  # noqa: ARG001
+    method_name: str,  # noqa: ARG001
+    event_dict: MutableMapping[str, Any],
+) -> Mapping[str, Any]:
+    """Render UUID log values as their canonical hyphenated strings.
+
+    Entity ids are typed ``UUID``. Passed bare into a log call they
+    reach the JSON renderer as ``repr(uuid)`` (``UUID('...')``) instead
+    of the canonical string, breaking log filters and dashboards that
+    match ids exactly. Coercing here means every id renders consistently
+    whether or not the call site wrapped it in ``str()``, including
+    UUIDs nested inside dicts, lists, and tuples.
+
+    Returns a new dict rather than mutating the original, following the
+    project's immutability convention.
+
+    Args:
+        logger: The wrapped logger object (unused, required by structlog).
+        method_name: The name of the log method called (unused).
+        event_dict: The event dictionary to process.
+
+    Returns:
+        A new event dict with every UUID value stringified.
+    """
+    return {key: _coerce_uuid_value(value) for key, value in event_dict.items()}
 
 
 def _scrub_value(value: Any) -> Any:

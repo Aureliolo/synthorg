@@ -36,6 +36,7 @@ from synthorg.engine.review.models import (
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared import as_uuid
 
 
 def _identity() -> AgentIdentity:
@@ -75,7 +76,7 @@ def _task(
     delegation_chain: tuple[str, ...] = (),
 ) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Test Task",
         description="A test task",
         type=TaskType.DEVELOPMENT,
@@ -219,7 +220,7 @@ class TestDelegationProtocolDetector:
         findings = await DelegationProtocolDetector().detect(ctx)
         assert len(findings) >= 1
         # Only the broken one should produce a finding
-        assert any("child-2" in f.description for f in findings)
+        assert any(str(as_uuid("child-2")) in f.description for f in findings)
 
 
 # ── ReviewPipelineProtocolDetector ─────────────────────────────

@@ -17,7 +17,7 @@ from synthorg.a2a.rpc_params import A2AMessageSendParams
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.integrations.connections.catalog import ConnectionCatalog
-from tests._shared import make_app_state, mock_of
+from tests._shared import as_uuid, make_app_state, mock_of, sid
 
 
 class TestErrorResponse:
@@ -476,7 +476,7 @@ def _make_task(task_id: str, status: TaskStatus) -> Task:
     pydantic instance attributes that ``create_autospec`` cannot spec.
     """
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="A2A task",
         description="A2A inbound task",
         type=TaskType.ADMIN,
@@ -516,7 +516,7 @@ class TestHandleMessageSend:
 
         result = await _handle_message_send(app_state, _send_params(), "peer-a")
 
-        assert result == {"id": "task-1", "state": "working"}
+        assert result == {"id": sid("task-1"), "state": "working"}
         engine.create_task.assert_awaited_once()
         call = engine.create_task.call_args
         assert call.kwargs["requested_by"] == "a2a-gateway:peer-a"
@@ -568,7 +568,7 @@ class TestHandleMessageSend:
 
         with patch("synthorg.a2a.gateway._resolve_max_message_parts", new=at_cap):
             result = await _handle_message_send(app_state, _send_params(parts=2), "p")
-        assert result == {"id": "task-1", "state": "working"}
+        assert result == {"id": sid("task-1"), "state": "working"}
         engine.create_task.assert_awaited_once()
 
 
@@ -594,7 +594,7 @@ class TestHandleTasksGet:
             "peer-a",
         )
 
-        assert result == {"id": "task-9", "state": "completed"}
+        assert result == {"id": sid("task-9"), "state": "completed"}
         engine.get_task.assert_awaited_once_with("task-9")
 
     @pytest.mark.unit
@@ -643,7 +643,7 @@ class TestHandleTasksCancel:
             "peer-a",
         )
 
-        assert result == {"id": "task-2", "state": "canceled"}
+        assert result == {"id": sid("task-2"), "state": "canceled"}
         cancel_kwargs = engine.cancel_task.call_args.kwargs
         assert cancel_kwargs["requested_by"] == "a2a-gateway:peer-a"
         assert cancel_kwargs["reason"] == "A2A tasks/cancel request"

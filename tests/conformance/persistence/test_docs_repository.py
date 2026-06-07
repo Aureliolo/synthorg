@@ -15,12 +15,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.models import DocMetadata
 from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
 
 def _project(project_id: str = "proj-1") -> Project:
-    return Project(id=NotBlankStr(project_id), name=NotBlankStr("Demo"))
+    return Project(id=as_uuid(project_id), name=NotBlankStr("Demo"))
 
 
 def _meta(  # noqa: PLR0913 -- test helper takes one kwarg per metadata field
@@ -36,7 +37,7 @@ def _meta(  # noqa: PLR0913 -- test helper takes one kwarg per metadata field
 ) -> DocMetadata:
     timestamp = ts if ts is not None else datetime(2026, 5, 20, tzinfo=UTC)
     return DocMetadata(
-        project_id=NotBlankStr(project_id),
+        project_id=NotBlankStr(sid(project_id)),
         slug=NotBlankStr(slug),
         doc_type=doc_type,
         title=NotBlankStr(title),
@@ -53,7 +54,7 @@ class TestDocsRepository:
         await backend.projects.save(_project())
         await backend.project_docs.save(_meta())
         fetched = await backend.project_docs.get(
-            (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
         )
         assert fetched is not None
         assert fetched.slug == "q2-status"
@@ -74,7 +75,7 @@ class TestDocsRepository:
             ),
         )
         fetched = await backend.project_docs.get(
-            (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
         )
         assert fetched is not None
         assert fetched.title == "Revised"
@@ -87,7 +88,7 @@ class TestDocsRepository:
         await backend.projects.save(_project())
         await backend.project_docs.save(_meta(tags=("checkout", "q2")))
         fetched = await backend.project_docs.get(
-            (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
         )
         assert fetched is not None
         assert fetched.tags == ("checkout", "q2")
@@ -104,7 +105,7 @@ class TestDocsRepository:
             _meta(slug="newest", ts=datetime(2026, 5, 20, tzinfo=UTC)),
         )
         rows = await backend.project_docs.list_items()
-        ordered_slugs = [r.slug for r in rows if r.project_id == "proj-1"]
+        ordered_slugs = [r.slug for r in rows if r.project_id == sid("proj-1")]
         assert ordered_slugs == ["newest", "middle", "oldest"]
 
     async def test_query_by_doc_type(self, backend: PersistenceBackend) -> None:
@@ -119,7 +120,7 @@ class TestDocsRepository:
 
         deliverables = await backend.project_docs.query(
             DocsFilterSpec(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 doc_type=DocType.DELIVERABLE,
             )
         )
@@ -136,13 +137,13 @@ class TestDocsRepository:
             )
         )
         fetched = await backend.project_docs.get(
-            (NotBlankStr("proj-1"), NotBlankStr("run-narrative-exec1"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("run-narrative-exec1"))
         )
         assert fetched is not None
         assert fetched.doc_type is DocType.RUN_NARRATIVE
         narratives = await backend.project_docs.query(
             DocsFilterSpec(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 doc_type=DocType.RUN_NARRATIVE,
             )
         )
@@ -161,13 +162,13 @@ class TestDocsRepository:
             )
         )
         fetched = await backend.project_docs.get(
-            (NotBlankStr("proj-1"), NotBlankStr("intake-analysis"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("intake-analysis"))
         )
         assert fetched is not None
         assert fetched.doc_type is DocType.CODEBASE_ANALYSIS
         analyses = await backend.project_docs.query(
             DocsFilterSpec(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 doc_type=DocType.CODEBASE_ANALYSIS,
             )
         )
@@ -181,7 +182,7 @@ class TestDocsRepository:
 
         checkout = await backend.project_docs.query(
             DocsFilterSpec(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 tag=NotBlankStr("checkout"),
             )
         )
@@ -198,7 +199,7 @@ class TestDocsRepository:
 
         recent = await backend.project_docs.query(
             DocsFilterSpec(
-                project_id=NotBlankStr("proj-1"),
+                project_id=NotBlankStr(sid("proj-1")),
                 updated_since=datetime(2026, 5, 15, tzinfo=UTC),
             )
         )
@@ -213,7 +214,7 @@ class TestDocsRepository:
                     ts=datetime(2026, 5, 20, tzinfo=UTC) + timedelta(seconds=i),
                 )
             )
-        spec = DocsFilterSpec(project_id=NotBlankStr("proj-1"))
+        spec = DocsFilterSpec(project_id=NotBlankStr(sid("proj-1")))
         assert await backend.project_docs.count(spec) == 3
         assert len(await backend.project_docs.query(spec)) == 3
 
@@ -221,12 +222,12 @@ class TestDocsRepository:
         await backend.projects.save(_project())
         await backend.project_docs.save(_meta())
         deleted = await backend.project_docs.delete(
-            (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+            (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
         )
         assert deleted is True
         assert (
             await backend.project_docs.get(
-                (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+                (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
             )
             is None
         )
@@ -243,10 +244,10 @@ class TestDocsRepository:
         """Deleting the parent project removes its doc metadata (FK cascade)."""
         await backend.projects.save(_project())
         await backend.project_docs.save(_meta())
-        await backend.projects.delete(NotBlankStr("proj-1"))
+        await backend.projects.delete(NotBlankStr(sid("proj-1")))
         assert (
             await backend.project_docs.get(
-                (NotBlankStr("proj-1"), NotBlankStr("q2-status"))
+                (NotBlankStr(sid("proj-1")), NotBlankStr("q2-status"))
             )
             is None
         )

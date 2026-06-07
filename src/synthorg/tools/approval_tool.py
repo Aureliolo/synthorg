@@ -8,7 +8,7 @@ until the approval decision arrives.
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar, override
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel
 
@@ -132,7 +132,7 @@ class RequestHumanApprovalTool(BaseTool):
             return validation_error
 
         risk_level = self._classify_risk(action_type)
-        approval_id = f"approval-{uuid4().hex}"
+        approval_id = str(uuid4())
 
         store_error = await self._persist_item(
             approval_id,
@@ -166,7 +166,7 @@ class RequestHumanApprovalTool(BaseTool):
             from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
             item = ApprovalItem(
-                id=approval_id,
+                id=UUID(approval_id),
                 action_type=action_type,
                 title=title,
                 description=description,

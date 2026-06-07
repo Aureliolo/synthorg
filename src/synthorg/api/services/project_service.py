@@ -146,14 +146,14 @@ class ProjectService:
             reraise_critical(exc)
             logger.warning(
                 API_PROJECT_CREATED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
         logger.info(
             API_PROJECT_CREATED,
-            project_id=project.id,
+            project_id=str(project.id),
             status=project.status.value,
             lead=project.lead,
         )
@@ -186,14 +186,14 @@ class ProjectService:
             reraise_critical(exc)
             logger.warning(
                 API_PROJECT_UPDATED,
-                project_id=project.id,
+                project_id=str(project.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
             raise
         logger.info(
             API_PROJECT_UPDATED,
-            project_id=project.id,
+            project_id=str(project.id),
             status=project.status.value,
         )
         return project

@@ -1,6 +1,7 @@
 """CRUD mutation, typed error, and consistency tests for TaskEngine."""
 
 from typing import TYPE_CHECKING, override
+from uuid import UUID
 
 import pytest
 
@@ -44,10 +45,10 @@ class TestCreateTask:
             requested_by="alice",
         )
         assert task.title == "My Task"
-        assert task.id.startswith("task-")
+        assert isinstance(task.id, UUID)
         assert task.status == TaskStatus.CREATED
 
-        stored = await persistence.tasks.get(task.id)
+        stored = await persistence.tasks.get(str(task.id))
         assert stored is not None
         assert stored.title == "My Task"
 
@@ -91,7 +92,7 @@ class TestUpdateTask:
             requested_by="alice",
         )
         updated = await engine.update_task(
-            task.id,
+            str(task.id),
             {"title": "Updated"},
             requested_by="alice",
         )
@@ -107,7 +108,7 @@ class TestUpdateTask:
             requested_by="alice",
         )
         result = await engine.update_task(
-            task.id,
+            str(task.id),
             {},
             requested_by="alice",
         )
@@ -141,7 +142,7 @@ class TestTransitionTask:
             requested_by="alice",
         )
         assigned, _ = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
@@ -160,7 +161,7 @@ class TestTransitionTask:
         )
         with pytest.raises(TaskMutationError):
             await engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.COMPLETED,
                 requested_by="alice",
                 reason="Skip to done",
@@ -196,10 +197,10 @@ class TestDeleteTask:
             make_create_data(),
             requested_by="alice",
         )
-        deleted = await engine.delete_task(task.id, requested_by="alice")
+        deleted = await engine.delete_task(str(task.id), requested_by="alice")
         assert deleted is True
 
-        stored = await persistence.tasks.get(task.id)
+        stored = await persistence.tasks.get(str(task.id))
         assert stored is None
 
     async def test_delete_not_found(
@@ -229,14 +230,14 @@ class TestCancelTask:
             requested_by="alice",
         )
         assigned, _ = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
             assigned_to="bob",
         )
         cancelled, prior = await engine.cancel_task(
-            assigned.id,
+            str(assigned.id),
             requested_by="alice",
             reason="No longer needed",
         )
@@ -254,7 +255,7 @@ class TestCancelTask:
         )
         with pytest.raises(TaskMutationError):
             await engine.cancel_task(
-                task.id,
+                str(task.id),
                 requested_by="alice",
                 reason="Oops",
             )
@@ -275,7 +276,7 @@ class TestReadThrough:
             make_create_data(title="Findme"),
             requested_by="alice",
         )
-        found = await engine.get_task(task.id)
+        found = await engine.get_task(str(task.id))
         assert found is not None
         assert found.title == "Findme"
 
@@ -315,7 +316,7 @@ class TestReadThrough:
             requested_by="alice",
         )
         await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
@@ -777,7 +778,7 @@ class TestPreviousStatus:
         mutation = TransitionTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=task.id,
+            task_id=str(task.id),
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
             overrides={"assigned_to": "bob"},
@@ -796,7 +797,7 @@ class TestPreviousStatus:
         )
         # First move to ASSIGNED so cancel is valid
         await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Assigning",
@@ -805,7 +806,7 @@ class TestPreviousStatus:
         mutation = CancelTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=task.id,
+            task_id=str(task.id),
             reason="No longer needed",
         )
         result = await engine.submit(mutation)
@@ -907,7 +908,7 @@ class TestTypedErrors:
         )
         with pytest.raises(TaskVersionConflictError, match="conflict"):
             await engine.update_task(
-                task.id,
+                str(task.id),
                 {"title": "changed"},
                 requested_by="alice",
                 expected_version=99,

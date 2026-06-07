@@ -415,14 +415,14 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
             await sync_to_task_engine(
                 self._task_engine,
                 target_status=target,
-                task_id=task.id,
+                task_id=str(task.id),
                 agent_id="review-gate-service",
                 reason=transition_reason,
             )
         except Exception as exc:
             logger.warning(
                 APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 decided_by=decided_by,
                 target_status=target.value,
                 stage="sync_to_task_engine",
@@ -433,7 +433,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
 
         logger.info(
             event,
-            task_id=task.id,
+            task_id=str(task.id),
             requested_by=requested_by,
             decided_by=decided_by,
             target_status=target.value,
@@ -463,7 +463,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         if task.assigned_to is None:
             logger.warning(
                 APPROVAL_GATE_TASK_UNASSIGNED,
-                task_id=task.id,
+                task_id=str(task.id),
                 decided_by=decided_by,
                 status=task.status.value,
             )
@@ -471,7 +471,7 @@ class ReviewGateService(ReviewGateWiringMixin, ReviewGateRecordMixin):
         if decided_by == task.assigned_to:
             logger.warning(
                 SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
-                task_id=task.id,
+                task_id=str(task.id),
                 agent_id=decided_by,
             )
-            raise SelfReviewError(task_id=task.id, agent_id=decided_by)
+            raise SelfReviewError(task_id=str(task.id), agent_id=decided_by)

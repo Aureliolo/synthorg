@@ -19,6 +19,7 @@ from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.log_trace_correlation import inject_trace_context
 from synthorg.observability.processors import (
+    coerce_uuids,
     sanitize_sensitive_fields,
     scrub_event_fields,
 )
@@ -84,6 +85,9 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.processors.TimeStamper(fmt="iso", utc=True),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.UnicodeDecoder(),
+    # Render UUID entity ids (e.g. ``task_id``, ``approval_id``) as their
+    # canonical strings so they never reach a renderer as ``UUID('...')``.
+    coerce_uuids,
     # Realise ``exc_info`` into a string under the ``exception``
     # key BEFORE ``scrub_event_fields`` runs, so the scrubber also
     # sees (and masks) any credential patterns embedded in the

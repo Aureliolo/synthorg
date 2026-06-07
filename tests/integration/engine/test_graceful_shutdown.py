@@ -22,6 +22,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 
 class _ShutdownTriggeringProvider:
@@ -127,7 +128,7 @@ class TestGracefulShutdownFlow:
         )
 
         task = Task(
-            id="task-shutdown-001",
+            id=as_uuid("task-shutdown-001"),
             title="Task for shutdown test",
             description="This task will complete before shutdown check.",
             type=TaskType.DEVELOPMENT,
@@ -186,7 +187,7 @@ class TestGracefulShutdownFlow:
         )
 
         task = Task(
-            id="task-shutdown-002",
+            id=as_uuid("task-shutdown-002"),
             title="Multi-turn shutdown test",
             description="This task will be interrupted mid-execution.",
             type=TaskType.DEVELOPMENT,

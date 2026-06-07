@@ -15,6 +15,7 @@ from typeguard import suppress_type_checks
 
 from synthorg.core.enums import Priority, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
+from tests._shared import as_uuid
 
 
 def _task(
@@ -24,7 +25,7 @@ def _task(
     criteria: tuple[AcceptanceCriterion, ...] = (),
 ) -> Task:
     return Task(
-        id="task-sec1-prompt",
+        id=as_uuid("task-sec1-prompt"),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

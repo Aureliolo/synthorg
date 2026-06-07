@@ -114,7 +114,7 @@ class AsyncTaskService:
             # the actual persisted status (TaskStatus.ASSIGNED) instead
             # of the stale create-time status (TaskStatus.CREATED).
             task, _prior_status = await self._engine.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by=supervisor_id,
                 reason="async_task_start",
@@ -131,7 +131,7 @@ class AsyncTaskService:
                 ASYNC_TASK_START_FAILED,
                 supervisor_id=supervisor_id,
                 title=task_spec.title,
-                task_id=task.id if task is not None else None,
+                task_id=str(task.id) if task is not None else None,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -140,7 +140,7 @@ class AsyncTaskService:
             raise
 
         self._emit_start_audit(task, task_spec, supervisor_id)
-        return task.id
+        return str(task.id)
 
     async def _rollback_after_failed_start(
         self,
@@ -160,20 +160,20 @@ class AsyncTaskService:
         """
         rollback_action = "unknown"
         try:
-            persisted_task = await self._engine.get_task(task.id)
+            persisted_task = await self._engine.get_task(str(task.id))
             rollback_status = (
                 persisted_task.status if persisted_task is not None else None
             )
             if rollback_status is TaskStatus.CREATED:
                 rollback_action = "delete"
                 await self._engine.delete_task(
-                    task.id,
+                    str(task.id),
                     requested_by=supervisor_id,
                 )
             elif rollback_status is not None:
                 rollback_action = "cancel"
                 cancelled_task, rollback_prior = await self._engine.cancel_task(
-                    task.id,
+                    str(task.id),
                     requested_by=supervisor_id,
                     reason="assignment_failed",
                 )
@@ -187,7 +187,7 @@ class AsyncTaskService:
             reraise_critical(cancel_exc)
             logger.warning(
                 ASYNC_TASK_START_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 error_type=type(cancel_exc).__name__,
                 reason=f"rollback {rollback_action} also failed",
                 error=safe_error_description(cancel_exc),
@@ -212,14 +212,14 @@ class AsyncTaskService:
         )
         logger.info(
             ASYNC_TASK_CANCELLED,
-            task_id=task.id,
+            task_id=str(task.id),
             supervisor_id=supervisor_id,
             reason="assignment_failed",
         )
         if rollback_from_status != rollback_to_status:
             logger.info(
                 ASYNC_TASK_STATUS_TRANSITIONED,
-                task_id=task.id,
+                task_id=str(task.id),
                 from_status=(
                     rollback_from_status.value
                     if rollback_from_status is not None
@@ -245,14 +245,14 @@ class AsyncTaskService:
         """
         logger.info(
             ASYNC_TASK_STARTED,
-            task_id=task.id,
+            task_id=str(task.id),
             agent_id=task_spec.agent_id,
             supervisor_id=supervisor_id,
         )
         persisted_status = self._map_status(task.status)
         logger.info(
             ASYNC_TASK_STATUS_TRANSITIONED,
-            task_id=task.id,
+            task_id=str(task.id),
             from_status=None,
             to_status=persisted_status.value,
         )
@@ -439,7 +439,7 @@ class AsyncTaskService:
         # directly, so we fetch and filter in-memory.
         tasks, _count = await self._engine.list_tasks()
         children = tuple(
-            (t.id, self._map_status(t.status))
+            (str(t.id), self._map_status(t.status))
             for t in tasks
             if t.parent_task_id == supervisor_task_id
         )

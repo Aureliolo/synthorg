@@ -2,7 +2,6 @@
 
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -21,8 +20,9 @@ from synthorg.engine.post_execution.memory_hooks import (
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
+from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("memory-hooks-agent")
 
 
 def _make_identity() -> AgentIdentity:
@@ -38,7 +38,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-hook-001",
+        id=as_uuid("task-hook-001"),
         title="Hook test task",
         description="A task for testing hooks.",
         type=TaskType.DEVELOPMENT,

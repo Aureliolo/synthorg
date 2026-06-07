@@ -40,7 +40,7 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageRecord
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock, as_uuid, mock_of
 from tests.unit.deliverable_receipts._fakes import (
     InMemoryCodeExecutionRecordRepository,
     InMemoryDeliverableReceiptRepository,
@@ -51,7 +51,8 @@ pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
 _HASH = "a" * 64
-_TASK_ID = "t-1"
+_TASK_UUID = as_uuid("t-1")
+_TASK_ID = str(_TASK_UUID)
 _PROJECT = "p-1"
 _EXEC = "exec-1"
 _SLUG = "quarterly-report"
@@ -59,7 +60,7 @@ _SLUG = "quarterly-report"
 
 def _task() -> Task:
     return Task(
-        id=_TASK_ID,
+        id=_TASK_UUID,
         title="Deliverable task",
         description="produces a deliverable",
         type=TaskType.DEVELOPMENT,

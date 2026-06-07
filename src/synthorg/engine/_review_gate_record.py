@@ -57,7 +57,7 @@ class ReviewGateRecordMixin:
         if self._persistence is None:
             logger.warning(
                 APPROVAL_GATE_DECISION_RECORD_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 decided_by=decided_by,
                 approved=approved,
                 error_type="NoPersistence",
@@ -71,7 +71,7 @@ class ReviewGateRecordMixin:
         if task.assigned_to is None:
             logger.error(
                 APPROVAL_GATE_DECISION_RECORD_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 decided_by=decided_by,
                 approved=approved,
                 error_type="UnassignedExecutor",
@@ -87,7 +87,7 @@ class ReviewGateRecordMixin:
         executor = task.assigned_to
         metadata = await self._fetch_charter_metadata(executor)
         await self._append_decision(
-            task_id=task.id,
+            task_id=str(task.id),
             executing_agent_id=executor,
             decided_by=decided_by,
             approved=approved,

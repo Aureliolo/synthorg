@@ -9,6 +9,7 @@ from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutActionType
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
+from tests._shared import as_uuid
 
 
 def _make_pending_item(
@@ -17,7 +18,7 @@ def _make_pending_item(
 ) -> ApprovalItem:
     """Build a PENDING ApprovalItem for scheduler tests."""
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type=action_type,
         title="Test approval",
         description="Test description",

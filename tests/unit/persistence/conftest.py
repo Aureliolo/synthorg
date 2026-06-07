@@ -7,6 +7,7 @@ from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.core.enums import Priority, TaskStatus, TaskType
 from synthorg.core.task import Task
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -42,7 +43,7 @@ def make_task(  # noqa: PLR0913
     if effective_assigned_to is None and status in _REQUIRES_ASSIGNEE:
         effective_assigned_to = "alice"
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=title,
         description=description,
         type=task_type,

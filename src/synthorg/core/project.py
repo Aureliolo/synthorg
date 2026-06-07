@@ -3,6 +3,7 @@
 from collections import Counter
 from datetime import datetime
 from typing import Self
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -20,7 +21,7 @@ class Project(BaseModel):
     and entity relationship tree.
 
     Attributes:
-        id: Unique project identifier (e.g. ``"proj-456"``).
+        id: Unique project identifier (auto-generated UUID).
         name: Project display name.
         description: Detailed project description.
         team: Agent IDs assigned to this project.
@@ -33,7 +34,7 @@ class Project(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    id: NotBlankStr = Field(description="Unique project identifier")
+    id: UUID = Field(default_factory=uuid4, description="Unique project identifier")
     name: NotBlankStr = Field(description="Project display name")
     description: str = Field(
         default="",

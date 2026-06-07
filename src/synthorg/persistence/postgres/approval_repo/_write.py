@@ -50,7 +50,7 @@ class _WriteMixin(_ApprovalRepoBase):
             msg = f"Constraint violation saving approval {item.id!r}"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -62,7 +62,7 @@ class _WriteMixin(_ApprovalRepoBase):
             msg = f"Failed to save approval {item.id!r}"
             logger.warning(
                 API_APPROVAL_REPO_FAILED,
-                approval_id=item.id,
+                approval_id=str(item.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )

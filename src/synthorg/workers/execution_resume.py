@@ -195,7 +195,7 @@ class ResumeDispatchMixin:
             decided_by=decided_by,
             decision_reason=decision_reason,
         )
-        task_id = ctx.task_execution.task.id if ctx.task_execution else ""
+        task_id = str(ctx.task_execution.task.id) if ctx.task_execution else ""
         project_id = ctx.task_execution.task.project if ctx.task_execution else None
         effective_autonomy = self._resolve_autonomy(
             ctx.identity,

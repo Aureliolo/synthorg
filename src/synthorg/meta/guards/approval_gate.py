@@ -10,7 +10,7 @@ bypassing review.
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
@@ -136,7 +136,7 @@ class ApprovalGateGuard:
             uuid5(NAMESPACE_URL, f"proposal:{proposal_id_str}"),
         )
         item = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type=f"proposal:{proposal.altitude.value}",
             title=proposal.title,
             description=proposal.description,

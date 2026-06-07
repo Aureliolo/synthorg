@@ -66,7 +66,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared import FakeClock, as_uuid, make_app_state, mock_of, sid
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -185,7 +185,7 @@ class _TaskCreatingIntakeStrategy:
         )
         return IntakeResult.accepted_result(
             request_id=request.request_id,
-            task_id=created.id,
+            task_id=str(created.id),
         )
 
 
@@ -233,7 +233,7 @@ def _project(project_id: str) -> Any:
     from synthorg.core.project import Project
 
     return Project(
-        id=project_id,
+        id=as_uuid(project_id),
         name=project_id,
         description="acceptance project",
         status=ProjectStatus.ACTIVE,
@@ -365,14 +365,14 @@ async def test_stakes_aware_costs_less_than_flat_on_mixed_brief(
         task_engine=task_engine,
         tmp_path=tmp_path,
         stakes_strategy="stakes_aware",
-        project="proj-aware",
+        project=sid("proj-aware"),
     )
     flat_cost = await _run_brief(
         persistence=persistence,
         task_engine=task_engine,
         tmp_path=tmp_path,
         stakes_strategy="flat",
-        project="proj-flat",
+        project=sid("proj-flat"),
     )
 
     assert aware_cost > 0.0

@@ -236,7 +236,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
 
     # /coordinate returns a real result (no 503, no CoordinationPhaseError
     # bubbled out of coordinate()).
-    assert result.parent_task_id == created.id
+    assert result.parent_task_id == str(created.id)
     # Decompose ran: the scripted plan produced two subtasks.
     assert result.decomposition_result is not None
     assert len(result.decomposition_result.plan.subtasks) == 2
@@ -362,14 +362,14 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
     )
 
     attributed = await coordinator.coordinate(context)
-    assert attributed.result.parent_task_id == created.id
+    assert attributed.result.parent_task_id == str(created.id)
 
     # Exactly the call the GET /coordination/metrics controller makes.
     records, total = metrics_store.query(limit=10)
     assert total >= 1
     assert metrics_store.count() >= 1
     record = records[0]
-    assert record.task_id == created.id
+    assert record.task_id == str(created.id)
     # Multi-agent coordination is a system-level run: no single lead.
     assert record.agent_id is None
     assert record.team_size == 2

@@ -47,7 +47,7 @@ from synthorg.project_brain.factory import build_project_brain_service
 from synthorg.project_brain.models import BrainEntryKind
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakeProjectBrainRepository
@@ -125,7 +125,7 @@ async def _build_brain_service(
 def _ctx_for_run() -> AgentContext:
     identity = make_e2e_identity()
     task = Task(
-        id="task-checkout",
+        id=as_uuid("task-checkout"),
         title="Wire the data layer",
         description="Stand up persistence for the checkout service.",
         type=TaskType.DEVELOPMENT,

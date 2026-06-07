@@ -161,7 +161,7 @@ class LlmDecompositionStrategy:
             if attempt > 0 and last_error is not None:
                 logger.info(
                     DECOMPOSITION_LLM_RETRY,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     attempt=attempt,
                     error=last_error,
                 )
@@ -179,7 +179,7 @@ class LlmDecompositionStrategy:
 
             logger.debug(
                 DECOMPOSITION_LLM_CALL_START,
-                task_id=task.id,
+                task_id=str(task.id),
                 model=self._model,
                 attempt=attempt,
             )
@@ -187,7 +187,7 @@ class LlmDecompositionStrategy:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
                 agent_id=NotBlankStr("system"),
-                task_id=task.id,
+                task_id=str(task.id),
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(
@@ -200,17 +200,17 @@ class LlmDecompositionStrategy:
 
             logger.debug(
                 DECOMPOSITION_LLM_CALL_COMPLETE,
-                task_id=task.id,
+                task_id=str(task.id),
                 finish_reason=response.finish_reason.value,
             )
 
             try:
-                plan = self._parse_response(response, task.id)
+                plan = self._parse_response(response, str(task.id))
             except DecompositionError as exc:
                 last_error = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_LLM_PARSE_ERROR,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     attempt=attempt,
                     error_type=type(exc).__name__,
                     error=last_error,
@@ -223,7 +223,7 @@ class LlmDecompositionStrategy:
                 last_error = safe_error_description(exc)
                 logger.warning(
                     DECOMPOSITION_VALIDATION_ERROR,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     error_type=type(exc).__name__,
                     error=last_error,
                 )
@@ -231,7 +231,7 @@ class LlmDecompositionStrategy:
 
             logger.debug(
                 DECOMPOSITION_COMPLETED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy="llm",
                 subtask_count=len(plan.subtasks),
             )
@@ -243,7 +243,7 @@ class LlmDecompositionStrategy:
         )
         logger.warning(
             DECOMPOSITION_FAILED,
-            task_id=task.id,
+            task_id=str(task.id),
             error=msg,
         )
         raise DecompositionError(msg)

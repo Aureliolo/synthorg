@@ -27,6 +27,7 @@ from synthorg.meta.signal_models import (
     OrgTelemetrySummary,
 )
 from synthorg.meta.signals.service import SignalsService
+from tests._shared import as_uuid
 from tests.unit.meta.mcp.conftest import make_test_actor
 
 pytestmark = pytest.mark.unit
@@ -250,7 +251,7 @@ def _approval_item(
     approval_id: str | None = None,
 ) -> ApprovalItem:
     return ApprovalItem(
-        id=approval_id or f"p-{uuid4().hex}",
+        id=as_uuid(approval_id) if approval_id else uuid4(),
         action_type="signals.proposal",
         title="t",
         description="d",

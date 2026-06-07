@@ -363,7 +363,7 @@ class TestDeliverableReceiptAcceptance:
 
         # -- Leg 1: the execution-id join closes. --------------------
         aggregate = await persistence.flight_recorder_frames.get_aggregate(
-            FlightRecorderFrameFilterSpec(task_id=task.id),
+            FlightRecorderFrameFilterSpec(task_id=str(task.id)),
         )
         assert aggregate.latest_execution_id == execution_id
 
@@ -395,14 +395,14 @@ class TestDeliverableReceiptAcceptance:
             receipt_service=receipt_service,
         )
         await review_gate.complete_review(
-            task_id=task.id,
+            task_id=str(task.id),
             requested_by="reviewer-agent",
             approved=True,
             decided_by="reviewer-agent",
         )
 
         receipts = await persistence.deliverable_receipts.query(
-            DeliverableReceiptFilterSpec(project_id=_PROJECT, task_id=task.id),
+            DeliverableReceiptFilterSpec(project_id=_PROJECT, task_id=str(task.id)),
             limit=1,
         )
         assert len(receipts) == 1

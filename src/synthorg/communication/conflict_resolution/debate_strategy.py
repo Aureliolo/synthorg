@@ -92,7 +92,7 @@ class DebateResolver:
 
         logger.info(
             CONFLICT_DEBATE_STARTED,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             judge=judge_id,
         )
 
@@ -108,7 +108,7 @@ class DebateResolver:
                     logger,
                     CONFLICT_DEBATE_EVALUATOR_FAILED,
                     exc,
-                    conflict_id=conflict.id,
+                    conflict_id=str(conflict.id),
                     judge=judge_id,
                 )
                 try:
@@ -120,7 +120,7 @@ class DebateResolver:
                     # hierarchy so we always produce a resolution.
                     logger.warning(
                         CONFLICT_HIERARCHY_ERROR,
-                        conflict_id=conflict.id,
+                        conflict_id=str(conflict.id),
                         note="authority fallback hierarchy failed; "
                         "using seniority without hierarchy",
                     )
@@ -137,7 +137,7 @@ class DebateResolver:
         else:
             logger.warning(
                 CONFLICT_AUTHORITY_FALLBACK,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 strategy="debate",
                 reason="no_judge_evaluator",
             )
@@ -147,13 +147,13 @@ class DebateResolver:
 
         logger.info(
             CONFLICT_DEBATE_JUDGE_DECIDED,
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             judge=judge_id,
             winner=winning_agent_id,
         )
 
         return ConflictResolution(
-            conflict_id=conflict.id,
+            conflict_id=str(conflict.id),
             outcome=ConflictResolutionOutcome.RESOLVED_BY_DEBATE,
             winning_agent_id=winning_agent_id,
             winning_position=winning_pos.position,
@@ -179,7 +179,7 @@ class DebateResolver:
         losers = find_losers(conflict, resolution)
         return tuple(
             DissentRecord(
-                id=f"dissent-{uuid4().hex[:12]}",
+                id=uuid4(),
                 conflict=conflict,
                 resolution=resolution,
                 dissenting_agent_id=loser.agent_id,
@@ -221,7 +221,7 @@ class DebateResolver:
                 )
             logger.debug(
                 CONFLICT_LCM_LOOKUP,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 agents=[p.agent_id for p in conflict.positions],
                 lcm=lcm,
             )
@@ -231,7 +231,7 @@ class DebateResolver:
                 )
                 logger.warning(
                     CONFLICT_HIERARCHY_ERROR,
-                    conflict_id=conflict.id,
+                    conflict_id=str(conflict.id),
                     agents=[p.agent_id for p in conflict.positions],
                     error=msg,
                 )
@@ -254,7 +254,7 @@ class DebateResolver:
             agent_id = conflict.positions[0].agent_id
             logger.warning(
                 CONFLICT_HIERARCHY_ERROR,
-                conflict_id=conflict.id,
+                conflict_id=str(conflict.id),
                 agent=agent_id,
                 error="No ancestors found for any position; using as CEO/judge",
             )

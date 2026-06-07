@@ -63,7 +63,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import FakeClock, make_app_state
+from tests._shared import FakeClock, as_uuid, make_app_state, sid
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -135,14 +135,16 @@ def _sim_state(task_engine: TaskEngine) -> ClientSimulationState:
     # task the intake strategy just persisted.
     return ClientSimulationState(
         intake_engine=IntakeEngine(
-            strategy=DirectIntake(task_engine=task_engine, project=_INTAKE_PROJECT),
+            strategy=DirectIntake(
+                task_engine=task_engine, project=sid(_INTAKE_PROJECT)
+            ),
         ),
         # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
         # truthy without exercising review logic the board-entry path
         # does not touch; without this, the work-pipeline build short-
         # circuits to ``None`` and every board-entry assertion fails.
         review_pipeline=ReviewPipeline(stages=()),
-        intake_default_project=_INTAKE_PROJECT,
+        intake_default_project=sid(_INTAKE_PROJECT),
     )
 
 
@@ -160,7 +162,7 @@ async def _build_app_state(
     for project_id in (_PROJECT, _INTAKE_PROJECT):
         await persistence.projects.create(
             Project(
-                id=project_id,
+                id=as_uuid(project_id),
                 name=project_id,
                 description="task-board e2e",
                 status=ProjectStatus.ACTIVE,
@@ -231,7 +233,7 @@ async def test_board_filing_executes_through_pipeline(
         description="Return a JSON status body from /status.",
         task_type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project=_PROJECT,
+        project=sid(_PROJECT),
         requested_by="user-42",
         estimated_complexity=Complexity.SIMPLE,
     )
@@ -245,7 +247,7 @@ async def test_board_filing_executes_through_pipeline(
     # it past ASSIGNED. Read the task store directly: the controller's
     # 202 ack only returns the correlation id, so we identify the task
     # by its (single) presence in the engine's listing.
-    all_tasks, _total = await task_engine.list_tasks(project=_INTAKE_PROJECT)
+    all_tasks, _total = await task_engine.list_tasks(project=sid(_INTAKE_PROJECT))
     assert len(all_tasks) == 1
     task = all_tasks[0]
     # CREATED means no agent ran; the scripted provider drove the solo
@@ -338,7 +340,7 @@ async def test_board_filing_propagates_memory_error(
         title="OOM probe",
         description="Force MemoryError to verify re-raise contract.",
         task_type=TaskType.DEVELOPMENT,
-        project=_PROJECT,
+        project=sid(_PROJECT),
         requested_by="user-42",
     )
 
@@ -357,5 +359,5 @@ async def test_board_filing_propagates_memory_error(
 
     # No task was created (submit raised before the spine got control).
     assert app_state.slice(EngineStateSlice).task_board_entry_adapter is not None
-    all_tasks, _total = await task_engine.list_tasks(project=_PROJECT)
+    all_tasks, _total = await task_engine.list_tasks(project=sid(_PROJECT))
     assert len(all_tasks) == 0

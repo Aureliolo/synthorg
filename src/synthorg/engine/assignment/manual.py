@@ -63,10 +63,10 @@ class ManualAssignmentStrategy:
         """
         task = request.task
         if task.assigned_to is None:
-            msg = f"Manual assignment requires task.assigned_to (task {task.id!r})"
+            msg = f"Manual assignment requires task.assigned_to (task {str(task.id)!r})"
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self.name,
                 error=msg,
             )
@@ -87,10 +87,13 @@ class ManualAssignmentStrategy:
                 None,
             )
         if agent is None:
-            msg = f"Designated agent {task.assigned_to!r} not found (task {task.id!r})"
+            msg = (
+                f"Designated agent {task.assigned_to!r} not found "
+                f"(task {str(task.id)!r})"
+            )
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self.name,
                 designated_agent=task.assigned_to,
                 error=msg,
@@ -100,11 +103,11 @@ class ManualAssignmentStrategy:
         if agent.status != AgentStatus.ACTIVE:
             msg = (
                 f"Designated agent {agent.name!r} is {agent.status.value!r}, "
-                f"expected 'active' (task {task.id!r})"
+                f"expected 'active' (task {str(task.id)!r})"
             )
             logger.warning(
                 TASK_ASSIGNMENT_FAILED,
-                task_id=task.id,
+                task_id=str(task.id),
                 strategy=self.name,
                 agent_name=agent.name,
                 agent_status=agent.status.value,
@@ -140,12 +143,12 @@ class ManualAssignmentStrategy:
 
         logger.info(
             TASK_ASSIGNMENT_MANUAL_VALIDATED,
-            task_id=task.id,
+            task_id=str(task.id),
             agent_name=agent.name,
         )
 
         return AssignmentResult(
-            task_id=task.id,
+            task_id=str(task.id),
             strategy_used=self.name,
             selected=candidate,
             reason=f"Manually assigned to {agent.name!r}",

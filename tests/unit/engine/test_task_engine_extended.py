@@ -118,7 +118,7 @@ class TestFIFOOrdering:
         # Immediately update -- this should see the task because
         # the queue processes sequentially
         updated = await engine.update_task(
-            task.id,
+            str(task.id),
             {"title": "Updated"},
             requested_by="alice",
         )
@@ -141,7 +141,7 @@ class TestDefaultReasonGeneration:
             requested_by="alice",
         )
         transitioned, _ = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             assigned_to="bob",
@@ -158,7 +158,7 @@ class TestDefaultReasonGeneration:
             requested_by="alice",
         )
         transitioned, _ = await engine.transition_task(
-            task.id,
+            str(task.id),
             TaskStatus.ASSIGNED,
             requested_by="alice",
             reason="Manager assigned task",
@@ -195,7 +195,7 @@ class TestDeleteSnapshotEvent:
             await _wait_for_publish(message_bus)
             message_bus.published.clear()
 
-            await eng.delete_task(task.id, requested_by="alice")
+            await eng.delete_task(str(task.id), requested_by="alice")
             await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
@@ -233,7 +233,7 @@ class TestCancelVersionBump:
         assign_mut = TransitionTaskMutation(
             request_id="req-a",
             requested_by="alice",
-            task_id=r1.task.id,
+            task_id=str(r1.task.id),
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
             overrides={"assigned_to": "bob"},
@@ -244,7 +244,7 @@ class TestCancelVersionBump:
         cancel_mut = CancelTaskMutation(
             request_id="req-x",
             requested_by="alice",
-            task_id=r1.task.id,
+            task_id=str(r1.task.id),
             reason="No longer needed",
         )
         r3 = await engine.submit(cancel_mut)
@@ -327,7 +327,7 @@ class TestSnapshotReasonPropagation:
             message_bus.published.clear()
 
             await eng.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by="alice",
                 reason="Manager assigned",
@@ -361,7 +361,7 @@ class TestSnapshotReasonPropagation:
                 requested_by="alice",
             )
             await eng.transition_task(
-                task.id,
+                str(task.id),
                 TaskStatus.ASSIGNED,
                 requested_by="alice",
                 reason="Assigning",
@@ -371,7 +371,7 @@ class TestSnapshotReasonPropagation:
             message_bus.published.clear()
 
             await eng.cancel_task(
-                task.id,
+                str(task.id),
                 requested_by="alice",
                 reason="Budget cut",
             )
@@ -433,7 +433,7 @@ class TestSnapshotReasonPropagation:
             message_bus.published.clear()
 
             await eng.update_task(
-                task.id,
+                str(task.id),
                 {"title": "Updated"},
                 requested_by="alice",
             )

@@ -24,6 +24,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.shutdown import ShutdownManager
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.observability.events.parallel import PARALLEL_AGENT_CANCELLED
+from tests._shared import as_uuid
 
 
 def _make_identity(
@@ -45,7 +46,7 @@ def _make_identity(
 
 def _make_task(title: str = "test-task") -> Task:
     return Task(
-        id=f"task-{title}",
+        id=as_uuid(f"task-{title}"),
         title=title,
         description="A test task",
         type=TaskType.DEVELOPMENT,
@@ -81,7 +82,7 @@ def _make_run_result(
         ),
         duration_seconds=0.5,
         agent_id=str(identity.id),
-        task_id=task.id,
+        task_id=str(task.id),
         currency="USD",
     )
 
@@ -200,7 +201,7 @@ class TestParallelExecutorMultipleAgents:
         assert engine.run.await_count == 2
         # Verify outcome pairing
         outcome_pairs = sorted((o.agent_id, o.task_id) for o in result.outcomes)
-        expected_pairs = sorted((str(a.identity.id), a.task.id) for a in (a1, a2))
+        expected_pairs = sorted((str(a.identity.id), str(a.task.id)) for a in (a1, a2))
         assert outcome_pairs == expected_pairs
 
     async def test_one_fails_one_succeeds(self) -> None:

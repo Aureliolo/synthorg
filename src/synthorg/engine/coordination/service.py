@@ -214,7 +214,7 @@ class MultiAgentCoordinator:
 
         logger.info(
             COORDINATION_STARTED,
-            parent_task_id=task.id,
+            parent_task_id=str(task.id),
             agent_count=len(context.available_agents),
         )
 
@@ -419,7 +419,7 @@ class MultiAgentCoordinator:
             total_cost = sum(er.total_cost for er in wave_results)
 
             result = CoordinationResult(
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 topology=topology,
                 decomposition_result=decomp_result,
                 routing_result=routing_result,
@@ -437,7 +437,7 @@ class MultiAgentCoordinator:
             reraise_critical(exc)
             logger.warning(
                 COORDINATION_FAILED,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -445,7 +445,7 @@ class MultiAgentCoordinator:
 
         logger.info(
             COORDINATION_COMPLETED,
-            parent_task_id=task.id,
+            parent_task_id=str(task.id),
             topology=topology.value,
             is_success=result.is_success,
             total_duration_seconds=total_duration,
@@ -464,7 +464,7 @@ class MultiAgentCoordinator:
             reraise_critical(attr_exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
-                parent_task_id=task.id,
+                parent_task_id=str(task.id),
                 error_type=type(attr_exc).__name__,
                 error=safe_error_description(attr_exc),
                 context="post_completion_attribution_build",
@@ -479,14 +479,14 @@ class MultiAgentCoordinator:
                 reraise_critical(tracker_exc)
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
-                    parent_task_id=task.id,
+                    parent_task_id=str(task.id),
                     error_type=type(tracker_exc).__name__,
                     error=safe_error_description(tracker_exc),
                     context="post_completion_tracker_write",
                 )
 
         await self._collect_coordination_metrics(
-            task_id=task.id,
+            task_id=str(task.id),
             dispatch_result=dispatch_result,
         )
 

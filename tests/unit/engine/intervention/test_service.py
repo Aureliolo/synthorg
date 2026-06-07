@@ -17,6 +17,7 @@ from synthorg.engine.intervention.proposer import NoOpSupersessionProposer
 from synthorg.engine.intervention.service import SteeringService
 from synthorg.observability.events.cockpit import STEERING_DIRECTIVE_ISSUED
 from synthorg.persistence.project_brain_protocol import BrainFilterSpec
+from tests._shared import as_uuid, sid
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes import FakeProjectBrainRepository
 
@@ -35,7 +36,7 @@ class _FakeTaskEngine:
         return (None, None)
 
     async def get_task(self, task_id: str) -> Task | None:
-        return next((t for t in self._tasks if t.id == task_id), None)
+        return next((t for t in self._tasks if str(t.id) == task_id), None)
 
     async def list_tasks(
         self, *, status: TaskStatus, project: str, limit: int
@@ -52,7 +53,7 @@ def _task(
     project: NotBlankStr = _PROJECT,
 ) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=f"Task {task_id}",
         description="A task.",
         type=TaskType.DEVELOPMENT,
@@ -235,7 +236,7 @@ class TestIssue:
                 kind=InterventionKind.REDIRECT,
                 text=NotBlankStr("pivot"),
                 author=NotBlankStr("mission-control"),
-                supersede_task_ids=(NotBlankStr("foreign"),),
+                supersede_task_ids=(NotBlankStr(sid("foreign")),),
                 supersede_mode=SupersedeMode.EXPLICIT,
             )
         assert engine.cancelled == []
@@ -278,7 +279,7 @@ class TestConfirmSupersession:
             await service.confirm_supersession(
                 project_id=_PROJECT,
                 directive_id=NotBlankStr("d1"),
-                task_ids=(NotBlankStr("foreign"),),
+                task_ids=(NotBlankStr(sid("foreign")),),
                 author=NotBlankStr("mission-control"),
             )
         assert engine.cancelled == []

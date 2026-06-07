@@ -2,7 +2,6 @@
 
 from datetime import date
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 
@@ -16,8 +15,10 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.protocol import CompletionProvider
+from tests._shared import as_uuid
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("distillation-agent")
+_TASK_UUID = as_uuid("task-dist-001")
 
 
 def _make_identity() -> AgentIdentity:
@@ -33,7 +34,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-dist-001",
+        id=_TASK_UUID,
         title="Implement feature Y",
         description="Build the Y feature.",
         type=TaskType.DEVELOPMENT,
@@ -105,7 +106,7 @@ class TestAgentEngineDistillationCapture:
             result,
             identity,
             str(identity.id),
-            "task-dist-001",
+            str(_TASK_UUID),
         )
 
         memory_backend.store.assert_awaited_once()
@@ -133,7 +134,7 @@ class TestAgentEngineDistillationCapture:
             error_result,
             identity,
             str(identity.id),
-            "task-dist-001",
+            str(_TASK_UUID),
         )
 
         memory_backend.store.assert_awaited_once()
@@ -158,7 +159,7 @@ class TestAgentEngineDistillationCapture:
             result,
             identity,
             str(identity.id),
-            "task-dist-001",
+            str(_TASK_UUID),
         )
 
         memory_backend.store.assert_not_awaited()
@@ -180,5 +181,5 @@ class TestAgentEngineDistillationCapture:
             result,
             identity,
             str(identity.id),
-            "task-dist-001",
+            str(_TASK_UUID),
         )

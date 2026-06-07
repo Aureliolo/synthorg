@@ -94,7 +94,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         if compare_stakes(task.stakes, red_team_min_stakes) < 0:
             logger.info(
                 RED_TEAM_GATE_SKIPPED,
-                task_id=task.id,
+                task_id=str(task.id),
                 reason="below_stakes_threshold",
                 stakes=task.stakes.value,
                 min_stakes=red_team_min_stakes.value,
@@ -109,7 +109,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
             target, transition_reason, event, approved = await apply_red_team_gate(
                 gate=red_team_gate,
                 on_missing_deliverable=on_missing_deliverable,
-                task_id=task.id,
+                task_id=str(task.id),
                 target=target,
                 transition_reason=transition_reason,
                 event=event,
@@ -119,7 +119,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     elif red_team_gate is not None:
         logger.warning(
             RED_TEAM_GATE_SKIPPED,
-            task_id=task.id,
+            task_id=str(task.id),
             reason="input_builder_not_wired",
             note=(
                 "Red-team gate is attached but no input builder is wired "
@@ -129,7 +129,7 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
     if approved:
         target, transition_reason, event, approved = await apply_vision_gate(
             gate=vision_gate,
-            task_id=task.id,
+            task_id=str(task.id),
             target=target,
             transition_reason=transition_reason,
             event=event,

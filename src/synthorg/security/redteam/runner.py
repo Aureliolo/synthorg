@@ -123,7 +123,7 @@ class AgentEngineRunner:
             for criterion in review_input.acceptance_criteria
         )
         return Task(
-            id=f"red-team-{uuid4().hex}",
+            id=uuid4(),
             title=_RED_TEAM_TITLE,
             description=prompt,
             type=_RED_TEAM_TASK_TYPE,

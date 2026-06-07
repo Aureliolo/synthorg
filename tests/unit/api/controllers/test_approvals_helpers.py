@@ -36,7 +36,7 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.workers.execution_service import WorkerExecutionService
-from tests._shared import make_app_state, mock_of
+from tests._shared import as_uuid, make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -49,7 +49,7 @@ def _make_pending_item(
     from datetime import UTC, datetime
 
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type="deploy:production",
         title="Deploy to prod",
         description="Deploy v2.0",

@@ -83,7 +83,7 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         if not plan_text:
             logger.warning(
                 DECOMPOSITION_EMPTY_PLAN_TEXT,
-                task_id=task.id,
+                task_id=str(task.id),
             )
             return ctx
 
@@ -113,7 +113,7 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
 
         logger.info(
             MIDDLEWARE_TASK_LEDGER_CREATED,
-            task_id=task.id,
+            task_id=str(task.id),
             plan_version=version,
             known_fact_count=len(known_facts),
         )
@@ -205,7 +205,7 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         task = ctx.coordination_context.task
         logger.info(
             MIDDLEWARE_PROGRESS_LEDGER_EMITTED,
-            task_id=task.id,
+            task_id=str(task.id),
             round_number=round_number,
             progress_made=progress_made,
             stall_count=stall_count,
@@ -314,7 +314,7 @@ class MagenticReplanHook:
         if progress.stall_count >= self._max_stall_count:
             logger.warning(
                 COORDINATION_REPLAN_CAP_REACHED,
-                task_id=task.id,
+                task_id=str(task.id),
                 stall_count=progress.stall_count,
                 cap="max_stall_count",
             )
@@ -323,7 +323,7 @@ class MagenticReplanHook:
         if progress.reset_count >= self._max_reset_count:
             logger.warning(
                 COORDINATION_REPLAN_CAP_REACHED,
-                task_id=task.id,
+                task_id=str(task.id),
                 reset_count=progress.reset_count,
                 cap="max_reset_count",
             )
@@ -339,7 +339,7 @@ class MagenticReplanHook:
                 reraise_critical(exc)
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,
-                    task_id=task.id,
+                    task_id=str(task.id),
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
@@ -368,7 +368,7 @@ class MagenticReplanHook:
 
         logger.info(
             COORDINATION_REPLAN,
-            task_id=task.id,
+            task_id=str(task.id),
             stall_count=progress.stall_count if progress else 0,
             reset_count=(progress.reset_count if progress else 0) + 1,
         )
@@ -478,19 +478,19 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
         if level in (AutonomyLevel.SUPERVISED, AutonomyLevel.LOCKED):
             logger.info(
                 MIDDLEWARE_PLAN_REVIEW_GATED,
-                task_id=task.id,
+                task_id=str(task.id),
                 autonomy_level=level.value,
                 plan_present=ctx.task_ledger is not None,
             )
             raise PlanReviewGatedError(
-                task_id=task.id,
+                task_id=str(task.id),
                 autonomy_level=level.value,
             )
 
         if level == AutonomyLevel.SEMI:
             logger.debug(
                 MIDDLEWARE_PLAN_REVIEW_GATED,
-                task_id=task.id,
+                task_id=str(task.id),
                 autonomy_level=level.value,
                 action="logged_for_async_review",
             )

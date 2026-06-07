@@ -3,7 +3,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from litestar import Controller, Request, post
 from litestar.datastructures import State
@@ -94,14 +94,14 @@ class ApprovalsDecisionsController(Controller):
 
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
-        approval_id = f"approval-{uuid4().hex}"
+        approval_id = str(uuid4())
 
         expires_at = None
         if data.ttl_seconds is not None:
             expires_at = now + timedelta(seconds=data.ttl_seconds)
 
         item = ApprovalItem(
-            id=approval_id,
+            id=UUID(approval_id),
             action_type=data.action_type,
             title=data.title,
             description=data.description,

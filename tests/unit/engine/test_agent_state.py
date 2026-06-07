@@ -9,6 +9,7 @@ from pydantic import AwareDatetime
 
 from synthorg.core.enums import ExecutionStatus
 from synthorg.engine.agent_state import AgentRuntimeState
+from tests._shared import as_uuid, sid
 
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
@@ -74,7 +75,7 @@ def _make_context(
     task_execution = None
     if task_id is not None:
         task = Task(
-            id=task_id,
+            id=as_uuid(task_id),
             title="Test task",
             description="A test task",
             type=TaskType.DEVELOPMENT,
@@ -160,7 +161,7 @@ class TestAgentRuntimeStateFromContext:
         state = AgentRuntimeState.from_context(
             ctx, ExecutionStatus.EXECUTING, currency="EUR"
         )
-        assert state.task_id == "my-task"
+        assert state.task_id == sid("my-task")
 
     def test_from_context_without_task(self) -> None:
         ctx = _make_context(task_id=None)

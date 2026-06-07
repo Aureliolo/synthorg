@@ -26,6 +26,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
 )
 from synthorg.providers.models import CompletionResponse
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -43,7 +44,7 @@ def _make_task_with_complexity(
 ) -> Task:
     """Build a task with specific complexity for auto-loop tests."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Auto-loop test task",
         description="A task for testing auto-loop selection.",
         type=TaskType.DEVELOPMENT,
@@ -411,7 +412,7 @@ class TestAutoLoopConfigWiring:
             agent_id="agent-wire-001",
             task_id="task-wire-001",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-001", task.id)
+        loop = await engine._resolve_loop(task, "agent-wire-001", str(task.id))
         assert isinstance(loop, ReactLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -432,7 +433,7 @@ class TestAutoLoopConfigWiring:
             agent_id="agent-wire-002",
             task_id="task-wire-002",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-002", task.id)
+        loop = await engine._resolve_loop(task, "agent-wire-002", str(task.id))
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -461,7 +462,7 @@ class TestAutoLoopConfigWiring:
             new_callable=AsyncMock,
             return_value=30.0,
         ):
-            loop = await engine._resolve_loop(task, "agent-wire-003", task.id)
+            loop = await engine._resolve_loop(task, "agent-wire-003", str(task.id))
         assert isinstance(loop, HybridLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -482,7 +483,7 @@ class TestAutoLoopConfigWiring:
             agent_id="agent-wire-004",
             task_id="task-wire-004",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-004", task.id)
+        loop = await engine._resolve_loop(task, "agent-wire-004", str(task.id))
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.config.max_replans == 7
 
@@ -535,7 +536,7 @@ class TestAutoLoopConfigWiring:
             new_callable=AsyncMock,
             return_value=30.0,
         ):
-            loop = await engine._resolve_loop(task, "agent-wire-005", task.id)
+            loop = await engine._resolve_loop(task, "agent-wire-005", str(task.id))
         assert isinstance(loop, HybridLoop)
         assert loop.config.max_plan_steps == 3
         assert loop.config.max_turns_per_step == 8
@@ -555,7 +556,7 @@ class TestAutoLoopConfigWiring:
             agent_id="agent-wire-006",
             task_id="task-wire-006",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-006", task.id)
+        loop = await engine._resolve_loop(task, "agent-wire-006", str(task.id))
         assert isinstance(loop, PlanExecuteLoop)
         default_config = PlanExecuteConfig()
         assert loop.config.max_replans == default_config.max_replans
@@ -579,7 +580,7 @@ class TestAutoLoopConfigWiring:
             agent_id="agent-wire-007",
             task_id="task-wire-007",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-007", task.id)
+        loop = await engine._resolve_loop(task, "agent-wire-007", str(task.id))
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.compaction_callback is compact_cb
         assert loop.config.max_replans == 5

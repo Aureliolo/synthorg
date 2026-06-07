@@ -116,7 +116,7 @@ class TestValidateTask:
             update={"status": TaskStatus.CREATED},
         )
         with pytest.raises(ExecutionStateError, match="created"):
-            validate_task(task, agent_id="a1", task_id=task.id)
+            validate_task(task, agent_id="a1", task_id=str(task.id))
 
     def test_rejects_completed_task(
         self,
@@ -126,7 +126,7 @@ class TestValidateTask:
             update={"status": TaskStatus.COMPLETED},
         )
         with pytest.raises(ExecutionStateError, match="completed"):
-            validate_task(task, agent_id="a1", task_id=task.id)
+            validate_task(task, agent_id="a1", task_id=str(task.id))
 
     def test_rejects_wrong_assignee(
         self,
@@ -136,7 +136,7 @@ class TestValidateTask:
             validate_task(
                 sample_task_with_criteria,
                 agent_id="wrong-agent",
-                task_id=sample_task_with_criteria.id,
+                task_id=str(sample_task_with_criteria.id),
             )
 
     def test_accepts_assigned_task(
@@ -147,7 +147,7 @@ class TestValidateTask:
         validate_task(
             sample_task_with_criteria,
             agent_id=sample_task_with_criteria.assigned_to,
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
         )
 
     def test_accepts_in_progress_task(
@@ -161,5 +161,5 @@ class TestValidateTask:
         validate_task(
             task,
             agent_id=task.assigned_to,
-            task_id=task.id,
+            task_id=str(task.id),
         )

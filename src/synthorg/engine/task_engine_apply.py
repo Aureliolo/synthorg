@@ -145,11 +145,12 @@ async def apply_create(
         failure if the task data is invalid.
     """
     data = mutation.task_data
-    task_id = f"task-{uuid4().hex}"
+    new_id = uuid4()
+    task_id = str(new_id)
 
     try:
         task = Task(
-            id=task_id,
+            id=new_id,
             title=data.title,
             description=data.description,
             type=data.type,

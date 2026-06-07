@@ -63,6 +63,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid, coerce_id, sid
 from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistence
 
 
@@ -127,7 +128,7 @@ def sample_task_with_criteria(
 ) -> Task:
     """Task with acceptance criteria and budget for prompt testing."""
     return Task(
-        id="task-prompt-001",
+        id=as_uuid("task-prompt-001"),
         title="Implement authentication module",
         description="Create JWT-based authentication for the REST API.",
         type=TaskType.DEVELOPMENT,
@@ -342,10 +343,15 @@ def make_workspace(  # noqa: PLR0913
     base_branch: str = "main",
     created_at: datetime | None = None,
 ) -> Workspace:
-    """Build a ``Workspace`` with sensible defaults."""
+    """Build a ``Workspace`` with sensible defaults.
+
+    ``task_id`` is mapped to a canonical UUID string via
+    :func:`coerce_id` so it joins the matching subtask by
+    ``str(task.id)`` in the coordination group builder.
+    """
     return Workspace(
         workspace_id=workspace_id,
-        task_id=task_id,
+        task_id=coerce_id(task_id),
         agent_id=agent_id,
         branch_name=branch_name,
         worktree_path=worktree_path,
@@ -422,9 +428,15 @@ def make_assignment_agent(  # noqa: PLR0913
 
 
 def make_assignment_task(**overrides: object) -> Task:
-    """Build a Task with sensible defaults for assignment tests."""
+    """Build a Task with sensible defaults for assignment tests.
+
+    Readable id labels (``"sub-a"``, ``"parent-1"``) passed via ``id``,
+    ``parent_task_id``, or ``dependencies`` are mapped to canonical UUID
+    strings through :func:`coerce_id`, so a label always resolves to the
+    same id wherever it crosses the typed PK or joins an FK.
+    """
     defaults: dict[str, object] = {
-        "id": "task-001",
+        "id": sid("task-001"),
         "title": "Test task",
         "description": "A test task",
         "type": TaskType.DEVELOPMENT,
@@ -432,6 +444,13 @@ def make_assignment_task(**overrides: object) -> Task:
         "created_by": "manager",
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
+    parent = defaults.get("parent_task_id")
+    if parent is not None:
+        defaults["parent_task_id"] = coerce_id(parent)
+    deps = defaults.get("dependencies")
+    if isinstance(deps, tuple):
+        defaults["dependencies"] = tuple(coerce_id(d) for d in deps)
     return Task(**defaults)  # type: ignore[arg-type]
 
 
@@ -510,12 +529,19 @@ def make_subtask(
     *,
     dependencies: tuple[str, ...] = (),
 ) -> SubtaskDefinition:
-    """Build a SubtaskDefinition with defaults."""
+    """Build a SubtaskDefinition with defaults.
+
+    The subtask id and its dependency references are mapped to canonical
+    UUID strings via :func:`coerce_id`: ``SubtaskDefinition.id`` is the
+    key that the production decomposition service turns into a child
+    ``Task`` PK (``Task(id=UUID(subtask_def.id))``), so a readable label
+    like ``"sub-a"`` must resolve to a valid UUID string.
+    """
     return SubtaskDefinition(
-        id=subtask_id,
+        id=coerce_id(subtask_id),
         title=f"Subtask {subtask_id}",
         description=f"Description for {subtask_id}",
-        dependencies=dependencies,
+        dependencies=tuple(coerce_id(d) for d in dependencies),
     )
 
 
@@ -527,6 +553,7 @@ def make_decomposition(
     structure: TaskStructure = TaskStructure.PARALLEL,
 ) -> DecompositionResult:
     """Build a DecompositionResult with created tasks from subtask defs."""
+    parent_task_id = coerce_id(parent_task_id)
     plan = DecompositionPlan(
         parent_task_id=parent_task_id,
         subtasks=subtasks,
@@ -560,13 +587,18 @@ def make_routing(
     topology: CoordinationTopology = CoordinationTopology.CENTRALIZED,
     unroutable: tuple[str, ...] = (),
 ) -> RoutingResult:
-    """Build a RoutingResult from subtask-agent pairs."""
+    """Build a RoutingResult from subtask-agent pairs.
+
+    Subtask id labels are mapped to canonical UUID strings via
+    :func:`coerce_id` so each ``RoutingDecision.subtask_id`` joins the
+    corresponding created task by ``str(task.id)``.
+    """
     decisions: list[RoutingDecision] = []
     for subtask_id, agent_name in subtask_agent_pairs:
         agent = make_assignment_agent(agent_name)
         decisions.append(
             RoutingDecision(
-                subtask_id=subtask_id,
+                subtask_id=coerce_id(subtask_id),
                 selected_candidate=RoutingCandidate(
                     agent_identity=agent,
                     score=0.9,
@@ -576,9 +608,9 @@ def make_routing(
             )
         )
     return RoutingResult(
-        parent_task_id=parent_task_id,
+        parent_task_id=coerce_id(parent_task_id),
         decisions=tuple(decisions),
-        unroutable=unroutable,
+        unroutable=tuple(coerce_id(u) for u in unroutable),
     )
 
 
@@ -587,6 +619,7 @@ def build_run_result(task_id: str, agent_id: str) -> AgentRunResult:
     from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
     from synthorg.engine.prompt import SystemPrompt
 
+    task_id = coerce_id(task_id)
     identity = make_assignment_agent("test-agent")
     task = make_assignment_task(
         id=task_id,
@@ -622,7 +655,8 @@ def make_exec_result(
 ) -> ParallelExecutionResult:
     """Build a ParallelExecutionResult with given outcomes."""
     outcomes: list[AgentOutcome] = []
-    for task_id, agent_id in task_agent_pairs:
+    for raw_task_id, agent_id in task_agent_pairs:
+        task_id = coerce_id(raw_task_id)
         if all_succeed:
             run_result = build_run_result(task_id, agent_id)
             outcomes.append(

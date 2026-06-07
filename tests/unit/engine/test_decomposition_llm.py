@@ -28,6 +28,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+from tests._shared import as_uuid
 
 from .conftest import MockCompletionProvider
 
@@ -40,7 +41,7 @@ def _make_task(
 ) -> Task:
     """Create a minimal task for LLM decomposition tests."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,
@@ -143,7 +144,7 @@ class TestLlmDecompositionStrategy:
         plan = await strategy.decompose(task, ctx)
 
         assert isinstance(plan, DecompositionPlan)
-        assert plan.parent_task_id == "task-llm-1"
+        assert plan.parent_task_id == str(task.id)
         assert len(plan.subtasks) == 2
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO

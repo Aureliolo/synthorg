@@ -12,6 +12,7 @@ from synthorg.core.enums import (
     TaskStructure,
     TaskType,
 )
+from tests._shared import as_uuid, sid
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -180,7 +181,7 @@ def _make_result_task(subtask_id: str) -> Task:
     from synthorg.core.task import Task
 
     return Task(
-        id=subtask_id,
+        id=as_uuid(subtask_id),
         title=f"Subtask {subtask_id}",
         description=f"Description for {subtask_id}",
         type=TaskType.DEVELOPMENT,
@@ -197,8 +198,10 @@ class TestDecompositionResult:
     def test_valid_result(self, sample_task_with_criteria: Task) -> None:
         """DecompositionResult holds plan, tasks, and edges."""
         plan = DecompositionPlan(
-            parent_task_id=sample_task_with_criteria.id,
-            subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
+            parent_task_id=str(sample_task_with_criteria.id),
+            subtasks=(
+                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
+            ),
         )
         child_task = _make_result_task("sub-1")
         result = DecompositionResult(
@@ -233,13 +236,13 @@ class TestDecompositionResult:
         plan = DecompositionPlan(
             parent_task_id="task-1",
             subtasks=(
-                SubtaskDefinition(id="sub-1", title="A", description="A desc"),
-                SubtaskDefinition(id="sub-2", title="B", description="B desc"),
+                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
+                SubtaskDefinition(id=sid("sub-2"), title="B", description="B desc"),
             ),
         )
         with pytest.raises(
             ValueError,
-            match=r"missing=\['sub-2'\].*extra=\['sub-99'\]",
+            match=rf"missing=\['{sid('sub-2')}'\].*extra=\['{sid('sub-99')}'\]",
         ):
             DecompositionResult(
                 plan=plan,
@@ -255,13 +258,15 @@ class TestDecompositionResult:
         """Result rejects edges referencing unknown task IDs."""
         plan = DecompositionPlan(
             parent_task_id="task-1",
-            subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
+            subtasks=(
+                SubtaskDefinition(id=sid("sub-1"), title="A", description="A desc"),
+            ),
         )
         with pytest.raises(ValueError, match="unknown task IDs"):
             DecompositionResult(
                 plan=plan,
                 created_tasks=(_make_result_task("sub-1"),),
-                dependency_edges=(("sub-1", "sub-99"),),
+                dependency_edges=((sid("sub-1"), sid("sub-99")),),
             )
 
 

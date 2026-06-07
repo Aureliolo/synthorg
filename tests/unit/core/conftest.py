@@ -42,6 +42,7 @@ from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.timeout.config import WaitForeverConfig
+from tests._shared import as_uuid, sid
 
 # ── Factories ──────────────────────────────────────────────────────
 
@@ -287,12 +288,12 @@ def sample_company(sample_department: Department) -> Company:
 @pytest.fixture
 def sample_task() -> Task:
     return Task(
-        id="task-123",
+        id=as_uuid("task-123"),
         title="Implement user authentication",
         description="Create REST endpoints for login, register, logout",
         type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project="proj-456",
+        project=sid("proj-456"),
         created_by="product_manager_1",
         estimated_complexity=Complexity.MEDIUM,
         budget_limit=2.0,
@@ -303,12 +304,12 @@ def sample_task() -> Task:
 def sample_assigned_task() -> Task:
     """A task in ASSIGNED status."""
     return Task(
-        id="task-123",
+        id=as_uuid("task-123"),
         title="Implement user authentication",
         description="Create REST endpoints for login, register, logout",
         type=TaskType.DEVELOPMENT,
         priority=Priority.HIGH,
-        project="proj-456",
+        project=sid("proj-456"),
         created_by="product_manager_1",
         assigned_to="sarah_chen",
         status=TaskStatus.ASSIGNED,
@@ -318,7 +319,7 @@ def sample_assigned_task() -> Task:
 @pytest.fixture
 def sample_project() -> Project:
     return Project(
-        id="proj-456",
+        id=as_uuid("proj-456"),
         name="Auth System",
         description="Implement full authentication system",
         team=("sarah_chen", "engineering_lead"),

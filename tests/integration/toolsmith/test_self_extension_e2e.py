@@ -161,7 +161,7 @@ class _InMemoryApprovalStore:
         self.items: dict[str, ApprovalItem] = {}
 
     async def add(self, item: ApprovalItem) -> None:
-        self.items[item.id] = item
+        self.items[str(item.id)] = item
 
 
 def _config() -> SelfImprovementConfig:

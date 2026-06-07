@@ -19,6 +19,7 @@ from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared import as_uuid
 from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -62,7 +63,7 @@ def _agent_large() -> AgentIdentity:
 
 def _task(stakes: Stakes) -> Task:
     return Task(
-        id="t",
+        id=as_uuid("t"),
         title="t",
         description="body",
         type=TaskType.DEVELOPMENT,

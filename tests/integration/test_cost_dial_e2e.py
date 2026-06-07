@@ -58,6 +58,7 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 from synthorg.engine.pipeline.narrator_port import RunNarrator
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -171,7 +172,7 @@ def _task(
     forecast_id: UUID | None = None,
 ) -> Task:
     return Task(
-        id="task-e2e",
+        id=as_uuid("task-e2e"),
         title="Plan the marketing site",
         description="Rebuild the landing experience.",
         type=TaskType.DEVELOPMENT,
@@ -276,7 +277,7 @@ async def test_cost_dial_full_lifecycle() -> None:
     with pytest.raises(RunHardCeilingExceededError) as ceiling_info:
         checker(_checker_ctx(accumulated_cost=1.50))
     assert ceiling_info.value.ceiling_amount == pytest.approx(1.50)
-    assert ceiling_info.value.task_id == "task-e2e"
+    assert ceiling_info.value.task_id == sid("task-e2e")
     assert ceiling_info.value.forecast_id == forecast_id
 
     # 5. With an ApprovalGate wired, the engine's error handler routes
@@ -293,7 +294,7 @@ async def test_cost_dial_full_lifecycle() -> None:
             identity=_identity(),
             task=task_with_ceiling,
             agent_id="agent-1",
-            task_id="task-e2e",
+            task_id=sid("task-e2e"),
             duration_seconds=0.1,
         ),
     )

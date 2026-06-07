@@ -212,7 +212,7 @@
     },
     {
       "kind": "code",
-      "loc": 199,
+      "loc": 202,
       "loc_cap": 500,
       "module": "src/synthorg/api/_approval_expiration.py",
       "owning_feature": "api_core"
@@ -2928,7 +2928,7 @@
     },
     {
       "kind": "code",
-      "loc": 253,
+      "loc": 252,
       "loc_cap": 500,
       "module": "src/synthorg/communication/bus/_nats_history.py",
       "owning_feature": "communication"
@@ -3124,7 +3124,7 @@
     },
     {
       "kind": "code",
-      "loc": 268,
+      "loc": 267,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/escalation/processors.py",
       "owning_feature": "communication"
@@ -3166,7 +3166,7 @@
     },
     {
       "kind": "code",
-      "loc": 267,
+      "loc": 268,
       "loc_cap": 500,
       "module": "src/synthorg/communication/conflict_resolution/models.py",
       "owning_feature": "communication"
@@ -3719,7 +3719,7 @@
     },
     {
       "kind": "code",
-      "loc": 147,
+      "loc": 148,
       "loc_cap": 500,
       "module": "src/synthorg/core/approval.py",
       "owning_feature": null
@@ -3908,7 +3908,7 @@
     },
     {
       "kind": "code",
-      "loc": 94,
+      "loc": 95,
       "loc_cap": 500,
       "module": "src/synthorg/core/project.py",
       "owning_feature": null
@@ -4433,7 +4433,7 @@
     },
     {
       "kind": "code",
-      "loc": 124,
+      "loc": 127,
       "loc_cap": 500,
       "module": "src/synthorg/engine/assignment/manual.py",
       "owning_feature": "engine"
@@ -4993,7 +4993,7 @@
     },
     {
       "kind": "code",
-      "loc": 422,
+      "loc": 442,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/llm_prompt.py",
       "owning_feature": "engine"
@@ -5028,7 +5028,7 @@
     },
     {
       "kind": "code",
-      "loc": 161,
+      "loc": 195,
       "loc_cap": 500,
       "module": "src/synthorg/engine/decomposition/service.py",
       "owning_feature": "engine"
@@ -5728,7 +5728,7 @@
     },
     {
       "kind": "code",
-      "loc": 365,
+      "loc": 376,
       "loc_cap": 500,
       "module": "src/synthorg/engine/pipeline/entry/boot.py",
       "owning_feature": "engine"
@@ -6533,7 +6533,7 @@
     },
     {
       "kind": "code",
-      "loc": 440,
+      "loc": 441,
       "loc_cap": 500,
       "module": "src/synthorg/engine/task_engine_apply.py",
       "owning_feature": "engine"
@@ -10376,7 +10376,7 @@
     },
     {
       "kind": "code",
-      "loc": 387,
+      "loc": 389,
       "loc_cap": 500,
       "module": "src/synthorg/meta/charter/dispatch.py",
       "owning_feature": "charter"
@@ -13715,7 +13715,7 @@
     },
     {
       "kind": "code",
-      "loc": 126,
+      "loc": 167,
       "loc_cap": 500,
       "module": "src/synthorg/observability/processors.py",
       "owning_feature": "observability"
@@ -13820,7 +13820,7 @@
     },
     {
       "kind": "code",
-      "loc": 326,
+      "loc": 328,
       "loc_cap": 500,
       "module": "src/synthorg/observability/setup.py",
       "owning_feature": "observability"
@@ -14135,7 +14135,7 @@
     },
     {
       "kind": "code",
-      "loc": 223,
+      "loc": 226,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/_generics.py",
       "owning_feature": "persistence"
@@ -14646,7 +14646,7 @@
     },
     {
       "kind": "code",
-      "loc": 115,
+      "loc": 116,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/approval_repo/_marshalling.py",
       "owning_feature": "persistence"
@@ -15451,7 +15451,7 @@
     },
     {
       "kind": "complex_service",
-      "loc": 707,
+      "loc": 712,
       "loc_cap": 1100,
       "module": "src/synthorg/persistence/sqlite/approval_repo.py",
       "owning_feature": "persistence"

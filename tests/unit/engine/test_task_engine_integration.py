@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from uuid import UUID
 
 import pytest
 
@@ -60,9 +61,9 @@ class TestSnapshotPublishing:
                 make_create_data(),
                 requested_by="alice",
             )
-            assert task.id.startswith("task-")
+            assert isinstance(task.id, UUID)
 
-            stored = await persistence.tasks.get(task.id)
+            stored = await persistence.tasks.get(str(task.id))
             assert stored is not None
         finally:
             await eng.stop(timeout=2.0)
@@ -208,7 +209,7 @@ class TestVersionTracking:
         update = UpdateTaskMutation(
             request_id="req-2",
             requested_by="alice",
-            task_id=r1.task.id,  # type: ignore[union-attr]
+            task_id=str(r1.task.id),  # type: ignore[union-attr]
             updates={"title": "Updated"},
         )
         r2 = await engine.submit(update)
@@ -226,7 +227,7 @@ class TestVersionTracking:
         update = UpdateTaskMutation(
             request_id="req-2",
             requested_by="alice",
-            task_id=task.id,
+            task_id=str(task.id),
             updates={"title": "X"},
             expected_version=99,
         )
@@ -246,7 +247,7 @@ class TestVersionTracking:
         delete = DeleteTaskMutation(
             request_id="req-3",
             requested_by="alice",
-            task_id=task.id,
+            task_id=str(task.id),
         )
         result = await engine.submit(delete)
         assert result.version == 0
@@ -262,7 +263,7 @@ class TestVersionTracking:
         mutation = TransitionTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_id=task.id,
+            task_id=str(task.id),
             target_status=TaskStatus.ASSIGNED,
             reason="Assigning",
             overrides={"assigned_to": "bob"},

@@ -18,7 +18,6 @@ deterministic stand-in, and it keys ONLY on the generic injected-lesson marker
 
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -43,6 +42,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -51,7 +51,7 @@ pytestmark = pytest.mark.unit
 # its mere presence, never on the lesson text inside it.
 _MEMORY_MARKER: Final[str] = f"<{TAG_MEMORY_ENTRY}>"
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("memory-injection-agent")
 
 # The task title doubles as the retrieval query (the engine queries on it) and
 # -- because the InMemoryBackend matches by whole-string substring -- must
@@ -112,7 +112,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-inject-001",
+        id=as_uuid("task-inject-001"),
         title=_TASK_TITLE,
         description="Build the checkout flow end to end.",
         type=TaskType.DEVELOPMENT,

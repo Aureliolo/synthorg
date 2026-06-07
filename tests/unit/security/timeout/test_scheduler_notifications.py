@@ -25,6 +25,7 @@ from synthorg.observability.events.notification import (
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +42,7 @@ async def test_escalation_notification_failure_logs_error(
 ) -> None:
     """A failing escalation notification logs NOTIFICATION_SEND_FAILED."""
     item = ApprovalItem(
-        id="approval-x",
+        id=as_uuid("approval-x"),
         action_type="review:task_completion",
         title="Test",
         description="Test",
@@ -82,7 +83,7 @@ async def test_escalation_notification_failure_logs_error(
     assert entry["log_level"] == "error"
     assert entry["owner"] == "security.timeout.scheduler"
     assert entry["intent_event"] == NOTIFICATION_ESCALATION_SEND
-    assert entry["approval_id"] == "approval-x"
+    assert entry["approval_id"] == str(as_uuid("approval-x"))
     assert entry["escalate_to"] == "manager"
     assert entry["error_type"] == "RuntimeError"
 

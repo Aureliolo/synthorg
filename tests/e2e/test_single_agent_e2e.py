@@ -120,7 +120,7 @@ class TestFileToolAgent:
 
         # IDs and duration
         assert result.agent_id == str(identity.id)
-        assert result.task_id == task.id
+        assert result.task_id == str(task.id)
         assert result.duration_seconds > 0
 
 
@@ -180,7 +180,7 @@ class TestTextOnlyAgent:
 
         # IDs and duration
         assert result.agent_id == str(identity.id)
-        assert result.task_id == task.id
+        assert result.task_id == str(task.id)
         assert result.duration_seconds > 0
 
 
@@ -269,7 +269,7 @@ class TestPermissionDeniedRecovery:
 
         # IDs and duration
         assert result.agent_id == str(identity.id)
-        assert result.task_id == task.id
+        assert result.task_id == str(task.id)
         assert result.duration_seconds > 0
 
 
@@ -369,7 +369,7 @@ class TestMaxTurnsExhausted:
 
         # IDs and duration
         assert result.agent_id == str(identity.id)
-        assert result.task_id == task.id
+        assert result.task_id == str(task.id)
         assert result.duration_seconds > 0
 
 
@@ -457,5 +457,5 @@ class TestRealLLMIntegration:
         # ``>= 0`` (not ``> 0``) so a local zero-cost preset still passes.
         assert result.total_cost >= 0
         assert await cost_tracker.get_record_count() == result.total_turns
-        assert result.task_id == task.id
+        assert result.task_id == str(task.id)
         assert result.duration_seconds > 0

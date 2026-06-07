@@ -280,7 +280,7 @@ class TestTransitionTaskIfNeeded:
         result_ctx = await transition_task_if_needed(
             ctx,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -306,7 +306,7 @@ class TestTransitionTaskIfNeeded:
         result_ctx = await transition_task_if_needed(
             ctx,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -348,7 +348,7 @@ class TestTransitionTaskIfNeeded:
         result_ctx = await transition_task_if_needed(
             ctx,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
 
@@ -400,7 +400,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -430,7 +430,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -464,7 +464,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
 
@@ -490,7 +490,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
 
@@ -529,7 +529,7 @@ class TestApplyPostExecutionTransitions:
             out = await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent_with_personality.id),
-                task_id=sample_task_with_criteria.id,
+                task_id=str(sample_task_with_criteria.id),
                 task_engine=mock_te,
             )
 
@@ -564,7 +564,7 @@ class TestApplyPostExecutionTransitions:
             out = await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent_with_personality.id),
-                task_id=sample_task_with_criteria.id,
+                task_id=str(sample_task_with_criteria.id),
                 task_engine=None,
             )
 
@@ -589,7 +589,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
         )
 
@@ -617,7 +617,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -644,7 +644,7 @@ class TestApplyPostExecutionTransitions:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=mock_te,
         )
 
@@ -680,7 +680,7 @@ class TestReviewApprovalCreation:
         await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=mock_store,
         )
@@ -688,7 +688,7 @@ class TestReviewApprovalCreation:
         mock_store.add.assert_awaited_once()
         item = mock_store.add.call_args.args[0]
         assert item.action_type == _REVIEW_ACTION_TYPE
-        assert item.task_id == sample_task_with_criteria.id
+        assert item.task_id == str(sample_task_with_criteria.id)
         assert item.status == ApprovalStatus.PENDING
 
     async def test_no_approval_without_store(
@@ -707,7 +707,7 @@ class TestReviewApprovalCreation:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=None,
         )
@@ -734,7 +734,7 @@ class TestReviewApprovalCreation:
         out = await apply_post_execution_transitions(
             result,
             agent_id=str(sample_agent_with_personality.id),
-            task_id=sample_task_with_criteria.id,
+            task_id=str(sample_task_with_criteria.id),
             task_engine=None,
             approval_store=mock_store,
         )
@@ -769,7 +769,7 @@ class TestReviewApprovalCreation:
             await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent_with_personality.id),
-                task_id=sample_task_with_criteria.id,
+                task_id=str(sample_task_with_criteria.id),
                 task_engine=None,
                 approval_store=mock_store,
             )

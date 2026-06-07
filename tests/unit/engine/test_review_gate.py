@@ -31,7 +31,7 @@ from synthorg.security.redteam.models import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.protocol import RedTeamGate
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -133,7 +133,7 @@ def _make_task(
 ) -> Task:
     """Build a Task with configurable fields."""
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title="Test task",
         description="Test task description",
         type=TaskType.DEVELOPMENT,
@@ -237,7 +237,7 @@ class TestReviewGateServiceSelfReview:
                 decided_by="alice",
             )
 
-        assert exc_info.value.task_id == "task-1"
+        assert exc_info.value.task_id == sid("task-1")
         assert exc_info.value.agent_id == "alice"
         # No transition should have been attempted
         mock_te.submit.assert_not_awaited()
@@ -367,7 +367,7 @@ class TestReviewGateServiceDecisionRecording:
 
         repo.append_with_next_version.assert_awaited_once()
         kwargs = repo.append_with_next_version.call_args.kwargs
-        assert kwargs["task_id"] == "task-1"
+        assert kwargs["task_id"] == sid("task-1")
         assert kwargs["executing_agent_id"] == "alice"
         assert kwargs["reviewer_agent_id"] == "bob"
         assert kwargs["decision"] is DecisionOutcome.APPROVED
@@ -626,7 +626,7 @@ class TestReviewGateServiceReceiptSeam:
         )
 
         assert len(seam.calls) == 1
-        assert seam.calls[0].id == "task-1"
+        assert seam.calls[0].id == as_uuid("task-1")
 
     async def test_rejection_does_not_build_receipt(self) -> None:
         """Rejecting a review (IN_PROGRESS) never builds a receipt."""

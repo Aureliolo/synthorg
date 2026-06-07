@@ -9,13 +9,14 @@ from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.providers.models import TokenUsage
+from tests._shared import as_uuid
 
 from .conftest import make_cost_record
 
 
 def _make_task(budget_limit: float = 5.0) -> Task:
     return Task(
-        id="task-001",
+        id=as_uuid("task-001"),
         title="Test task",
         description="A test",
         type=TaskType.DEVELOPMENT,

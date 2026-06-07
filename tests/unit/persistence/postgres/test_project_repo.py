@@ -18,13 +18,14 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.core.project import Project
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.project_protocol import ProjectFilterSpec
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
 
 def _project(project_id: str = "proj-001") -> Project:
     return Project(
-        id=project_id,
+        id=as_uuid(project_id),
         name="Test Project",
         description="A test project",
         team=(),
@@ -92,12 +93,12 @@ async def test_save_translates_psycopg_error() -> None:
 
 async def test_get_translates_psycopg_error() -> None:
     with pytest.raises(QueryError):
-        await _repo().get("proj-001")
+        await _repo().get(sid("proj-001"))
 
 
 async def test_delete_translates_psycopg_error() -> None:
     with pytest.raises(QueryError):
-        await _repo().delete("proj-001")
+        await _repo().delete(sid("proj-001"))
 
 
 async def test_list_items_translates_psycopg_error() -> None:

@@ -26,6 +26,7 @@ from synthorg.engine.evolution.models import (
     AdaptationProposal,
     AdaptationSource,
 )
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from synthorg.versioning.models import VersionSnapshot
@@ -47,7 +48,7 @@ def _make_identity(agent_id: str = "agent-001") -> AgentIdentity:
 
 def _make_task(task_id: str) -> Task:
     return Task(
-        id=task_id,
+        id=as_uuid(task_id),
         title=f"Task {task_id}",
         description=f"Description for {task_id}",
         type=TaskType.DEVELOPMENT,
@@ -141,7 +142,7 @@ class _ScriptedRunner:
         task: Task,
         timeout_seconds: float,
     ) -> ShadowTaskOutcome:
-        self.calls.append((proposal is not None, task.id))
+        self.calls.append((proposal is not None, str(task.id)))
         return self._outcome_fn(proposal is not None, proposal, task)
 
 

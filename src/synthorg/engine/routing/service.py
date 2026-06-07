@@ -76,7 +76,7 @@ class TaskRoutingService:
         """
         plan = decomposition_result.plan
 
-        if parent_task.id != plan.parent_task_id:
+        if str(parent_task.id) != plan.parent_task_id:
             msg = (
                 f"parent_task.id {parent_task.id!r} does not "
                 f"match plan.parent_task_id "

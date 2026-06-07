@@ -8,6 +8,7 @@ import pytest
 
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared import as_uuid, sid
 from tests.unit.persistence.conftest import make_message, make_task
 
 pytestmark = pytest.mark.integration
@@ -56,9 +57,9 @@ class TestSQLiteOnDisk:
         backend2 = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend2.connect()
 
-        result = await backend2.tasks.get("persist-test")
+        result = await backend2.tasks.get(sid("persist-test"))
         assert result is not None
-        assert result.id == "persist-test"
+        assert result.id == as_uuid("persist-test")
         await backend2.disconnect()
 
     async def test_multiple_entity_types_persist(
@@ -78,7 +79,7 @@ class TestSQLiteOnDisk:
         # Save cost record
         record = CostRecord(
             agent_id="alice",
-            task_id="multi-t1",
+            task_id=sid("multi-t1"),
             provider="test-provider",
             model="test-model-001",
             input_tokens=500,

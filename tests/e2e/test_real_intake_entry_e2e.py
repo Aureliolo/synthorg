@@ -35,6 +35,7 @@ from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.strategies import DirectIntake
+from synthorg.engine.pipeline.entry.boot import _project_uuid
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
@@ -59,6 +60,11 @@ from tests.unit.api.fakes import FakePersistenceBackend
 pytestmark = pytest.mark.e2e
 
 _PROJECT = "client-intake"
+# Canonical project id the production boot derives from the slug; the
+# entry adapter, intake strategy, and seed all key off this so the
+# pipeline's ``projects.get(work_item.project)`` resolves exactly as it
+# does in production.
+_PROJECT_ID = str(_project_uuid(_PROJECT))
 _RESEARCH_SKILL = "research"
 
 
@@ -124,7 +130,7 @@ async def _build_app_state(
     """Wire the production runtime + the real intake entry adapter."""
     await persistence.projects.create(
         Project(
-            id=_PROJECT,
+            id=_project_uuid(_PROJECT),
             name=_PROJECT,
             description="real intake e2e",
             status=ProjectStatus.ACTIVE,
@@ -162,7 +168,7 @@ async def _build_app_state(
     assert runtime.work_pipeline is not None
     adapter = IntakeEntryAdapter(
         work_pipeline=runtime.work_pipeline,
-        default_project=_PROJECT,
+        default_project=_PROJECT_ID,
     )
     return make_app_state(
         config=root_config,
@@ -177,14 +183,14 @@ def _sim_state(task_engine: TaskEngine) -> ClientSimulationState:
 
     return ClientSimulationState(
         intake_engine=IntakeEngine(
-            strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
+            strategy=DirectIntake(task_engine=task_engine, project=_PROJECT_ID),
         ),
         # An empty ReviewPipeline (no stages) keeps ``has_simulation_runtime``
         # truthy without exercising review logic the intake-entry path
         # does not touch; without this, the work-pipeline build short-
         # circuits to ``None`` and every intake-entry assertion fails.
         review_pipeline=ReviewPipeline(stages=()),
-        intake_default_project=_PROJECT,
+        intake_default_project=_PROJECT_ID,
     )
 
 
@@ -226,7 +232,7 @@ async def test_real_request_executes_through_pipeline(
     # CREATED would mean no agent ran; the worker execution service
     # drives it past ASSIGNED through the scripted provider.
     assert persisted.status is not TaskStatus.CREATED
-    assert persisted.project == _PROJECT
+    assert persisted.project == _PROJECT_ID
 
 
 async def test_scoped_request_with_notes_executes(

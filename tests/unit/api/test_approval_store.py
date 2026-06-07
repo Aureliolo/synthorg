@@ -9,6 +9,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from tests._shared import as_uuid, sid
 
 
 def _now() -> datetime:
@@ -31,7 +32,7 @@ def _make_item(  # noqa: PLR0913
     if ttl_seconds is not None:
         expires_at = now + timedelta(seconds=ttl_seconds)
     return ApprovalItem(
-        id=approval_id,
+        id=as_uuid(approval_id),
         action_type=action_type,
         title="Test approval",
         description="A test approval item",
@@ -52,9 +53,9 @@ class TestApprovalStore:
         store = ApprovalStore()
         item = _make_item()
         await store.add(item)
-        result = await store.get("approval-001")
+        result = await store.get(sid("approval-001"))
         assert result is not None
-        assert result.id == "approval-001"
+        assert result.id == as_uuid("approval-001")
 
     async def test_duplicate_id_raises_conflict(self) -> None:
         store = ApprovalStore()
@@ -65,7 +66,7 @@ class TestApprovalStore:
 
     async def test_get_nonexistent_returns_none(self) -> None:
         store = ApprovalStore()
-        result = await store.get("nonexistent")
+        result = await store.get(sid("nonexistent"))
         assert result is None
 
     async def test_list_empty(self) -> None:
@@ -87,7 +88,7 @@ class TestApprovalStore:
         )
         pending = await store.list_items(status=ApprovalStatus.PENDING)
         assert len(pending) == 1
-        assert pending[0].id == "a1"
+        assert pending[0].id == as_uuid("a1")
 
     async def test_list_with_risk_level_filter(self) -> None:
         store = ApprovalStore()
@@ -105,7 +106,7 @@ class TestApprovalStore:
         )
         critical = await store.list_items(risk_level=ApprovalRiskLevel.CRITICAL)
         assert len(critical) == 1
-        assert critical[0].id == "a2"
+        assert critical[0].id == as_uuid("a2")
 
     async def test_list_with_action_type_filter(self) -> None:
         store = ApprovalStore()
@@ -117,13 +118,13 @@ class TestApprovalStore:
         )
         merges = await store.list_items(action_type="code:merge")
         assert len(merges) == 1
-        assert merges[0].id == "a1"
+        assert merges[0].id == as_uuid("a1")
 
     async def test_lazy_expiration_on_get(self) -> None:
         store = ApprovalStore()
         now = _now()
         item = ApprovalItem(
-            id="exp-001",
+            id=as_uuid("exp-001"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -133,8 +134,8 @@ class TestApprovalStore:
             expires_at=now - timedelta(hours=1),
         )
         # Directly insert to bypass expiry check at creation
-        store._items[item.id] = item
-        result = await store.get("exp-001")
+        store._items[str(item.id)] = item
+        result = await store.get(sid("exp-001"))
         assert result is not None
         assert result.status == ApprovalStatus.EXPIRED
 
@@ -153,7 +154,7 @@ class TestApprovalStore:
         result = await store.save(updated)
         assert result is not None
         assert result.status == ApprovalStatus.APPROVED
-        fetched = await store.get("approval-001")
+        fetched = await store.get(sid("approval-001"))
         assert fetched is not None
         assert fetched.status == ApprovalStatus.APPROVED
 
@@ -161,7 +162,7 @@ class TestApprovalStore:
         store = ApprovalStore()
         now = _now()
         item = ApprovalItem(
-            id="nonexistent",
+            id=as_uuid("nonexistent"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -222,7 +223,7 @@ class TestSaveIfPending:
         store = ApprovalStore()
         now = _now()
         item = ApprovalItem(
-            id="exp-001",
+            id=as_uuid("exp-001"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -231,7 +232,7 @@ class TestSaveIfPending:
             created_at=now - timedelta(hours=2),
             expires_at=now - timedelta(hours=1),
         )
-        store._items[item.id] = item
+        store._items[str(item.id)] = item
         updated = item.model_copy(
             update={"status": ApprovalStatus.APPROVED},
         )
@@ -253,13 +254,13 @@ class TestConsumeIfApproved:
         )
         await store.add(item)
 
-        consumed = await store.consume_if_approved("approval-001")
+        consumed = await store.consume_if_approved(sid("approval-001"))
         assert consumed is not None
         assert consumed.consumed_at is not None
         # Consumption is orthogonal to the decision lifecycle.
         assert consumed.status is ApprovalStatus.APPROVED
 
-        fetched = await store.get("approval-001")
+        fetched = await store.get(sid("approval-001"))
         assert fetched is not None
         assert fetched.consumed_at is not None
 
@@ -273,20 +274,20 @@ class TestConsumeIfApproved:
                 decided_by="admin",
             ),
         )
-        first = await store.consume_if_approved("approval-001")
+        first = await store.consume_if_approved(sid("approval-001"))
         assert first is not None
-        second = await store.consume_if_approved("approval-001")
+        second = await store.consume_if_approved(sid("approval-001"))
         assert second is None
 
     async def test_returns_none_when_pending(self) -> None:
         store = ApprovalStore()
         await store.add(_make_item(status=ApprovalStatus.PENDING))
-        result = await store.consume_if_approved("approval-001")
+        result = await store.consume_if_approved(sid("approval-001"))
         assert result is None
 
     async def test_returns_none_when_missing(self) -> None:
         store = ApprovalStore()
-        result = await store.consume_if_approved("nonexistent")
+        result = await store.consume_if_approved(sid("nonexistent"))
         assert result is None
 
 
@@ -317,7 +318,7 @@ class TestApprovalStoreFilters:
             risk_level=ApprovalRiskLevel.HIGH,
         )
         assert len(result) == 1
-        assert result[0].id == "a1"
+        assert result[0].id == as_uuid("a1")
 
     async def test_combined_status_risk_action(self) -> None:
         store = ApprovalStore()
@@ -341,7 +342,7 @@ class TestApprovalStoreFilters:
             action_type="deploy:prod",
         )
         assert len(result) == 1
-        assert result[0].id == "a1"
+        assert result[0].id == as_uuid("a1")
 
     async def test_no_matches_returns_empty(self) -> None:
         store = ApprovalStore()
@@ -361,7 +362,7 @@ class TestOnExpireCallback:
         store = ApprovalStore(on_expire=callback)
         now = _now()
         item = ApprovalItem(
-            id="exp-001",
+            id=as_uuid("exp-001"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -370,8 +371,8 @@ class TestOnExpireCallback:
             created_at=now - timedelta(hours=2),
             expires_at=now - timedelta(hours=1),
         )
-        store._items[item.id] = item
-        await store.get("exp-001")
+        store._items[str(item.id)] = item
+        await store.get(sid("exp-001"))
         callback.assert_called_once()
         expired_item = callback.call_args[0][0]
         assert expired_item.status == ApprovalStatus.EXPIRED
@@ -381,7 +382,7 @@ class TestOnExpireCallback:
         store = ApprovalStore(on_expire=callback)
         now = _now()
         item = ApprovalItem(
-            id="exp-001",
+            id=as_uuid("exp-001"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -390,8 +391,8 @@ class TestOnExpireCallback:
             created_at=now - timedelta(hours=2),
             expires_at=now - timedelta(hours=1),
         )
-        store._items[item.id] = item
-        result = await store.get("exp-001")
+        store._items[str(item.id)] = item
+        result = await store.get(sid("exp-001"))
         assert result is not None
         assert result.status == ApprovalStatus.EXPIRED
 
@@ -400,7 +401,7 @@ class TestOnExpireCallback:
         now = _now()
         live = _make_item(approval_id="live")
         expired = ApprovalItem(
-            id="expired",
+            id=as_uuid("expired"),
             action_type="code:merge",
             title="Test",
             description="desc",
@@ -410,16 +411,16 @@ class TestOnExpireCallback:
             expires_at=now - timedelta(hours=1),
         )
         await store.add(live)
-        store._items[expired.id] = expired
+        store._items[str(expired.id)] = expired
 
         # All items returned, but expired ones have EXPIRED status
         items = await store.list_items()
         assert len(items) == 2
-        statuses = {i.id: i.status for i in items}
-        assert statuses["live"] == ApprovalStatus.PENDING
-        assert statuses["expired"] == ApprovalStatus.EXPIRED
+        statuses = {str(i.id): i.status for i in items}
+        assert statuses[sid("live")] == ApprovalStatus.PENDING
+        assert statuses[sid("expired")] == ApprovalStatus.EXPIRED
 
         # Filter to pending only excludes expired
         pending = await store.list_items(status=ApprovalStatus.PENDING)
         assert len(pending) == 1
-        assert pending[0].id == "live"
+        assert pending[0].id == as_uuid("live")

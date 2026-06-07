@@ -130,11 +130,11 @@ class TestPropose:
         assert appr.source is ApprovalSource.CONVERSATIONAL_INTAKE
         assert appr.status is ApprovalStatus.PENDING
         assert appr.action_type == "conversational:create_work"
-        assert appr.id == summary.approval_id
+        assert str(appr.id) == summary.approval_id
 
         proposal = await proposal_repo.get(summary.proposal_id)
         assert proposal is not None
-        assert proposal.approval_id == appr.id
+        assert proposal.approval_id == str(appr.id)
         assert proposal.status is ConversationalProposalStatus.PENDING
         work_item = WorkItem.model_validate_json(proposal.work_item_json)
         assert work_item.source is WorkSource.CONVERSATIONAL
@@ -202,7 +202,7 @@ class TestSteeringPropose:
         items = await approvals.list_items()
         assert len(items) == 1
         appr = items[0]
-        assert appr.id == summary.approval_id
+        assert str(appr.id) == summary.approval_id
         assert appr.source is ApprovalSource.CONVERSATIONAL_INTAKE
         assert appr.status is ApprovalStatus.PENDING
         assert appr.action_type == "conversational:steer"

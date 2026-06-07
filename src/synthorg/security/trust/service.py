@@ -398,7 +398,7 @@ class TrustService:
 
         now = datetime.now(UTC)
         approval = ApprovalItem(
-            id=NotBlankStr(str(uuid4())),
+            id=uuid4(),
             action_type="trust:promote",
             title=(
                 f"Trust promotion: {result.current_level.value} "

@@ -10,12 +10,13 @@ from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability.events.execution import (
     EXECUTION_CREDENTIAL_ISOLATION_VIOLATION,
 )
+from tests._shared import as_uuid
 
 
 def _make_task(metadata: dict[str, object]) -> Task:
     """Create a minimal task with the given metadata."""
     return Task(
-        id="task-cred-001",
+        id=as_uuid("task-cred-001"),
         title="Test task",
         description="Task for credential isolation testing.",
         type=TaskType.DEVELOPMENT,

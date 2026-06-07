@@ -108,10 +108,7 @@ class AutonomyWorkflow:
 
         granted = update.granted_by_strategy is not None
         now = self._clock.now()
-        # 16 hex chars (64 bits) keeps collision probability negligible
-        # for approval-queue volumes while still fitting compactly into
-        # log lines and audit trails.
-        approval_id = f"approval-{uuid.uuid4().hex[:16]}"
+        approval_id = str(uuid.uuid4())
         requested_by = update.requested_by or "system"
         base_metadata = {
             "agent_id": key,
@@ -178,7 +175,7 @@ class AutonomyWorkflow:
         if self._approval_store is not None:
             await self._approval_store.add(
                 _ApprovalItem(
-                    id=approval_id,
+                    id=uuid.UUID(approval_id),
                     action_type="autonomy:promote",
                     title=title,
                     description=update.reason,
@@ -259,7 +256,7 @@ class AutonomyWorkflow:
             try:
                 await self._approval_store.add(
                     _ApprovalItem(
-                        id=approval_id,
+                        id=uuid.UUID(approval_id),
                         action_type="autonomy:promote",
                         title=title,
                         description=update.reason,

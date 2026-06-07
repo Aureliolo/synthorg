@@ -6,7 +6,7 @@ generation, approval submission, and agent instantiation.
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
@@ -296,7 +296,7 @@ class HiringService:
         assert self._approval_store is not None  # noqa: S101
         approval_id = str(uuid4())
         approval_item = ApprovalItem(
-            id=NotBlankStr(approval_id),
+            id=UUID(approval_id),
             action_type=NotBlankStr(ActionType.ORG_HIRE),
             title=NotBlankStr(
                 f"Hire {candidate.name} as {candidate.role}",

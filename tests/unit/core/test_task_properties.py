@@ -1,6 +1,7 @@
 """Property-based tests for Task model invariants and transitions."""
 
 from typing import Any
+from uuid import UUID
 
 import pytest
 from hypothesis import given
@@ -15,6 +16,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import Task
 from synthorg.core.task_transitions import VALID_TRANSITIONS
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +27,7 @@ _priorities = st.sampled_from(Priority)
 _complexities = st.sampled_from(Complexity)
 
 _TASK_DEFAULTS: dict[str, Any] = {
-    "id": "task-001",
+    "id": as_uuid("task-001"),
     "title": "Test task",
     "description": "A test task",
     "type": TaskType.DEVELOPMENT,
@@ -58,7 +60,7 @@ class TestTaskRoundtripProperties:
     @given(data=_roundtrip_st)
     def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
         task = Task(
-            id="task-rt-001",
+            id=as_uuid("task-rt-001"),
             title=data["title"],
             description=data["description"],
             type=data["task_type"],
@@ -74,13 +76,13 @@ class TestTaskRoundtripProperties:
 
 
 class TestSelfDependencyProperties:
-    @given(task_id=_not_blank)
-    def test_self_dependency_always_rejected(self, task_id: str) -> None:
+    @given(task_id=st.uuids())
+    def test_self_dependency_always_rejected(self, task_id: UUID) -> None:
         with pytest.raises(ValidationError, match="cannot depend on itself"):
             Task(
                 **_make_task_kwargs(
                     id=task_id,
-                    dependencies=(task_id,),
+                    dependencies=(str(task_id),),
                 ),
             )
 

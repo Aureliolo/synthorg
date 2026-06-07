@@ -17,6 +17,7 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.routing.models import AutoTopologyConfig
 from synthorg.engine.routing.topology_selector import TopologySelector
+from tests._shared import as_uuid, sid
 
 
 def _make_task(
@@ -33,7 +34,7 @@ def _make_task(
         for i in range(artifact_count)
     )
     return Task(
-        id="task-topo-1",
+        id=as_uuid("task-topo-1"),
         title="Topology Test",
         description="Testing topology selection",
         type=TaskType.DEVELOPMENT,
@@ -50,7 +51,7 @@ def _make_plan(
 ) -> DecompositionPlan:
     """Helper to create a plan with given structure."""
     return DecompositionPlan(
-        parent_task_id="task-topo-1",
+        parent_task_id=sid("task-topo-1"),
         subtasks=(SubtaskDefinition(id="sub-1", title="A", description="A desc"),),
         task_structure=structure,
     )

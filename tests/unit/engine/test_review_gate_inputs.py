@@ -19,7 +19,7 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameAggregate,
     FlightRecorderFrameRepository,
 )
-from tests._shared import mock_of
+from tests._shared import as_uuid, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -32,7 +32,7 @@ def _task(
     ),
 ) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Service",
         description="A development task.",
         type=TaskType.DEVELOPMENT,

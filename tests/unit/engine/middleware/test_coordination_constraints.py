@@ -34,6 +34,7 @@ from synthorg.engine.middleware.models import (
     ProgressLedger,
     TaskLedger,
 )
+from tests._shared import as_uuid
 from tests.unit.engine.conftest import make_decomposition, make_subtask
 
 # ── Test helpers ──────────────────────────────────────────────────
@@ -55,7 +56,7 @@ def _identity() -> AgentIdentity:
 
 def _task() -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="A detailed test task description",
         type=TaskType.DEVELOPMENT,

@@ -109,7 +109,7 @@ class ScoringBasedAssignmentStrategy:
             ranking,
         )
         return AssignmentResult(
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             strategy_used=self.name,
             selected=ranking.selected,
             alternatives=ranking.alternatives,
@@ -141,7 +141,7 @@ class ScoringBasedAssignmentStrategy:
         except Exception as exc:
             logger.warning(
                 TASK_ASSIGNMENT_REASON_REWRITER_FAILED,
-                task_id=request.task.id,
+                task_id=str(request.task.id),
                 strategy=self.name,
                 pool_filter=self._pool_filter.name,
                 error_type=type(exc).__name__,
@@ -165,7 +165,7 @@ class ScoringBasedAssignmentStrategy:
             f"Pool filter {self._pool_filter.name!r} returned no candidates"
         )
         return AssignmentResult(
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             strategy_used=self.name,
             reason=reason,
         )
@@ -179,17 +179,17 @@ class ScoringBasedAssignmentStrategy:
         """
         logger.warning(
             TASK_ASSIGNMENT_NO_ELIGIBLE,
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             strategy=self.name,
             agent_count=len(request.available_agents),
             min_score=request.min_score,
         )
         return AssignmentResult(
-            task_id=request.task.id,
+            task_id=str(request.task.id),
             strategy_used=self.name,
             reason=(
                 f"No agents scored above threshold "
-                f"{request.min_score} for task {request.task.id!r}"
+                f"{request.min_score} for task {str(request.task.id)!r}"
             ),
         )
 

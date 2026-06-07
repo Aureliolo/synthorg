@@ -13,12 +13,13 @@ from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.ontology.config import DelegationGuardConfig, GuardMode
 from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+from tests._shared import as_uuid
 
 
 def _make_request() -> DelegationRequest:
     """Create a minimal delegation request."""
     task = Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Do work",
         description="Some work",
         type=TaskType.DEVELOPMENT,

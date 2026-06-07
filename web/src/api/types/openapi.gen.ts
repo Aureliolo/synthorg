@@ -7416,6 +7416,7 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly expires_at: string | null;
+            /** Format: uuid */
             readonly id: string;
             readonly metadata: {
                 readonly [key: string]: string;
@@ -8565,7 +8566,10 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly detected_at: string;
-            /** @description Unique conflict identifier */
+            /**
+             * Format: uuid
+             * @description Unique conflict identifier
+             */
             readonly id: string;
             /** @description Whether the conflict spans multiple departments. */
             readonly is_cross_department: boolean;
@@ -13053,7 +13057,10 @@ export type components = {
              * @default
              */
             readonly description: string;
-            /** @description Unique project identifier */
+            /**
+             * Format: uuid
+             * @description Unique project identifier
+             */
             readonly id: string;
             /** @description Agent ID of the project lead */
             readonly lead: string | null;
@@ -14806,7 +14813,10 @@ export type components = {
             readonly forecast_id: string | null;
             /** @description Per-run hard real-money ceiling in the configured currency. When the in-loop BudgetChecker observes accumulated_cost >= hard_ceiling it raises RunHardCeilingExceededError and the engine parks the context via ApprovalGate so the operator can raise the ceiling and resume. None falls back to the global budget.run_hard_ceiling setting. */
             readonly hard_ceiling: number | null;
-            /** @description Unique task identifier */
+            /**
+             * Format: uuid
+             * @description Unique task identifier
+             */
             readonly id: string;
             /**
              * @description Max reassignment attempts after failure

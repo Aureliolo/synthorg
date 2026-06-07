@@ -19,6 +19,7 @@ from synthorg.engine.stakes import (
     build_stakes_assessor,
 )
 from synthorg.engine.stakes.config import ComplexityStakesRule
+from tests._shared import as_uuid
 
 
 def _subtask(
@@ -43,7 +44,7 @@ def _task(
     priority: Priority = Priority.MEDIUM,
 ) -> Task:
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,

@@ -42,6 +42,7 @@ from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from tests._shared import as_uuid
 from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
@@ -227,7 +228,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task(identity: AgentIdentity) -> Task:
     return Task(
-        id="task-1992-acceptance",
+        id=as_uuid("task-1992-acceptance"),
         title="Fix the planted UI defect",
         description=(
             "The fixture app's submit button does not display its "

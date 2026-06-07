@@ -11,6 +11,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionRecord
 from synthorg.persistence.decision_protocol import DecisionFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
+from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -21,7 +22,7 @@ async def _seed_task(backend: PersistenceBackend, task_id: str) -> None:
     """Satisfy the ``decision_records.task_id`` FK by persisting a minimal task row."""
     await backend.tasks.save(
         Task(
-            id=NotBlankStr(task_id),
+            id=as_uuid(task_id),
             title=NotBlankStr(task_id),
             description=NotBlankStr("fixture task"),
             type=TaskType.DEVELOPMENT,
@@ -36,7 +37,7 @@ class TestDecisionRepository:
         await _seed_task(backend, "task-001")
         record = await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("dec-001"),
-            task_id=NotBlankStr("task-001"),
+            task_id=NotBlankStr(sid("task-001")),
             approval_id=NotBlankStr("appr-001"),
             executing_agent_id=NotBlankStr("agent-exec"),
             reviewer_agent_id=NotBlankStr("agent-rev"),
@@ -50,7 +51,7 @@ class TestDecisionRepository:
         fetched = await backend.decision_records.get(NotBlankStr("dec-001"))
         assert fetched is not None
         assert fetched.decision == DecisionOutcome.APPROVED
-        assert fetched.task_id == "task-001"
+        assert fetched.task_id == sid("task-001")
 
     async def test_append_assigns_next_version_per_task(
         self, backend: PersistenceBackend
@@ -58,7 +59,7 @@ class TestDecisionRepository:
         await _seed_task(backend, "same-task")
         first = await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("d1"),
-            task_id=NotBlankStr("same-task"),
+            task_id=NotBlankStr(sid("same-task")),
             approval_id=None,
             executing_agent_id=NotBlankStr("a"),
             reviewer_agent_id=NotBlankStr("b"),
@@ -69,7 +70,7 @@ class TestDecisionRepository:
         )
         second = await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("d2"),
-            task_id=NotBlankStr("same-task"),
+            task_id=NotBlankStr(sid("same-task")),
             approval_id=None,
             executing_agent_id=NotBlankStr("a"),
             reviewer_agent_id=NotBlankStr("b"),
@@ -88,7 +89,7 @@ class TestDecisionRepository:
         await _seed_task(backend, "t")
         await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("a"),
-            task_id=NotBlankStr("t"),
+            task_id=NotBlankStr(sid("t")),
             approval_id=None,
             executing_agent_id=NotBlankStr("exec"),
             reviewer_agent_id=NotBlankStr("rev"),
@@ -99,7 +100,7 @@ class TestDecisionRepository:
         )
         await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("b"),
-            task_id=NotBlankStr("t"),
+            task_id=NotBlankStr(sid("t")),
             approval_id=None,
             executing_agent_id=NotBlankStr("exec"),
             reviewer_agent_id=NotBlankStr("rev"),
@@ -109,7 +110,7 @@ class TestDecisionRepository:
             recorded_at=_NOW,
         )
 
-        records = await backend.decision_records.list_by_task(NotBlankStr("t"))
+        records = await backend.decision_records.list_by_task(NotBlankStr(sid("t")))
         versions = [r.version for r in records]
         assert versions == [1, 2]
 
@@ -119,7 +120,7 @@ class TestDecisionRepository:
         await _seed_task(backend, "tA")
         await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("e1"),
-            task_id=NotBlankStr("tA"),
+            task_id=NotBlankStr(sid("tA")),
             approval_id=None,
             executing_agent_id=NotBlankStr("alice"),
             reviewer_agent_id=NotBlankStr("bob"),
@@ -157,7 +158,7 @@ class TestDecisionRepository:
         for idx in range(5):
             await backend.decision_records.append_with_next_version(
                 record_id=NotBlankStr(f"q{idx}"),
-                task_id=NotBlankStr("qt"),
+                task_id=NotBlankStr(sid("qt")),
                 approval_id=None,
                 executing_agent_id=NotBlankStr("ex"),
                 reviewer_agent_id=NotBlankStr("rv"),
@@ -167,11 +168,11 @@ class TestDecisionRepository:
                 recorded_at=_NOW,
             )
         by_task = await backend.decision_records.query(
-            DecisionFilterSpec(task_id=NotBlankStr("qt")),
+            DecisionFilterSpec(task_id=NotBlankStr(sid("qt"))),
         )
         assert len(by_task) == 5
         page = await backend.decision_records.query(
-            DecisionFilterSpec(task_id=NotBlankStr("qt")),
+            DecisionFilterSpec(task_id=NotBlankStr(sid("qt"))),
             limit=2,
             offset=2,
         )
@@ -197,7 +198,7 @@ class TestDecisionRepository:
         await _seed_task(backend, "ap")
         event = DecisionRecord(
             id=NotBlankStr("ap1"),
-            task_id=NotBlankStr("ap"),
+            task_id=NotBlankStr(sid("ap")),
             approval_id=None,
             executing_agent_id=NotBlankStr("ex"),
             reviewer_agent_id=NotBlankStr("rv"),
@@ -208,16 +209,16 @@ class TestDecisionRepository:
             version=1,
         )
         await backend.decision_records.append(event)
-        rows = await backend.decision_records.list_by_task(NotBlankStr("ap"))
+        rows = await backend.decision_records.list_by_task(NotBlankStr(sid("ap")))
         assert len(rows) == 1
-        assert rows[0].task_id == "ap"
+        assert rows[0].task_id == sid("ap")
 
     async def test_purge_before(self, backend: PersistenceBackend) -> None:
         await _seed_task(backend, "pt")
         old = datetime(2020, 1, 1, tzinfo=UTC)
         await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("old1"),
-            task_id=NotBlankStr("pt"),
+            task_id=NotBlankStr(sid("pt")),
             approval_id=None,
             executing_agent_id=NotBlankStr("ex"),
             reviewer_agent_id=NotBlankStr("rv"),
@@ -228,7 +229,7 @@ class TestDecisionRepository:
         )
         await backend.decision_records.append_with_next_version(
             record_id=NotBlankStr("new1"),
-            task_id=NotBlankStr("pt"),
+            task_id=NotBlankStr(sid("pt")),
             approval_id=None,
             executing_agent_id=NotBlankStr("ex"),
             reviewer_agent_id=NotBlankStr("rv"),
@@ -242,7 +243,7 @@ class TestDecisionRepository:
         )
         assert removed == 1
         remaining = await backend.decision_records.list_by_task(
-            NotBlankStr("pt"),
+            NotBlankStr(sid("pt")),
         )
         assert len(remaining) == 1
         assert remaining[0].id == "new1"

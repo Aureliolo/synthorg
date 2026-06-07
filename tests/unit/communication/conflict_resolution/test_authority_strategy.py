@@ -1,5 +1,7 @@
 """Tests for the authority + dissent log resolution strategy."""
 
+from uuid import UUID
+
 import pytest
 
 from synthorg.communication.conflict_resolution.authority_strategy import (
@@ -266,7 +268,7 @@ class TestAuthorityResolverDissentRecord:
         resolution = await resolver.resolve(conflict)
         records = resolver.build_dissent_records(conflict, resolution)
         record = records[0]
-        assert record.id.startswith("dissent-")
+        assert isinstance(record.id, UUID)
 
     async def test_unreachable_agent_in_hierarchy_raises(
         self,

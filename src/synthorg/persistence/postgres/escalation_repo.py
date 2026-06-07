@@ -166,7 +166,7 @@ class PostgresEscalationRepository(EscalationQueueStore):
         conflict_payload = Jsonb(escalation.conflict.model_dump(mode="json"))
         params = {
             "id": escalation.id,
-            "conflict_id": escalation.conflict.id,
+            "conflict_id": str(escalation.conflict.id),
             "conflict_json": conflict_payload,
             "status": escalation.status.value,
             "created_at": escalation.created_at,
@@ -209,7 +209,7 @@ INSERT INTO conflict_escalations (
                 API_REQUEST_ERROR,
                 error_type=error_type,
                 escalation_id=escalation.id,
-                conflict_id=escalation.conflict.id,
+                conflict_id=str(escalation.conflict.id),
                 constraint=constraint_name or None,
                 error=safe_error_description(exc),
             )
@@ -223,7 +223,7 @@ INSERT INTO conflict_escalations (
                 API_REQUEST_ERROR,
                 error_type="escalation_create_failed",
                 escalation_id=escalation.id,
-                conflict_id=escalation.conflict.id,
+                conflict_id=str(escalation.conflict.id),
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc

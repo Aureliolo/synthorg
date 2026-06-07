@@ -13,7 +13,10 @@ import pytest
 
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
-from synthorg.engine.pipeline.entry.boot import wire_real_objective_entry
+from synthorg.engine.pipeline.entry.boot import (
+    _project_uuid,
+    wire_real_objective_entry,
+)
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.state import EngineStateSlice
@@ -53,14 +56,14 @@ async def test_creates_project_when_absent_and_attaches_adapter() -> None:
     await wire_real_objective_entry(app_state, env=_EMPTY_ENV)
     created = projects.create.call_args.args[0]
     assert isinstance(created, Project)
-    assert created.id == "objectives"
+    assert created.id == _project_uuid("objectives")
     assert created.status is ProjectStatus.ACTIVE
     adapter = app_state.slice(EngineStateSlice).objective_entry_adapter
     assert isinstance(adapter, ObjectiveEntryAdapter)
 
 
 async def test_skips_create_when_project_exists() -> None:
-    existing = Project(id="objectives", name="objectives")
+    existing = Project(id=_project_uuid("objectives"), name="objectives")
     app_state, projects = _app_state(has_work_pipeline=True, project=existing)
     await wire_real_objective_entry(app_state, env=_EMPTY_ENV)
     projects.create.assert_not_called()

@@ -12,12 +12,13 @@ from synthorg.engine.middleware.disclosure import DisclosureMiddleware
 from synthorg.engine.middleware.models import AgentMiddlewareContext, ToolCallResult
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.tools.disclosure_config import ToolDisclosureConfig
+from tests._shared import as_uuid
 
 
 def _make_task() -> Task:
     """Create a minimal Task for testing."""
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title="Test task",
         description="A test task",
         type=TaskType.DEVELOPMENT,
@@ -59,7 +60,7 @@ def _make_context(
         identity=identity,
         task=task,
         agent_id="agent-1",
-        task_id=task.id,
+        task_id=str(task.id),
         execution_id="exec-1",
         effective_autonomy=None,
     )

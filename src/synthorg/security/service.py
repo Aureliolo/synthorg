@@ -617,7 +617,7 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
         item = ApprovalItem(
-            id=approval_id,
+            id=uuid.UUID(approval_id),
             action_type=context.action_type,
             title=f"Security escalation: {context.tool_name}",
             description=description,

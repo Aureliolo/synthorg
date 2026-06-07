@@ -38,6 +38,7 @@ from synthorg.engine.workflow.execution_service import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
+from tests._shared import as_uuid
 from tests.unit.engine.workflow.conftest import (
     make_assignment_node,
     make_conditional_node,
@@ -211,7 +212,7 @@ class FakeTaskEngine:
         self.created_tasks.append((data, requested_by))
         task_id = f"task-{uuid4().hex[:12]}"
         return Task(
-            id=task_id,
+            id=as_uuid(task_id),
             title=data.title,
             description=data.description,
             type=data.type,

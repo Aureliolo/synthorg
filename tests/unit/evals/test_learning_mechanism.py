@@ -23,7 +23,6 @@ tests the learning MACHINERY end to end, not "do LLMs get smarter".
 import json
 from datetime import date
 from typing import Final
-from uuid import uuid4
 
 import pytest
 
@@ -48,6 +47,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.unit
 
@@ -79,7 +79,7 @@ _PROPOSAL_JSON: Final[str] = json.dumps(
     },
 )
 
-_AGENT_UUID = uuid4()
+_AGENT_UUID = as_uuid("learning-mechanism-agent")
 
 
 class LearningSensitiveStrategy:
@@ -146,7 +146,7 @@ def _make_identity() -> AgentIdentity:
 
 def _make_task() -> Task:
     return Task(
-        id="task-learn-001",
+        id=as_uuid("task-learn-001"),
         title=f"Implement the {_DOMAIN_TOKEN} flow",
         description=f"Build the {_DOMAIN_TOKEN} flow end to end.",
         type=TaskType.DEVELOPMENT,

@@ -40,7 +40,7 @@ from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_uuid, sid
 
 pytestmark = pytest.mark.integration
 
@@ -87,7 +87,7 @@ async def service(tmp_path: Path) -> AsyncIterator[KnowledgeService]:
         await memory.connect()
         memory_connected = True
         await persistence.projects.save(
-            Project(id=NotBlankStr("proj-A"), name=NotBlankStr("Acceptance"))
+            Project(id=as_uuid("proj-A"), name=NotBlankStr("Acceptance"))
         )
         yield build_knowledge_service(
             memory_backend=memory,
@@ -121,7 +121,7 @@ class TestKnowledgeAgentToolAcceptance:
         self, service: KnowledgeService
     ) -> None:
         factory = build_knowledge_tool_factory(service=service)
-        tools = factory.build_tools(project_id=NotBlankStr("proj-A"))
+        tools = factory.build_tools(project_id=NotBlankStr(sid("proj-A")))
         names = {tool.name for tool in tools}
         assert names == set(KNOWLEDGE_TOOL_NAMES)
 
@@ -138,19 +138,19 @@ class TestKnowledgeAgentToolAcceptance:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("Order API"),
-            project_id=NotBlankStr("proj-A"),
+            project_id=NotBlankStr(sid("proj-A")),
         )
         await service.ingest(
             source_type=SourceType.WEB,
             uri=NotBlankStr("https://docs.test/idempotency"),
             title=NotBlankStr("Idempotency guide"),
-            project_id=NotBlankStr("proj-A"),
+            project_id=NotBlankStr(sid("proj-A")),
         )
         await service.ingest(
             source_type=SourceType.TICKET,
             uri=NotBlankStr("TICKET-7"),
             title=NotBlankStr("Idempotency feature"),
-            project_id=NotBlankStr("proj-A"),
+            project_id=NotBlankStr(sid("proj-A")),
         )
 
         # Build the project-scoped tools, then play the agent's part:
@@ -159,7 +159,7 @@ class TestKnowledgeAgentToolAcceptance:
         factory = build_knowledge_tool_factory(service=service)
         tools = {
             tool.name: tool
-            for tool in factory.build_tools(project_id=NotBlankStr("proj-A"))
+            for tool in factory.build_tools(project_id=NotBlankStr(sid("proj-A")))
         }
         search_tool = tools["search_knowledge"]
         result = await search_tool.execute(
@@ -192,7 +192,7 @@ class TestKnowledgeAgentToolAcceptance:
         self, service: KnowledgeService
     ) -> None:
         factory = build_knowledge_tool_factory(service=service)
-        tools = factory.build_tools(project_id=NotBlankStr("proj-A"))
+        tools = factory.build_tools(project_id=NotBlankStr(sid("proj-A")))
         search_tool = next(t for t in tools if t.name == "search_knowledge")
         # Missing required ``query`` is the agent's most common mistake;
         # the tool must surface it as an error result, not crash.
@@ -209,12 +209,12 @@ class TestKnowledgeAgentToolAcceptance:
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo)),
             title=NotBlankStr("Order API"),
-            project_id=NotBlankStr("proj-A"),
+            project_id=NotBlankStr(sid("proj-A")),
         )
         factory = build_knowledge_tool_factory(service=service)
         search_tool = next(
             t
-            for t in factory.build_tools(project_id=NotBlankStr("proj-A"))
+            for t in factory.build_tools(project_id=NotBlankStr(sid("proj-A")))
             if t.name == "search_knowledge"
         )
         result = await search_tool.execute(

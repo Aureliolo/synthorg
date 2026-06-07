@@ -39,6 +39,7 @@ from synthorg.providers.models import (
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import as_uuid
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
@@ -165,7 +166,7 @@ class TestAgentEngineToolCallIntegration:
             ),
         )
         task = Task(
-            id="task-integration",
+            id=as_uuid("task-integration"),
             title="Uppercase a string",
             description="Use the uppercase tool to convert text.",
             type=TaskType.DEVELOPMENT,
@@ -249,7 +250,7 @@ class TestAgentEngineFullLifecycle:
             ),
         )
         task = Task(
-            id="task-lifecycle",
+            id=as_uuid("task-lifecycle"),
             title="Full lifecycle test",
             description="Test the complete task lifecycle.",
             type=TaskType.DEVELOPMENT,
@@ -340,7 +341,7 @@ class TestPermissionDeniedToolCall:
             ),
         )
         task = Task(
-            id="task-denied",
+            id=as_uuid("task-denied"),
             title="Try deploying",
             description="Attempt to use a deployment tool.",
             type=TaskType.DEVELOPMENT,

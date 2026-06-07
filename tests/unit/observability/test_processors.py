@@ -1,12 +1,44 @@
 """Tests for custom structlog processors."""
 
+from uuid import UUID
+
 import pytest
 from typeguard import suppress_type_checks
 
 from synthorg.observability.processors import (
+    coerce_uuids,
     sanitize_sensitive_fields,
     scrub_event_fields,
 )
+
+
+@pytest.mark.unit
+class TestCoerceUuids:
+    """Tests for the coerce_uuids processor."""
+
+    def test_stringifies_top_level_uuid(self) -> None:
+        uid = UUID("3f6c1e2a-4b5c-6d7e-8f9a-0b1c2d3e4f50")
+        result = coerce_uuids(None, "info", {"event": "x", "task_id": uid})
+        assert result["task_id"] == "3f6c1e2a-4b5c-6d7e-8f9a-0b1c2d3e4f50"
+        assert isinstance(result["task_id"], str)
+
+    def test_stringifies_nested_uuids(self) -> None:
+        uid = UUID("3f6c1e2a-4b5c-6d7e-8f9a-0b1c2d3e4f50")
+        event = {
+            "event": "x",
+            "ids": [uid],
+            "meta": {"approval_id": uid},
+            "pair": (uid,),
+        }
+        result = coerce_uuids(None, "info", event)
+        assert result["ids"] == [str(uid)]
+        assert result["meta"]["approval_id"] == str(uid)
+        assert result["pair"] == (str(uid),)
+
+    def test_leaves_non_uuid_values_untouched(self) -> None:
+        event = {"event": "x", "count": 3, "name": "alpha"}
+        result = coerce_uuids(None, "info", event)
+        assert result == {"event": "x", "count": 3, "name": "alpha"}
 
 
 @pytest.mark.unit

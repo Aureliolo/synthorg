@@ -106,7 +106,7 @@ class CheckpointRecoveryStrategy:
             ``RecoveryResult`` -- either resumable or fallback.
         """
         execution_id = context.execution_id
-        task_id = task_execution.task.id
+        task_id = str(task_execution.task.id)
 
         logger.info(
             CHECKPOINT_RECOVERY_START,

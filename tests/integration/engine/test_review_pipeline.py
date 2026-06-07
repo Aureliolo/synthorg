@@ -20,6 +20,7 @@ from synthorg.engine.review import (
     ReviewStageResult,
     ReviewVerdict,
 )
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -35,7 +36,7 @@ def _task(
 ) -> Task:
     acceptance = tuple(AcceptanceCriterion(description=c) for c in criteria)
     return Task(
-        id="task-1",
+        id=as_uuid("task-1"),
         title=title,
         description=description,
         type=TaskType.DEVELOPMENT,
@@ -121,7 +122,7 @@ class TestPipelineShortCircuit:
             name = "recording"
 
             async def execute(self, task: Task) -> ReviewStageResult:
-                follow_up_calls.append(task.id)
+                follow_up_calls.append(str(task.id))
                 return ReviewStageResult(
                     stage_name="recording",
                     verdict=ReviewVerdict.PASS,
@@ -194,7 +195,7 @@ class TestInternalReviewStage:
     async def test_require_criteria_met(self) -> None:
         # Build a task manually with an unmet criterion
         task = Task(
-            id="task-2",
+            id=as_uuid("task-2"),
             title="Test",
             description="A substantial description of the work done",
             type=TaskType.DEVELOPMENT,

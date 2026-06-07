@@ -73,6 +73,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests._shared import as_uuid, coerce_id, sid
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
@@ -228,6 +229,7 @@ def _make_task(**overrides: object) -> Task:
         "created_by": "ceo",
     }
     defaults.update(overrides)
+    defaults["id"] = coerce_id(defaults["id"])
     return Task(**defaults)  # type: ignore[arg-type]
 
 
@@ -337,7 +339,7 @@ def _build_pipeline(
                 parent_task_id="placeholder",
                 subtasks=(
                     SubtaskDefinition(
-                        id="placeholder-sub",
+                        id=sid("placeholder-sub"),
                         title="Placeholder",
                         description="Replaced per-test",
                     ),
@@ -431,7 +433,7 @@ class TestHappyPathDecomposeRouteExecute:
         # 3. Lead decomposes into 2 subtasks
         subtasks = (
             SubtaskDefinition(
-                id="subtask-api",
+                id=sid("subtask-api"),
                 title="Build REST API",
                 description="[subtask-api] Implement API endpoints",
                 estimated_complexity=Complexity.MEDIUM,
@@ -439,7 +441,7 @@ class TestHappyPathDecomposeRouteExecute:
                 required_role="Backend Developer",
             ),
             SubtaskDefinition(
-                id="subtask-ui",
+                id=sid("subtask-ui"),
                 title="Build UI components",
                 description="[subtask-ui] Implement React components",
                 estimated_complexity=Complexity.MEDIUM,
@@ -448,7 +450,7 @@ class TestHappyPathDecomposeRouteExecute:
             ),
         )
         decomp_svc = _make_decomposition_service(
-            delegated_task.id,
+            str(delegated_task.id),
             subtasks,
         )
         decomp_result = await decomp_svc.decompose_task(
@@ -469,17 +471,21 @@ class TestHappyPathDecomposeRouteExecute:
 
         # Verify routing: api → backend, ui → frontend
         api_decision = next(
-            d for d in routing_result.decisions if d.subtask_id == "subtask-api"
+            d for d in routing_result.decisions if d.subtask_id == sid("subtask-api")
         )
         ui_decision = next(
-            d for d in routing_result.decisions if d.subtask_id == "subtask-ui"
+            d for d in routing_result.decisions if d.subtask_id == sid("subtask-ui")
         )
         assert api_decision.selected_candidate.agent_identity.name == "backend"
         assert ui_decision.selected_candidate.agent_identity.name == "frontend"
 
         # 5. Transition subtasks to ASSIGNED
-        api_task = next(t for t in decomp_result.created_tasks if t.id == "subtask-api")
-        ui_task = next(t for t in decomp_result.created_tasks if t.id == "subtask-ui")
+        api_task = next(
+            t for t in decomp_result.created_tasks if t.id == as_uuid("subtask-api")
+        )
+        ui_task = next(
+            t for t in decomp_result.created_tasks if t.id == as_uuid("subtask-ui")
+        )
         api_assigned = api_task.with_transition(
             TaskStatus.ASSIGNED,
             assigned_to=str(agents["backend"].id),
@@ -531,7 +537,7 @@ class TestHappyPathDecomposeRouteExecute:
             for o in exec_result.outcomes
         )
         rollup = decomp_svc.rollup_status(
-            delegated_task.id,
+            str(delegated_task.id),
             subtask_statuses,
         )
         assert rollup.derived_parent_status == TaskStatus.COMPLETED
@@ -572,14 +578,14 @@ class TestPartialFailure:
         # the mock provider can identify which task is executing
         subtasks = (
             SubtaskDefinition(
-                id="subtask-api-fail",
+                id=sid("subtask-api-fail"),
                 title="Build REST API",
                 description="[subtask-api-fail] Implement API endpoints",
                 estimated_complexity=Complexity.MEDIUM,
                 required_skills=("python",),
             ),
             SubtaskDefinition(
-                id="subtask-ui-ok",
+                id=sid("subtask-ui-ok"),
                 title="Build UI",
                 description="[subtask-ui-ok] Implement React components",
                 estimated_complexity=Complexity.MEDIUM,
@@ -587,7 +593,7 @@ class TestPartialFailure:
             ),
         )
         decomp_svc = _make_decomposition_service(
-            delegated_task.id,
+            str(delegated_task.id),
             subtasks,
         )
         decomp_result = await decomp_svc.decompose_task(
@@ -597,10 +603,12 @@ class TestPartialFailure:
 
         # Assign
         api_task = next(
-            t for t in decomp_result.created_tasks if t.id == "subtask-api-fail"
+            t
+            for t in decomp_result.created_tasks
+            if t.id == as_uuid("subtask-api-fail")
         )
         ui_task = next(
-            t for t in decomp_result.created_tasks if t.id == "subtask-ui-ok"
+            t for t in decomp_result.created_tasks if t.id == as_uuid("subtask-ui-ok")
         )
         api_assigned = api_task.with_transition(
             TaskStatus.ASSIGNED,
@@ -646,13 +654,13 @@ class TestPartialFailure:
 
         # Frontend succeeded
         frontend_outcome = next(
-            o for o in exec_result.outcomes if o.task_id == "subtask-ui-ok"
+            o for o in exec_result.outcomes if o.task_id == sid("subtask-ui-ok")
         )
         assert frontend_outcome.is_success is True
 
         # Backend failed
         backend_outcome = next(
-            o for o in exec_result.outcomes if o.task_id == "subtask-api-fail"
+            o for o in exec_result.outcomes if o.task_id == sid("subtask-api-fail")
         )
         assert backend_outcome.is_success is False
 
@@ -662,7 +670,7 @@ class TestPartialFailure:
             for o in exec_result.outcomes
         )
         rollup = decomp_svc.rollup_status(
-            delegated_task.id,
+            str(delegated_task.id),
             subtask_statuses,
         )
         assert rollup.derived_parent_status == TaskStatus.FAILED

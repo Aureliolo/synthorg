@@ -8,7 +8,7 @@ status later.
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
@@ -128,7 +128,7 @@ class ApprovalGateGuard:
                 uuid5(NAMESPACE_URL, f"scaling:{semantic_key}"),
             )
             item = ApprovalItem(
-                id=approval_id,
+                id=UUID(approval_id),
                 action_type=f"scaling:{decision.action_type.value}",
                 title=title,
                 description=str(decision.rationale),

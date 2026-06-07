@@ -36,7 +36,7 @@ from synthorg.meta.chief_of_staff._intake_parking import (
     is_conversational_steering,
     resume_conversational_steering,
 )
-from tests._shared import LoopAsyncClient
+from tests._shared import LoopAsyncClient, as_uuid
 from tests._shared.steering import FakeBrainService
 from tests.unit.api.fakes_backend import FakePersistenceBackend
 
@@ -80,7 +80,7 @@ def _steering_item(*, status: ApprovalStatus = ApprovalStatus.PENDING) -> Approv
         The :class:`ApprovalItem` carrying the steering-directive metadata.
     """
     return ApprovalItem(
-        id=NotBlankStr("appr-steer-1"),
+        id=as_uuid("appr-steer-1"),
         action_type=NotBlankStr("conversational:steer"),
         title=NotBlankStr("Steer checkout: redirect"),
         description=NotBlankStr("use Postgres not Mongo"),
@@ -107,7 +107,7 @@ class TestIsConversationalSteering:
 
     def test_work_intake_without_marker_rejected(self) -> None:
         work_item = ApprovalItem(
-            id=NotBlankStr("appr-work-1"),
+            id=as_uuid("appr-work-1"),
             action_type=NotBlankStr("conversational:create_work"),
             title=NotBlankStr("Build the page"),
             description=NotBlankStr("a marketing page"),
@@ -224,7 +224,7 @@ class TestApprovalGateRouting:
         await approval_store.add(item)
 
         owned = await try_conversational_intake_resume(
-            app_state, item.id, approved=True
+            app_state, str(item.id), approved=True
         )
 
         assert owned is True
@@ -244,7 +244,7 @@ class TestApprovalGateRouting:
         await approval_store.add(item)
 
         owned = await try_conversational_intake_resume(
-            app_state, item.id, approved=False
+            app_state, str(item.id), approved=False
         )
 
         assert owned is True
