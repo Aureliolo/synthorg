@@ -530,8 +530,8 @@
     },
     "src/synthorg/engine/strategy/models.py": {
       "cap": 700,
-      "loc": 630,
-      "ratio": 0.9,
+      "loc": 631,
+      "ratio": 0.901,
       "tier": "adapter"
     },
     "src/synthorg/engine/task_engine_apply.py": {

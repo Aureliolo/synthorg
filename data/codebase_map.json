@@ -6477,7 +6477,7 @@
     },
     {
       "kind": "adapter",
-      "loc": 630,
+      "loc": 631,
       "loc_cap": 700,
       "module": "src/synthorg/engine/strategy/models.py",
       "owning_feature": "engine"
