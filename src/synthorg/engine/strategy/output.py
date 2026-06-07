@@ -6,16 +6,13 @@ strategic agents frame their recommendations.
 
 import copy
 from types import MappingProxyType
-from typing import TYPE_CHECKING
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.engine.strategy.lenses import LensDefinition
 from synthorg.hr.seniority import SeniorityLevel
 from synthorg.hr.strategy_mode import StrategicOutputMode
 from synthorg.observability import get_logger
 from synthorg.observability.events.strategy import STRATEGY_OUTPUT_HANDLED
-
-if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
-    from synthorg.engine.strategy.lenses import LensDefinition
 
 logger = get_logger(__name__)
 
@@ -65,7 +62,7 @@ def _resolve_mode(
 
     Returns:
         ``mode`` unchanged when it is already concrete; otherwise
-        ``DECISION_MAKER`` for senior agents and ``ADVISOR`` for
+        ``DECISION_MAKER`` for C-suite and VP agents and ``ADVISOR`` for
         everyone else.
     """
     if mode != StrategicOutputMode.CONTEXT_DEPENDENT:

@@ -14156,7 +14156,7 @@ export type components = {
         };
         /**
          * SeniorityLevel
-         * @description Seniority levels for agents within the organization.
+         * @description Seniority levels for agents within the organisation.
          *
          *     Each level corresponds to an authority scope, typical model tier, and
          *     cost tier defined in ``synthorg.core.role_catalog.SENIORITY_INFO``.

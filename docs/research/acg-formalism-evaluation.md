@@ -218,7 +218,7 @@ The infrastructure for agent removal exists and is production-grade:
 
 - `src/synthorg/hr/offboarding_service.py`: `OffboardingService`, the full pipeline for agent
   removal (task reassignment, memory archival, team notification, status termination)
-- `src/synthorg/core/enums.py`: `FiringReason.PERFORMANCE` exists as a reason code
+- `src/synthorg/hr/enums.py`: `FiringReason.PERFORMANCE` exists as a reason code
 - `src/synthorg/hr/performance/tracker.py`: `PerformanceTracker` providing rolling windows, trend
   detection (Theil-Sen), quality and collaboration scoring
 

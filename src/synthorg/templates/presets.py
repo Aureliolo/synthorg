@@ -6,12 +6,11 @@ backed by the Faker library.
 """
 
 import functools
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from faker import Faker
 
     from synthorg.templates.schema import CompanyTemplate
@@ -32,9 +31,12 @@ from synthorg.templates._preset_data import RAW_PRESETS, PresetValue
 
 logger = get_logger(__name__)
 
-# Both the outer mapping and each inner mapping are read-only.
+# Both the outer mapping and each inner mapping are read-only.  Each
+# inner dict is copied (``dict(v)``) so the frozen view is independent of
+# the mutable source ``RAW_PRESETS``; a later mutation of the source dict
+# cannot leak through these proxies.
 PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, PresetValue]] = (
-    MappingProxyType({k: MappingProxyType(v) for k, v in RAW_PRESETS.items()})
+    MappingProxyType({k: MappingProxyType(dict(v)) for k, v in RAW_PRESETS.items()})
 )
 
 

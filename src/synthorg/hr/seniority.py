@@ -4,7 +4,7 @@ from enum import StrEnum
 
 
 class SeniorityLevel(StrEnum):
-    """Seniority levels for agents within the organization.
+    """Seniority levels for agents within the organisation.
 
     Each level corresponds to an authority scope, typical model tier, and
     cost tier defined in ``synthorg.core.role_catalog.SENIORITY_INFO``.
@@ -21,12 +21,24 @@ class SeniorityLevel(StrEnum):
     C_SUITE = "c_suite"
 
 
-_SENIORITY_ORDER: tuple[SeniorityLevel, ...] = tuple(SeniorityLevel)
+# Authoritative authority ranking, junior to senior.  Spelled out
+# explicitly (rather than ``tuple(SeniorityLevel)``) so that adding a
+# new SeniorityLevel member forces a conscious placement here; the guard
+# below then fails loudly if the two fall out of sync.
+_SENIORITY_ORDER: tuple[SeniorityLevel, ...] = (
+    SeniorityLevel.JUNIOR,
+    SeniorityLevel.MID,
+    SeniorityLevel.SENIOR,
+    SeniorityLevel.LEAD,
+    SeniorityLevel.PRINCIPAL,
+    SeniorityLevel.DIRECTOR,
+    SeniorityLevel.VP,
+    SeniorityLevel.C_SUITE,
+)
 
 # Validate that _SENIORITY_ORDER contains every SeniorityLevel member
-# exactly once and preserves enum declaration order.  This guards
-# against silent breakage if the enum is reordered or extended without
-# updating the ordering tuple.
+# exactly once.  This guards against silent breakage when the enum is
+# extended without updating the ordering tuple above.
 _all_members = set(SeniorityLevel)
 _order_set = set(_SENIORITY_ORDER)
 if _order_set != _all_members:

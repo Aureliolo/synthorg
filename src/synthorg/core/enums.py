@@ -345,7 +345,7 @@ class Stakes(StrEnum):
 _STAKES_ORDER: tuple[Stakes, ...] = tuple(Stakes)
 
 # Guard against silent breakage if the enum is reordered or extended
-# without updating the ordering tuple (mirrors _SENIORITY_ORDER).
+# without updating the ordering tuple above.
 _stakes_members = set(Stakes)
 _stakes_order_set = set(_STAKES_ORDER)
 if _stakes_order_set != _stakes_members:
