@@ -341,22 +341,21 @@ class Stakes(StrEnum):
     CRITICAL = "critical"
 
 
-# Ordering: LOW (least consequential) < NORMAL < HIGH < CRITICAL.
-_STAKES_ORDER: tuple[Stakes, ...] = tuple(Stakes)
+# Ordering: LOW < NORMAL < HIGH < CRITICAL. Explicit literal (not a
+# dynamic tuple(Stakes)) so the sync guard below is not tautological and
+# a new member forces a conscious placement here.
+_STAKES_ORDER: tuple[Stakes, ...] = (
+    Stakes.LOW,
+    Stakes.NORMAL,
+    Stakes.HIGH,
+    Stakes.CRITICAL,
+)
 
-# Guard against silent breakage if the enum is reordered or extended
-# without updating the ordering tuple above.
-_stakes_members = set(Stakes)
-_stakes_order_set = set(_STAKES_ORDER)
-if _stakes_order_set != _stakes_members:
-    _missing_stakes = _stakes_members - _stakes_order_set
-    _extra_stakes = _stakes_order_set - _stakes_members
-    _stakes_msg = (
-        f"_STAKES_ORDER is out of sync with Stakes: "
-        f"missing={_missing_stakes}, extra={_extra_stakes}"
-    )
+# Fail loudly if the ordering tuple drifts from the enum membership.
+# The symmetric difference names whichever members are out of sync.
+if set(_STAKES_ORDER) != set(Stakes):
+    _stakes_msg = f"_STAKES_ORDER out of sync: {set(_STAKES_ORDER) ^ set(Stakes)}"
     raise RuntimeError(_stakes_msg)
-del _stakes_members, _stakes_order_set
 
 _STAKES_RANK: dict[Stakes, int] = {
     level: idx for idx, level in enumerate(_STAKES_ORDER)
