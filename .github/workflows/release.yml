@@ -6,6 +6,17 @@ on:
 
 permissions: {}
 
+# Serialize: every main push updates the SAME sticky release-please PR
+# branch. Two overlapping runs racing the BSL Change Date Contents-API
+# commit on that branch produced HTTP 409 "does not match" conflicts.
+# Queue rather than cancel so an in-flight run always finishes creating
+# the release PR and posting its required-check statuses. GitHub keeps
+# only the newest queued run; dropping older ones is safe because each
+# run reconciles full main state from scratch.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
     name: Release Please
@@ -31,8 +42,8 @@ jobs:
       # Minimal checkout of main required so `./.github/actions/...`
       # paths resolve on the runner disk. `fetch-depth: 1` is enough;
       # release-please works via REST API, not the local working tree.
-      # The subsequent BSL-date step does its own checkout of the
-      # release-please PR branch when applicable.
+      # The BSL-date step reads + writes LICENSE on the release branch
+      # entirely through the Contents API, so no branch checkout is needed.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.sha }}
@@ -61,13 +72,6 @@ jobs:
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part
       # of the release PR, so it goes through normal review + merge flow.
-      - name: Checkout Release PR branch
-        if: steps.release.outputs.pr != ''
-        uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
-        with:
-          ref: release-please--branches--main--components--synthorg
-          persist-credentials: false
-
       - name: Update BSL Change Date (release + 3 years)
         if: steps.release.outputs.pr != ''
         env:
@@ -83,12 +87,22 @@ jobs:
           set -euo pipefail
           new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")  # GNU date (ubuntu-latest)
           echo "Updating Change Date to: $new_date"
+
+          # Read LICENSE content + its blob sha from the single source the
+          # PUT's optimistic-lock check consults -- the Contents API on the
+          # release branch -- so the sha we send always matches the sha the
+          # API holds. This is the canonical read-sha-then-conditional-write
+          # pattern; no branch checkout is needed.
+          api_json=$(gh api "repos/$GITHUB_REPOSITORY/contents/LICENSE?ref=$BRANCH")
+          cur_sha=$(printf '%s' "$api_json" | jq -re '.sha')
+          printf '%s' "$api_json" | jq -r '.content' | tr -d '\n' | base64 -d > LICENSE
+
           sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
           grep -q "^Change Date:.*$new_date" LICENSE || {
             echo "::error::sed pattern did not match; Change Date was not updated"
             exit 1
           }
-          if git diff --quiet -- LICENSE; then
+          if [ "$(git hash-object --no-filters LICENSE)" = "$cur_sha" ]; then
             echo "Change Date already up to date -- skipping commit"
             exit 0
           fi
@@ -98,11 +112,10 @@ jobs:
           # github-actions[bot], appearing as Verified in the release PR
           # UI. (The eventual squash-merge produces a separate GitHub-
           # signed commit on main regardless of this step's signature.)
-          BLOB_SHA=$(git rev-parse HEAD:LICENSE)
           jq -n \
             --arg msg "chore: update BSL Change Date to $new_date" \
             --arg content "$(base64 -w0 LICENSE)" \
-            --arg sha "$BLOB_SHA" \
+            --arg sha "$cur_sha" \
             --arg branch "$BRANCH" \
             '{message: $msg, content: $content, sha: $sha, branch: $branch}' \
           | gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/LICENSE" --input -
