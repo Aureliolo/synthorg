@@ -17,8 +17,8 @@ Counting rules:
 * api/state.py: aggregate length of every class body's ``__slots__``
   tuple/list.
 
-Dissolution of these files is followup #2051; this gate exists so
-no new entries land between now and then.
+These files are being dissolved into their feature directories; this
+gate exists so no new entries accumulate in them until then.
 
 Usage::
 
@@ -42,8 +42,8 @@ _STATE_REL: Final[str] = "src/synthorg/api/state.py"
 _BASELINE_DESCRIPTION = (
     "Frozen counts of central junk-drawer modules. Each entry under "
     "`counts` is `<posix_path>: {metric_name: current_count}`. Modules "
-    "may shrink; growth fails the gate. Dissolution tracked in #2051. "
-    "Regenerate with `check_no_central_junk_drawer.py --update-baseline`."
+    "may shrink; growth fails the gate. Regenerate with "
+    "`check_no_central_junk_drawer.py --update-baseline`."
 )
 
 
@@ -231,8 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {violation.render()}", file=sys.stderr)
     print(
         "\nPut new constants / enums / state attributes in their feature "
-        "directory, not in the central junk-drawer files. Dissolution is "
-        "tracked in #2051.",
+        "directory, not in the central junk-drawer files.",
         file=sys.stderr,
     )
     return 1

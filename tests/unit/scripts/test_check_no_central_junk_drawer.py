@@ -195,3 +195,36 @@ def test_main_update_baseline_writes_and_exits_zero(tmp_path: Path) -> None:
         "src/synthorg/core/enums.py",
         "src/synthorg/api/state.py",
     }
+
+
+def test_main_update_baseline_clears_stale_violations(tmp_path: Path) -> None:
+    """--update-baseline rewrites a stale baseline and then exits 0.
+
+    The discriminating case the plain write test misses: a baseline whose
+    recorded count is below the current tree's would normally report a
+    violation; --update-baseline overwrites it to the current counts so a
+    fresh check passes.
+    """
+    project = _make_project(tmp_path)
+    # Stale: baseline records 1 enum class but the synthetic tree has 2.
+    baseline = _write_baseline(
+        project,
+        {
+            "src/synthorg/core/enums.py": {"top_level_classes": 1},
+            "src/synthorg/api/state.py": {"state_slots": 2},
+        },
+    )
+    assert _GATE.check(project_root=project, baseline_path=baseline) != []
+    exit_code = _GATE.main(
+        [
+            "--project-root",
+            str(project),
+            "--baseline",
+            str(baseline),
+            "--update-baseline",
+        ]
+    )
+    assert exit_code == 0
+    assert _GATE.check(project_root=project, baseline_path=baseline) == []
+    payload = json.loads(baseline.read_text(encoding="utf-8"))
+    assert payload["counts"]["src/synthorg/core/enums.py"]["top_level_classes"] == 2

@@ -148,6 +148,11 @@ def _all_event_names() -> list[tuple[str, str]]:
     Walks sub-packages too (e.g. ``events.persistence``) so the
     uniqueness / dot-pattern guards cover the per-subdomain modules,
     not just the flat top-level event modules.
+    ``test_all_domain_modules_discovered`` deliberately uses
+    ``iter_modules`` instead (it only asserts on the top-level domain
+    names). The ``events.persistence`` ``__init__`` must stay an empty
+    re-export bag; if it re-exported sub-module constants this walk
+    would double-count them and ``test_no_duplicates`` would fail.
     """
     result: list[tuple[str, str]] = []
     prefix = f"{events.__name__}."
@@ -162,7 +167,6 @@ def _all_event_names() -> list[tuple[str, str]]:
     return result
 
 
-@pytest.mark.unit
 class TestEventConstants:
     def test_all_are_strings(self) -> None:
         for attr, val in _all_event_names():
@@ -182,6 +186,21 @@ class TestEventConstants:
 
     def test_has_at_least_20_events(self) -> None:
         assert len(_all_event_names()) >= 20
+
+    def test_persistence_subpackage_is_walked(self) -> None:
+        """walk_packages must recurse into the events.persistence sub-package.
+
+        Guards against a revert to iter_modules, which would silently drop
+        every persistence.* constant from the uniqueness / dot-pattern checks
+        above while those checks still pass (the flat modules alone exceed 20).
+        """
+        persistence_values = [
+            val for _, val in _all_event_names() if val.startswith("persistence.")
+        ]
+        assert len(persistence_values) >= 300, (
+            "persistence.* constants missing from the walk; the "
+            "events.persistence sub-package is not being recursed"
+        )
 
     def test_security_events_match_audit_chain_allowlist(self) -> None:
         """Every constant in events/security.py must be signed by the chain.
@@ -801,6 +820,9 @@ class TestEventConstants:
         ],
     )
     def test_persistence_events_exist(self, constant_name: str, expected: str) -> None:
+        # The persistence package is one module per entity token: the value's
+        # second dotted segment (persistence.<entity>.<action>) is the module
+        # filename. New parametrize entries must keep that convention.
         module_name = expected.split(".")[1]
         mod = importlib.import_module(
             f"synthorg.observability.events.persistence.{module_name}"

@@ -2,9 +2,9 @@
 
 Covers receipt assembly, validation, living-doc rendering, the two
 capture sinks (knowledge usage, test runs), and the persistence-layer
-failure events for the three feature-owned tables. Persistence events
-live here rather than in ``observability/events/persistence.py`` because
-that module is a net-shrink god-module that may not grow.
+failure events for the three feature-owned tables. Those failure events
+use this feature's ``deliverable_receipts.*`` namespace, so they live in
+this domain module rather than the cross-cutting ``persistence.*`` namespace.
 """
 
 from typing import Final

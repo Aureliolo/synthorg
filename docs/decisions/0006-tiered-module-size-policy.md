@@ -120,8 +120,9 @@ All baseline-driven, all wired into `.pre-commit-config.yaml`:
 1. `check_module_size_budget.py` -- the tier-cap enforcer above.
 2. `check_no_growth_in_god_modules.py` -- god-module net-shrink rule.
 3. `check_no_central_junk_drawer.py` -- no new entries in
-   `core/enums.py` / `events/persistence.py` / `AppState.__slots__`.
-   Dissolution tracked in #2051.
+   `core/enums.py` / `AppState.__slots__` (`events/persistence.py`
+   dissolved into a per-subdomain package in #2246). Remaining
+   dissolution tracked in #2051.
 4. `check_no_circular_imports.py` -- AST-driven Tarjan SCC detection
    across `src/synthorg/`. Excludes `TYPE_CHECKING` and function-local
    imports.
@@ -272,8 +273,9 @@ British dictionary).
   declarative files (`core/enums.py`, `events/persistence.py`,
   `settings/definitions/*.py` >500 LOC). Group-F audit (#2052) tags
   the rest.
-- Dissolution of `core/enums.py` and `events/persistence.py` into
-  per-domain files is tracked in #2051 (out of scope of this EPIC).
+- Dissolution of `core/enums.py` into per-domain files is tracked in
+  #2051 (out of scope of this EPIC); `events/persistence.py` was
+  dissolved into a per-subdomain package in #2246.
 
 ## Alternatives considered
 
@@ -378,8 +380,8 @@ is EPIC #2056's charter (Section F), not PR 4's. Import-layering contracts
 
 | Exemption | Mechanism |
 |-----------|-----------|
-| `_central_junk_drawer_baseline.json` (62 enums + 380 events + 176 AppState slots) | #2051 dissolves the three files per-domain |
-| `# module-kind: declarative` headers on `core/enums.py` and `events/persistence.py` | Files deleted by #2051 |
+| `_central_junk_drawer_baseline.json` (62 enums + 176 AppState slots; the 380-events entry was lifted in #2246) | #2051 dissolves the remaining two files per-domain |
+| `# module-kind: declarative` header on `core/enums.py` (`events/persistence.py`'s header was removed with its #2246 dissolution) | File deleted by #2051 |
 
 ### E. Lifted by #2052 (Group-F audit)
 
@@ -453,7 +455,8 @@ entries until their upstream blocker clears.
 - EPIC #2046: the umbrella program this PR opens.
 - Sub-issues #2048 (manifest substrate), #2049 (controller
   decomposition), #2050 (repos/services + import-layering).
-- Follow-up #2051 (dissolve `core/enums.py` and `events/persistence.py`).
+- Follow-up #2051 (dissolve `core/enums.py`; `events/persistence.py`
+  dissolved in #2246).
 - Follow-up #2052 (audit Group-F legitimately-complex files).
 - Follow-ups required by Section F of the Exemption Ledger above;
   filed under the EPIC #2046 master ledger.
