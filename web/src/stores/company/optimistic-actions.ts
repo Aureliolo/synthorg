@@ -3,7 +3,7 @@ import type { DepartmentName } from '@/api/types/enums'
 import type { Department } from '@/api/types/org'
 import type { CompanyGet, CompanySet } from './types'
 
-const agentIdOf = (a: AgentConfig): string => a.id ?? a.name
+const agentIdOf = (a: AgentConfig): string => a.id
 
 function reorderDepartmentsImpl(
   set: CompanySet,
@@ -118,16 +118,16 @@ function reorderAgentsImpl(
 function reassignAgentImpl(
   set: CompanySet,
   get: CompanyGet,
-  agentName: string,
+  agentId: string,
   newDepartment: DepartmentName,
 ): () => void {
   const prev = get().config
   if (!prev) return () => {}
-  const agent = prev.agents.find((a) => a.name === agentName)
+  const agent = prev.agents.find((a) => a.id === agentId)
   if (!agent || agent.department === newDepartment) return () => {}
   const prevDepartment = agent.department
   const agents = prev.agents.map((a) =>
-    a.name === agentName ? { ...a, department: newDepartment } : a,
+    a.id === agentId ? { ...a, department: newDepartment } : a,
   )
   set({ config: { ...prev, agents } })
   // Targeted rollback: restore only this agent's department if still on
@@ -135,11 +135,11 @@ function reassignAgentImpl(
   return () => {
     const current = get().config
     if (!current) return
-    const currentAgent = current.agents.find((a) => a.name === agentName)
+    const currentAgent = current.agents.find((a) => a.id === agentId)
     // Only rollback if this exact optimistic change is still the active one.
     if (!currentAgent || currentAgent.department !== newDepartment) return
     const currentAgents = current.agents.map((a) =>
-      a.name === agentName ? { ...a, department: prevDepartment } : a,
+      a.id === agentId ? { ...a, department: prevDepartment } : a,
     )
     set({ config: { ...current, agents: currentAgents } })
   }
@@ -152,8 +152,8 @@ export function createOptimisticActions(set: CompanySet, get: CompanyGet) {
     optimisticReorderAgents: (deptName: string, orderedIds: string[]) =>
       reorderAgentsImpl(set, get, deptName, orderedIds),
     optimisticReassignAgent: (
-      agentName: string,
+      agentId: string,
       newDepartment: DepartmentName,
-    ) => reassignAgentImpl(set, get, agentName, newDepartment),
+    ) => reassignAgentImpl(set, get, agentId, newDepartment),
   }
 }

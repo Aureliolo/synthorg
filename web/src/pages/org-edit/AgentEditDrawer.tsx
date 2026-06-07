@@ -18,8 +18,8 @@ export interface AgentEditDrawerProps {
   onClose: () => void
   agent: AgentConfig | null
   departments: readonly Department[]
-  onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
-  onDelete: (name: string) => Promise<boolean>
+  onUpdate: (agentId: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDelete: (agentId: string) => Promise<boolean>
   saving: boolean
 }
 
@@ -65,7 +65,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     level: 'mid',
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const del = useDrawerDelete(agent?.name, onDelete, onClose)
+  const del = useDrawerDelete(agent?.id, onDelete, onClose)
 
   // Render-phase prop sync (the "adjust state when a prop changes"
   // pattern): reseed the form whenever a different agent is opened.
@@ -98,7 +98,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
       return
     }
     setSubmitError(null)
-    const result = await onUpdate(agent.name, {
+    const result = await onUpdate(agent.id, {
       name: trimmedName,
       role: form.role.trim() || undefined,
       department: form.department,

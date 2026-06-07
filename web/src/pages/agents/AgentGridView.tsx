@@ -25,7 +25,7 @@ interface AgentGridViewProps {
 }
 
 function agentKey(agent: AgentConfig): string {
-  return agent.id ?? agent.name
+  return agent.id
 }
 
 interface AgentGridItemProps {

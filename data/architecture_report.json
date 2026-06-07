@@ -56,8 +56,8 @@
     },
     "src/synthorg/api/controllers/agents.py": {
       "cap": 500,
-      "loc": 549,
-      "ratio": 1.098,
+      "loc": 543,
+      "ratio": 1.086,
       "tier": "code"
     },
     "src/synthorg/api/controllers/analytics.py": {
@@ -176,8 +176,8 @@
     },
     "src/synthorg/api/controllers/training.py": {
       "cap": 500,
-      "loc": 495,
-      "ratio": 0.99,
+      "loc": 491,
+      "ratio": 0.982,
       "tier": "code"
     },
     "src/synthorg/api/controllers/users.py": {
@@ -350,8 +350,8 @@
     },
     "src/synthorg/config/schema.py": {
       "cap": 500,
-      "loc": 755,
-      "ratio": 1.51,
+      "loc": 759,
+      "ratio": 1.518,
       "tier": "code"
     },
     "src/synthorg/coordination/ceremony_policy/policy_resolver.py": {
@@ -362,8 +362,8 @@
     },
     "src/synthorg/core/agent.py": {
       "cap": 500,
-      "loc": 487,
-      "ratio": 0.974,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "code"
     },
     "src/synthorg/core/company.py": {
@@ -379,10 +379,10 @@
       "tier": "code"
     },
     "src/synthorg/docs_engine/service.py": {
-      "cap": 600,
-      "loc": 575,
-      "ratio": 0.958,
-      "tier": "service"
+      "cap": 500,
+      "loc": 574,
+      "ratio": 1.148,
+      "tier": "code"
     },
     "src/synthorg/engine/__init__.py": {
       "cap": 500,
@@ -476,8 +476,8 @@
     },
     "src/synthorg/engine/evolution/service.py": {
       "cap": 500,
-      "loc": 411,
-      "ratio": 0.822,
+      "loc": 413,
+      "ratio": 0.826,
       "tier": "code"
     },
     "src/synthorg/engine/feature.py": {
@@ -548,8 +548,8 @@
     },
     "src/synthorg/engine/workflow/execution_activation_helpers.py": {
       "cap": 500,
-      "loc": 426,
-      "ratio": 0.852,
+      "loc": 428,
+      "ratio": 0.856,
       "tier": "code"
     },
     "src/synthorg/engine/workflow/execution_lifecycle.py": {
@@ -638,8 +638,8 @@
     },
     "src/synthorg/hr/hiring_service.py": {
       "cap": 500,
-      "loc": 460,
-      "ratio": 0.92,
+      "loc": 461,
+      "ratio": 0.922,
       "tier": "code"
     },
     "src/synthorg/hr/performance/models.py": {
@@ -734,8 +734,8 @@
     },
     "src/synthorg/memory/consolidation/config.py": {
       "cap": 500,
-      "loc": 459,
-      "ratio": 0.918,
+      "loc": 458,
+      "ratio": 0.916,
       "tier": "code"
     },
     "src/synthorg/memory/consolidation/llm_op.py": {
@@ -806,8 +806,8 @@
     },
     "src/synthorg/memory/tools/knowledge_architect.py": {
       "cap": 500,
-      "loc": 504,
-      "ratio": 1.008,
+      "loc": 503,
+      "ratio": 1.006,
       "tier": "code"
     },
     "src/synthorg/meta/appliers/_architecture_validators.py": {
@@ -968,8 +968,8 @@
     },
     "src/synthorg/persistence/postgres/org_fact_repo.py": {
       "cap": 500,
-      "loc": 489,
-      "ratio": 0.978,
+      "loc": 488,
+      "ratio": 0.976,
       "tier": "repository"
     },
     "src/synthorg/persistence/postgres/project_brain_repo.py": {
@@ -1046,8 +1046,8 @@
     },
     "src/synthorg/persistence/sqlite/org_fact_repo.py": {
       "cap": 500,
-      "loc": 476,
-      "ratio": 0.952,
+      "loc": 475,
+      "ratio": 0.95,
       "tier": "repository"
     },
     "src/synthorg/persistence/sqlite/project_brain_repo.py": {
@@ -1377,14 +1377,13 @@
     "synthorg.core.clock": 154,
     "synthorg.core.critical_errors": 471,
     "synthorg.core.domain_errors": 176,
-    "synthorg.core.enums": 340,
+    "synthorg.core.enums": 461,
     "synthorg.core.error_taxonomy": 60,
-    "synthorg.core.memory_enums": 47,
-    "synthorg.core.normalization": 73,
+    "synthorg.core.normalization": 72,
     "synthorg.core.persistence_errors": 190,
     "synthorg.core.registry": 27,
     "synthorg.core.task": 91,
-    "synthorg.core.types": 1054,
+    "synthorg.core.types": 1055,
     "synthorg.engine.context": 39,
     "synthorg.engine.decomposition.models": 28,
     "synthorg.engine.errors": 80,
@@ -1393,7 +1392,6 @@
     "synthorg.engine.state": 36,
     "synthorg.engine.task_engine": 33,
     "synthorg.engine.workflow.definition": 37,
-    "synthorg.engine.workflow.enums": 33,
     "synthorg.execution.turn": 29,
     "synthorg.hr.enums": 22,
     "synthorg.hr.performance.models": 47,
@@ -1498,10 +1496,6 @@
     "synthorg.communication.meeting.scheduler:MeetingScheduler": {
       "lcom4": 1,
       "loc": 636
-    },
-    "synthorg.docs_engine.service:DocsService": {
-      "lcom4": 2,
-      "loc": 412
     },
     "synthorg.engine.agent_engine_errors:AgentEngineErrorsMixin": {
       "lcom4": 4,

@@ -37,7 +37,7 @@ interface CustomCap {
 }
 
 interface TrainingPanelProps {
-  agentName: string
+  agentId: string
   plan?: TrainingPlanResponse | null
   result?: TrainingResultResponse | null
   onCreatePlan?: (overrides: TrainingPlanRequest) => void
@@ -52,7 +52,7 @@ const CONTENT_TYPE_LABELS: Record<TrainingContentType, string> = {
 }
 
 export function TrainingPanel({
-  agentName,
+  agentId,
   plan,
   result,
   onCreatePlan,
@@ -62,7 +62,7 @@ export function TrainingPanel({
   const cfg = useTrainingPanelConfig()
   const handleCreatePlan = () => {
     log.debug('Creating training plan', {
-      agentName: sanitizeForLog(agentName),
+      agentId: sanitizeForLog(agentId),
       sourceCount: cfg.overrideSources.length,
       contentTypes: Array.from(cfg.enabledContentTypes),
     })

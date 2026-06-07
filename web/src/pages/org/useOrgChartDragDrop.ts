@@ -34,6 +34,7 @@ function nodeCenter(node: Node): { x: number; y: number } {
 }
 
 interface ReassignArgs {
+  agentId: string
   agentName: string
   originalDept: string
   newDept: string
@@ -53,11 +54,11 @@ interface ReassignArgs {
  */
 function reassignAgent(args: ReassignArgs): void {
   const store = useCompanyStore.getState()
-  const rollback = store.optimisticReassignAgent(args.agentName, args.newDeptName)
-  const existingAgent = store.config?.agents.find((a) => a.name === args.agentName)
+  const rollback = store.optimisticReassignAgent(args.agentId, args.newDeptName)
+  const existingAgent = store.config?.agents.find((a) => a.id === args.agentId)
   void useCompanyStore
     .getState()
-    .updateAgent(args.agentName, {
+    .updateAgent(args.agentId, {
       department: args.newDeptName,
       autonomy_level: existingAgent?.autonomy_level ?? null,
       level: existingAgent?.level ?? null,
@@ -74,7 +75,7 @@ function onReassignSettled(
     rollback()
     const currentDept = useCompanyStore
       .getState()
-      .config?.agents.find((a) => a.name === args.agentName)?.department
+      .config?.agents.find((a) => a.id === args.agentId)?.department
     args.announce(
       currentDept === args.originalDept
         ? `Failed to move ${args.agentName}, returned to ${args.originalDept}`
@@ -149,6 +150,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
       if (node.type !== 'agent') return
 
       const target = findDropTarget(nodeCenter(node), deptBounds)
+      const agentId = (node.data as AgentNodeData).agentId
       const agentName = (node.data as AgentNodeData).name
       const newDept = target?.departmentName
 
@@ -166,7 +168,7 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
         return
       }
 
-      reassignAgent({ agentName, originalDept, newDept, newDeptName: newDept, announce, addToast })
+      reassignAgent({ agentId, agentName, originalDept, newDept, newDeptName: newDept, announce, addToast })
     },
     [deptBounds, addToast, announce],
   )

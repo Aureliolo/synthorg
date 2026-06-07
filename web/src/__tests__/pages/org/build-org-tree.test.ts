@@ -31,6 +31,7 @@ function buildTree(
 
 function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string }): AgentConfig {
   return {
+    id: overrides.id ?? overrides.name,
     role: 'Developer',
     department: 'engineering',
     level: 'mid',
@@ -438,18 +439,6 @@ describe('buildOrgTree', () => {
     }
   })
 
-  it('uses agent.name as node id when agent.id is undefined', () => {
-    const agents = [
-      makeAgent({ id: 'lead-1', name: 'Lead', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: undefined, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
-    ]
-    const result = buildTree(makeConfig(agents), {}, [])
-
-    const agentNode = result.nodes.find((n) => (n.data as AgentNodeData).name === 'NoIdAgent')
-    expect(agentNode).toBeDefined()
-    expect(agentNode!.id).toBe('NoIdAgent')
-    expect((agentNode!.data as AgentNodeData).agentId).toBe('NoIdAgent')
-  })
 
   it('treats agent without status as active (not filtered out)', () => {
     const agents = [

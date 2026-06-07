@@ -20,7 +20,7 @@ export function resolveRoot(
   allDepartments: readonly DashboardDepartment[],
 ): { ceo: DashboardAgentConfig | null; ceoId: string | undefined; rootDept: DashboardDepartment | null } {
   const ceo = findCeo(agents)
-  const ceoId = ceo ? (ceo.id ?? ceo.name) : undefined
+  const ceoId = ceo ? ceo.id : undefined
   const rootDeptName = ceo ? (ceo.department as DepartmentName) : null
   const rootDept = rootDeptName
     ? allDepartments.find((d) => d.name === rootDeptName) ?? null
@@ -99,7 +99,7 @@ function buildDeptData(
   const health = ctx.healthMap.get(dept.name)
   const activeCount = deptMembers.filter(
     (a) =>
-      resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', ctx.runtimeStatuses) ===
+      resolveRuntimeStatus(a.id, a.status ?? 'active', ctx.runtimeStatuses) ===
       'active',
   ).length
   const budgetPercent =
@@ -117,8 +117,8 @@ function buildDeptData(
       ? null
       : Math.round((activeCount / deptMembers.length) * 100)
   const statusDots: DepartmentAgentStatusDot[] = deptMembers.map((a) => ({
-    agentId: a.id ?? a.name,
-    runtimeStatus: resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', ctx.runtimeStatuses),
+    agentId: a.id,
+    runtimeStatus: resolveRuntimeStatus(a.id, a.status ?? 'active', ctx.runtimeStatuses),
   }))
   return {
     departmentName: dept.name,
@@ -178,7 +178,7 @@ export function emitRootDept(ctx: BuildContext, rootDept: DashboardDepartment): 
   // nodes, so without this edge it doesn't know where to place the
   // root's agents).
   const rootHead = findHighestSeniority(ctx.deptAgents.get(rootDept.name) ?? [])
-  const rootHeadId = rootHead ? (rootHead.id ?? rootHead.name) : null
+  const rootHeadId = rootHead ? rootHead.id : null
   for (const ownerNodeId of ctx.ownerIds) {
     ctx.edges.push({
       id: `e-${ownerNodeId}-${groupId}`,
@@ -258,7 +258,7 @@ function wireDeptToRoot(
     type: 'hierarchy',
   })
   const head = findHighestSeniority(ctx.deptAgents.get(dept.name) ?? [])
-  const headId = head ? (head.id ?? head.name) : null
+  const headId = head ? head.id : null
   if (headId && ctx.ceoId) {
     ctx.edges.push({
       id: `e-layout-${ctx.ceoId}-${headId}`,

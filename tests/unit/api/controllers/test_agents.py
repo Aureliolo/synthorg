@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from synthorg.config.schema import AgentConfig, RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import Complexity, TaskType, ToolAccessLevel
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.enums import LifecycleEventType, TrendDirection
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
@@ -135,7 +136,9 @@ class TestAgentControllerDbOverride:
             names = {a["name"] for a in body["data"]}
             assert names == {"db-agent-1", "db-agent-2"}
 
-            detail_resp = await client.get("/api/v1/agents/db-agent-1")
+            detail_resp = await client.get(
+                f"/api/v1/agents/{stable_agent_id('db-agent-1')}"
+            )
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["name"] == "db-agent-1"
@@ -231,7 +234,7 @@ class TestAgentPerformance:
                 ),
             )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -248,7 +251,7 @@ class TestAgentPerformance:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/performance")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -313,7 +316,7 @@ class TestAgentActivity:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -342,7 +345,7 @@ class TestAgentActivity:
 
         # Walk the first page (no cursor) -> collect next_cursor -> walk page 2.
         resp1 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2},
         )
         assert resp1.status_code == 200
@@ -353,7 +356,7 @@ class TestAgentActivity:
         assert len(body1["data"]) == 2
 
         resp2 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2, "cursor": body1["pagination"]["next_cursor"]},
         )
         assert resp2.status_code == 200
@@ -375,7 +378,7 @@ class TestAgentActivity:
         # has 1 item and clears has_more + next_cursor per the
         # PaginationMeta consistency validator).
         resp3 = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/activity",
+            f"/api/v1/agents/{_AGENT_ID}/activity",
             params={"limit": 2, "cursor": body2["pagination"]["next_cursor"]},
         )
         assert resp3.status_code == 200
@@ -391,7 +394,7 @@ class TestAgentActivity:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/activity")
 
         assert resp.status_code == 200
         body = resp.json()
@@ -440,7 +443,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -470,7 +473,7 @@ class TestAgentHistory:
             ),
         )
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -485,7 +488,7 @@ class TestAgentHistory:
     ) -> None:
         await agent_registry.register(_make_identity())
 
-        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+        resp = await async_test_client.get(f"/api/v1/agents/{_AGENT_ID}/history")
 
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -511,7 +514,7 @@ class TestAgentHealth:
     ) -> None:
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -530,7 +533,7 @@ class TestAgentHealth:
         """Trust is None when TrustService has no state for agent."""
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -551,7 +554,7 @@ class TestAgentHealth:
         """Verify performance sub-object has correct field types."""
         await agent_registry.register(_make_identity())
         resp = await async_test_client.get(
-            f"/api/v1/agents/{_AGENT_NAME}/health",
+            f"/api/v1/agents/{_AGENT_ID}/health",
         )
         assert resp.status_code == 200
         perf = resp.json()["data"]["performance"]

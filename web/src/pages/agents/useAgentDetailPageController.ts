@@ -22,21 +22,22 @@ export function useAgentDetailPageController(
   agentId: string | undefined,
 ): AgentDetailPageController {
   const configAgent = useCompanyStore((s) =>
-    s.config?.agents.find((a) => (a.id ?? a.name) === agentId),
+    s.config?.agents.find((a) => a.id === agentId),
   )
-  const resolvedAgentName = configAgent?.name ?? agentId ?? ''
-  const data = useAgentDetailData(resolvedAgentName)
+  const resolvedAgentName = configAgent?.name ?? ''
+  const resolvedAgentId = agentId ?? ''
+  const data = useAgentDetailData(resolvedAgentId)
 
-  // Build the version-history client lazily once per agent name. The agent
-  // identity API is name-keyed; ``agent.id`` is sometimes absent.
+  // Build the version-history client lazily once per agent. The agent
+  // identity / version API is id-keyed and ``agent.id`` is always present.
   const versionsClient = useMemo(
     () =>
-      resolvedAgentName !== ''
+      resolvedAgentId !== ''
         ? createVersionHistoryClient<Record<string, unknown>>(
-            `/agents/${encodeURIComponent(resolvedAgentName)}`,
+            `/agents/${encodeURIComponent(resolvedAgentId)}`,
           )
         : null,
-    [resolvedAgentName],
+    [resolvedAgentId],
   )
 
   // Walk the company config's agent roster so prev/next on this detail page
@@ -48,7 +49,7 @@ export function useAgentDetailPageController(
     [],
   )
   const navItems = useMemo(
-    () => (configAgents ?? []).map((a) => ({ id: a.id ?? a.name })),
+    () => (configAgents ?? []).map((a) => ({ id: a.id })),
     [configAgents],
   )
   const nav = useDetailNavigation({

@@ -38,8 +38,8 @@ export interface AgentsTabProps {
   config: CompanyConfig | null
   saving: boolean
   onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
-  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
-  onDeleteAgent: (name: string) => Promise<boolean>
+  onUpdateAgent: (agentId: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  onDeleteAgent: (agentId: string) => Promise<boolean>
   onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
@@ -48,7 +48,7 @@ type AgentsByDept = Map<string, AgentConfig[]>
 
 function SortableAgentItem({ agent, onClick }: { agent: AgentConfig; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: agent.id ?? agent.name,
+    id: agent.id,
     data: { agent },
   })
   const style = {
@@ -99,12 +99,12 @@ function DepartmentAgentsSection({
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
         <SortableContext
-          items={agents.map((a) => a.id ?? a.name)}
+          items={agents.map((a) => a.id)}
           strategy={verticalListSortingStrategy}
         >
           <StaggerGroup className="grid gap-grid-gap">
             {agents.map((agent) => (
-              <StaggerItem key={agent.id ?? agent.name}>
+              <StaggerItem key={agent.id}>
                 <SortableAgentItem agent={agent} onClick={() => onEditAgent(agent)} />
               </StaggerItem>
             ))}
@@ -141,11 +141,11 @@ function reorderFromDragEvent(
   if (!draggedAgent) return null
   const deptAgents = agentsByDept.get(draggedAgent.department)
   if (!deptAgents) return null
-  const oldIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === active.id)
-  const newIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === over.id)
+  const oldIndex = deptAgents.findIndex((a) => a.id === active.id)
+  const newIndex = deptAgents.findIndex((a) => a.id === over.id)
   if (oldIndex === -1 || newIndex === -1) return null
   const reordered = arrayMove(deptAgents, oldIndex, newIndex)
-  return { department: draggedAgent.department, orderedIds: reordered.map((a) => a.id ?? a.name) }
+  return { department: draggedAgent.department, orderedIds: reordered.map((a) => a.id) }
 }
 
 interface AgentDragReorder {

@@ -57,7 +57,7 @@ describe('AgentEditDrawer', () => {
 
     await waitFor(() => {
       expect(mockOnUpdate).toHaveBeenCalledTimes(1)
-      expect(mockOnUpdate).toHaveBeenCalledWith('alice', {
+      expect(mockOnUpdate).toHaveBeenCalledWith(agent.id, {
         name: 'alice',
         role: 'Lead Developer',
         department: 'engineering',
@@ -84,7 +84,7 @@ describe('AgentEditDrawer', () => {
 
     await waitFor(() => {
       expect(mockOnDelete).toHaveBeenCalledTimes(1)
-      expect(mockOnDelete).toHaveBeenCalledWith('alice')
+      expect(mockOnDelete).toHaveBeenCalledWith(agent.id)
     })
   })
 })

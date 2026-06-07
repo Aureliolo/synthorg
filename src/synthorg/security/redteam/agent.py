@@ -17,7 +17,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.clock import Clock
 from synthorg.core.role import Skill
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_GATE_BUILD_FAILED
 from synthorg.security.redteam.errors import RedTeamRoleMissingError
@@ -117,6 +117,7 @@ def build_red_team_agent_identity(
         raise RedTeamRoleMissingError(msg)
     hiring_dt = clock.now() if clock is not None else datetime.now(UTC)
     return AgentIdentity(
+        id=stable_agent_id(name),
         name=name,
         role=role.name,
         department=role.department.value,

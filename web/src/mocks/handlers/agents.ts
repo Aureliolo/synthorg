@@ -104,14 +104,14 @@ export const agentsHandlers = [
   http.get('/api/v1/agents', () =>
     HttpResponse.json(paginatedFor<typeof listAgents>(emptyPage<AgentConfig>())),
   ),
-  // Registered BEFORE ``/agents/:name`` so the literal ``active`` path
-  // is not captured as an agent name (MSW matches in registration order).
+  // Registered BEFORE ``/agents/:agentId`` so the literal ``active`` path
+  // is not captured as an agent id (MSW matches in registration order).
   http.get('/api/v1/agents/active', () =>
     HttpResponse.json(successFor<typeof listActiveAgents>([])),
   ),
-  http.get('/api/v1/agents/:name', ({ params }) =>
+  http.get('/api/v1/agents/:agentId', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getAgent>(buildAgent({ name: String(params.name) })),
+      successFor<typeof getAgent>(buildAgent({ id: String(params.agentId) })),
     ),
   ),
   http.get('/api/v1/agents/:agentId/autonomy', ({ params }) =>
@@ -142,15 +142,15 @@ export const agentsHandlers = [
       }),
     )
   }),
-  http.get('/api/v1/agents/:name/performance', ({ params }) =>
+  http.get('/api/v1/agents/:agentId/performance', ({ params }) =>
     HttpResponse.json(
-      successFor<typeof getAgentPerformance>(buildPerformance(String(params.name))),
+      successFor<typeof getAgentPerformance>(buildPerformance(String(params.agentId))),
     ),
   ),
-  http.get('/api/v1/agents/:name/activity', () =>
+  http.get('/api/v1/agents/:agentId/activity', () =>
     HttpResponse.json(paginatedFor<typeof getAgentActivity>(emptyPage())),
   ),
-  http.get('/api/v1/agents/:name/history', () =>
+  http.get('/api/v1/agents/:agentId/history', () =>
     HttpResponse.json(successFor<typeof getAgentHistory>([])),
   ),
 ]

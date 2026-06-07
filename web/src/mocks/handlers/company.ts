@@ -153,15 +153,15 @@ export const companyHandlers = [
       { status: 201 },
     )
   }),
-  http.patch('/api/v1/agents/:name', async ({ params, request }) => {
+  http.patch('/api/v1/agents/:agentId', async ({ params, request }) => {
     const body = (await request.json()) as Partial<AgentConfig>
     return HttpResponse.json(
       successFor<typeof updateAgentOrg>(
-        buildAgent({ ...body, name: String(params.name) }),
+        buildAgent({ ...body, id: String(params.agentId) }),
       ),
     )
   }),
-  http.delete('/api/v1/agents/:name', () => HttpResponse.json(voidSuccess())),
+  http.delete('/api/v1/agents/:agentId', () => HttpResponse.json(voidSuccess())),
   http.post('/api/v1/departments/:name/reorder-agents', () =>
     HttpResponse.json(successFor<typeof reorderAgents>([])),
   ),

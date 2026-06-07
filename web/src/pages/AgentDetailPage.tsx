@@ -121,13 +121,13 @@ function AgentDetailContent({ ctrl }: CtrlProps) {
         <ToolBadges tools={allowedTools} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        {agent.id && <QualityScoreOverride agentId={agent.id} />}
+        <QualityScoreOverride agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        {agent.id && <CollaborationPanel agentId={agent.id} />}
+        <CollaborationPanel agentId={agent.id} />
       </ErrorBoundary>
       <ErrorBoundary level="section">
-        <TrainingSection agentName={agent.name} />
+        <TrainingSection agentId={agent.id} />
       </ErrorBoundary>
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
         <ErrorBoundary level="section">

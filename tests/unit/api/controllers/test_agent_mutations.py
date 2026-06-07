@@ -3,6 +3,7 @@
 import pytest
 import structlog.testing
 
+from synthorg.core.types import stable_agent_id
 from tests._shared import LoopAsyncClient
 from tests.unit.api.conftest import make_auth_headers
 
@@ -114,7 +115,7 @@ class TestUpdateAgent:
             },
         )
         resp = await async_test_client.patch(
-            "/api/v1/agents/alice",
+            f"/api/v1/agents/{stable_agent_id('alice')}",
             json={"level": "senior"},
         )
         assert resp.status_code == 200
@@ -152,7 +153,7 @@ class TestUpdateAgent:
         )
         with structlog.testing.capture_logs() as events:
             resp = await async_test_client.patch(
-                "/api/v1/agents/alice",
+                f"/api/v1/agents/{stable_agent_id('alice')}",
                 json={"level": "senior"},
             )
         assert resp.status_code == 200
@@ -185,7 +186,9 @@ class TestDeleteAgent:
                 "level": "mid",
             },
         )
-        resp = await async_test_client.delete("/api/v1/agents/alice")
+        resp = await async_test_client.delete(
+            f"/api/v1/agents/{stable_agent_id('alice')}"
+        )
         assert resp.status_code == 204
 
     async def test_delete_agent_not_found(
@@ -219,7 +222,9 @@ class TestDeleteAgent:
             },
         )
         with structlog.testing.capture_logs() as events:
-            resp = await async_test_client.delete("/api/v1/agents/alice")
+            resp = await async_test_client.delete(
+                f"/api/v1/agents/{stable_agent_id('alice')}"
+            )
         assert resp.status_code == 204
 
         # Filter to the two audit events of interest (order in
@@ -259,7 +264,9 @@ class TestDeleteAgent:
                 "level": "c_suite",
             },
         )
-        resp = await async_test_client.delete("/api/v1/agents/chief")
+        resp = await async_test_client.delete(
+            f"/api/v1/agents/{stable_agent_id('chief')}"
+        )
         assert resp.status_code == 409
 
 
@@ -284,7 +291,7 @@ class TestUpdateAgentETag:
         )
         # Send a stale ETag
         resp = await async_test_client.patch(
-            "/api/v1/agents/alice",
+            f"/api/v1/agents/{stable_agent_id('alice')}",
             json={"level": "senior"},
             headers={"If-Match": '"stale-etag-value000"'},
         )
@@ -310,7 +317,7 @@ class TestUpdateAgentETag:
         )
         # First update to get an ETag in the response
         resp1 = await async_test_client.patch(
-            "/api/v1/agents/bob",
+            f"/api/v1/agents/{stable_agent_id('bob')}",
             json={"level": "senior"},
         )
         assert resp1.status_code == 200
@@ -319,7 +326,7 @@ class TestUpdateAgentETag:
 
         # Use the returned ETag for a second update
         resp2 = await async_test_client.patch(
-            "/api/v1/agents/bob",
+            f"/api/v1/agents/{stable_agent_id('bob')}",
             json={"level": "lead"},
             headers={"If-Match": etag},
         )
@@ -344,7 +351,7 @@ class TestUpdateAgentETag:
         )
         # No If-Match header -- should succeed
         resp = await async_test_client.patch(
-            "/api/v1/agents/carol",
+            f"/api/v1/agents/{stable_agent_id('carol')}",
             json={"level": "senior"},
         )
         assert resp.status_code == 200

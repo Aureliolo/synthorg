@@ -464,7 +464,7 @@
     },
     {
       "kind": "code",
-      "loc": 140,
+      "loc": 142,
       "loc_cap": 500,
       "module": "src/synthorg/api/bootstrap.py",
       "owning_feature": "api_core"
@@ -597,7 +597,7 @@
     },
     {
       "kind": "code",
-      "loc": 549,
+      "loc": 543,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/agents.py",
       "owning_feature": "api_core"
@@ -1255,7 +1255,7 @@
     },
     {
       "kind": "code",
-      "loc": 495,
+      "loc": 491,
       "loc_cap": 500,
       "module": "src/synthorg/api/controllers/training.py",
       "owning_feature": "api_core"
@@ -3621,7 +3621,7 @@
     },
     {
       "kind": "code",
-      "loc": 755,
+      "loc": 759,
       "loc_cap": 500,
       "module": "src/synthorg/config/schema.py",
       "owning_feature": null
@@ -4041,7 +4041,7 @@
     },
     {
       "kind": "code",
-      "loc": 46,
+      "loc": 61,
       "loc_cap": 500,
       "module": "src/synthorg/core/types.py",
       "owning_feature": null
@@ -7758,7 +7758,7 @@
     },
     {
       "kind": "code",
-      "loc": 460,
+      "loc": 461,
       "loc_cap": 500,
       "module": "src/synthorg/hr/hiring_service.py",
       "owning_feature": "hr"
@@ -17180,7 +17180,7 @@
     },
     {
       "kind": "code",
-      "loc": 111,
+      "loc": 112,
       "loc_cap": 500,
       "module": "src/synthorg/security/redteam/agent.py",
       "owning_feature": "security"

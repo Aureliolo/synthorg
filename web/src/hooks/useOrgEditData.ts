@@ -40,8 +40,8 @@ export interface UseOrgEditDataReturn {
   deleteDepartment: (name: string) => Promise<boolean>
   reorderDepartments: (orderedNames: string[]) => Promise<boolean>
   createAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig | null>
-  updateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
-  deleteAgent: (name: string) => Promise<boolean>
+  updateAgent: (agentId: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig | null>
+  deleteAgent: (agentId: string) => Promise<boolean>
   reorderAgents: (deptName: string, orderedIds: string[]) => Promise<boolean>
   createTeam: (deptName: string, data: CreateTeamRequest) => Promise<TeamConfig | null>
   updateTeam: (deptName: string, teamName: string, data: UpdateTeamRequest) => Promise<TeamConfig | null>

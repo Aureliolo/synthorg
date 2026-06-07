@@ -421,7 +421,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
     // Cursor pagination: ``activityTotal`` is the in-memory display
@@ -473,7 +473,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(100)
     // Intermediate page must advance the cursor + keep ``hasMore``
@@ -505,7 +505,7 @@ describe('fetchMoreActivity', () => {
       ),
     )
 
-    await useAgentsStore.getState().fetchMoreActivity('Alice Smith')
+    await useAgentsStore.getState().fetchMoreActivity('agent-001')
 
     expect(useAgentsStore.getState().activity).toHaveLength(1)
     expect(useAgentsStore.getState().activity[0]!.description).toBe('Task done')

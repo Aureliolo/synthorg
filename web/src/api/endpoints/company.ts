@@ -80,17 +80,17 @@ export async function createAgentOrg(data: CreateAgentOrgRequest): Promise<Agent
   return unwrap(response)
 }
 
-export async function updateAgentOrg(name: string, data: UpdateAgentOrgRequest): Promise<AgentConfig> {
+export async function updateAgentOrg(agentId: string, data: UpdateAgentOrgRequest): Promise<AgentConfig> {
   const response = await apiClient.patch<ApiResponse<AgentConfig>>(
-    `/agents/${encodeURIComponent(name)}`,
+    `/agents/${encodeURIComponent(agentId)}`,
     data,
   )
   return unwrap(response)
 }
 
-export async function deleteAgent(name: string): Promise<void> {
+export async function deleteAgent(agentId: string): Promise<void> {
   const response = await apiClient.delete<ApiResponse<null>>(
-    `/agents/${encodeURIComponent(name)}`,
+    `/agents/${encodeURIComponent(agentId)}`,
   )
   unwrapVoid(response)
 }

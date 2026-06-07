@@ -49,17 +49,17 @@ async function createAgentImpl(
 async function updateAgentImpl(
   set: CompanySet,
   get: CompanyGet,
-  name: string,
+  agentId: string,
   data: UpdateAgentOrgRequest,
 ): Promise<AgentConfig | null> {
   beginMutation(set)
   try {
-    const agent = await apiUpdateAgent(name, data)
+    const agent = await apiUpdateAgent(agentId, data)
     set((s) => ({
       savingCount: Math.max(0, s.savingCount - 1),
       ...patchConfig(get, (prev) => ({
         ...prev,
-        agents: prev.agents.map((a) => (a.name === name ? agent : a)),
+        agents: prev.agents.map((a) => (a.id === agentId ? agent : a)),
       })),
     }))
     emitSuccessToast(`Agent ${agent.name} updated`)
@@ -74,19 +74,23 @@ async function updateAgentImpl(
 async function deleteAgentImpl(
   set: CompanySet,
   get: CompanyGet,
-  name: string,
+  agentId: string,
 ): Promise<boolean> {
   beginMutation(set)
+  // Resolve the display name before deletion so the success toast can name
+  // the agent even though the API is addressed by id.
+  const deletedName =
+    get().config?.agents.find((a) => a.id === agentId)?.name ?? agentId
   try {
-    await apiDeleteAgent(name)
+    await apiDeleteAgent(agentId)
     set((s) => ({
       savingCount: Math.max(0, s.savingCount - 1),
       ...patchConfig(get, (prev) => ({
         ...prev,
-        agents: prev.agents.filter((a) => a.name !== name),
+        agents: prev.agents.filter((a) => a.id !== agentId),
       })),
     }))
-    emitSuccessToast(`Agent ${name} deleted`)
+    emitSuccessToast(`Agent ${deletedName} deleted`)
     return true
   } catch (err) {
     endMutation(set, getErrorMessage(err))
@@ -99,10 +103,10 @@ function resolveAgentNamesFromIds(
   agents: readonly AgentConfig[],
   orderedIds: readonly string[],
 ): string[] {
-  // Callers pass `a.id ?? a.name` as identifiers, but the API
-  // expects agent names. Resolve each id back to its name so the
-  // payload is always correct even when id differs from name.
-  const idToName = new Map(agents.map((a) => [a.id ?? a.name, a.name]))
+  // Callers pass agent ids, but the reorder endpoint takes agent
+  // names in its body. Resolve each id back to its name so the
+  // payload is always correct.
+  const idToName = new Map(agents.map((a) => [a.id, a.name]))
   return orderedIds.map((id) => idToName.get(id) ?? id)
 }
 
@@ -135,9 +139,9 @@ export function createAgentActions(set: CompanySet, get: CompanyGet) {
   return {
     createAgent: (data: CreateAgentOrgRequest) =>
       createAgentImpl(set, get, data),
-    updateAgent: (name: string, data: UpdateAgentOrgRequest) =>
-      updateAgentImpl(set, get, name, data),
-    deleteAgent: (name: string) => deleteAgentImpl(set, get, name),
+    updateAgent: (agentId: string, data: UpdateAgentOrgRequest) =>
+      updateAgentImpl(set, get, agentId, data),
+    deleteAgent: (agentId: string) => deleteAgentImpl(set, get, agentId),
     reorderAgents: (deptName: string, orderedIds: string[]) =>
       reorderAgentsImpl(set, get, deptName, orderedIds),
   }

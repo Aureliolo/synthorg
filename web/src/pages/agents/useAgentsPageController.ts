@@ -40,7 +40,7 @@ export function useAgentsPageController(): AgentsPageController {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const visibleIds = useMemo(
-    () => new Set(data.filteredAgents.map((a) => a.id ?? a.name)),
+    () => new Set(data.filteredAgents.map((a) => a.id)),
     [data.filteredAgents],
   )
   const visibleSelected = useMemo(
@@ -48,18 +48,11 @@ export function useAgentsPageController(): AgentsPageController {
     [selectedIds, visibleIds],
   )
 
-  const idToName = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const a of data.filteredAgents) m.set(a.id ?? a.name, a.name)
-    return m
-  }, [data.filteredAgents])
-
   const handleBulkDelete = useCallback(async () => {
     setBulkDeleting(true)
     try {
       const { succeeded, failed } = await runBulkDelete(
         visibleSelected,
-        idToName,
         deleteAgent,
       )
       emitBulkDeleteToast(succeeded, failed)
@@ -74,7 +67,7 @@ export function useAgentsPageController(): AgentsPageController {
       setBulkDeleteOpen(false)
       clearSelection()
     }
-  }, [visibleSelected, idToName, deleteAgent, clearSelection])
+  }, [visibleSelected, deleteAgent, clearSelection])
 
   const pagination = useListPagination({
     items: data.filteredAgents,
@@ -108,15 +101,12 @@ function intersectSets(
 
 async function runBulkDelete(
   visibleSelected: ReadonlySet<string>,
-  idToName: Map<string, string>,
   deleteAgent: ReturnType<typeof useCompanyStore.getState>['deleteAgent'],
 ): Promise<{ succeeded: number; failed: number }> {
   let succeeded = 0
   let failed = 0
   for (const id of visibleSelected) {
-    const name = idToName.get(id)
-    if (!name) continue
-    const ok = await deleteAgent(name)
+    const ok = await deleteAgent(id)
     if (ok) succeeded += 1
     else failed += 1
   }

@@ -27,7 +27,7 @@ describe('optimisticReassignAgent', () => {
   })
 
   it('moves agent from one department to another', () => {
-    useCompanyStore.getState().optimisticReassignAgent('alice', 'design')
+    useCompanyStore.getState().optimisticReassignAgent('agent-alice','design')
     const config = useCompanyStore.getState().config!
     const alice = config.agents.find((a) => a.name === 'alice')
     expect(alice!.department).toBe('design')
@@ -36,7 +36,7 @@ describe('optimisticReassignAgent', () => {
   it('rollback restores original department', () => {
     const rollback = useCompanyStore
       .getState()
-      .optimisticReassignAgent('alice', 'design')
+      .optimisticReassignAgent('agent-alice','design')
     expect(
       useCompanyStore
         .getState()
@@ -54,7 +54,7 @@ describe('optimisticReassignAgent', () => {
   it('returns no-op when reassigning to same department', () => {
     const rollback = useCompanyStore
       .getState()
-      .optimisticReassignAgent('alice', 'engineering')
+      .optimisticReassignAgent('agent-alice','engineering')
     const alice = useCompanyStore
       .getState()
       .config!.agents.find((a) => a.name === 'alice')
@@ -71,7 +71,7 @@ describe('optimisticReassignAgent', () => {
     useCompanyStore.setState({ config: null })
     const rollback = useCompanyStore
       .getState()
-      .optimisticReassignAgent('alice', 'design')
+      .optimisticReassignAgent('agent-alice','design')
     expect(useCompanyStore.getState().config).toBeNull()
     rollback()
     expect(useCompanyStore.getState().config).toBeNull()
@@ -86,7 +86,7 @@ describe('optimisticReassignAgent', () => {
   })
 
   it('preserves other agents during reassignment', () => {
-    useCompanyStore.getState().optimisticReassignAgent('alice', 'product')
+    useCompanyStore.getState().optimisticReassignAgent('agent-alice','product')
     const config = useCompanyStore.getState().config!
     const bob = config.agents.find((a) => a.name === 'bob')
     expect(bob!.department).toBe('design')
@@ -95,8 +95,8 @@ describe('optimisticReassignAgent', () => {
   it('rollback preserves concurrent changes to other agents', () => {
     const rollback = useCompanyStore
       .getState()
-      .optimisticReassignAgent('alice', 'product')
-    useCompanyStore.getState().optimisticReassignAgent('bob', 'engineering')
+      .optimisticReassignAgent('agent-alice','product')
+    useCompanyStore.getState().optimisticReassignAgent('agent-bob','engineering')
 
     rollback()
     const config = useCompanyStore.getState().config!
@@ -111,8 +111,8 @@ describe('optimisticReassignAgent', () => {
   it('stale rollback does not overwrite newer reassignment of same agent', () => {
     const rollbackOld = useCompanyStore
       .getState()
-      .optimisticReassignAgent('alice', 'design')
-    useCompanyStore.getState().optimisticReassignAgent('alice', 'product')
+      .optimisticReassignAgent('agent-alice','design')
+    useCompanyStore.getState().optimisticReassignAgent('agent-alice','product')
 
     rollbackOld()
     const alice = useCompanyStore

@@ -8,7 +8,7 @@ import {
 } from '@/stores/training'
 
 export interface TrainingSectionProps {
-  agentName: string
+  agentId: string
 }
 
 /**
@@ -17,8 +17,8 @@ export interface TrainingSectionProps {
  * {@link TrainingReviewModal} when the backend requires human review
  * before storing extracted items.
  */
-export function TrainingSection({ agentName }: TrainingSectionProps) {
-  const { plan, result } = useTrainingForAgent(agentName)
+export function TrainingSection({ agentId }: TrainingSectionProps) {
+  const { plan, result } = useTrainingForAgent(agentId)
   const hydrateForAgent = useTrainingStore((s) => s.hydrateForAgent)
   const createPlan = useTrainingStore((s) => s.createPlan)
   const executePlan = useTrainingStore((s) => s.executePlan)
@@ -33,11 +33,11 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
     (plan?.id ?? null) !== dismissedPlanId
 
   useEffect(() => {
-    if (!agentName) return
+    if (!agentId) return
     // Hydrate both plan + result so a page refresh after executing
     // does not drop back to the "Create Plan" form.
-    void hydrateForAgent(agentName)
-  }, [agentName, hydrateForAgent])
+    void hydrateForAgent(agentId)
+  }, [agentId, hydrateForAgent])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -50,27 +50,27 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
 
   const handleCreatePlan = useCallback(
     (overrides: Parameters<typeof createPlan>[1]) => {
-      void createPlan(agentName, overrides)
+      void createPlan(agentId, overrides)
     },
-    [agentName, createPlan],
+    [agentId, createPlan],
   )
 
   const handleExecute = useCallback(() => {
-    void executePlan(agentName)
-  }, [agentName, executePlan])
+    void executePlan(agentId)
+  }, [agentId, executePlan])
 
   const handleApprove = useCallback(async () => {
     if (!plan) return
     // Approve the current overrides unchanged (human review gate, no
     // edits). Overrides that are partial or edited are a future
     // enhancement -- this hook is the point where they would flow in.
-    const updated = await updateOverrides(agentName, plan.id, {})
+    const updated = await updateOverrides(agentId, plan.id, {})
     // Keep the review modal open on failure so the user can retry;
     // only dismiss when the API confirms the save.
     if (updated !== null) {
       setDismissedPlanId(plan.id)
     }
-  }, [agentName, plan, updateOverrides])
+  }, [agentId, plan, updateOverrides])
 
   // Map TrainingResultResponse.items_after_guards (tuple pairs) into the
   // row shape the modal consumes.
@@ -86,7 +86,7 @@ export function TrainingSection({ agentName }: TrainingSectionProps) {
   return (
     <>
       <TrainingPanel
-        agentName={agentName}
+        agentId={agentId}
         plan={plan}
         result={result}
         onCreatePlan={handleCreatePlan}

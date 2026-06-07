@@ -14,7 +14,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ActionType, AgentStatus, ApprovalRiskLevel
 from synthorg.core.role import Skill
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, stable_agent_id
 from synthorg.hr.enums import HiringRequestStatus
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
@@ -475,6 +475,7 @@ class HiringService:
         )
         try:
             return AgentIdentity(
+                id=stable_agent_id(candidate.name),
                 name=candidate.name,
                 role=candidate.role,
                 department=candidate.department,

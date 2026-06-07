@@ -9,7 +9,8 @@ Consumers who need the validated currency type import it from
 """
 
 from collections import Counter
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
+from uuid import UUID, uuid5
 
 from pydantic import AfterValidator, StringConstraints
 
@@ -44,6 +45,27 @@ NotBlankStr = Annotated[
     AfterValidator(_check_not_whitespace),
 ]
 """A string that must be non-empty and not consist solely of whitespace."""
+
+
+_AGENT_ID_NAMESPACE: Final = UUID("0b3d2c1e-7a4f-4b8e-9c6d-1f2e3a4b5c6d")
+"""Fixed namespace for deriving deterministic agent ids from agent names."""
+
+
+def stable_agent_id(name: str) -> UUID:
+    """Derive a deterministic agent id from an agent *name*.
+
+    The config-sourced agent roster and the runtime registry both derive
+    identity from the agent name without coordinating, so a config agent
+    and its registered ``AgentIdentity`` resolve to the same id and the
+    dashboard can address either by one stable UUID.
+
+    Args:
+        name: Agent display name (unique across the company config).
+
+    Returns:
+        The deterministic ``uuid5`` agent id for *name*.
+    """
+    return uuid5(_AGENT_ID_NAMESPACE, name)
 
 
 def validate_unique_strings(

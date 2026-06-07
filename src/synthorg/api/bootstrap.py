@@ -18,6 +18,7 @@ from synthorg.core.agent import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Authority
+from synthorg.core.types import stable_agent_id
 from synthorg.hr.errors import AgentAlreadyRegisteredError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.setup import (
@@ -59,6 +60,7 @@ def _identity_from_config(config: AgentConfig, *, clock: Clock) -> AgentIdentity
         A fully constructed AgentIdentity.
     """
     return AgentIdentity(
+        id=stable_agent_id(config.name),
         name=config.name,
         role=config.role,
         department=config.department,
