@@ -78,7 +78,7 @@ class PostgresConversationParticipantRepository:
             QueryError: On other database errors.
         """
         params = (
-            entity.id,
+            str(entity.id),
             entity.conversation_id,
             entity.agent_id,
             entity.agent_name,

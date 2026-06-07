@@ -45,7 +45,7 @@ class FakeParticipantRepo:
         self.items: dict[str, ConversationParticipant] = {}
 
     async def save(self, entity: ConversationParticipant) -> None:
-        self.items[entity.id] = entity
+        self.items[str(entity.id)] = entity
 
     async def get(self, entity_id: str) -> ConversationParticipant | None:
         return self.items.get(entity_id)

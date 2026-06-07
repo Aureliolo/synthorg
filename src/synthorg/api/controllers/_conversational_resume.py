@@ -20,7 +20,6 @@ even after its feature is toggled off:
 parked-context flow in ``_approval_review_gate`` imports it from here.
 """
 
-import uuid
 from typing import TYPE_CHECKING
 
 from synthorg._core.features import require_service
@@ -61,15 +60,6 @@ if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.group_models import ConversationInvite
 
 logger = get_logger(__name__)
-
-
-def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
-
-    Returns:
-        ``NotBlankStr`` instance.
-    """
-    return NotBlankStr(str(uuid.uuid4()))
 
 
 async def _reread_approval_item(
@@ -582,7 +572,6 @@ async def _add_invited_participant(
         return
     await participant_repo.save(
         ConversationParticipant(
-            id=_new_id(),
             conversation_id=invite.conversation_id,
             agent_id=invite.target_agent_id,
             agent_name=identity.name,

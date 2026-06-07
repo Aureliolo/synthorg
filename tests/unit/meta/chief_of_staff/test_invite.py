@@ -90,7 +90,7 @@ def _participant(agent_id: str, name: str, role: str) -> ConversationParticipant
         An ``ACTIVE`` :class:`ConversationParticipant`.
     """
     return ConversationParticipant(
-        id=NotBlankStr(f"part-{agent_id}"),
+        id=as_uuid(f"part-{agent_id}"),
         conversation_id=_CONV,
         agent_id=NotBlankStr(agent_id),
         agent_name=NotBlankStr(name),
@@ -702,7 +702,7 @@ class TestGroupChatInviteIntegration:
         )
         await participant_repo.save(
             ConversationParticipant(
-                id=NotBlankStr("part-cfo"),
+                id=as_uuid("part-cfo"),
                 conversation_id=conversation_id,
                 agent_id=NotBlankStr(str(cfo.id)),
                 agent_name=NotBlankStr("Fiona"),

@@ -109,7 +109,6 @@ async def enrol_participants(
     for index, identity in enumerate(identities):
         await participant_repo.save(
             ConversationParticipant(
-                id=new_id(),
                 conversation_id=conversation_id,
                 agent_id=NotBlankStr(str(identity.id)),
                 agent_name=identity.name,

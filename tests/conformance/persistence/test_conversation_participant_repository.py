@@ -40,6 +40,7 @@ from synthorg.persistence.sqlite.conversation_participant_repo import (
     SQLiteConversationParticipantRepository,
 )
 from synthorg.persistence.sqlite.conversation_repo import SQLiteConversationRepository
+from tests._shared import as_uuid
 
 pytestmark = pytest.mark.integration
 
@@ -106,7 +107,7 @@ def _make_participant(  # noqa: PLR0913 -- roster columns are optional kwargs
     offset_micros: int = 0,
 ) -> ConversationParticipant:
     return ConversationParticipant(
-        id=participant_id,
+        id=as_uuid(participant_id),
         conversation_id=conversation_id,
         agent_id=agent_id,
         agent_name=agent_name,
@@ -124,7 +125,7 @@ class TestConversationParticipantRepository:
         participant = _make_participant()
         await repo.save(participant)
 
-        fetched = await repo.get(participant.id)
+        fetched = await repo.get(NotBlankStr(str(participant.id)))
         assert fetched is not None
         assert fetched.id == participant.id
         assert fetched.agent_id == "agent-cfo-001"
@@ -151,7 +152,7 @@ class TestConversationParticipantRepository:
                 update={"status": ConversationParticipantStatus.REMOVED}
             )
         )
-        fetched = await repo.get(participant.id)
+        fetched = await repo.get(NotBlankStr(str(participant.id)))
         assert fetched is not None
         assert fetched.status is ConversationParticipantStatus.REMOVED
 
@@ -171,7 +172,7 @@ class TestConversationParticipantRepository:
         rows = await repo.query(
             ConversationParticipantFilterSpec(conversation_id=NotBlankStr("conv-a"))
         )
-        assert {r.id for r in rows} == {"pa"}
+        assert {r.id for r in rows} == {as_uuid("pa")}
 
     async def test_query_orders_by_added_at_microsecond_offsets(
         self, backend: PersistenceBackend
@@ -202,7 +203,7 @@ class TestConversationParticipantRepository:
         rows = await repo.query(
             ConversationParticipantFilterSpec(conversation_id=NotBlankStr("conv-order"))
         )
-        assert [r.id for r in rows] == ["first", "second"]
+        assert [r.id for r in rows] == [as_uuid("first"), as_uuid("second")]
 
     async def test_query_filters_by_status(self, backend: PersistenceBackend) -> None:
         await _save_conversation(backend, "conv-status")
@@ -228,7 +229,7 @@ class TestConversationParticipantRepository:
                 status=ConversationParticipantStatus.ACTIVE,
             )
         )
-        assert {r.id for r in active} == {"active-one"}
+        assert {r.id for r in active} == {as_uuid("active-one")}
 
     async def test_count_matches_query(self, backend: PersistenceBackend) -> None:
         await _save_conversation(backend, "conv-count")
@@ -273,12 +274,12 @@ class TestConversationParticipantRepository:
         await repo.save(participant)
 
         result = await repo.transition_if(
-            participant.id,
+            NotBlankStr(str(participant.id)),
             from_state=ConversationParticipantStatus.ACTIVE,
             to_state=ConversationParticipantStatus.REMOVED,
         )
         assert result is True
-        fetched = await repo.get(participant.id)
+        fetched = await repo.get(NotBlankStr(str(participant.id)))
         assert fetched is not None
         assert fetched.status is ConversationParticipantStatus.REMOVED
 
@@ -294,7 +295,7 @@ class TestConversationParticipantRepository:
         )
         await repo.save(participant)
         result = await repo.transition_if(
-            participant.id,
+            NotBlankStr(str(participant.id)),
             from_state=ConversationParticipantStatus.ACTIVE,
             to_state=ConversationParticipantStatus.REMOVED,
         )
@@ -322,7 +323,7 @@ class TestConversationParticipantRepository:
         await repo.save(participant)
         with pytest.raises(QueryError):
             await repo.transition_if(
-                participant.id,
+                NotBlankStr(str(participant.id)),
                 from_state=ConversationParticipantStatus.ACTIVE,
                 to_state=ConversationParticipantStatus.REMOVED,
                 added_by="someone",
@@ -337,9 +338,9 @@ class TestConversationParticipantRepository:
             participant_id="del1", conversation_id="conv-del"
         )
         await repo.save(participant)
-        assert await repo.delete(participant.id) is True
-        assert await repo.get(participant.id) is None
-        assert await repo.delete(participant.id) is False
+        assert await repo.delete(NotBlankStr(str(participant.id))) is True
+        assert await repo.get(NotBlankStr(str(participant.id))) is None
+        assert await repo.delete(NotBlankStr(str(participant.id))) is False
 
     async def test_protocol_runtime_check(self, backend: PersistenceBackend) -> None:
         repo = _participant_repo(backend)
