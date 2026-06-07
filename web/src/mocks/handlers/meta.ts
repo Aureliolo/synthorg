@@ -119,7 +119,7 @@ export const metaHandlers = [
         ],
         participants: [
           {
-            id: 'part-ceo-mock',
+            id: '11111111-1111-4111-8111-111111111111',
             conversation_id: 'conv-grp-mock-001',
             agent_id: 'agent-ceo-mock',
             agent_name: 'Dana',
@@ -129,7 +129,7 @@ export const metaHandlers = [
             added_at: '2026-05-19T09:00:00Z',
           },
           {
-            id: 'part-cfo-mock',
+            id: '22222222-2222-4222-8222-222222222222',
             conversation_id: 'conv-grp-mock-001',
             agent_id: 'agent-cfo-mock',
             agent_name: 'Casey',

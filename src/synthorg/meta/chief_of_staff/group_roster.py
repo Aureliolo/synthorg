@@ -46,7 +46,11 @@ MAX_TURNS_QUERY_LIMIT: int = 1000
 
 
 def new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier.
+    """Return a fresh opaque string identifier.
+
+    Used for the ``NotBlankStr``-typed ids of ``Conversation`` and
+    ``ConversationTurn``. ``ConversationParticipant`` mints its own
+    ``UUID`` id via the model's ``default_factory`` and does not call this.
 
     Returns:
         ``NotBlankStr`` instance.

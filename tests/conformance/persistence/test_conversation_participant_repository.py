@@ -138,7 +138,7 @@ class TestConversationParticipantRepository:
         self, backend: PersistenceBackend
     ) -> None:
         repo = _participant_repo(backend)
-        assert await repo.get("part-missing") is None
+        assert await repo.get(NotBlankStr("part-missing")) is None
 
     async def test_save_upsert_overwrites_status(
         self, backend: PersistenceBackend

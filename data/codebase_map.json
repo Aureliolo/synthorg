@@ -10523,7 +10523,7 @@
     },
     {
       "kind": "code",
-      "loc": 137,
+      "loc": 140,
       "loc_cap": 500,
       "module": "src/synthorg/meta/chief_of_staff/group_roster.py",
       "owning_feature": "meta"
@@ -14786,7 +14786,7 @@
     },
     {
       "kind": "code",
-      "loc": 302,
+      "loc": 306,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/postgres/conversation_participant_repo.py",
       "owning_feature": "persistence"
@@ -15556,7 +15556,7 @@
     },
     {
       "kind": "code",
-      "loc": 330,
+      "loc": 332,
       "loc_cap": 500,
       "module": "src/synthorg/persistence/sqlite/conversation_participant_repo.py",
       "owning_feature": "persistence"
